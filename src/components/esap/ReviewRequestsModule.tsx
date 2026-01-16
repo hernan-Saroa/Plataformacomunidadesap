@@ -611,9 +611,9 @@ export function ReviewRequestsModule() {
 
   return (
     <div className="space-y-6">
-      {/* Cards de Estadísticas */}
+      {/* Banner informativo de solicitudes */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
@@ -1151,11 +1151,13 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(request.graduateDocumentIssueDate).toLocaleDateString('es-CO', {
-                                      year: 'numeric',
-                                      month: 'long',
-                                      day: 'numeric'
-                                    })}
+                                    {request.createdAt
+                                      ? new Date(request.createdAt).toLocaleDateString('es-CO', {
+                                          year: 'numeric',
+                                          month: 'long',
+                                          day: 'numeric',
+                                        })
+                                      : 'Sin fecha'}
                                   </p>
                                 </div>
                               </div>

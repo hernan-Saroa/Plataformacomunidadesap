@@ -15,6 +15,8 @@ import { ReviewAutoDto, ReviewAction } from '../dtos/review-auto.dto';
 import { ProcessService } from './process.service';
 
 import { SystemConfiguration } from '../entities/system-configuration.entity';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 
 @Injectable()
 export class AutoService {
@@ -26,6 +28,7 @@ export class AutoService {
     @InjectRepository(SystemConfiguration)
     private configRepository: Repository<SystemConfiguration>,
     private processService: ProcessService,
+    private alertasService: AlertasService,
   ) { }
 
   /**
@@ -88,8 +91,9 @@ export class AutoService {
    */
   async findByProcessId(processId: string): Promise<LegalAuto[]> {
     return await this.autoRepository.find({
-      where: { process: { id: processId } }, // Corrección para buscar por relación
+      where: { process: { id: processId } },
       order: { createdAt: 'DESC' },
+      relations: ['versions'] // Cargar historial
     });
   }
 
@@ -147,6 +151,8 @@ export class AutoService {
         versionNumber: auto.currentVersion,
         createdBy: aprobadoPorId,
         changeReason: 'Auto Aprobado por Jefe (Pendiente de Firma)',
+        documentUrl: auto.documentUrl,
+        documentName: auto.documentName,
       });
 
     } else if (reviewAutoDto.action === ReviewAction.RETURN) {
@@ -162,6 +168,8 @@ export class AutoService {
         versionNumber: auto.currentVersion,
         createdBy: aprobadoPorId,
         changeReason: `Auto Devuelto: ${reviewAutoDto.observaciones || 'Sin observaciones'}`,
+        documentUrl: auto.documentUrl,
+        documentName: auto.documentName,
       });
     }
 
@@ -196,6 +204,8 @@ export class AutoService {
       versionNumber: auto.currentVersion,
       createdBy: userId, // Quien firma
       changeReason: 'Auto Firmado Digitalmente',
+      documentUrl: auto.documentUrl,
+      documentName: auto.documentName,
     });
 
     return await this.autoRepository.save(auto);
@@ -232,6 +242,55 @@ export class AutoService {
 
     auto.contenido = nuevoContenido;
     return await this.autoRepository.save(auto);
+    auto.contenido = nuevoContenido;
+    return await this.autoRepository.save(auto);
+  }
+
+  /**
+   * Actualiza un auto completo (Metadatos y Archivo)
+   * Genera versión si cambia algo crítico
+   */
+  async update(id: string, updateData: any, userId?: string): Promise<LegalAuto> {
+    const auto = await this.findById(id, ['process']);
+
+    if (auto.estado !== AutoStatus.BORRADOR && auto.estado !== AutoStatus.DEVUELTO) {
+      throw new HttpException(
+        'Solo se pueden editar borradores o autos devueltos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Detectar cambios sustanciales para versionar
+    const contentChanged = updateData.contenidoHtml && updateData.contenidoHtml !== auto.contenido;
+    const fileChanged = updateData.documentUrl && updateData.documentUrl !== auto.documentUrl;
+
+    if (contentChanged || fileChanged) {
+      // Guardar versión anterior
+      await this.versionRepository.save({
+        auto: { id: auto.id } as LegalAuto,
+        contenido: auto.contenido, // Guardamos el contenido HTML antiguo
+        // Podríamos guardar también la URL del archivo antiguo si la entidad Version lo soportara,
+        // pero por ahora guardamos snapshot de metadatos en contenido o asumimos contenido HTML principal.
+        versionNumber: auto.currentVersion,
+        createdBy: userId || null,
+        changeReason: fileChanged ? 'Actualización de archivo adjunto' : 'Actualización de contenido',
+        documentUrl: auto.documentUrl, // Guardar referencia al archivo actual
+        documentName: auto.documentName,
+      });
+      auto.currentVersion += 1;
+    }
+
+    if (updateData.numero) auto.numero = updateData.numero;
+    if (updateData.contenidoHtml) {
+      auto.contenido = updateData.contenidoHtml;
+      auto.comentarios = updateData.contenidoHtml; // Sync descripcion/comentarios
+    }
+    if (updateData.documentUrl) auto.documentUrl = updateData.documentUrl;
+    if (updateData.documentName) auto.documentName = updateData.documentName;
+    if (updateData.documentType) auto.documentType = updateData.documentType;
+    if (updateData.documentSize) auto.documentSize = updateData.documentSize;
+
+    return await this.autoRepository.save(auto);
   }
 
   async getVersions(id: string): Promise<AutoVersion[]> {
@@ -239,6 +298,21 @@ export class AutoService {
       where: { auto: { id } },
       order: { versionNumber: 'DESC' },
     });
+  }
+
+  async getAutoVersionContent(id: string, versionNumber: number): Promise<AutoVersion> {
+    const version = await this.versionRepository.findOne({
+      where: {
+        auto: { id },
+        versionNumber: versionNumber
+      },
+      relations: ['auto']
+    });
+
+    if (!version) {
+      throw new HttpException('Versión no encontrada', HttpStatus.NOT_FOUND);
+    }
+    return version;
   }
 
   /**
@@ -260,7 +334,50 @@ export class AutoService {
     }
     auto.estado = AutoStatus.NOTIFICADO;
 
-    return await this.autoRepository.save(auto);
+    const savedAuto = await this.autoRepository.save(auto);
+
+    // Registrar en Historial (Version)
+    await this.versionRepository.save({
+      auto: { id: savedAuto.id } as LegalAuto,
+      contenido: savedAuto.contenido,
+      versionNumber: savedAuto.currentVersion,
+      createdBy: 'Sistema', // O el ID del usuario si estuviera disponible
+      changeReason: JSON.stringify({
+        action: 'NOTIFICACION_REGISTRADA',
+        date: dto.notificationDate,
+        evidenceUrl: dto.notificationEvidence || null
+      }),
+    });
+
+    // Generar Notificación de Sistema en la Bandeja
+    try {
+      const asunto = `Auto Notificado: ${auto.tipo} - ${auto.numero || 'Sin Número'}`;
+      const mensaje = `El auto ha sido notificado correctamente con fecha ${dto.notificationDate}. Radicado: ${auto.process?.radicadoProceso || 'N/A'}`;
+
+      // Intentar obtener email del profesional asignado o usuario actual (si estuviera disponible)
+      // Como fallback usamos 'Usuario Actual' o idealmente el ID del abogado asignado al proceso
+      // Por ahora asignamos el aviso al abogado del proceso si existe
+      let destinatario = 'Profesional Asignado';
+      if (auto.process && auto.process.abogadoAsignadoId) {
+        // TODO: Lookup email from UserService if needed, or store it.
+        // For now, assuming we want to notify the system/tray.
+        destinatario = 'Sistema';
+      }
+
+      await this.alertasService.crearNotificacionAuto(
+        savedAuto.id,
+        TipoAlerta.SISTEMA,
+        destinatario,
+        asunto,
+        mensaje,
+        'Sistema'
+      );
+    } catch (e) {
+      console.error('Error creando notificación en bandeja:', e);
+      // No fallamos la transacción principal si falla la notificación auxiliar
+    }
+
+    return savedAuto;
   }
 
   /**

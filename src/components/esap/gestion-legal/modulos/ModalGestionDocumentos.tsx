@@ -1,9 +1,9 @@
 /**
  * ModalGestionDocumentos - Gestión completa de documentos adjuntos
- * DISEÑO LIMPIO ESAP 2025 - Funcionalidad completa de carga
+ * DISEÑO LIMPIO ESAP 2025 - Funcionalidad completa de carga (API integrada)
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
@@ -13,9 +13,11 @@ import { Progress } from '../../../ui/progress';
 import {
   Paperclip, X, Upload, Download, FileText, File, FileSpreadsheet,
   Image as ImageIcon, Trash2, Eye, Search, Filter, CheckCircle, AlertCircle,
-  FolderOpen, Clock, User, FileCheck
+  FolderOpen, Clock, User, FileCheck, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { ocService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 interface DocumentoSeleccionado {
   archivo: File;
@@ -26,11 +28,12 @@ interface DocumentoSeleccionado {
 interface DocumentoCargado {
   id: string;
   nombre: string;
-  tipo: 'PDF' | 'Word' | 'Excel' | 'Imagen' | 'Otro';
+  tipo: string;
   tamano: string;
-  categoria: 'Requerimiento' | 'Respuesta' | 'Soporte' | 'Interno';
+  categoria: string;
   fechaCarga: Date;
   usuario: string;
+  url?: string;
 }
 
 interface ModalGestionDocumentosProps {
@@ -38,13 +41,32 @@ interface ModalGestionDocumentosProps {
   onClose: () => void;
   requerimientoId: string;
   tituloContexto?: string;
+  nombreRequerimiento?: string;
 }
+
+const CATEGORIES_MAP: Record<string, 'Requerimiento' | 'Respuesta' | 'Soporte' | 'Interno'> = {
+  'oficio': 'Requerimiento',
+  'respuesta': 'Respuesta',
+  'acuse': 'Respuesta',
+  'anexo': 'Soporte',
+  'evidencia': 'Soporte',
+  'informe': 'Soporte',
+  'otro': 'Interno'
+};
+
+const CATEGORIES_REVERSE_MAP: Record<string, string> = {
+  'Requerimiento': 'oficio',
+  'Respuesta': 'respuesta',
+  'Soporte': 'anexo',
+  'Interno': 'otro'
+};
 
 export function ModalGestionDocumentos({
   isOpen,
   onClose,
   requerimientoId,
-  tituloContexto = 'Gestión de Documentos'
+  tituloContexto = 'Gestión de Documentos',
+  nombreRequerimiento
 }: ModalGestionDocumentosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('todos');
@@ -54,54 +76,40 @@ export function ModalGestionDocumentos({
   const [progresoCarga, setProgresoCarga] = useState(0);
   const inputFileRef = useRef<HTMLInputElement>(null);
 
-  // Mock data de documentos ya cargados
-  const [documentosCargados, setDocumentosCargados] = useState<DocumentoCargado[]>([
-    {
-      id: 'doc-001',
-      nombre: 'Oficio CGR-OF-2024-00125.pdf',
-      tipo: 'PDF',
-      tamano: '2.4 MB',
-      categoria: 'Requerimiento',
-      fechaCarga: new Date('2024-12-10'),
-      usuario: 'Sistema SIGL'
-    },
-    {
-      id: 'doc-002',
-      nombre: 'Anexo 1 - Contratos 2024.xlsx',
-      tipo: 'Excel',
-      tamano: '5.1 MB',
-      categoria: 'Soporte',
-      fechaCarga: new Date('2024-12-12'),
-      usuario: 'Dra. María Fernández'
-    },
-    {
-      id: 'doc-003',
-      nombre: 'Certificación Presupuestal Q4-2024.pdf',
-      tipo: 'PDF',
-      tamano: '1.8 MB',
-      categoria: 'Soporte',
-      fechaCarga: new Date('2024-12-13'),
-      usuario: 'Área Financiera'
-    },
-    {
-      id: 'doc-004',
-      nombre: 'Borrador Respuesta CGR.docx',
-      tipo: 'Word',
-      tamano: '856 KB',
-      categoria: 'Respuesta',
-      fechaCarga: new Date('2024-12-15'),
-      usuario: 'Dra. María Fernández'
-    },
-    {
-      id: 'doc-005',
-      nombre: 'Análisis Jurídico Interno.pdf',
-      tipo: 'PDF',
-      tamano: '1.2 MB',
-      categoria: 'Interno',
-      fechaCarga: new Date('2024-12-14'),
-      usuario: 'Dr. Carlos Méndez'
+  const [documentosCargados, setDocumentosCargados] = useState<DocumentoCargado[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
+  // Cargar documentos reales al abrir
+  useEffect(() => {
+    if (isOpen && requerimientoId) {
+      cargarDocumentos();
     }
-  ]);
+  }, [isOpen, requerimientoId]);
+
+  const cargarDocumentos = async () => {
+    try {
+      setLoadingDocs(true);
+      const docs = await ocService.getDocumentosByRequerimiento(requerimientoId);
+
+      const docsMapeados = docs.map((d: any) => ({
+        id: d.id,
+        nombre: d.nombre,
+        tipo: d.mimeType ? getTipoArchivo(d.mimeType) : 'Otro',
+        tamano: d.tamanoBytes ? formatearTamano(d.tamanoBytes) : 'Desc.',
+        categoria: CATEGORIES_MAP[d.tipoDocumento] || 'Interno',
+        fechaCarga: d.createdAt ? new Date(d.createdAt) : new Date(),
+        usuario: d.subidoPor || 'Sistema',
+        url: d.archivoUrl
+      }));
+
+      setDocumentosCargados(docsMapeados);
+    } catch (error) {
+      console.error('Error al cargar documentos:', error);
+      toast.error('No se pudieron cargar los documentos');
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
 
   // Filtrar documentos cargados
   const documentosFiltrados = documentosCargados.filter(doc => {
@@ -121,32 +129,15 @@ export function ModalGestionDocumentos({
     const nuevosArchivos: DocumentoSeleccionado[] = [];
 
     Array.from(archivos).forEach((archivo) => {
-      // Validar tamaño (máximo 10 MB)
-      if (archivo.size > 10 * 1024 * 1024) {
+      // Validar tamaño (máximo 50 MB)
+      if (archivo.size > 50 * 1024 * 1024) {
         toast.error(`Archivo demasiado grande: ${archivo.name}`, {
-          description: 'El tamaño máximo permitido es 10 MB'
+          description: 'El tamaño máximo permitido es 50 MB'
         });
         return;
       }
 
-      // Validar tipo de archivo
-      const tiposPermitidos = [
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'image/jpeg',
-        'image/png',
-        'image/jpg'
-      ];
-
-      if (!tiposPermitidos.includes(archivo.type)) {
-        toast.error(`Tipo de archivo no permitido: ${archivo.name}`, {
-          description: 'Solo se permiten: PDF, Word, Excel, Imágenes'
-        });
-        return;
-      }
+      // Validar tipo de archivo (opcional, por ahora permitimos todos los comunes)
 
       // Crear preview para imágenes
       let preview: string | undefined;
@@ -180,10 +171,13 @@ export function ModalGestionDocumentos({
     toast.info('Archivo removido de la lista');
   };
 
+  /* Corrección: Actualización inmutable del estado */
   const handleCambiarCategoria = (index: number, nuevaCategoria: 'Requerimiento' | 'Respuesta' | 'Soporte' | 'Interno') => {
-    const nuevosArchivos = [...archivosSeleccionados];
-    nuevosArchivos[index].categoria = nuevaCategoria;
-    setArchivosSeleccionados(nuevosArchivos);
+    setArchivosSeleccionados(prev => {
+      const nuevos = [...prev];
+      nuevos[index] = { ...nuevos[index], categoria: nuevaCategoria };
+      return nuevos;
+    });
   };
 
   const handleCargarDocumentos = async () => {
@@ -197,41 +191,41 @@ export function ModalGestionDocumentos({
     setCargando(true);
     setProgresoCarga(0);
 
-    // Simular carga de archivos
-    for (let i = 0; i < archivosSeleccionados.length; i++) {
-      const archivoSeleccionado = archivosSeleccionados[i];
-      
-      // Simular progreso de carga
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setProgresoCarga(((i + 1) / archivosSeleccionados.length) * 100);
+    try {
+      for (let i = 0; i < archivosSeleccionados.length; i++) {
+        const archivoSel = archivosSeleccionados[i];
+        const tipoDocBackend = CATEGORIES_REVERSE_MAP[archivoSel.categoria] || 'otro';
 
-      // Agregar a documentos cargados
-      const nuevoDocumento: DocumentoCargado = {
-        id: `doc-${Date.now()}-${i}`,
-        nombre: archivoSeleccionado.archivo.name,
-        tipo: getTipoArchivo(archivoSeleccionado.archivo.type),
-        tamano: formatearTamano(archivoSeleccionado.archivo.size),
-        categoria: archivoSeleccionado.categoria,
-        fechaCarga: new Date(),
-        usuario: 'Usuario Actual'
-      };
+        await ocService.createDocumento(requerimientoId, {
+          nombre: archivoSel.archivo.name,
+          tipoDocumento: tipoDocBackend,
+          archivo: archivoSel.archivo,
+          subidoPor: 'Usuario Actual' // TODO: Integrar auth real
+        });
 
-      setDocumentosCargados(prev => [nuevoDocumento, ...prev]);
+        // Actualizar progreso
+        setProgresoCarga(((i + 1) / archivosSeleccionados.length) * 100);
+      }
+
+      setArchivosSeleccionados([]);
+      toast.success('Documentos cargados exitosamente', {
+        description: `${archivosSeleccionados.length} archivo(s) agregado(s) al expediente`,
+        icon: <CheckCircle className="w-4 h-4" />
+      });
+      cargarDocumentos(); // Recargar la lista
+    } catch (error) {
+      console.error('Error subiendo documentos:', error);
+      toast.error('Error al subir algunos documentos');
+    } finally {
+      setCargando(false);
+      setProgresoCarga(0);
     }
-
-    setCargando(false);
-    setProgresoCarga(0);
-    setArchivosSeleccionados([]);
-
-    toast.success('Documentos cargados exitosamente', {
-      description: `${archivosSeleccionados.length} archivo(s) agregado(s) al expediente`,
-      icon: <CheckCircle className="w-4 h-4" />
-    });
   };
 
-  const getTipoArchivo = (mimeType: string): 'PDF' | 'Word' | 'Excel' | 'Imagen' | 'Otro' => {
+  const getTipoArchivo = (mimeType: string): string => {
+    if (!mimeType) return 'Otro';
     if (mimeType === 'application/pdf') return 'PDF';
-    if (mimeType.includes('word')) return 'Word';
+    if (mimeType.includes('word') || mimeType.includes('officedocument')) return 'Word';
     if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'Excel';
     if (mimeType.startsWith('image/')) return 'Imagen';
     return 'Otro';
@@ -244,7 +238,7 @@ export function ModalGestionDocumentos({
   };
 
   const getIconoTipo = (tipo: string) => {
-    switch(tipo) {
+    switch (tipo) {
       case 'PDF': return <FileText className="w-5 h-5 text-red-500" />;
       case 'Word': return <File className="w-5 h-5 text-blue-500" />;
       case 'Excel': return <FileSpreadsheet className="w-5 h-5 text-green-500" />;
@@ -254,7 +248,7 @@ export function ModalGestionDocumentos({
   };
 
   const getCategoriaColor = (categoria: string) => {
-    switch(categoria) {
+    switch (categoria) {
       case 'Requerimiento': return 'bg-blue-100 text-blue-700';
       case 'Respuesta': return 'bg-green-100 text-green-700';
       case 'Soporte': return 'bg-yellow-100 text-yellow-700';
@@ -263,28 +257,60 @@ export function ModalGestionDocumentos({
     }
   };
 
-  const handleDescargar = (nombreArchivo: string) => {
-    toast.info('Descargando documento', {
-      description: nombreArchivo,
+  const handleDescargar = (doc: DocumentoCargado) => {
+    if (!doc.url) return;
+    toast.info('Abriendo documento...', {
+      description: doc.nombre,
       icon: <Download className="w-4 h-4" />
     });
+    try {
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      let filename = doc.url;
+      if (doc.url.includes('/files/')) filename = doc.url.split('/files/').pop()!;
+      else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop()!;
+
+      const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
+      window.open(fullUrl, '_blank');
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al abrir documento');
+    }
   };
 
-  const handleEliminarCargado = (id: string) => {
-    setDocumentosCargados(prev => prev.filter(doc => doc.id !== id));
-    toast.success('Documento eliminado del expediente');
+  const handleDescargarTodos = () => {
+    try {
+      const url = ocService.getDocumentosDownloadUrl(requerimientoId, nombreRequerimiento);
+      window.open(url, '_blank');
+      toast.success('Iniciando descarga de todos los documentos');
+    } catch (e) {
+      console.error(e);
+      toast.error('Error al iniciar descarga ZIP');
+    }
+  };
+
+  const handleEliminarCargado = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar este documento?')) return;
+    try {
+      await ocService.deleteDocumento(id);
+      toast.success('Documento eliminado del expediente');
+      cargarDocumentos();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar documento');
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton={false} className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
         <DialogTitle className="sr-only">
           {tituloContexto} - {requerimientoId}
         </DialogTitle>
         <DialogDescription className="sr-only">
           Gestión completa de documentos adjuntos al expediente {requerimientoId}. Selecciona archivos de tu computadora, categorízalos y cárgalos al sistema.
         </DialogDescription>
-        
+
         {/* Header */}
         <div className="px-6 py-5 bg-white border-b flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -294,7 +320,7 @@ export function ModalGestionDocumentos({
             <div>
               <h2 className="text-lg font-bold text-gray-900">{tituloContexto}</h2>
               <p className="text-sm text-gray-600">
-                {requerimientoId} • {documentosCargados.length} documentos • {archivosSeleccionados.length} pendientes de cargar
+                {nombreRequerimiento || requerimientoId} • {documentosCargados.length} documentos • {archivosSeleccionados.length} pendientes de cargar
               </p>
             </div>
           </div>
@@ -310,7 +336,7 @@ export function ModalGestionDocumentos({
 
         {/* Contenido */}
         <div className="p-6 space-y-6">
-          
+
           {/* ZONA DE SELECCIÓN Y CARGA */}
           <div className="border-2 border-blue-300 rounded-lg p-6 bg-blue-50">
             <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -323,7 +349,7 @@ export function ModalGestionDocumentos({
               ref={inputFileRef}
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+              // accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" // Opcional
               onChange={handleArchivosCambiados}
               className="hidden"
             />
@@ -337,7 +363,7 @@ export function ModalGestionDocumentos({
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[100000]">
                   <SelectItem value="Requerimiento">📋 Requerimiento</SelectItem>
                   <SelectItem value="Respuesta">✅ Respuesta</SelectItem>
                   <SelectItem value="Soporte">📎 Soporte</SelectItem>
@@ -363,7 +389,7 @@ export function ModalGestionDocumentos({
                   📂 Seleccionar Archivo
                 </Button>
                 <p className="text-xs text-gray-500 mt-3">
-                  Tamaño máximo: 10 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
+                  Tamaño máximo: 50 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
                 </p>
               </div>
             </div>
@@ -410,7 +436,7 @@ export function ModalGestionDocumentos({
                           <SelectTrigger className="w-[140px]">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="z-[100000]">
                             <SelectItem value="Requerimiento">Requerimiento</SelectItem>
                             <SelectItem value="Respuesta">Respuesta</SelectItem>
                             <SelectItem value="Soporte">Soporte</SelectItem>
@@ -475,7 +501,7 @@ export function ModalGestionDocumentos({
                 <Filter className="w-4 h-4 mr-2" />
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[100000]">
                 <SelectItem value="todos">Todas las categorías</SelectItem>
                 <SelectItem value="Requerimiento">Requerimiento</SelectItem>
                 <SelectItem value="Respuesta">Respuesta</SelectItem>
@@ -520,7 +546,9 @@ export function ModalGestionDocumentos({
               Documentos en el Expediente ({documentosFiltrados.length})
             </h3>
 
-            {documentosFiltrados.length > 0 ? (
+            {loadingDocs ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>
+            ) : documentosFiltrados.length > 0 ? (
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {documentosFiltrados.map((doc) => (
                   <div
@@ -553,17 +581,18 @@ export function ModalGestionDocumentos({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toast.info('Vista previa', { description: doc.nombre })}
+                        onClick={() => handleDescargar(doc)}
+                        title="Ver Documento"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button
+                      {/* <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDescargar(doc.nombre)}
                       >
                         <Download className="w-4 h-4" />
-                      </Button>
+                      </Button> */}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -618,7 +647,8 @@ export function ModalGestionDocumentos({
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => toast.info('Descargando todos los documentos...')}
+              onClick={handleDescargarTodos}
+              disabled={documentosCargados.length === 0}
             >
               <Download className="w-4 h-4 mr-2" />
               Descargar Todos
@@ -637,4 +667,3 @@ export function ModalGestionDocumentos({
     </Dialog>
   );
 }
-

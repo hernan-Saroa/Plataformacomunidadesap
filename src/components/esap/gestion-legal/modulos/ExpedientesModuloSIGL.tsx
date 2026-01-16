@@ -1,24 +1,5 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * EXPEDIENTES - SISTEMA INTEGRADO DE GESTIÓN LEGAL (SIGL)
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Sistema de expedientes electrónicos para Gestión Legal
- * Cada proceso legal = 1 expediente con documentación organizada por tipo
- * 
- * VERSIÓN: 1.0 - SIGL
- * ÚLTIMA ACTUALIZACIÓN: 13 Enero 2026
- * 
- * ✨ Características:
- * - Expediente por cada proceso legal (Defensa Judicial, Juzgamiento, etc.)
- * - Carpetas organizadas por tipo de documento
- * - Vista de árbol de documentos
- * - Búsqueda por expediente
- * - Carga de documentos
- * - Integración con todos los módulos de Gestión Legal
- */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
@@ -27,14 +8,26 @@ import {
   File, FolderCheck, FileCheck, Scale, Gavel, FileQuestion,
   BarChart3
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalSIGL } from '../design-system/ModalSIGL';
+import { legalService } from '../../../../services/api/legal.service';
+import { ModalSeleccionTipo } from './ModalSeleccionTipo';
+import { ModalAutos } from './ModalAutos';
+import { ModalActas } from './ModalActas';
+import { ModalEvidencias } from './ModalEvidencias';
+import { ModalOficios } from './ModalOficios';
+
+import { ModalSubirRespuesta } from './ModalSubirRespuesta';
+import { VisorDocumentoModal } from './VisorDocumentoModal';
+
+
+import { buildApiUrl } from '../../../../config/environment';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type TipoProceso = 
+type TipoProceso =
   | 'DEFENSA_JUDICIAL'
   | 'JUZGAMIENTO'
   | 'ASESORIA'
@@ -42,10 +35,11 @@ type TipoProceso =
   | 'ORGANOS_CONTROL'
   | 'OTRO';
 
-type TipoDocumento = 
+type TipoDocumento =
   | 'DEMANDA'
   | 'CONTESTACION'
   | 'PRUEBAS'
+  | 'EVIDENCIAS'
   | 'SENTENCIAS'
   | 'TUTELAS'
   | 'RECURSOS'
@@ -63,6 +57,8 @@ interface Documento {
   tamanio: string;
   fechaCreacion: string;
   autor: string;
+  // Campos adicionales para lógica de negocio
+  url?: string;
 }
 
 interface Expediente {
@@ -84,7 +80,7 @@ type VistaActual = 'expedientes' | 'estadisticas';
 // CONFIGURACIÓN DE TIPOS DE DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
 
-const TIPOS_DOCUMENTO = [
+export const TIPOS_DOCUMENTO = [
   {
     id: 'DEMANDA' as TipoDocumento,
     nombre: 'Demandas',
@@ -103,6 +99,13 @@ const TIPOS_DOCUMENTO = [
     id: 'PRUEBAS' as TipoDocumento,
     nombre: 'Pruebas',
     descripcion: 'Documentos probatorios, evidencias, anexos',
+    color: 'green',
+    icon: FolderCheck
+  },
+  {
+    id: 'EVIDENCIAS' as TipoDocumento,
+    nombre: 'Evidencias',
+    descripcion: 'Material probatorio y evidencias',
     color: 'green',
     icon: FolderCheck
   },
@@ -164,133 +167,8 @@ const TIPOS_DOCUMENTO = [
   }
 ];
 
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
-// ════════════════════════════════════════════════════════════════════════════
-
-const EXPEDIENTES_MOCK: Expediente[] = [
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE DEFENSA JUDICIAL
-  // Vinculados con datosExpedientesJudicialesExpandido.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-dj-001',
-    radicado: 'PJ-2025-001',
-    nombreProceso: 'NRD - María González Pérez vs ESAP',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-10-15',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Dr. Juan Pérez López',
-    totalDocumentos: 15,
-    documentos: [
-      { id: 'd1', nombre: 'Demanda NRD - María González.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '2.4 MB', fechaCreacion: '2024-10-15', autor: 'Tribunal Administrativo' },
-      { id: 'd2', nombre: 'Auto Admisorio.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-10-20', autor: 'Tribunal' },
-      { id: 'd3', nombre: 'Notificación Auto Admisorio.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-10-22', autor: 'Notificador' },
-      { id: 'd4', nombre: 'Contestación ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '3.8 MB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
-      { id: 'd5', nombre: 'Prueba - Resolución Litigio.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
-      { id: 'd6', nombre: 'Auto Decreto Pruebas.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-10', autor: 'Tribunal' },
-    ]
-  },
-  {
-    id: 'exp-dj-002',
-    radicado: 'PJ-2024-045',
-    nombreProceso: 'Tutela - Derecho de Petición',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-08-15',
-    fechaActualizacion: '2024-09-20',
-    estado: 'FINALIZADO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 10,
-    documentos: [
-      { id: 'd20', nombre: 'Acción de Tutela.pdf', tipo: 'TUTELAS', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-08-15', autor: 'Ciudadano' },
-      { id: 'd21', nombre: 'Informe ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.5 MB', fechaCreacion: '2024-08-16', autor: 'Dra. Ana López' },
-      { id: 'd22', nombre: 'Sentencia Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-08-20', autor: 'Juzgado' },
-      { id: 'd23', nombre: 'Impugnación.pdf', tipo: 'RECURSOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-08-22', autor: 'Ciudadano' },
-      { id: 'd24', nombre: 'Sentencia Segunda Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'Tribunal' },
-      { id: 'd25', nombre: 'Constancia Cumplimiento.pdf', tipo: 'ACTAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-09-20', autor: 'Dra. Ana López' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE JUZGAMIENTO
-  // Vinculados con datosProcesoDisciplinarios.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-juz-001',
-    radicado: 'PD-2025-001',
-    nombreProceso: 'Disciplinario - Dr. Carlos Rodríguez',
-    tipoProceso: 'JUZGAMIENTO',
-    fechaInicio: '2025-01-08',
-    fechaActualizacion: '2025-01-13',
-    estado: 'ACTIVO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 6,
-    documentos: [
-      { id: 'd7', nombre: 'Queja Inicial.pdf', tipo: 'OTROS', tipoArchivo: 'PDF', tamanio: '456 KB', fechaCreacion: '2024-12-15', autor: 'Ciudadano' },
-      { id: 'd8', nombre: 'Auto Avocamiento.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '678 KB', fechaCreacion: '2025-01-08', autor: 'Dra. Ana López' },
-      { id: 'd9', nombre: 'Notificación Investigado.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-10', autor: 'Notificador' },
-    ]
-  },
-  {
-    id: 'exp-juz-002',
-    radicado: 'PD-2024-015',
-    nombreProceso: 'Disciplinario - Funcionario Administrativo',
-    tipoProceso: 'JUZGAMIENTO',
-    fechaInicio: '2024-06-20',
-    fechaActualizacion: '2025-01-10',
-    estado: 'EN_PROCESO',
-    responsable: 'Dr. Carlos Ramírez Soto',
-    totalDocumentos: 18,
-    documentos: [
-      { id: 'd10', nombre: 'Pliego de Cargos.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2024-09-01', autor: 'Dr. Carlos Ramírez' },
-      { id: 'd11', nombre: 'Descargos Investigado.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.3 MB', fechaCreacion: '2024-09-20', autor: 'Investigado' },
-      { id: 'd12', nombre: 'Pruebas - Testimonios.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '3.1 MB', fechaCreacion: '2024-10-15', autor: 'Dr. Carlos Ramírez' },
-      { id: 'd13', nombre: 'Fallo Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '2.8 MB', fechaCreacion: '2025-01-10', autor: 'Dr. Carlos Ramírez' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE ASESORÍA JURÍDICA
-  // Vinculados con datosConsultasJuridicas.ts
-  // ═══════════════════════════════════════════════════════════
-  {
-    id: 'exp-as-001',
-    radicado: 'CJ-2025-001',
-    nombreProceso: 'Concepto - Contratación Directa',
-    tipoProceso: 'ASESORIA',
-    fechaInicio: '2025-01-11',
-    fechaActualizacion: '2025-01-12',
-    estado: 'ACTIVO',
-    responsable: 'Dr. Juan Pérez López',
-    totalDocumentos: 5,
-    documentos: [
-      { id: 'd14', nombre: 'Solicitud Concepto DAF.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-11', autor: 'Dir. Administrativa' },
-      { id: 'd15', nombre: 'Normatividad Ley 80.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2025-01-11', autor: 'Dr. Juan Pérez' },
-      { id: 'd16', nombre: 'Concepto No. 001-2025.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.8 MB', fechaCreacion: '2025-01-12', autor: 'Dr. Juan Pérez' },
-    ]
-  },
-  {
-    id: 'exp-as-002',
-    radicado: 'CJ-2025-002',
-    nombreProceso: 'Concepto - Fuero Sindical',
-    tipoProceso: 'ASESORIA',
-    fechaInicio: '2025-01-08',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Dra. Ana López García',
-    totalDocumentos: 7,
-    documentos: [
-      { id: 'd17', nombre: 'Solicitud RRHH Medellín.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
-      { id: 'd18', nombre: 'Carta Renuncia.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '156 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
-      { id: 'd19', nombre: 'Borrador Concepto.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2025-01-12', autor: 'Dra. Ana López' },
-    ]
-  },
-  
-  // ═══════════════════════════════════════════════════════════
-  // EXPEDIENTES DE PROCESOS COACTIVOS
-  // Vinculados con datosProcesosCoactivos.ts
-  // ═══════════════════════════════════════════════════════════
+// Placeholder para Coactivos que no está implementado en backend aún
+const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
   {
     id: 'exp-coa-001',
     radicado: 'PC-2025-001',
@@ -300,13 +178,9 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     fechaActualizacion: '2024-12-20',
     estado: 'EN_PROCESO',
     responsable: 'Dra. Laura Sánchez',
-    totalDocumentos: 9,
+    totalDocumentos: 1,
     documentos: [
       { id: 'd20', nombre: 'Título Ejecutivo Matrícula.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-08-15', autor: 'Oficina Financiera' },
-      { id: 'd21', nombre: 'Mandamiento de Pago.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-09-10', autor: 'Dra. Laura Sánchez' },
-      { id: 'd22', nombre: 'Notificación Personal.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-09-25', autor: 'Notificador' },
-      { id: 'd23', nombre: 'Excepciones Deudor.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-10-15', autor: 'Deudor' },
-      { id: 'd24', nombre: 'Auto Resuelve Excepciones.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-11-20', autor: 'Dra. Laura Sánchez' },
     ]
   },
 ];
@@ -317,6 +191,444 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 
 export function ExpedientesModuloSIGL() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  // Estado para el visor de documentos
+  const [visorOpen, setVisorOpen] = useState(false);
+  const [documentoVisor, setDocumentoVisor] = useState<Documento | null>(null);
+
+  const handleVerDocumentoCentralizado = (doc: Documento) => {
+    let url = doc.url;
+
+    if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+      // Caso especial: /legal/files/ en cualquier parte
+      if (url.includes('/legal/files/')) {
+        const filename = url.split('/').pop();
+        url = `http://localhost:3008/files/${filename}`;
+      } else {
+        // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
+        url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+        if (url.startsWith('/files/') || !url.includes('/')) {
+          const filename = url.split('/').pop();
+          url = `http://localhost:3008/files/${filename}`;
+        } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+          const cleanPath = url.startsWith('/') ? url : `/${url}`;
+          url = `http://localhost:3008${cleanPath}`;
+        } else {
+          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+        }
+      }
+    }
+
+    setDocumentoVisor({ ...doc, url });
+    setVisorOpen(true);
+  };
+
+  // Helper para mapear estado del backend al frontend
+  const mapEstado = (estadoBackend: string = ''): 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO' => {
+    const estado = estadoBackend.toUpperCase();
+    if (['FINALIZADO', 'CERRADO', 'ARCHIVADO', 'PRESCRITO', 'RESUELTA', 'RECHAZADA'].some(s => estado.includes(s))) return 'FINALIZADO';
+    if (['EN_PROCESO', 'TRAMITE', 'EJECUCION', 'INDAGACION', 'INVESTIGACION', 'VALORACION', 'ASIGNADA'].some(s => estado.includes(s))) return 'EN_PROCESO';
+    return 'ACTIVO';
+  };
+
+  // Helper para mapear tipo de documento según nombre/tipo backend
+  const mapearTipoDocumento = (nombre: string = '', tipo: string = ''): TipoDocumento => {
+    const texto = (nombre + ' ' + tipo).toUpperCase();
+    if (texto.includes('DEMANDA')) return 'DEMANDA';
+    if (texto.includes('CONTESTACION') || texto.includes('RESPUESTA')) return 'CONTESTACION';
+    if (texto.includes('EVIDENCIA')) return 'EVIDENCIAS';
+    if (texto.includes('PRUEBA') || texto.includes('TESTIMONIO')) return 'PRUEBAS';
+    if (texto.includes('SENTENCIA') || texto.includes('FALLO') || texto.includes('AUTO')) return 'SENTENCIAS';
+    if (texto.includes('TUTELA')) return 'TUTELAS';
+    if (texto.includes('RECURSO') || texto.includes('APELACION') || texto.includes('REPOSICION')) return 'RECURSOS';
+    if (texto.includes('CONCEPTO') || texto.includes('MEMORIAL') || texto.includes('ALEGATO')) return 'CONCEPTOS';
+    if (texto.includes('ACTA')) return 'ACTAS';
+    if (texto.includes('NOTIFICACION') || texto.includes('CITACION')) return 'NOTIFICACIONES';
+    if (texto.includes('OFICIO') || texto.includes('CARTA')) return 'OFICIOS';
+    return 'OTROS';
+  };
+
+  // Helper para normalizar URLs de documentos
+  const normalizarDocUrl = (url: string | undefined): string => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('blob:')) return url;
+
+    // Caso especial: /legal/files/ en cualquier parte de la URL
+    if (url.includes('/legal/files/')) {
+      const filename = url.split('/').pop();
+      return `http://localhost:3008/files/${filename}`;
+    }
+
+    // Limpiar prefijos incorrectos (sin ^ para que coincida en cualquier posición)
+    let cleanUrl = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+    // Construir URL absoluta
+    if (cleanUrl.startsWith('/files/') || !cleanUrl.includes('/')) {
+      const filename = cleanUrl.split('/').pop();
+      return `http://localhost:3008/files/${filename}`;
+    } else if (cleanUrl.startsWith('/uploads') || cleanUrl.startsWith('uploads')) {
+      const cleanPath = cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
+      return `http://localhost:3008${cleanPath}`;
+    } else {
+      return `http://localhost:3008${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+    }
+  };
+
+  const cargarExpedientes = async () => {
+    try {
+      setCargando(true);
+
+      // Fetch concurrent from ALL legal services
+      const [legalRes, juzgamientoRes, asesoriaRes, ocRes] = await Promise.allSettled([
+        legalService.getExpedientes(),
+        legalService.getJuzgamientoProcesos(),
+        legalService.getConsultasJuridicas(),
+        legalService.getRequerimientosOC()
+      ]);
+
+      const nuevosExpedientes: Expediente[] = [];
+
+      // 1. Procesar DEFENSA JUDICIAL (Excluyendo Disciplinario)
+      if (legalRes.status === 'fulfilled') {
+        const procesosJudiciales = legalRes.value;
+        for (const proc of procesosJudiciales) {
+          if (proc.jurisdiccion?.toUpperCase() === 'DISCIPLINARIO' || proc.tipoProceso?.toUpperCase() === 'DISCIPLINARIO') {
+            continue;
+          }
+
+          let docsExp: Documento[] = [];
+          try {
+            // Cargar Documentos y Evidencias en paralelo
+            const [docsRes, evidenciasRes] = await Promise.allSettled([
+              legalService.getDocumentos(proc.id),
+              legalService.getEvidencias(proc.id)
+            ]);
+
+            const docs = docsRes.status === 'fulfilled' && Array.isArray(docsRes.value) ? docsRes.value : [];
+            const evidencias = evidenciasRes.status === 'fulfilled' && Array.isArray(evidenciasRes.value) ? evidenciasRes.value : [];
+
+            // Mapear Documentos Generales
+            const docsMapeados: Documento[] = docs.map((d: any) => {
+              const tipoInicial = d.tipo ? mapearTipoDocumento(d.nombre || '', d.tipo) : mapearTipoDocumento(d.nombre || '', 'OTROS');
+              const tipoFinal = (tipoInicial === 'PRUEBAS') ? 'EVIDENCIAS' : tipoInicial;
+
+              return {
+                id: d.id,
+                nombre: d.nombre || d.nombreArchivo || 'Documento sin nombre',
+                tipo: tipoFinal,
+                tipoArchivo: d.tipoArchivo || d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF',
+                tamanio: d.tamanio || (d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A'),
+                fechaCreacion: d.fechaCreacion || d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.autor || d.subidoPor || 'Sistema',
+                url: normalizarDocUrl(d.url || d.archivoUrl)
+              };
+            });
+
+            // Mapear Evidencias (Entidad separada del backend)
+            const evidenciasMapeadas: Documento[] = evidencias.map((e: any) => ({
+              id: e.id,
+              nombre: e.descripcion || e.archivoNombre || 'Evidencia sin nombre',
+              tipo: 'EVIDENCIAS' as TipoDocumento,
+              tipoArchivo: e.tipoArchivo || 'PDF',
+              tamanio: e.archivoTamano ? (e.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A',
+              fechaCreacion: e.fechaPresentacion?.split('T')[0] || e.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              autor: e.aportadoPor || 'Sistema',
+              url: normalizarDocUrl(e.archivoUrl)
+            }));
+
+            docsExp = [...docsMapeados, ...evidenciasMapeadas];
+
+          } catch (error) {
+            console.warn(`Error cargando documentos/evidencias para expediente judicial ${proc.id}`, error);
+          }
+
+          let tipoProc: TipoProceso = 'DEFENSA_JUDICIAL';
+          if (proc.tipoProceso === 'Procesos Coactivos') tipoProc = 'PROCESOS_COACTIVOS';
+          else if (proc.tipoProceso === 'Otro') tipoProc = 'OTRO';
+
+          nuevosExpedientes.push({
+            id: proc.id,
+            radicado: proc.radicado,
+            nombreProceso: `${proc.jurisdiccion || 'Proceso'} - ${proc.demandante} vs ${proc.demandado}`,
+            tipoProceso: tipoProc,
+            fechaInicio: proc.createdAt?.split('T')[0],
+            fechaActualizacion: proc.updatedAt?.split('T')[0],
+            estado: mapEstado(proc.estado),
+            responsable: proc.abogadoSustanciador || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        }
+      }
+
+      // 2. Procesar JUZGAMIENTO (Local Legal Service)
+      if (juzgamientoRes.status === 'fulfilled') {
+        const procesosJuzgamiento = juzgamientoRes.value;
+        procesosJuzgamiento.forEach(proc => {
+          // Backend devuelve 'documentos' como merge de 'actuaciones' + 'evidencias'
+          // Actuaciones tienen: documentoNombre, documentoUrl, tipoActuacion
+          // Evidencias tienen: archivoNombre, archivoUrl, tipo
+          const docsExp: Documento[] = (proc.documentos || []).map((d: any) => {
+            // Determinar tipo basado en tipoActuacion
+            const tipoActuacion = (d.tipoActuacion || '').toUpperCase();
+
+            // Mapear tipoActuacion a TipoDocumento válido
+            let tipoFinal: TipoDocumento;
+            if (tipoActuacion === 'OTROS' || tipoActuacion === 'OTRO') {
+              tipoFinal = 'OTROS';
+            } else if (tipoActuacion === 'EVIDENCIA' || tipoActuacion === 'EVIDENCIAS' || tipoActuacion === 'PRUEBAS') {
+              tipoFinal = 'EVIDENCIAS'; // Para Juzgamiento, PRUEBAS y EVIDENCIAS van a la carpeta Evidencias
+            } else if (tipoActuacion === 'DOCUMENTO' || !tipoActuacion) {
+              tipoFinal = 'PRUEBAS'; // Documentos generales van a PRUEBAS
+            } else {
+              // Intentar mapear otros tipos conocidos
+              tipoFinal = mapearTipoDocumento(d.documentoNombre || '', tipoActuacion);
+            }
+
+            // Obtener nombre correcto (actuaciones usan documentoNombre, evidencias usan archivoNombre o descripcion)
+            const nombre = d.documentoNombre || d.archivoNombre || d.descripcion || 'Documento sin nombre';
+
+            // Obtener URL correcto
+            let url = d.documentoUrl || d.archivoUrl || d.url;
+
+            // Si no hay URL pero hay nombre de archivo, construir ruta al controlador de archivos
+            if (!url && d.documentoNombre) {
+              url = `/files/${d.documentoNombre}`;
+            }
+
+            // Normalización robusta de URLs
+            if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+              // Limpiar prefijos incorrectos - NO usar ^ para que coincida en cualquier posición
+              if (url.includes('/legal/files/')) {
+                const filename = url.split('/').pop();
+                url = `http://localhost:3008/files/${filename}`;
+              } else {
+                url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+                // Construir URL absoluta
+                if (url.startsWith('/files/') || !url.includes('/')) {
+                  const filename = url.split('/').pop();
+                  url = `http://localhost:3008/files/${filename}`;
+                } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+                  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+                  url = `http://localhost:3008${cleanPath}`;
+                } else {
+                  url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+                }
+              }
+            }
+
+            return {
+              id: d.id,
+              nombre: nombre,
+              tipo: tipoFinal,
+              tipoArchivo: d.tipoArchivo || 'PDF',
+              tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'N/A',
+              fechaCreacion: d.fechaActuacion?.split('T')[0] || d.fechaPresentacion?.split('T')[0] || d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              autor: d.usuarioResponsable || d.aportadoPor || 'Juzgamiento',
+              url: url
+            };
+          });
+
+          nuevosExpedientes.push({
+            id: proc.id,
+            radicado: proc.radicado,
+            nombreProceso: `Disciplinario - ${proc.etapa}`,
+            tipoProceso: 'JUZGAMIENTO',
+            fechaInicio: new Date().toISOString().split('T')[0],
+            fechaActualizacion: new Date().toISOString().split('T')[0],
+            estado: 'EN_PROCESO',
+            responsable: proc.abogadoAsignado || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        });
+      }
+
+      // 3. Procesar ASESORIA JURIDICA (Consultas)
+      if (asesoriaRes.status === 'fulfilled') {
+        const consultas = asesoriaRes.value;
+        for (const cons of consultas) {
+          let docsExp: Documento[] = [];
+          try {
+            const docs = await legalService.getDocumentosConsulta(cons.id);
+            if (Array.isArray(docs)) {
+              docsExp = docs.map(d => ({
+                id: d.id,
+                nombre: d.nombre,
+                // Si el tipo viene vacío, intentamos inferirlo del nombre, o default a OTROS
+                tipo: d.tipo ? mapearTipoDocumento(d.nombre, d.tipo) : mapearTipoDocumento(d.nombre, 'OTROS'),
+                tipoArchivo: d.archivoMimeType?.split('/')[1]?.toUpperCase() || 'PDF', // Default
+                tamanio: d.archivoTamano ? (d.archivoTamano / 1024).toFixed(0) + ' KB' : 'Unknown',
+                fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.subidoPor || 'Sistema',
+                url: d.archivoUrl
+              }));
+            }
+          } catch (error) {
+            console.warn(`Error cargando documentos para consulta ${cons.id}`, error);
+          }
+
+          nuevosExpedientes.push({
+            id: cons.id,
+            radicado: cons.codigo || cons.id.substring(0, 8).toUpperCase(),
+            nombreProceso: cons.asunto || 'Consulta Jurídica',
+            tipoProceso: 'ASESORIA',
+            fechaInicio: cons.createdAt?.split('T')[0],
+            fechaActualizacion: cons.updatedAt?.split('T')[0],
+            estado: mapEstado(cons.estado),
+            responsable: cons.abogadoResponsable?.nombre || cons.responsable || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        }
+      }
+
+      // 4. Procesar ORGANOS DE CONTROL (Requerimientos)
+      if (ocRes.status === 'fulfilled') {
+        const requerimientosOC = ocRes.value;
+        requerimientosOC.forEach(req => {
+          const docsExp: Documento[] = (req.documentos || []).map((d: any) => ({
+            id: d.id,
+            nombre: d.nombre,
+            tipo: mapearTipoDocumento(d.nombre, d.tipoDocumento),
+            tipoArchivo: d.archivoUrl ? d.archivoUrl.split('.').pop()?.toUpperCase() : 'PDF',
+            tamanio: 'Unknown',
+            fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+            autor: d.subidoPor || 'Sistema',
+            url: d.archivoUrl
+          }));
+
+          nuevosExpedientes.push({
+            id: req.id,
+            radicado: req.radicadoExterno || req.codigo || req.id.substring(0, 8).toUpperCase(),
+            nombreProceso: `OC - ${req.entidad || 'Entidad'} - ${req.asunto}`,
+            tipoProceso: 'ORGANOS_CONTROL',
+            fechaInicio: req.fechaRadicacion?.split('T')[0] || req.createdAt?.split('T')[0],
+            fechaActualizacion: req.updatedAt?.split('T')[0],
+            estado: mapEstado(req.estado),
+            responsable: req.responsable || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        });
+      }
+
+      // PROCESOS_COACTIVOS: Pendiente de implementación
+
+      setExpedientes(nuevosExpedientes);
+
+    } catch (error) {
+      console.error('Error cargando expedientes:', error);
+      toast.error('Error al cargar expedientes electrónicos');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Estados para modales especializados
+  const [expedienteSeleccionado, setExpedienteSeleccionado] = useState<Expediente | null>(null);
+  const [selectedTipoId, setSelectedTipoId] = useState<string | null>(null);
+  const [modalSeleccionOpen, setModalSeleccionOpen] = useState(false);
+  const [modalAutosOpen, setModalAutosOpen] = useState(false);
+  const [modalActasOpen, setModalActasOpen] = useState(false);
+  const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
+  const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
+  const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false);
+  const [modalCargarOpen, setModalCargarOpen] = useState(false); // Generic
+
+  const handleCargarClick = (exp: Expediente) => {
+    setExpedienteSeleccionado(exp);
+    setModalSeleccionOpen(true);
+  };
+
+  const handleTipoSelected = (tipoId: string) => {
+    if (!expedienteSeleccionado) return;
+    setSelectedTipoId(tipoId);
+
+    console.log('Tipo seleccionado:', tipoId);
+
+    switch (tipoId) {
+      case 'ACTAS':
+        setModalActasOpen(true);
+        break;
+      case 'SENTENCIAS':
+      case 'AUTOS':
+      case 'FALLOS':
+        setModalAutosOpen(true);
+        break;
+      case 'PRUEBAS':
+      case 'EVIDENCIAS':
+        setModalEvidenciasOpen(true);
+        break;
+      case 'OFICIOS':
+        setModalOficiosOpen(true);
+        break;
+      case 'RESPUESTA':
+        setModalRespuestaOpen(true);
+        break;
+      case 'OTROS':
+      default:
+        setModalCargarOpen(true);
+        break;
+    }
+  };
+
+  useEffect(() => {
+    cargarExpedientes();
+  }, []);
+
+  const handleGenericUpload = async (file: File, tipoId: string) => {
+    if (!expedienteSeleccionado) return;
+    const expediente = expedienteSeleccionado;
+
+    try {
+      toast.promise(
+        async () => {
+          if (expediente.tipoProceso === 'DEFENSA_JUDICIAL' || expediente.tipoProceso === 'OTRO') {
+            // Carga para Defensa Judicial
+            const formData = new FormData();
+            formData.append('archivo', file); // Backend espera 'archivo', no 'file'
+            formData.append('expedienteId', expediente.id);
+            formData.append('tipo', tipoId); // Enviar el ID del tipo (ej: DEMANDA) como tipo string
+            formData.append('nombre', file.name);
+            await legalService.crearDocumento(formData);
+
+          } else if (expediente.tipoProceso === 'JUZGAMIENTO') {
+            // Carga para Juzgamiento (Legal Service)
+            await legalService.uploadJuzgamientoDocumento(
+              expediente.radicado, // Usa radicado como ID
+              file,
+              tipoId, // tipo
+              `Cargado desde Expedientes Electrónicos` // descripcion
+            );
+          } else if (expediente.tipoProceso === 'ASESORIA') {
+            // Carga para Asesoría
+            const formData = new FormData();
+            formData.append('archivo', file); // Backend espera 'archivo', no 'file'
+            formData.append('nombre', file.name);
+            formData.append('tipoDocumento', tipoId);
+            await legalService.uploadDocumentoConsulta(expediente.id, formData);
+          } else if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
+            throw new Error('Módulo Coactivos no implementado');
+          }
+
+          // Recargar expedientes para ver el nuevo documento
+          await cargarExpedientes();
+        },
+        {
+          loading: 'Subiendo documento...',
+          success: 'Documento cargado exitosamente',
+          error: 'Error al cargar documento'
+        }
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
@@ -338,7 +650,7 @@ export function ExpedientesModuloSIGL() {
             onClick={() => setVistaActiva('expedientes')}
             icon={<Folder className="w-4 h-4" />}
             label="Expedientes por Proceso"
-            badge={EXPEDIENTES_MOCK.length.toString()}
+            badge={expedientes.length.toString()}
           />
           <TabButton
             active={vistaActiva === 'estadisticas'}
@@ -358,10 +670,98 @@ export function ExpedientesModuloSIGL() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {vistaActiva === 'expedientes' && <VistaExpedientes />}
-          {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
+          {cargando ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="w-8 h-8 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin"></div>
+              <span className="ml-3 text-gray-600">Cargando expedientes...</span>
+            </div>
+          ) : (
+            <>
+              {vistaActiva === 'expedientes' &&
+                <VistaExpedientes
+                  expedientes={expedientes}
+                  onUpload={handleCargarClick}
+                  onViewDoc={handleVerDocumentoCentralizado}
+                />
+              }
+              {vistaActiva === 'estadisticas' &&
+                <VistaEstadisticas
+                  expedientes={expedientes}
+                />
+              }
+            </>
+          )}
         </motion.div>
       </AnimatePresence>
+      {/* Modales Especializados */}
+      {expedienteSeleccionado && (
+        <>
+          <ModalSeleccionTipo
+            isOpen={modalSeleccionOpen}
+            onClose={() => setModalSeleccionOpen(false)}
+            tipoProceso={expedienteSeleccionado.tipoProceso}
+            tiposDocumento={TIPOS_DOCUMENTO}
+            onSelectTipo={handleTipoSelected}
+          />
+
+          <ModalAutos
+            isOpen={modalAutosOpen}
+            onClose={() => setModalAutosOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalActas
+            isOpen={modalActasOpen}
+            onClose={() => setModalActasOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalEvidencias
+            isOpen={modalEvidenciasOpen}
+            onClose={() => setModalEvidenciasOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          <ModalOficios
+            isOpen={modalOficiosOpen}
+            onClose={() => setModalOficiosOpen(false)}
+            expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+          />
+
+          {modalRespuestaOpen && (
+            <ModalSubirRespuesta
+              isOpen={modalRespuestaOpen}
+              onClose={() => setModalRespuestaOpen(false)}
+              requerimiento={{
+                id: expedienteSeleccionado.id,
+                numeroOficio: expedienteSeleccionado.radicado,
+                organismo: 'Contraloría', // Placeholder
+                asunto: expedienteSeleccionado.nombreProceso,
+                fechaVencimiento: new Date(),
+                diasRestantes: 5
+              }}
+            />
+          )}
+
+          <ModalCargarDocumento
+            isOpen={modalCargarOpen}
+            onClose={() => setModalCargarOpen(false)}
+            onCargar={handleGenericUpload}
+            radicado={expedienteSeleccionado.radicado}
+            tipoProceso={expedienteSeleccionado.tipoProceso}
+            preSelectedType={selectedTipoId}
+          />
+
+          {/* Visor de Documentos Centralizado */}
+          <VisorDocumentoModal
+            isOpen={visorOpen}
+            onClose={() => setVisorOpen(false)}
+            archivo={documentoVisor?.url}
+            numero={documentoVisor?.nombre}
+            asunto={documentoVisor?.tipo}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -384,8 +784,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       onClick={onClick}
       className={`
         relative px-4 sm:px-6 py-3 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50' 
+        ${active
+          ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
         }
       `}
@@ -394,9 +794,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       <span className="hidden sm:inline">{label}</span>
       <span className="sm:hidden">{label.split(' ')[0]}</span>
       {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${active ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
+          }`}>
           {badge}
         </span>
       )}
@@ -408,13 +807,19 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EXPEDIENTES POR PROCESO
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaExpedientes() {
+interface VistaExpedientesProps {
+  expedientes: Expediente[];
+  onUpload: (exp: Expediente) => void;
+  onViewDoc: (doc: Documento) => void;
+}
+
+function VistaExpedientes({ expedientes, onUpload, onViewDoc }: VistaExpedientesProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ACTIVO' | 'EN_PROCESO' | 'FINALIZADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
 
   const expedientesFiltrados = useMemo(() => {
-    let resultado = EXPEDIENTES_MOCK;
+    let resultado = expedientes;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -429,17 +834,17 @@ function VistaExpedientes() {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado]);
+  }, [busqueda, filtroEstado, expedientes]);
 
   const estadisticas = useMemo(() => {
-    const total = EXPEDIENTES_MOCK.length;
-    const activos = EXPEDIENTES_MOCK.filter(e => e.estado === 'ACTIVO').length;
-    const enProceso = EXPEDIENTES_MOCK.filter(e => e.estado === 'EN_PROCESO').length;
-    const finalizados = EXPEDIENTES_MOCK.filter(e => e.estado === 'FINALIZADO').length;
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const total = expedientes.length;
+    const activos = expedientes.filter(e => e.estado === 'ACTIVO').length;
+    const enProceso = expedientes.filter(e => e.estado === 'EN_PROCESO').length;
+    const finalizados = expedientes.filter(e => e.estado === 'FINALIZADO').length;
+    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
 
     return { total, activos, enProceso, finalizados, totalDocs };
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -499,6 +904,9 @@ function VistaExpedientes() {
             onToggleExpand={() => setExpedienteExpandido(
               expedienteExpandido === expediente.id ? null : expediente.id
             )}
+
+            onUpload={() => onUpload(expediente)}
+            onViewDoc={onViewDoc}
           />
         ))}
 
@@ -539,8 +947,8 @@ function FilterButton({ active, onClick, label, count, color }: FilterButtonProp
       onClick={onClick}
       className={`
         px-4 py-2 rounded-lg border text-sm font-medium transition-all whitespace-nowrap
-        ${active 
-          ? color 
+        ${active
+          ? color
             ? colorClasses[color]
             : 'border-[#003DA5] bg-blue-50 text-[#003DA5]'
           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -556,15 +964,18 @@ function FilterButton({ active, onClick, label, count, color }: FilterButtonProp
 // CARD EXPEDIENTE
 // ════════════════════════════════════════════════════════════════════════════
 
+
 interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
+  onUpload: () => void;
+  onViewDoc: (doc: Documento) => void;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
-  const [modalCargar, setModalCargar] = useState(false);
-  
+function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onViewDoc }: CardExpedienteProps) {
+  // const [modalCargar, setModalCargar] = useState(false); // Estado elevado al padre
+
   const estadoConfig = {
     ACTIVO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Activo' },
     EN_PROCESO: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Proceso' },
@@ -590,6 +1001,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
       DEMANDA: [],
       CONTESTACION: [],
       PRUEBAS: [],
+      EVIDENCIAS: [],
       SENTENCIAS: [],
       TUTELAS: [],
       RECURSOS: [],
@@ -618,7 +1030,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
         <div className="p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0">
-              <div 
+              <div
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background: `linear-gradient(135deg, ${tipoConfig.color}, ${tipoConfig.color}dd)` }}
               >
@@ -657,13 +1069,8 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
             </div>
 
             <div className="flex gap-2 w-full sm:w-auto">
-              <button 
-                onClick={() => {
-                  setModalCargar(true);
-                  toast.info('Cargar documento al expediente', {
-                    description: expediente.radicado
-                  });
-                }}
+              <button
+                onClick={onUpload}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
               >
                 <Upload className="w-4 h-4" />
@@ -703,7 +1110,22 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
                 <h4 className="text-sm font-medium text-gray-900 mb-4">Documentos por Tipo</h4>
 
                 <div className="space-y-3">
-                  {TIPOS_DOCUMENTO.map((tipoDoc) => {
+                  {TIPOS_DOCUMENTO.filter(tipoDoc => {
+                    // Lógica de filtrado por Tipo de Proceso
+
+                    // DEFENSA_JUDICIAL: Mostrar EVIDENCIAS, ocultar PRUEBAS (según requerimiento)
+                    if (expediente.tipoProceso === 'DEFENSA_JUDICIAL') {
+                      if (tipoDoc.id === 'PRUEBAS') return false;
+                      if (tipoDoc.id === 'EVIDENCIAS') return true;
+                    }
+
+                    // JUZGAMIENTO: Mostrar AMBAS (Pruebas y Evidencias)
+                    if (expediente.tipoProceso === 'JUZGAMIENTO') {
+                      // Se muestran ambas por defecto
+                    }
+
+                    return true;
+                  }).map((tipoDoc) => {
                     const docs = documentosPorTipo[tipoDoc.id];
                     const Icon = tipoDoc.icon;
 
@@ -713,6 +1135,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
                         tipoDocumento={tipoDoc}
                         documentos={docs}
                         icon={<Icon className="w-5 h-5" />}
+                        onViewDoc={onViewDoc}
                       />
                     );
                   })}
@@ -723,13 +1146,6 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
         </AnimatePresence>
       </motion.div>
 
-      {/* Modal Cargar Documento */}
-      {modalCargar && (
-        <ModalCargarDocumento
-          expediente={expediente}
-          onClose={() => setModalCargar(false)}
-        />
-      )}
     </>
   );
 }
@@ -742,9 +1158,10 @@ interface CarpetaTipoDocumentoProps {
   tipoDocumento: typeof TIPOS_DOCUMENTO[0];
   documentos: Documento[];
   icon: React.ReactNode;
+  onViewDoc: (doc: Documento) => void;
 }
 
-function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDocumentoProps) {
+function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: CarpetaTipoDocumentoProps) {
   const [expandido, setExpandido] = useState(false);
 
   const colorClasses = {
@@ -769,28 +1186,66 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
       duration: 2000,
     });
 
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      tipoDocumento: tipoDocumento.nombre
-    });
+    // Uso del visor centralizado
+    onViewDoc(doc);
   };
 
-  const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
+  const handleDescargarDocumento = async (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    toast.success('Descargando documento', {
-      description: `${doc.nombre} (${doc.tamanio})`,
-      duration: 3000,
-    });
 
-    console.log('⬇️ Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      accion: 'descargar'
-    });
+    let url = doc.url;
+
+    if (url && !url.startsWith('http') && !url.startsWith('blob:')) {
+      // Caso especial: /legal/files/ en cualquier parte
+      if (url.includes('/legal/files/')) {
+        const filename = url.split('/').pop();
+        url = `http://localhost:3008/files/${filename}`;
+      } else {
+        // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
+        url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
+
+        if (url.startsWith('/files/') || !url.includes('/')) {
+          const filename = url.split('/').pop();
+          url = `http://localhost:3008/files/${filename}`;
+        } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
+          const cleanPath = url.startsWith('/') ? url : `/${url}`;
+          url = `http://localhost:3008${cleanPath}`;
+        } else {
+          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+        }
+      }
+    }
+
+    if (!url) {
+      toast.error('No hay URL disponible para descargar');
+      return;
+    }
+
+    try {
+      toast.loading('Iniciando descarga...', { id: 'descarga-rapida' });
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Error de red al descargar');
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc.nombre || 'documento.pdf';
+      document.body.appendChild(a);
+      a.click();
+
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(a);
+
+      toast.success('Descarga completada', { id: 'descarga-rapida' });
+    } catch (error) {
+      console.error('Error descargando:', error);
+      // Fallback a window.open si falla el fetch (ej: CORS estricto)
+      window.open(url, '_blank');
+      toast.error('Error en descarga directa, intentando abrir en nueva pestaña...', { id: 'descarga-rapida' });
+    }
   };
 
   return (
@@ -809,7 +1264,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
 
         <div className="flex items-center gap-2 sm:gap-3">
           <span className="text-xs font-medium px-2 py-0.5 sm:py-1 bg-white bg-opacity-60 rounded">
-            {documentos.length}
+            {documentos?.length || 0}
           </span>
           {expandido ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </div>
@@ -824,7 +1279,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
             className="border-t border-current border-opacity-20"
           >
             <div className="p-3 sm:p-4 bg-white bg-opacity-50">
-              {documentos.length === 0 ? (
+              {(!documentos || documentos.length === 0) ? (
                 <div className="text-center py-6 sm:py-8 text-xs sm:text-sm opacity-60">
                   <File className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2 opacity-40" />
                   No hay documentos de este tipo
@@ -882,61 +1337,85 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
 // MODAL CARGAR DOCUMENTO
 // ════════════════════════════════════════════════════════════════════════════
 
-function ModalCargarDocumento({
-  expediente,
-  onClose
-}: {
-  expediente: Expediente;
+interface ModalCargarDocumentoProps {
+  isOpen: boolean;
   onClose: () => void;
-}) {
-  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumento>('OTROS');
+  onCargar: (file: File, tipo: string) => void;
+  radicado: string;
+  tipoProceso: TipoProceso;
+  preSelectedType?: string | null;
+}
 
-  const handleCargar = () => {
-    toast.success('Documento cargado exitosamente', {
-      description: `Agregado al expediente ${expediente.radicado}`,
-      duration: 3000
-    });
-    onClose();
+function ModalCargarDocumento({ isOpen, onClose, onCargar, radicado, tipoProceso, preSelectedType }: ModalCargarDocumentoProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [tipo, setTipo] = useState<string>('OTROS');
+  const [cargando, setCargando] = useState(false);
+
+  useEffect(() => {
+    if (preSelectedType) {
+      setTipo(preSelectedType);
+    } else {
+      setTipo('OTROS');
+    }
+  }, [preSelectedType, isOpen]);
+
+  const handleCargar = async () => {
+    if (!file) return;
+    setCargando(true);
+    // Simular delay visual si es necesario, o llamar directamente onCargar
+    await onCargar(file, tipo);
+    setFile(null);
+    setTipo('OTROS');
+    setCargando(false);
   };
 
   return (
     <ModalSIGL
-      isOpen={true}
+      isOpen={isOpen}
       onClose={onClose}
-      title={`Cargar Documento - ${expediente.radicado}`}
-      size="medium"
+      title="Cargar Documento"
+      description={`Expediente: ${radicado}`}
+      size="small"
     >
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-4">
-            {expediente.nombreProceso}
-          </p>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Tipo de Documento
             </label>
-            <select
-              value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as TipoDocumento)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
-            >
-              {TIPOS_DOCUMENTO.map((tipo) => (
-                <option key={tipo.id} value={tipo.id}>
-                  {tipo.nombre}
-                </option>
-              ))}
-            </select>
+            {preSelectedType ? (
+              <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700">
+                {TIPOS_DOCUMENTO.find(t => t.id === preSelectedType)?.nombre || (preSelectedType === 'EVIDENCIAS' ? 'Evidencias' : preSelectedType)}
+              </div>
+            ) : (
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5]"
+              >
+                {TIPOS_DOCUMENTO.map((tipo) => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
+                  </option>
+                ))}
+              </select>
+            )}
+
           </div>
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Archivo
             </label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#003DA5] transition-colors cursor-pointer">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#003DA5] transition-colors cursor-pointer relative">
+              <input
+                type="file"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
               <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600">
-                Arrastra un archivo o <span className="text-[#003DA5] font-medium">explora</span>
+                {file ? file.name : <>Arrastra un archivo o <span className="text-[#003DA5] font-medium">explora</span></>}
               </p>
               <p className="text-xs text-gray-500 mt-1">PDF, DOCX, XLSX (Máx. 10 MB)</p>
             </div>
@@ -947,14 +1426,16 @@ function ModalCargarDocumento({
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={cargando}
           >
             Cancelar
           </button>
           <button
             onClick={handleCargar}
-            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all"
+            className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+            disabled={cargando || !file}
           >
-            Cargar Documento
+            {cargando ? 'Cargando...' : 'Cargar Documento'}
           </button>
         </div>
       </div>
@@ -966,7 +1447,11 @@ function ModalCargarDocumento({
 // VISTA: ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 
-function VistaEstadisticas() {
+interface VistaEstadisticasProps {
+  expedientes: Expediente[];
+}
+
+function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
   const estadisticasPorTipo = useMemo(() => {
     const stats: Record<TipoProceso, { total: number; docs: number }> = {
       DEFENSA_JUDICIAL: { total: 0, docs: 0 },
@@ -977,13 +1462,15 @@ function VistaEstadisticas() {
       OTRO: { total: 0, docs: 0 }
     };
 
-    EXPEDIENTES_MOCK.forEach(exp => {
-      stats[exp.tipoProceso].total++;
-      stats[exp.tipoProceso].docs += exp.totalDocumentos;
+    expedientes.forEach(exp => {
+      if (stats[exp.tipoProceso]) {
+        stats[exp.tipoProceso].total++;
+        stats[exp.tipoProceso].docs += exp.totalDocumentos;
+      }
     });
 
     return stats;
-  }, []);
+  }, [expedientes]);
 
   const estadisticasPorTipoDoc = useMemo(() => {
     const stats: Record<TipoDocumento, number> = {
@@ -1000,14 +1487,16 @@ function VistaEstadisticas() {
       OTROS: 0
     };
 
-    EXPEDIENTES_MOCK.forEach(exp => {
+    expedientes.forEach(exp => {
       exp.documentos.forEach(doc => {
-        stats[doc.tipo]++;
+        if (stats[doc.tipo] !== undefined) {
+          stats[doc.tipo]++;
+        }
       });
     });
 
     return stats;
-  }, []);
+  }, [expedientes]);
 
   return (
     <div className="space-y-6">
@@ -1015,7 +1504,7 @@ function VistaEstadisticas() {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Estadísticas Generales
         </h2>
-        
+
         {/* Estadísticas por Tipo de Proceso */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <h3 className="font-medium text-gray-900 mb-4">Expedientes por Tipo de Proceso</h3>
@@ -1029,6 +1518,8 @@ function VistaEstadisticas() {
                 ORGANOS_CONTROL: { label: 'Órganos Control', color: '#2563EB' },
                 OTRO: { label: 'Otro', color: '#6B7280' }
               }[tipo];
+
+              if (!tipoConfig) return null;
 
               return (
                 <div key={tipo} className="p-4 rounded-lg border-2" style={{ borderColor: `${tipoConfig.color}40`, background: `${tipoConfig.color}10` }}>

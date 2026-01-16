@@ -35,6 +35,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -47,6 +48,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
+
+  // ✅ Obtener tipos de procesos desde configuración para resolver nombres
+  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
 
   // Estados para modales
   const [modalNotificarAbierto, setModalNotificarAbierto] = useState(false);
@@ -692,7 +696,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="max-w-5xl h-[90vh] flex flex-col p-0">
           <DialogTitle className="sr-only">
             Expediente Judicial {expediente.id} - Vista Completa
           </DialogTitle>
@@ -762,6 +766,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </span>
             </div>
           </div>
+
+
 
           {/* ==================== CONTENIDO CON TABS ==================== */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -865,7 +871,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       </div>
                       <div className="flex items-start justify-between py-2">
                         <span className="text-xs text-gray-500">Tipo de Proceso:</span>
-                        <span className="text-sm font-bold text-gray-900">{expediente.tipo || 'No especificado'}</span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {(() => {
+                            // Intentar resolver nombre desde tipoProceso ID
+                            const tipoId = (expediente as any).tipoProceso || expediente.tipo;
+                            if (tipoId) {
+                              const tipoConfig = tiposProcesosActivos.find(t => t.id === tipoId);
+                              return tipoConfig ? tipoConfig.nombre : tipoId;
+                            }
+                            return 'No especificado';
+                          })()}
+                        </span>
                       </div>
                     </div>
                   </Card>

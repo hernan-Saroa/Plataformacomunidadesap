@@ -39,7 +39,7 @@ export function ModalSIGL({
 }: ModalSIGLProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className={`${sizeClasses[size]} max-h-[90vh] overflow-y-auto`}>
+      <DialogContent hideCloseButton className={`${sizeClasses[size]} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
           <DialogDescription className="text-sm">

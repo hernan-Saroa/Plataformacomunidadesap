@@ -2,6 +2,7 @@
  * GestionLegalFull - Sistema Integrado de Gestión Legal (SIGL v5.0)
  * Layout unificado con ModuleLayout compartido
  * DISEÑO 100% COHERENTE CON CONTROL INTERNO Y CONTROL DISCIPLINARIO
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS VÍA CONTEXT API
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -22,6 +23,9 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { ModuleLayout, MenuItem } from '../../shared/ModuleLayout';
+
+// ✅ Context API para Configuraciones Centralizadas
+import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
 
 // Componentes de módulos V3 - DISEÑO UNIFICADO
 import { ModuloDefensaJudicialV3 } from '../modulos/ModuloDefensaJudicialV3';
@@ -169,7 +173,7 @@ export function GestionLegalFull() {
       icon: <FileQuestion className="w-5 h-5" />,
       color: '#8B5CF6',
     },
-    
+
     // MÓDULOS DE SOPORTE
     {
       id: 'centro-comunicaciones',
@@ -206,7 +210,7 @@ export function GestionLegalFull() {
       icon: <FolderOpen className="w-5 h-5" />,
       color: '#0891B2',
     },
-    
+
     // MÓDULOS DE GESTIÓN ESTRATÉGICA
     {
       id: 'plan-accion',
@@ -281,7 +285,9 @@ export function GestionLegalFull() {
       onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
       initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
     >
-      {renderVistaActual()}
+      <ConfiguracionesSIGLProvider>
+        {renderVistaActual()}
+      </ConfiguracionesSIGLProvider>
 
       {/* Tour Guiado Multi-Módulo */}
       <GuidedTour

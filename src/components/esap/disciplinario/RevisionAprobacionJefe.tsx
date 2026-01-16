@@ -13,7 +13,7 @@ import {
   RotateCcw, Mail, Calendar,
   Shield, Key, Users, Trash2, ChevronDown, AlertTriangle,
   Filter, Paperclip, ListFilter, List, LayoutDashboard,
-  HelpCircle
+  HelpCircle, Info
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -90,18 +90,21 @@ function ModalRevisionEdicion({
   onClose,
   onAprobar,
   onDevolver,
-  onFirmar
+  onFirmar,
+  onNotificar
 }: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
   onDevolver: (motivo: string, comentarios: string, archivos: File[]) => void;
   onFirmar: () => void;
+  onNotificar: (fecha: string, archivo: File) => void;
 }) {
   const [comentariosJefe, setComentariosJefe] = useState('');
   const [showModalAprobar, setShowModalAprobar] = useState(false); // For Signing
   const [showModalDevolver, setShowModalDevolver] = useState(false);
   const [showConfirmAprobar, setShowConfirmAprobar] = useState(false); // For Approval
+  const [showModalNotificar, setShowModalNotificar] = useState(false); // For Notification
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
 
   return (
@@ -250,6 +253,20 @@ function ModalRevisionEdicion({
                         <span className="hidden sm:inline">•</span>
                         <span>{new Date(accion.fecha).toLocaleDateString('es-CO')}</span>
                       </div>
+                      {/* Evidence Link */}
+                      {accion.detalles?.evidenceUrl && (
+                        <div className="mt-2">
+                          <a
+                            href={accion.detalles.evidenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                          >
+                            <Paperclip className="w-3 h-3" />
+                            Ver Soporte de Notificación
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -278,6 +295,16 @@ function ModalRevisionEdicion({
                 Aprobar (Visto Bueno)
               </Button>
             </>
+          )}
+
+          {borrador.estado === 'FIRMADO' && (
+            <Button
+              onClick={() => setShowModalNotificar(true)}
+              className="bg-teal-600 hover:bg-teal-700 text-white w-full sm:flex-1 order-1 sm:order-2"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Registrar Notificación
+            </Button>
           )}
 
           {borrador.estado === 'APROBADO' && (
@@ -326,6 +353,17 @@ function ModalRevisionEdicion({
               onConfirm={(motivo, comentarios, archivos) => {
                 onDevolver(motivo, comentarios, archivos);
                 setShowModalDevolver(false);
+              }}
+            />
+          )}
+
+          {showModalNotificar && (
+            <ModalRegistrarNotificacion
+              borrador={borrador}
+              onClose={() => setShowModalNotificar(false)}
+              onConfirm={(fecha, archivo) => {
+                onNotificar(fecha, archivo);
+                setShowModalNotificar(false);
               }}
             />
           )}
@@ -387,6 +425,8 @@ function ModalAprobar({
   onClose: () => void;
   onConfirm: (comentarios: string) => void;
 }) {
+  const [signatureMethod, setSignatureMethod] = useState<'ELECTRONIC' | 'DIGITAL_PROVIDER' | 'LOCAL_PDF'>('ELECTRONIC');
+  const [localFile, setLocalFile] = useState<File | null>(null);
   const [comentariosAprobacion, setComentariosAprobacion] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasSignature, setHasSignature] = useState<boolean | null>(null);
@@ -419,9 +459,16 @@ function ModalAprobar({
   };
 
   const handleFirmar = () => {
-    if (!hasSignature) {
-      toast.error('No tiene una firma configurada', {
-        description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
+    if (signatureMethod === 'ELECTRONIC') {
+      if (!hasSignature) {
+        toast.error('No tiene una firma configurada', {
+          description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
+        });
+        return;
+      }
+    } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
+      toast.error('Archivo requerido', {
+        description: 'Debe adjuntar el PDF firmado.'
       });
       return;
     }
@@ -446,7 +493,7 @@ function ModalAprobar({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
       >
         {/* Header - Firma */}
         <div className="p-4 sm:p-6 border-b" style={{ background: '#003DA5' }}>
@@ -468,21 +515,8 @@ function ModalAprobar({
             <AlertTriangle className="w-5 h-5 text-blue-800 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-blue-800">
               Al firmar este documento, usted certifica su validez jurídica y procedimental.
-              La firma se aplicará digitalmente usando su configuración personal.
             </p>
           </div>
-
-          {!checkingSignature && !hasSignature && (
-            <div className="p-4 rounded-xl flex items-start gap-3" style={{ background: '#FEE2E2', border: '1px solid #FECACA' }}>
-              <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-red-800">Firma no configurada</p>
-                <p className="text-sm text-red-700">
-                  No se ha detectado una firma digital asociada a su usuario. Por favor configure su firma en el <strong>Módulo de Configuración</strong>.
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Tipo de Firma */}
           <div>
@@ -490,21 +524,132 @@ function ModalAprobar({
               Método de Firma
             </label>
             <div className="space-y-3">
-              <Card
-                className={`p-3 sm:p-4 border-2 transition-all flex items-center gap-3 ${hasSignature ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50 opacity-60'
+              {/* Firma Electrónica */}
+              <button
+                onClick={() => setSignatureMethod('ELECTRONIC')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'ELECTRONIC' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
                   }`}
               >
-                <div className={`p-2 rounded-full ${hasSignature ? 'bg-blue-100' : 'bg-gray-200'}`}>
-                  <FileText className={`w-5 h-5 ${hasSignature ? 'text-blue-600' : 'text-gray-500'}`} />
+                <div className={`p-2 rounded-full ${signatureMethod === 'ELECTRONIC' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <FileText className={`w-5 h-5 ${signatureMethod === 'ELECTRONIC' ? 'text-blue-600' : 'text-gray-500'}`} />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital Configurada</h4>
-                  <p className="text-xs text-gray-500">Usa su firma PDF cargada previamente</p>
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Electrónica (Interna)</h4>
+                  <p className="text-xs text-gray-500">Usar mi firma cargada en el sistema</p>
                 </div>
-                {hasSignature && <CheckCircle className="w-5 h-5 text-blue-600" />}
-              </Card>
+                {signatureMethod === 'ELECTRONIC' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
+
+              {/* Firma Digital Proveedor */}
+              <button
+                onClick={() => setSignatureMethod('DIGITAL_PROVIDER')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'DIGITAL_PROVIDER' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <div className={`p-2 rounded-full ${signatureMethod === 'DIGITAL_PROVIDER' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Shield className={`w-5 h-5 ${signatureMethod === 'DIGITAL_PROVIDER' ? 'text-blue-600' : 'text-gray-500'}`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Digital (Certicámara/Otros)</h4>
+                  <p className="text-xs text-gray-500">Usar token o integración con proveedor</p>
+                </div>
+                {signatureMethod === 'DIGITAL_PROVIDER' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
+
+              {/* Firma Local */}
+              <button
+                onClick={() => setSignatureMethod('LOCAL_PDF')}
+                className={`w-full text-left p-3 sm:p-4 border-2 transition-all flex items-center gap-3 rounded-lg ${signatureMethod === 'LOCAL_PDF' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+              >
+                <div className={`p-2 rounded-full ${signatureMethod === 'LOCAL_PDF' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                  <Upload className={`w-5 h-5 ${signatureMethod === 'LOCAL_PDF' ? 'text-blue-600' : 'text-gray-500'}`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">Firma Local (Subir PDF)</h4>
+                  <p className="text-xs text-gray-500">Descargar, firmar localmente y subir</p>
+                </div>
+                {signatureMethod === 'LOCAL_PDF' && <CheckCircle className="w-5 h-5 text-blue-600" />}
+              </button>
             </div>
           </div>
+
+          {/* Configuración Específica según método */}
+          <AnimatePresence mode="wait">
+            {signatureMethod === 'ELECTRONIC' && (
+              <motion.div
+                key="electronic"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                {!checkingSignature && !hasSignature && (
+                  <div className="p-4 rounded-xl flex items-start gap-3 mt-2" style={{ background: '#FEE2E2', border: '1px solid #FECACA' }}>
+                    <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-bold text-red-800">Firma no configurada</p>
+                      <p className="text-sm text-red-700">
+                        No se ha detectado una firma digital asociada a su usuario.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {signatureMethod === 'DIGITAL_PROVIDER' && (
+              <motion.div
+                key="provider"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2"
+              >
+                <div className="p-4 rounded-xl bg-orange-50 border border-orange-200 text-orange-800 text-sm">
+                  <p className="font-bold flex items-center gap-2">
+                    <Info className="w-4 h-4" /> Integración Externa
+                  </p>
+                  <p className="mt-1">
+                    Será redirigido al portal del proveedor de firma digital autorizada (ej. Certicámara) para completar el proceso.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {signatureMethod === 'LOCAL_PDF' && (
+              <motion.div
+                key="local"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2 space-y-3"
+              >
+                <div className="flex gap-3">
+                  <Button className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300">
+                    <Download className="w-4 h-4 mr-2" />
+                    1. Descargar PDF
+                  </Button>
+                  <div className="flex-1 relative">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={(e) => setLocalFile(e.target.files?.[0] || null)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full z-10"
+                    />
+                    <Button className={`w-full ${localFile ? 'bg-green-100 text-green-700 border-green-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                      {localFile ? <CheckCircle className="w-4 h-4 mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+                      {localFile ? 'PDF Cargado' : '2. Subir Firmado'}
+                    </Button>
+                  </div>
+                </div>
+                {localFile && (
+                  <p className="text-xs text-green-600 font-medium text-center">
+                    Archivo seleccionado: {localFile.name}
+                  </p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Comentarios */}
           <div>
@@ -711,6 +856,93 @@ function ModalDevolver({
   );
 }
 
+// Modal de Registro de Notificación - NUEVO
+function ModalRegistrarNotificacion({
+  borrador,
+  onClose,
+  onConfirm
+}: {
+  borrador: BorradorPendiente;
+  onClose: () => void;
+  onConfirm: (fecha: string, archivo: File) => void;
+}) {
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [archivo, setArchivo] = useState<File | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setArchivo(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!archivo) {
+      toast.error('Evidencia Requerida', { description: 'Debe adjuntar el soporte de la notificación (PDF/Imagen)' });
+      return;
+    }
+    onConfirm(fecha, archivo);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.95 }}
+        className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 bg-teal-600 text-white flex items-center gap-3">
+          <Send className="w-6 h-6" />
+          <h3 className="text-lg font-bold">Registrar Notificación</h3>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Notificación</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Evidencia (Soporte)</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+              <input type="file" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf,image/*" />
+              {archivo ? (
+                <div className="flex items-center gap-2 text-teal-600">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="text-sm font-medium truncate max-w-[200px]">{archivo.name}</span>
+                </div>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                  <p className="text-sm text-gray-500">Click para subir soporte</p>
+                  <p className="text-xs text-gray-400">PDF o Imagen</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 bg-gray-50 border-t flex gap-3">
+          <Button onClick={onClose} className="flex-1 bg-gray-200 text-gray-800 hover:bg-gray-300">Cancelar</Button>
+          <Button onClick={handleSubmit} className="flex-1 bg-teal-600 hover:bg-teal-700 text-white">Confirmar</Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // Componente Principal - RESPONSIVE Y CORPORATIVO
 export function RevisionAprobacionJefe() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
@@ -733,9 +965,9 @@ export function RevisionAprobacionJefe() {
       setLoading(true);
       const autos = await disciplinaryService.getAllAutos();
 
-      // Filter out drafts and notified autos
+      // Filter out drafts (but keep NOTIFICADO)
       const mappedBorradores: BorradorPendiente[] = autos
-        .filter(auto => auto.estado !== 'BORRADOR' && auto.estado !== 'NOTIFICADO')
+        .filter(auto => auto.estado !== 'BORRADOR')
         .map(auto => {
           const proceso = (auto as any).process || {};
           const abogado = proceso.abogadoAsignado || {};
@@ -761,11 +993,28 @@ export function RevisionAprobacionJefe() {
               nombreUsuario = 'Profesional';
             }
 
+            // Parse structured changeReason
+            let descripcion = v.changeReason || `Versión ${v.versionNumber}`;
+            let detalles = {};
+
+            try {
+              if (descripcion.startsWith('{')) {
+                const parsed = JSON.parse(descripcion);
+                if (parsed.action === 'NOTIFICACION_REGISTRADA') {
+                  descripcion = `Notificación Registrada (Fecha: ${parsed.date})`;
+                  detalles = { evidenceUrl: parsed.evidenceUrl };
+                }
+              }
+            } catch (e) {
+              // Not JSON, keep original description
+            }
+
             return {
               id: v.id,
-              descripcion: v.changeReason || `Versión ${v.versionNumber}`,
+              descripcion: descripcion,
               usuario: nombreUsuario,
-              fecha: v.createdAt
+              fecha: v.createdAt,
+              detalles: detalles
             };
           });
 
@@ -853,6 +1102,27 @@ export function RevisionAprobacionJefe() {
     } catch (error) {
       console.error(error);
       toast.error('Error al devolver el auto');
+    }
+  };
+
+  const handleNotificar = async (borradorId: string, fecha: string, archivo: File) => {
+    try {
+      // 1. Subir archivo
+      const uploadRes = await disciplinaryService.uploadFile(archivo);
+
+      // 2. Registrar Notificación
+      await disciplinaryService.registrarNotificacion(borradorId, fecha, uploadRes.url);
+
+      toast.success('Notificación Registrada', {
+        description: 'El auto ha cambiado a estado NOTIFICADO'
+      });
+
+      setShowModalRevision(false);
+      setBorradorSeleccionado(null);
+      loadAutos(); // Refresh
+    } catch (error) {
+      console.error('Error notificando:', error);
+      toast.error('Error al registrar notificación');
     }
   };
 
@@ -951,6 +1221,7 @@ export function RevisionAprobacionJefe() {
                 <option value="REVISION_JEFE">En Revisión</option>
                 <option value="APROBADO">Aprobados</option>
                 <option value="DEVUELTO">Devueltos</option>
+                <option value="NOTIFICADO">Notificados</option>
                 <option value="BORRADOR">Borradores</option>
               </select>
 
@@ -1119,6 +1390,7 @@ export function RevisionAprobacionJefe() {
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
             onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
             onFirmar={() => handleFirmar(borradorSeleccionado.id)}
+            onNotificar={(fecha, archivo) => handleNotificar(borradorSeleccionado.id, fecha, archivo)}
           />
         )}
       </AnimatePresence>

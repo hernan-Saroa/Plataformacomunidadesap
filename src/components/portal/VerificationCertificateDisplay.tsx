@@ -45,6 +45,9 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const lastEmailSentRef = useRef<string | null>(null);
+  const lastEmailAttemptRef = useRef<string | null>(null);
 
   const formatDateOnly = (value?: string) => {
     if (!value) {
@@ -160,6 +163,38 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
+  const generatePdfFromTemplate = async () => {
+    if (!pdfTemplateRef.current) {
+      throw new Error('No se pudo preparar la plantilla del certificado.');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const canvas = await html2canvas(pdfTemplateRef.current, {
+      scale: 3,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: 816,
+      windowHeight: 1056,
+      imageTimeout: 0,
+    });
+
+    const pdf = new jsPDF({
+      unit: 'px',
+      format: [816, 1056],
+      orientation: 'portrait',
+      compress: true,
+    });
+
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
+
+    const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    return { pdf, fileName };
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     toast.loading('Generando certificado PDF...', { id: 'pdf-generation' });
@@ -173,34 +208,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         }
       }
 
-      if (!pdfTemplateRef.current) {
-        throw new Error('No se pudo preparar la plantilla del certificado.');
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const canvas = await html2canvas(pdfTemplateRef.current, {
-        scale: 3,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 816,
-        windowHeight: 1056,
-        imageTimeout: 0,
-      });
-
-      const pdf = new jsPDF({
-        unit: 'px',
-        format: [816, 1056],
-        orientation: 'portrait',
-        compress: true,
-      });
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
-
-      const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      const { pdf, fileName } = await generatePdfFromTemplate();
       pdf.save(fileName);
 
       toast.success('Certificado descargado exitosamente!', {
@@ -217,6 +225,58 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       setIsDownloading(false);
     }
   };
+
+  const enviarCertificadoPorEmail = async () => {
+    const destinatario = certificate.requester?.email;
+    if (!destinatario) {
+      return;
+    }
+
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
+      return;
+    }
+    lastEmailAttemptRef.current = certificate.certificateNumber;
+
+    setIsSendingEmail(true);
+    toast.loading('Enviando certificado por correo...', { id: 'auto-email-certificate' });
+
+    try {
+      await graduadosService.certificados.reenviar(certificate.id);
+
+      lastEmailSentRef.current = certificate.certificateNumber;
+      toast.success('Certificado enviado por correo', {
+        id: 'auto-email-certificate',
+        description: `Se envio a ${destinatario}`,
+        duration: 4000,
+      });
+    } catch (error: any) {
+      console.error('Error al enviar certificado por correo:', error);
+      toast.error('No se pudo enviar el certificado por correo', {
+        id: 'auto-email-certificate',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!certificate?.certificateNumber) {
+      return;
+    }
+    if (isSendingEmail) {
+      return;
+    }
+    if (!certificate.requester?.email) {
+      return;
+    }
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
+      return;
+    }
+
+    void enviarCertificadoPorEmail();
+  }, [certificate?.certificateNumber, certificate?.requester?.email, isSendingEmail]);
 
   const handleShare = async () => {
     /**

@@ -39,6 +39,7 @@ interface CertificadoDetallePanelProps {
       email: string;
       cargo: string;
       dependencia: string;
+      dependenciaPadre: string;
       tipoVinculacion: string;
       fechaVinculacion: string;
       grado: string;
@@ -59,7 +60,8 @@ interface CertificadoDetallePanelProps {
 
 export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
-  const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | null>(null);
+  const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = React.useState(false);
   const [showQRModal, setShowQRModal] = React.useState(false);
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
@@ -380,11 +382,32 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }, 800);
   };
 
-  const handleEnviarEmail = () => {
-    toast.success('Email enviado', {
-      description: `Certificado enviado a ${certificado.empleado.email}`,
-      duration: 3000
-    });
+  const handleEnviarEmail = async () => {
+    if (isSendingEmail) return;
+    if (!certificado.empleado.email || certificado.empleado.email === 'N/A') {
+      toast.error('No hay un correo registrado para este empleado');
+      return;
+    }
+    setIsSendingEmail(true);
+    toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
+
+    try {
+      const response = await certificadosService.laborales.reenviar(certificado.id);
+      toast.success('Correo reenviado', {
+        id: 'send-certificate-email',
+        description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo reenviar el certificado', {
+        id: 'send-certificate-email',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+      setAutoPDFAction(null);
+    }
   };
 
   const handleImprimir = () => {
@@ -568,17 +591,30 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Dependencia y Salario */}
+                    {/* Dependencia Padre y Dependencia Hijo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Dependencia
+                          Dependencia Padre
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.dependenciaPadre || 'Registro padre'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Dependencia Hijo
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-gray-400" />
                           {certificado.empleado.dependencia}
                         </p>
                       </div>
+                    </div>
+
+                    {/* Salario y Correo */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
@@ -588,17 +624,15 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           ${certificado.empleado.salario.toLocaleString('es-CO')} COP
                         </p>
                       </div>
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Correo Electrónico
-                      </label>
-                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {certificado.empleado.email}
-                      </p>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Correo Electrónico
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.email}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

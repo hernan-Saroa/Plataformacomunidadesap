@@ -198,13 +198,17 @@ const graduadosService = {
      */
     verificarGraduado: async (
       idNumber: string,
-      idIssueDate?: string
+      idIssueDate?: string,
+      graduationDate?: string,
+      lastName?: string
     ): Promise<VerificacionDocumentoResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/verificar-graduado`,
         {
           idNumber,
           ...(idIssueDate ? { idIssueDate } : {}),
+          ...(graduationDate ? { graduationDate } : {}),
+          ...(lastName ? { lastName } : {}),
         }
       );
       return response;
@@ -217,13 +221,17 @@ const graduadosService = {
      */
     generarCodigoValidacion: async (
       idNumber: string,
-      idIssueDate?: string
+      idIssueDate?: string,
+      graduationDate?: string,
+      lastName?: string
     ): Promise<GenerarCodigoResponse> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
         {
           idNumber,
           ...(idIssueDate ? { idIssueDate } : {}),
+          ...(graduationDate ? { graduationDate } : {}),
+          ...(lastName ? { lastName } : {}),
         }
       );
       return response;
@@ -483,6 +491,16 @@ const graduadosService = {
      */
     descargarPDF: async (id: string): Promise<Blob> => {
       return apiClient.getBlob(`${SERVICE_PREFIX}/certificates/${id}/pdf`);
+    },
+
+    /**
+     * Reenviar certificado por email al solicitante
+     */
+    reenviar: async (id: string): Promise<{ mensaje: string; email: string }> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/${id}/reenviar`,
+      );
+      return response;
     },
   },
 

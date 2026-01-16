@@ -24,7 +24,9 @@ import {
   Send,
   Eye,
   Printer,
-  Clock
+  Clock,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -34,6 +36,7 @@ import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertificado';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
+import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
@@ -47,6 +50,7 @@ interface EmpleadoData {
   tipo_vinculacion: string;
   cargo: string;
   dependencia: string;
+  dependenciaPadre?: string;
   fecha_vinculacion: string;
   estado: 'Activo' | 'Retirado';
   correo_institucional: string;
@@ -61,8 +65,11 @@ interface CertificadoGenerado {
   fecha_generacion: string;
   cargo: string;
   dependencia: string;
+  dependenciaPadre?: string;
   fecha_vinculacion: string;
   salario_actual: number;
+  prima_tecnica?: number;
+  incluyePrimaTecnica?: boolean;
   salario_original?: number;
   salario_texto_original?: string;
   incluyeSalario?: boolean;
@@ -157,21 +164,40 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     return texto.includes('docent') ? 'docente' : 'administrador';
   };
 
+  const parseDateOnly = (fechaStr?: string) => {
+    if (!fechaStr) {
+      return null;
+    }
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
     const templateType = resolverTemplateType(cert);
     const salarioBase = cert.monthly_salary || 0;
     const salarioTextoBase = cert.salary_text;
+    const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
     return {
       numero_radicado: cert.certificate_number || cert.verification_code || `CERT-${Date.now()}`,
       tipo_certificado: 'Certificado Laboral General',
       fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
       cargo: cert.career_category || 'N/A',
       dependencia: cert.department || 'N/A',
+      dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
       fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
       salario_actual: salarioBase,
+      prima_tecnica: bonusBase,
       salario_original: salarioBase,
       salario_texto_original: salarioTextoBase,
       incluyeSalario: true,
+      incluyePrimaTecnica: false,
       qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
       nombre_completo: cert.full_name || 'N/A',
       certificado_completo: {
@@ -180,12 +206,15 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         qrCode: cert.verification_code,
         cantidadEscaneos: 0,
         incluyeSalario: true,
+        incluyePrimaTecnica: false,
+        technical_bonus: bonusBase,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
           email: cert.email || cert.certificate_email || 'N/A',
           cargo: cert.career_category,
           dependencia: cert.department || 'N/A',
+          dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
           tipoVinculacion: cert.position_category || 'Administrativo',
           fechaVinculacion: cert.hiring_date,
           grado: cert.position_location || 'N/A',
@@ -217,6 +246,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [pasoActual, setPasoActual] = useState<Paso>('ingreso-documento');
   const [certificadoExistente, setCertificadoExistente] = useState(false);
   const [incluirSalario, setIncluirSalario] = useState(true);
+  const [incluirPrimaTecnica, setIncluirPrimaTecnica] = useState(false);
   const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
   
   // Paso 1: Ingreso de documento
@@ -238,9 +268,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
   // Estados para el visor de PDF
   const [showPDFViewer, setShowPDFViewer] = useState(false);
-  const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
+  const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | 'email' | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const emailDestinoRef = useRef<string | null>(null);
+  const lastEmailSentRef = useRef<string | null>(null);
 
-  const aplicarPreferenciaSalario = (cert: CertificadoGenerado | null, incluir: boolean): CertificadoGenerado | null => {
+  const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
 
     const salarioBase = cert.salario_original ?? cert.salario_actual ?? 0;
@@ -252,16 +285,22 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
     const empleadoCertificado = cert.certificado_completo?.empleado;
 
+    const bonusBase = cert.prima_tecnica ?? salarioBase * 0.2;
+
     const certificadoActualizado: CertificadoGenerado = {
       ...cert,
       salario_original: cert.salario_original ?? salarioBase,
       salario_texto_original: cert.salario_texto_original ?? salarioTextoBase,
       incluyeSalario: incluir,
+      incluyePrimaTecnica: incluirPrima,
       salario_actual: incluir ? salarioBase : 0,
+      prima_tecnica: bonusBase,
       certificado_completo: cert.certificado_completo
         ? {
             ...cert.certificado_completo,
             incluyeSalario: incluir,
+            incluyePrimaTecnica: incluirPrima,
+            technical_bonus: bonusBase,
             empleado: empleadoCertificado
               ? {
                   ...empleadoCertificado,
@@ -281,7 +320,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
   const registrarCertificado = (cert: CertificadoGenerado) => {
     certificadoBaseRef.current = cert;
-    setCertificadoGenerado(aplicarPreferenciaSalario(cert, incluirSalario));
+    setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalario, incluirPrimaTecnica));
   };
 
   // Efecto para el contador regresivo del código
@@ -390,6 +429,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         tipo_vinculacion: vinculoNormalizado,
         cargo: cargoNormalizado,
         dependencia: solicitud.department || 'N/A',
+        dependenciaPadre: solicitud.department_parent || solicitud.departmentParent || 'Registro padre',
         fecha_vinculacion: solicitud.hiring_date || new Date().toISOString(),
         estado: 'Activo',
         correo_institucional: response.email,
@@ -445,6 +485,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       const templateType = resolverTemplateType(cert);
       const salarioBase = cert.monthly_salary || empleadoEncontrado?.salario_actual || 0;
       const salarioTextoBase = cert.salary_text;
+      const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
 
       // Construir objeto de certificado completo desde la respuesta del backend
       const certificado: CertificadoGenerado = {
@@ -453,11 +494,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
         cargo: cert.career_category || empleadoEncontrado?.cargo || 'N/A',
         dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
+        dependenciaPadre: cert.department_parent || cert.departmentParent || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
         fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
         salario_actual: salarioBase,
+        prima_tecnica: bonusBase,
         salario_original: salarioBase,
         salario_texto_original: salarioTextoBase,
         incluyeSalario: true,
+        incluyePrimaTecnica: false,
         qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
         nombre_completo: cert.full_name || empleadoEncontrado?.nombre_completo || 'N/A',
         // Datos completos del certificado para el visor
@@ -467,12 +511,15 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           qrCode: cert.verification_code,
           cantidadEscaneos: 0,
           incluyeSalario: true,
+          incluyePrimaTecnica: false,
+          technical_bonus: bonusBase,
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
             email: empleadoEncontrado?.correo_institucional || 'N/A',
             cargo: cert.career_category,
             dependencia: cert.department || 'N/A',
+            dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
             tipoVinculacion: cert.position_category || 'Administrativo',
             fechaVinculacion: cert.hiring_date,
             grado: cert.position_location || 'N/A',
@@ -505,7 +552,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setValidandoCodigo(false);
 
       toast.success('¡Certificado generado exitosamente!', {
-        description: 'Se ha enviado una copia a tu correo registrado',
+        description: 'Tu certificado está listo para descargar',
         duration: 5000
       });
 
@@ -620,6 +667,43 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     setCertificadoGenerado(null);
     setCertificadoExistente(false);
     certificadoBaseRef.current = null;
+    emailDestinoRef.current = null;
+    lastEmailSentRef.current = null;
+  };
+
+  const enviarCertificadoPorEmail = async (certificadoId: string) => {
+    const destinatario = emailDestinoRef.current;
+    if (!destinatario) {
+      toast.error('No hay un correo registrado para este empleado');
+      setIsSendingEmail(false);
+      setAutoPDFAction(null);
+      setShowPDFViewer(false);
+      return;
+    }
+
+    try {
+      const response = await certificadosService.laborales.reenviar(certificadoId, {
+        includeSalary: incluirSalario,
+        includeTechnicalBonus: incluirPrimaTecnica,
+        templateType: certificadoGenerado?.certificado_completo?.templateType,
+      });
+
+      toast.success('Copia enviada al correo', {
+        id: 'auto-email-cert',
+        description: `Se envio a ${response?.email || destinatario}`,
+        duration: 4000,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo enviar el certificado por correo', {
+        id: 'auto-email-cert',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+      setAutoPDFAction(null);
+      setShowPDFViewer(false);
+    }
   };
 
   // Asegurar que el paso activo se mantenga en "certificado" cuando ya hay certificado listo
@@ -628,6 +712,26 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setPasoActual('certificado-generado');
     }
   }, [certificadoGenerado, empleadoEncontrado, pasoActual]);
+
+  useEffect(() => {
+    const cert = certificadoGenerado;
+    if (!cert?.certificado_completo) return;
+    if (isSendingEmail) return;
+    if (lastEmailSentRef.current === cert.numero_radicado) return;
+
+    const destinatario =
+      empleadoEncontrado?.correo_institucional ||
+      cert.certificado_completo.empleado?.email ||
+      cert.certificado_completo?.employee_email ||
+      '';
+    if (!destinatario) return;
+
+    lastEmailSentRef.current = cert.numero_radicado;
+    emailDestinoRef.current = destinatario;
+    setIsSendingEmail(true);
+    toast.loading('Enviando certificado a tu correo...', { id: 'auto-email-cert' });
+    void enviarCertificadoPorEmail(cert.certificado_completo.id);
+  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario, incluirPrimaTecnica]);
 
   // Si se marca certificado existente, asegura que el paso sea certificado
   useEffect(() => {
@@ -638,9 +742,9 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
   useEffect(() => {
     if (certificadoBaseRef.current) {
-      setCertificadoGenerado(aplicarPreferenciaSalario(certificadoBaseRef.current, incluirSalario));
+      setCertificadoGenerado(aplicarPreferenciasCertificado(certificadoBaseRef.current, incluirSalario, incluirPrimaTecnica));
     }
-  }, [incluirSalario]);
+  }, [incluirSalario, incluirPrimaTecnica]);
 
   // Paso visual para el stepper: si ya hay certificado, mostrar siempre el paso 3 activo
   const pasoActivoUI: Paso =
@@ -829,6 +933,22 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </Label>
                           <p className="text-xs text-gray-600 mt-1">
                             Oculta el salario en el PDF y en la vista previa. Puedes cambiarlo en cualquier momento.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Checkbox
+                          id="con-prima-tecnica"
+                          checked={incluirPrimaTecnica}
+                          onCheckedChange={(checked) => setIncluirPrimaTecnica(Boolean(checked))}
+                          className="mt-1"
+                        />
+                        <div>
+                          <Label htmlFor="con-prima-tecnica" className="text-sm font-semibold text-gray-800 cursor-pointer">
+                            Incluir prima tecnica (20%)
+                          </Label>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Agrega la prima tecnica mensual al certificado y la vista previa.
                           </p>
                         </div>
                       </div>
@@ -1089,11 +1209,11 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         })()}
                         <div className="flex items-center gap-2 text-sm text-green-800">
                           <Calendar className="w-4 h-4" />
-                          <span>Generado el {new Date(certificadoGenerado.fecha_generacion).toLocaleDateString('es-CO', { 
+                          <span>Generado el {parseDateOnly(certificadoGenerado.fecha_generacion)?.toLocaleDateString('es-CO', { 
                             day: 'numeric', 
                             month: 'long', 
                             year: 'numeric' 
-                          })}</span>
+                          }) || 'N/A'}</span>
                         </div>
                       </div>
                     </div>
@@ -1141,6 +1261,22 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       </p>
                     </div>
                   </div>
+                  <div className="mt-4 flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Checkbox
+                      id="toggle-prima-tecnica"
+                      checked={incluirPrimaTecnica}
+                      onCheckedChange={(checked) => setIncluirPrimaTecnica(Boolean(checked))}
+                      className="mt-1"
+                    />
+                    <div>
+                      <Label htmlFor="toggle-prima-tecnica" className="text-sm font-semibold text-gray-800 cursor-pointer">
+                        Incluir prima tecnica (20%) en este certificado
+                      </Label>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Si la marcas, la prima tecnica se muestra en el PDF y las impresiones.
+                      </p>
+                    </div>
+                  </div>
 
                   {/* Contenido del certificado */}
                   <div className="space-y-6">
@@ -1171,12 +1307,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </div>
                           <div>
                             <p className="text-gray-600 mb-1">Dependencia</p>
-                            <p className="font-bold text-gray-900">{certificadoGenerado.dependencia}</p>
+                            <p className="font-bold text-gray-900">
+                              {certificadoGenerado.dependenciaPadre || 'Registro padre'}
+                            </p>
                           </div>
                           <div>
                             <p className="text-gray-600 mb-1">Fecha de Vinculación</p>
                             <p className="font-bold text-gray-900">
-                              {new Date(certificadoGenerado.fecha_vinculacion).toLocaleDateString('es-CO')}
+                              {parseDateOnly(certificadoGenerado.fecha_vinculacion)?.toLocaleDateString('es-CO') || 'N/A'}
                             </p>
                           </div>
                           {incluirSalario ? (
@@ -1192,6 +1330,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                                 <Shield className="w-4 h-4" />
                                 El certificado se generará sin información salarial.
                               </div>
+                            </div>
+                          )}
+                          {incluirPrimaTecnica && (
+                            <div className="sm:col-span-2">
+                              <p className="text-gray-600 mb-1">Prima tecnica mensual (20%)</p>
+                              <p className="font-bold text-gray-900">
+                                ${((certificadoGenerado.prima_tecnica ?? certificadoGenerado.salario_actual * 0.2) || 0).toLocaleString('es-CO')} COP
+                              </p>
                             </div>
                           )}
                         </div>
@@ -1305,6 +1451,140 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           certificado={certificadoGenerado.certificado_completo}
         />
       )}
+      {/* Footer Corporativo ESAP */}
+      <footer className="bg-[#1e5da8] text-white py-12 mt-16">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header del Footer */}
+          <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
+            {/* Logo y Descripción */}
+            <div className="mb-6 md:mb-0 flex items-start gap-4">
+              <img src={esapLogoWhite} alt="ESAP" className="h-14" />
+              <div>
+                <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
+                <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>
+                <div className="flex gap-2 text-xs text-blue-100">
+                  <span className="px-2 py-1 bg-white/10 rounded">Educación Pública de Calidad</span>
+                  <span className="px-2 py-1 bg-white/10 rounded">Acreditación de Alta Calidad</span>
+                  <span className="px-2 py-1 bg-white/10 rounded">Investigación e Innovación</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Redes Sociales */}
+            <div>
+              <p className="text-sm font-semibold mb-3">Síguenos:</p>
+              <div className="flex gap-3">
+                <a href="#" className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </a>
+                <a href="#" className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
+                </a>
+                <a href="#" className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+                </a>
+                <a href="#" className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
+                </a>
+                <a href="#" className="w-9 h-9 bg-white/10 hover:bg-white/20 rounded-lg flex items-center justify-center transition-colors">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Columnas de Enlaces */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-8">
+            {/* INSTITUCIONAL */}
+            <div>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛️ Institucional</h4>
+              <ul className="space-y-2 text-sm text-blue-100">
+                <li><a href="#" className="hover:text-white transition-colors">Acerca de ESAP</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Misión y Visión</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Directivos</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Sedes y Regionales</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Trabaje con Nosotros</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Rendición de Cuentas</a></li>
+              </ul>
+            </div>
+
+            {/* ACADÉMICO */}
+            <div>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">📚 Académico</h4>
+              <ul className="space-y-2 text-sm text-blue-100">
+                <li><a href="#" className="hover:text-white transition-colors">Programas de Pregrado</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Programas Pregrado</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Educación Continua</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Investigación</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Biblioteca Virtual</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Calendario Académico</a></li>
+              </ul>
+            </div>
+
+            {/* SERVICIOS */}
+            <div>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">⚙️ Servicios</h4>
+              <ul className="space-y-2 text-sm text-blue-100">
+                <li><a href="#" className="hover:text-white transition-colors">Portal Transaccional</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Certificados</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">PQRS</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Notificaciones Judiciales</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Trámites y Servicios</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Soporte Técnico</a></li>
+              </ul>
+            </div>
+
+            {/* LEGAL */}
+            <div>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">⚖️ Legal</h4>
+              <ul className="space-y-2 text-sm text-blue-100">
+                <li><a href="#" className="hover:text-white transition-colors">Políticas de Privacidad</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Términos y Condiciones</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Tratamiento de Datos</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Transparencia</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Mapa del Sitio</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Accesibilidad</a></li>
+              </ul>
+            </div>
+
+            {/* CONTACTO */}
+            <div>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">📞 Contacto</h4>
+              <ul className="space-y-3 text-sm text-blue-100">
+                <li className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>Sede Principal: Bogotá<br />Diagonal 40 No. 46A - 37<br />Bogotá D.C., Colombia</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 flex-shrink-0" />
+                  <span>(601) 220 0700</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Phone className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>Línea Nacional gratuita:<br />01 8000 110 119</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 flex-shrink-0" />
+                  <span>correspondencia@esap.edu.co</span>
+                </li>
+                <li>
+                  <p className="text-xs mb-1">🕐 Lunes a Viernes</p>
+                  <p className="text-xs">8:00 AM - 5:00 PM</p>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="pt-6 border-t border-white/20 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-blue-100">
+            <p>© 2025 ESAP - Escuela Superior de Administración Pública. Todos los derechos reservados.</p>
+            <p className="flex items-center gap-2 bg-green-500/20 px-3 py-1 rounded-full text-green-300">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              Última actualización: 13 de enero de 2025
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

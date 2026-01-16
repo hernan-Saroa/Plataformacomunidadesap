@@ -4,6 +4,7 @@
  * ✅ Responsive mobile-first FUNCIONAL
  * ✅ Drag & Drop FUNCIONAL
  * ✅ Tarjetas 320px con bloque "Última Actuación"
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useEffect } from 'react';
@@ -21,7 +22,7 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import type { ProcesoDisciplinario } from '../core/types';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -38,6 +39,9 @@ import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 // Tipo para drag and drop
 const ItemTypes = {
   PROCESO: 'proceso_disciplinario'
@@ -48,6 +52,9 @@ import { legalService } from '../../../../services/api/legal.service';
 // ... (previous imports)
 
 export function ModuloJuzgamientoDisciplinarioV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos, tiempos } = useConfiguracionModulo('juzgamiento');
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
@@ -55,9 +62,16 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
 
-
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
+
+  // ✅ Log de configuraciones cargadas
+  useEffect(() => {
+    console.log('🎯 JUZGAMIENTO - Configuraciones centralizadas cargadas:');
+    console.log('   📊 Estados activos:', estadosActivos.length);
+    console.log('   ⏱️ Tiempos configurados:', tiempos.length);
+    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
+  }, [estadosActivos, tiempos]);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -95,13 +109,14 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     };
     fetchProcesos();
   }, []);
+
   // Manejar movimiento de proceso entre etapas
-  const handleMoverProceso = async (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => {
+  const handleMoverProceso = async (procesoId: string, nuevaEtapa: string) => {
     // 1. Actualización Optimista
     setProcesos((prevProcesos) =>
       prevProcesos.map((p) =>
         p.id === procesoId
-          ? { ...p, etapa: nuevaEtapa }
+          ? { ...p, etapa: nuevaEtapa as any }
           : p
       )
     );
@@ -123,53 +138,49 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     }
   };
 
-  // Agrupar procesos por etapa
-  const procesosPorEtapa = {
-    E1_AVOCAMIENTO: procesos.filter(p => p.etapa === 'E1_AVOCAMIENTO'),
-    E2_DESCARGOS: procesos.filter(p => p.etapa === 'E2_DESCARGOS'),
-    E3_PRUEBAS: procesos.filter(p => p.etapa === 'E3_PRUEBAS'),
-    E4_ALEGATOS: procesos.filter(p => p.etapa === 'E4_ALEGATOS'),
-  };
+  // Agrupar procesos por etapa de forma dinámica
+  const procesosPorEtapa = estadosActivos.reduce((acc, estado) => {
+    // Normalizar ID de estado para comparar
+    // El backend suele devolver etapas en mayúsculas o con guiones bajos (e.g. E1_AVOCAMIENTO vs E1_AVOCAMIENTO)
+    // Aquí hacemos match flexible
+    acc[estado.id] = procesos.filter(p => {
+      const stage = p.etapa ? p.etapa.toString().toLowerCase().replace(/_/g, '-') : '';
+      // Intentamos match exacto con ID o nombre
+      return stage === estado.id.toLowerCase() ||
+        stage === estado.nombre.toLowerCase().replace(/ /g, '-') ||
+        p.etapa === estado.id || // Match directo ID
+        p.etapa === estado.nombre; // Match directo Nombre
+    });
+    return acc;
+  }, {} as Record<string, ProcesoDisciplinario[]>);
 
   // Calcular estadísticas
-  const totalProcesos = procesos.length;
-  const procesosCriticos = procesos.filter(p => p.diasRestantes <= 3).length;
-  const procesosEnTermino = procesos.filter(p => p.diasRestantes > 5).length;
+  const procesosVisibles = Object.values(procesosPorEtapa).flat();
+  const totalProcesos = procesosVisibles.length;
+  // Usamos filtered length si hay filtros aplicados, pero aquí mostramos totales generales de lo visible
+  // Si quisiéramos métricas globales, usaríamos 'procesos' completo. Aquí usamos lo que se mapeó a etapas activas.
 
-  const etapas = [
-    {
-      nombre: 'Avocamiento',
-      valor: 'E1_AVOCAMIENTO' as const,
-      color: '#6B7280',
-      icono: <FileCheck className="w-4 h-4 text-gray-600" />,
-      diasEstimados: 5,
-      procesos: procesosPorEtapa.E1_AVOCAMIENTO
-    },
-    {
-      nombre: 'Descargos',
-      valor: 'E2_DESCARGOS' as const,
-      color: '#F59E0B',
-      icono: <Edit className="w-4 h-4 text-amber-600" />,
-      diasEstimados: 10,
-      procesos: procesosPorEtapa.E2_DESCARGOS
-    },
-    {
-      nombre: 'Pruebas',
-      valor: 'E3_PRUEBAS' as const,
-      color: '#3B82F6',
-      icono: <Search className="w-4 h-4 text-blue-600" />,
-      diasEstimados: 30,
-      procesos: procesosPorEtapa.E3_PRUEBAS
-    },
-    {
-      nombre: 'Alegatos',
-      valor: 'E4_ALEGATOS' as const,
-      color: '#003DA5',
-      icono: <Gavel className="w-4 h-4" style={{ color: '#003DA5' }} />,
-      diasEstimados: 10,
-      procesos: procesosPorEtapa.E4_ALEGATOS
-    },
-  ];
+  const procesosCriticos = procesosVisibles.filter(p => p.diasRestantes <= 3).length;
+  const procesosEnTermino = procesosVisibles.filter(p => p.diasRestantes > 5).length;
+
+  const etapas = estadosActivos.map(estado => ({
+    nombre: estado.nombre,
+    valor: estado.id,
+    color: estado.color,
+    icono: <FileText className="w-4 h-4" style={{ color: estado.color }} />,
+    // Intentar emparejar tiempo configurado con nombre del estado (búsqueda flexible)
+    diasEstimados: (tiempos && tiempos.find(t =>
+      t.tipo.toLowerCase().includes(estado.nombre.toLowerCase()) ||
+      estado.nombre.toLowerCase().includes(t.tipo.toLowerCase())
+    ))?.dias || 10,
+    procesos: procesosPorEtapa[estado.id] || []
+  }));
+
+  // Filtrado final para la vista (si se implementara filtroEtapa en el render)
+  // Nota: Actualmente el render mapea 'etapas', así que el filtroEtapa debería afectar qué columnas se muestran o filtrar items dentro.
+  // En Kanban usualmente se muestran todas las columnas pero se pueden filtrar items.
+  // Aquí, ModuleFilters controla 'filtroEtapa', pero 'etapas' mapea todo. 
+  // Implementemos lógica de filtrado visual si es necesario, o dejamos todas las columnas.
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -202,8 +213,8 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                 type: "default"
               },
               {
-                label: "🔄 Flujo de Trabajo (4 Etapas)",
-                content: "1️⃣ AVOCAMIENTO: Apertura de investigación y vinculación del disciplinado (10 días) → 2️⃣ DESCARGOS: Funcionario presenta su defensa (15 días) → 3️⃣ PRUEBAS: Recolección y práctica de pruebas (30 días) → 4️⃣ ALEGATOS: Argumentos finales antes del fallo (10 días).",
+                label: "🔄 Flujo de Trabajo (Etapas Dinámicas)",
+                content: "Las etapas del proceso son configurables desde el módulo de Configuraciones SIGL. Por defecto incluye: Queja, Indagación, Formulación de Cargos, Descargos, Pruebas y Fallo.",
                 type: "premium"
               },
               {
@@ -221,21 +232,6 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                 content: "Destacado en fondo azul (#F0F7FF), muestra la actuación administrativa más reciente: auto de apertura, citación a descargos, resolución, etc.",
                 type: "default"
               },
-              {
-                label: "🔗 Integración con Otros Módulos",
-                content: "Se conecta con: • Defensa Judicial (casos derivados) • Términos e Informes (control de plazos perentorios) • Asesoría Jurídica (conceptos sobre calificación de faltas).",
-                type: "success"
-              },
-              {
-                label: "💡 Cómo Usar",
-                content: "1️⃣ Click 'Nuevo Proceso' para abrir investigación → 2️⃣ Arrastra tarjetas entre columnas al cambiar etapa → 3️⃣ Click 'Expediente' para gestión documental completa → 4️⃣ Revisa 'Última Actuación' sin abrir expediente → 5️⃣ Monitorea semáforo para acción oportuna.",
-                type: "default"
-              },
-              {
-                label: "⏭️ Siguiente Paso",
-                content: "Al culminar el proceso: Si hay fallo sancionatorio → Se actualiza hoja de vida del funcionario. Si hay destitución → Se vincula con módulo de Talento Humano para trámites de desvinculación.",
-                type: "info"
-              }
             ]}
           />
         }
@@ -268,23 +264,24 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
       {/* Filtros */}
       <ModuleFilters
+        searchValue={busqueda}
+        onSearchChange={setBusqueda}
         filters={[
           {
             label: 'Etapa',
             value: filtroEtapa,
             onChange: (value) => setFiltroEtapa(value),
+            type: 'select',
             options: [
               { label: 'Todas', value: 'TODAS' },
-              { label: 'Avocamiento', value: 'E1_AVOCAMIENTO' },
-              { label: 'Descargos', value: 'E2_DESCARGOS' },
-              { label: 'Pruebas', value: 'E3_PRUEBAS' },
-              { label: 'Alegatos', value: 'E4_ALEGATOS' }
+              ...etapas.map(e => ({ label: e.nombre, value: e.nombre }))
             ]
           },
           {
             label: 'Gravedad',
             value: filtroGravedad,
             onChange: (value) => setFiltroGravedad(value),
+            type: 'select',
             options: [
               { label: 'Todas', value: 'TODAS' },
               { label: 'Leve', value: 'LEVE' },
@@ -331,11 +328,9 @@ export function ModuloJuzgamientoDisciplinarioV3() {
       )}
 
       {/* Vista Lista */}
-
-      {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaListaJuzgamiento
-          procesos={procesos}
+          procesos={procesos} // Nota: VistaLista podría necesitar ajuste si espera usar las etapas dinámicas para algo, pero por ahora pasamos los procesos crudos.
           isMobile={isMobile}
           isTablet={isTablet}
         />
@@ -346,11 +341,12 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   );
 }
 
+
 // ==================== COMPONENTE COLUMNA KANBAN ====================
 interface ColumnaKanbanProps {
   etapa: {
     nombre: string;
-    valor: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS';
+    valor: string;
     color: string;
     icono: React.ReactNode;
     diasEstimados: number;
@@ -358,7 +354,7 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
-  handleMoverProceso: (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => void;
+  handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
 }
 
 function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: ColumnaKanbanProps) {
@@ -406,7 +402,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: Column
 
         {/* Lista de Procesos */}
         <div
-          ref={drop}
+          ref={drop as unknown as React.LegacyRef<HTMLDivElement>}
           className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{
             minHeight: isMobile ? '400px' : '500px',
@@ -445,8 +441,8 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso }: Column
 interface TarjetaProcesoProps {
   proceso: ProcesoDisciplinario;
   isMobile: boolean;
-  handleMoverProceso: (procesoId: string, nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS') => void;
-  nuevaEtapa: 'E1_AVOCAMIENTO' | 'E2_DESCARGOS' | 'E3_PRUEBAS' | 'E4_ALEGATOS';
+  handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  nuevaEtapa: string;
 }
 
 function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: TarjetaProcesoProps) {
@@ -494,7 +490,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   };
 
   return (
-    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+    <div ref={drag as unknown as React.LegacyRef<HTMLDivElement>} style={{ opacity, cursor: 'move' }}>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
         <div className="h-1" style={{ background: '#003DA5' }} />
 

@@ -1,11 +1,14 @@
 /**
  * ConfiguracionesSIGL - Módulo de Configuraciones SIGL
  * Permite configurar estados, columnas y tiempos de todos los tableros Kanban
- * DISEÑO 100% COHERENTE CON CONTROL DISCIPLINARIO Y GESTIÓN LEGAL
+ * DISEÑO 100% COHERENTE CON EL ESTÁNDAR DEL PROYECTO (Modal Comunicaciones del Proceso)
+ * CONECTADO A CONTEXT API - Los cambios afectan a todos los módulos de Gestión Legal
  */
 
-import { useState } from 'react';
-import { Settings, Clock, LayoutGrid, Palette, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle } from 'lucide-react';
+import { legalService } from '../../../../services/api/legal.service';
+import { toast } from 'sonner';
 import {
   DndContext,
   closestCenter,
@@ -23,161 +26,114 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { CardSIGL } from '../design-system/CardSIGL';
-import { ButtonSIGL } from '../design-system/ButtonSIGL';
-import { BadgeSIGL } from '../design-system/BadgeSIGL';
-import { toast } from 'sonner@2.0.3';
 
-// ============ TIPOS ============
-
-interface EstadoKanban {
-  id: string;
-  nombre: string;
-  color: string;
-  orden: number;
-  activo: boolean;
-}
-
-interface ConfiguracionTiempo {
-  id: string;
-  tipo: string;
-  dias: number;
-  alertaDias: number;
-  activo: boolean;
-}
-
-interface ConfiguracionModulo {
-  id: string;
-  nombre: string;
-  estados: EstadoKanban[];
-  tiempos: ConfiguracionTiempo[];
-  tiposProcesos?: TipoProcesoJudicial[];
-}
-
-interface TipoProcesoJudicial {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  activo: boolean;
-}
-
-// ============ DATOS INICIALES ============
-
-const configuracionesIniciales: ConfiguracionModulo[] = [
-  {
-    id: 'defensa-judicial',
-    nombre: 'Defensa Judicial',
-    estados: [
-      { id: 'radicado', nombre: 'Radicado', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'en-estudio', nombre: 'En Estudio', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'contestacion', nombre: 'Contestación', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'pruebas', nombre: 'Pruebas', color: '#06B6D4', orden: 4, activo: true },
-      { id: 'alegatos', nombre: 'Alegatos', color: '#EC4899', orden: 5, activo: true },
-      { id: 'sentencia', nombre: 'Sentencia', color: '#10B981', orden: 6, activo: true },
-      { id: 'archivo', nombre: 'Archivo', color: '#6B7280', orden: 7, activo: true },
-    ],
-    tiempos: [
-      { id: 'estudio-inicial', tipo: 'Estudio Inicial', dias: 5, alertaDias: 2, activo: true },
-      { id: 'contestacion-demanda', tipo: 'Contestación Demanda', dias: 30, alertaDias: 7, activo: true },
-      { id: 'presentacion-pruebas', tipo: 'Presentación Pruebas', dias: 20, alertaDias: 5, activo: true },
-      { id: 'alegatos-conclusion', tipo: 'Alegatos de Conclusión', dias: 15, alertaDias: 3, activo: true },
-    ],
-    tiposProcesos: [
-      { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios causados por hecho, omisión, operación administrativa u ocupación temporal o permanente de inmueble.', activo: true },
-      { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo y restablecer el derecho afectado.', activo: true },
-      { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas para obtener el reconocimiento y pago de indemnización de perjuicios.', activo: true },
-      { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de los derechos e intereses colectivos.', activo: true },
-      { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias surgidas de contratos estatales.', activo: true },
-      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', activo: true },
-      { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', activo: true },
-      { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', activo: true },
-    ],
-  },
-  {
-    id: 'juzgamiento',
-    nombre: 'Juzgamiento Disciplinario',
-    estados: [
-      { id: 'queja', nombre: 'Queja', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'indagacion', nombre: 'Indagación', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'investigacion', nombre: 'Investigación', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'pliego-cargos', nombre: 'Pliego de Cargos', color: '#EF4444', orden: 4, activo: true },
-      { id: 'descargos', nombre: 'Descargos', color: '#EC4899', orden: 5, activo: true },
-      { id: 'fallo', nombre: 'Fallo', color: '#10B981', orden: 6, activo: true },
-      { id: 'archivo', nombre: 'Archivo', color: '#6B7280', orden: 7, activo: true },
-    ],
-    tiempos: [
-      { id: 'indagacion-preliminar', tipo: 'Indagación Preliminar', dias: 6, alertaDias: 2, activo: true },
-      { id: 'investigacion-disciplinaria', tipo: 'Investigación Disciplinaria', dias: 6, alertaDias: 2, activo: true },
-      { id: 'descargos-investigado', tipo: 'Descargos Investigado', dias: 10, alertaDias: 3, activo: true },
-      { id: 'fallo-primera-instancia', tipo: 'Fallo Primera Instancia', dias: 30, alertaDias: 7, activo: true },
-    ],
-  },
-  {
-    id: 'asesoria',
-    nombre: 'Asesoría Jurídica',
-    estados: [
-      { id: 'recibida', nombre: 'Recibida', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'en-analisis', nombre: 'En Análisis', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'revision-supervisor', nombre: 'Revisión Supervisor', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'concepto-emitido', nombre: 'Concepto Emitido', color: '#10B981', orden: 4, activo: true },
-      { id: 'archivo', nombre: 'Archivo', color: '#6B7280', orden: 5, activo: true },
-    ],
-    tiempos: [
-      { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
-      { id: 'emision-concepto', tipo: 'Emisión Concepto', dias: 10, alertaDias: 3, activo: true },
-      { id: 'revision-superior', tipo: 'Revisión Superior', dias: 5, alertaDias: 2, activo: true },
-    ],
-  },
-  {
-    id: 'procesos-coactivos',
-    nombre: 'Procesos Coactivos',
-    estados: [
-      { id: 'mandamiento-pago', nombre: 'Mandamiento de Pago', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'notificacion', nombre: 'Notificación', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'excepciones', nombre: 'Excepciones', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'embargo', nombre: 'Embargo', color: '#EF4444', orden: 4, activo: true },
-      { id: 'remate', nombre: 'Remate', color: '#EC4899', orden: 5, activo: true },
-      { id: 'pago', nombre: 'Pago', color: '#10B981', orden: 6, activo: true },
-      { id: 'terminado', nombre: 'Terminado', color: '#6B7280', orden: 7, activo: true },
-    ],
-    tiempos: [
-      { id: 'mandamiento-pago', tipo: 'Mandamiento de Pago', dias: 10, alertaDias: 3, activo: true },
-      { id: 'notificacion-deudor', tipo: 'Notificación Deudor', dias: 15, alertaDias: 5, activo: true },
-      { id: 'respuesta-excepciones', tipo: 'Respuesta Excepciones', dias: 10, alertaDias: 3, activo: true },
-      { id: 'proceso-embargo', tipo: 'Proceso Embargo', dias: 30, alertaDias: 7, activo: true },
-    ],
-  },
-];
-
-// ============ COLORES PREDEFINIDOS ============
-
-const coloresPredefinidos = [
-  { nombre: 'Azul', hex: '#3B82F6' },
-  { nombre: 'Púrpura', hex: '#8B5CF6' },
-  { nombre: 'Naranja', hex: '#F59E0B' },
-  { nombre: 'Rojo', hex: '#EF4444' },
-  { nombre: 'Rosa', hex: '#EC4899' },
-  { nombre: 'Verde', hex: '#10B981' },
-  { nombre: 'Cian', hex: '#06B6D4' },
-  { nombre: 'Gris', hex: '#6B7280' },
-  { nombre: 'Amarillo', hex: '#FBBF24' },
-  { nombre: 'Índigo', hex: '#6366F1' },
-];
+// ✅ Importar Context API
+import {
+  useConfiguracionesSIGL,
+  casosPorEstado,
+  EstadoKanban,
+  ConfiguracionModulo,
+  TipoProcesoJudicial,
+  ConfiguracionTiempo
+} from '../config/ConfiguracionesSIGLContext';
 
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ConfiguracionesSIGL() {
+  // ✅ Usar Context API en lugar de useState local
+  const {
+    configuraciones,
+    cambiosPendientes,
+    setCambiosPendientes,
+    actualizarConfiguraciones,
+    guardarConfiguraciones,
+    restablecerDefecto
+  } = useConfiguracionesSIGL();
+
   const [moduloActivo, setModuloActivo] = useState<string>('defensa-judicial');
-  const [configuraciones, setConfiguraciones] = useState<ConfiguracionModulo[]>(configuracionesIniciales);
-  const [cambiosPendientes, setCambiosPendientes] = useState(false);
+
+  // Estados para modales
+  const [showModalAgregarEstado, setShowModalAgregarEstado] = useState(false);
+  const [showModalEliminarEstado, setShowModalEliminarEstado] = useState(false);
+  const [estadoAEliminar, setEstadoAEliminar] = useState<EstadoKanban | null>(null);
+  const [showModalAgregarTipoProceso, setShowModalAgregarTipoProceso] = useState(false);
+  const [showModalEliminarTipoProceso, setShowModalEliminarTipoProceso] = useState(false);
+  const [tipoProcesoAEliminar, setTipoProcesoAEliminar] = useState<TipoProcesoJudicial | null>(null);
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
+
+  // ✅ Estado para conteo dinámico de expedientes por estado (reemplaza casosPorEstado mock)
+  const [conteoDinamico, setConteoDinamico] = useState<Record<string, Record<string, number>>>({
+    'defensa-judicial': {},
+    'juzgamiento': {},
+    'asesoria-juridica': {},
+  });
+
+  // Cargar conteo de expedientes dinámicamente
+  useEffect(() => {
+    const loadExpedientesCounts = async () => {
+      try {
+        // Cargar expedientes de Defensa Judicial
+        const expedientes = await legalService.getExpedientes();
+        const conteoDefensa: Record<string, number> = {};
+        expedientes.forEach((exp: any) => {
+          const etapa = exp.etapaProcesal || exp.etapa || '';
+          conteoDefensa[etapa] = (conteoDefensa[etapa] || 0) + 1;
+        });
+
+        // Cargar consultas jurídicas
+        const consultas = await legalService.getConsultasJuridicas();
+        const conteoAsesoria: Record<string, number> = {};
+
+        // Mapeo de estados de backend a frontend para Asesoría Jurídica
+        const mapEstadoAsesoria: Record<string, string> = {
+          'en_radicacion': 'RADICADA',
+          'asignado': 'RADICADA',
+          'en_analisis': 'ANÁLISIS',
+          'en_revision': 'ANÁLISIS',
+          'respondido': 'RESPUESTA',
+          'cerrado': 'ENVIADA',
+          'vencido': 'RADICADA'
+        };
+
+        consultas.forEach((c: any) => {
+          const estadoBackend = c.estado || 'en_radicacion';
+          const etapaFrontend = mapEstadoAsesoria[estadoBackend] || 'RADICADA';
+          conteoAsesoria[etapaFrontend] = (conteoAsesoria[etapaFrontend] || 0) + 1;
+        });
+
+        // Cargar procesos de juzgamiento
+        const juzgamiento = await legalService.getJuzgamientoProcesos();
+        const conteoJuzgamiento: Record<string, number> = {};
+        juzgamiento.forEach((j: any) => {
+          const etapa = j.etapa || 'E1_AVOCAMIENTO';
+          conteoJuzgamiento[etapa] = (conteoJuzgamiento[etapa] || 0) + 1;
+        });
+
+        setConteoDinamico({
+          'defensa-judicial': conteoDefensa,
+          'juzgamiento': conteoJuzgamiento,
+          'asesoria-juridica': conteoAsesoria,
+        });
+
+        console.log('✅ Conteo dinámico de expedientes cargado:', { conteoDefensa, conteoAsesoria, conteoJuzgamiento });
+      } catch (error) {
+        console.error('Error cargando conteo de expedientes:', error);
+      }
+    };
+
+    loadExpedientesCounts();
+  }, [moduloActivo]);
 
   // ============ FUNCIONES DE ESTADOS ============
 
   const agregarEstado = () => {
+    setShowModalAgregarEstado(true);
+  };
+
+  const confirmarAgregarEstado = () => {
     if (!moduloActual) return;
-    
+
     const nuevoEstado: EstadoKanban = {
       id: `estado-${Date.now()}`,
       nombre: 'Nuevo Estado',
@@ -186,42 +142,63 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: [...m.estados, nuevoEstado] }
         : m
     ));
-    setCambiosPendientes(true);
+    setShowModalAgregarEstado(false);
+
+    toast.success('Estado agregado correctamente', {
+      description: 'Se ha agregado un nuevo estado al tablero Kanban',
+      duration: 3000
+    });
   };
 
-  const eliminarEstado = (estadoId: string) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { ...m, estados: m.estados.filter(e => e.id !== estadoId) }
+  const solicitarEliminarEstado = (estadoId: string) => {
+    const estado = moduloActual?.estados.find(e => e.id === estadoId);
+    if (estado) {
+      setEstadoAEliminar(estado);
+      setShowModalEliminarEstado(true);
+    }
+  };
+
+  const confirmarEliminarEstado = () => {
+    if (!estadoAEliminar) return;
+
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? { ...m, estados: m.estados.filter(e => e.id !== estadoAEliminar.id) }
         : m
     ));
-    setCambiosPendientes(true);
+    setShowModalEliminarEstado(false);
+
+    toast.success('Estado eliminado correctamente', {
+      description: `"${estadoAEliminar.nombre}" ha sido eliminado del tablero Kanban`,
+      duration: 3000
+    });
+
+    setEstadoAEliminar(null);
   };
 
   const actualizarEstado = (estadoId: string, cambios: Partial<EstadoKanban>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            estados: m.estados.map(e => 
-              e.id === estadoId ? { ...e, ...cambios } : e
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          estados: m.estados.map(e =>
+            e.id === estadoId ? { ...e, ...cambios } : e
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ FUNCIONES DE TIEMPOS ============
 
   const agregarTiempo = () => {
     if (!moduloActual) return;
-    
+
     const nuevoTiempo: ConfiguracionTiempo = {
       id: `tiempo-${Date.now()}`,
       tipo: 'Nuevo Término',
@@ -230,106 +207,102 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: [...m.tiempos, nuevoTiempo] }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   const eliminarTiempo = (tiempoId: string) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: m.tiempos.filter(t => t.id !== tiempoId) }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   const actualizarTiempo = (tiempoId: string, cambios: Partial<ConfiguracionTiempo>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiempos: m.tiempos.map(t => 
-              t.id === tiempoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiempos: m.tiempos.map(t =>
+            t.id === tiempoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ FUNCIONES DE TIPOS DE PROCESOS ============
 
   const agregarTipoProceso = () => {
+    setShowModalAgregarTipoProceso(true);
+  };
+
+  const confirmarAgregarTipoProceso = () => {
     if (!moduloActual || !moduloActual.tiposProcesos) return;
-    
+
     const nuevoTipo: TipoProcesoJudicial = {
       id: `tipo-${Date.now()}`,
       nombre: 'Nuevo Tipo de Proceso',
       descripcion: 'Descripción del nuevo tipo de proceso judicial',
+      plazo: 10,
+      alertaDias: 3,
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposProcesos: [...(m.tiposProcesos || []), nuevoTipo] }
         : m
     ));
-    setCambiosPendientes(true);
+    setShowModalAgregarTipoProceso(false);
+
+    toast.success('Tipo de proceso agregado correctamente', {
+      description: 'Se ha agregado un nuevo tipo de proceso judicial',
+      duration: 3000
+    });
   };
 
-  const eliminarTipoProceso = (tipoId: string) => {
-    const tipoAEliminar = moduloActual?.tiposProcesos?.find(t => t.id === tipoId);
-    
-    if (!tipoAEliminar) return;
-
-    // Confirmación antes de eliminar
-    if (confirm(`¿Está seguro de eliminar el tipo de proceso "${tipoAEliminar.nombre}"?\n\nEsta acción no se puede deshacer y afectará los formularios de nueva demanda.`)) {
-      setConfiguraciones(prev => prev.map(m => 
-        m.id === moduloActivo 
-          ? { ...m, tiposProcesos: (m.tiposProcesos || []).filter(t => t.id !== tipoId) }
-          : m
-      ));
-      setCambiosPendientes(true);
-      
-      toast.success('Tipo de proceso eliminado', {
-        description: `"${tipoAEliminar.nombre}" ha sido eliminado correctamente`,
-        duration: 3000
-      });
+  const solicitarEliminarTipoProceso = (tipoId: string) => {
+    const tipo = moduloActual?.tiposProcesos?.find(t => t.id === tipoId);
+    if (tipo) {
+      setTipoProcesoAEliminar(tipo);
+      setShowModalEliminarTipoProceso(true);
     }
+  };
+
+  const confirmarEliminarTipoProceso = () => {
+    if (!tipoProcesoAEliminar) return;
+
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? { ...m, tiposProcesos: (m.tiposProcesos || []).filter(t => t.id !== tipoProcesoAEliminar.id) }
+        : m
+    ));
+    setShowModalEliminarTipoProceso(false);
+
+    toast.success('Tipo de proceso eliminado correctamente', {
+      description: `"${tipoProcesoAEliminar.nombre}" ha sido eliminado de los tipos de procesos judiciales`,
+      duration: 3000
+    });
+
+    setTipoProcesoAEliminar(null);
   };
 
   const actualizarTipoProceso = (tipoId: string, cambios: Partial<TipoProcesoJudicial>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiposProcesos: (m.tiposProcesos || []).map(t => 
-              t.id === tipoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiposProcesos: (m.tiposProcesos || []).map(t =>
+            t.id === tipoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
-  };
-
-  // ============ GUARDAR Y RESTABLECER ============
-
-  const guardarConfiguraciones = () => {
-    // Aquí se guardaría en backend
-    toast.success('Configuraciones guardadas correctamente');
-    setCambiosPendientes(false);
-  };
-
-  const restablecerDefecto = () => {
-    if (confirm('¿Está seguro de restablecer las configuraciones por defecto? Se perderán todos los cambios.')) {
-      setConfiguraciones(configuracionesIniciales);
-      setCambiosPendientes(false);
-      toast.success('Configuraciones restablecidas a valores por defecto');
-    }
   };
 
   // ============ DRAG AND DROP ============
@@ -355,12 +328,11 @@ export function ConfiguracionesSIGL() {
 
     const reorderedEstados = arrayMove(estados, oldIndex, newIndex);
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: reorderedEstados.map((e, i) => ({ ...e, orden: i + 1 })) }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   return (
@@ -385,26 +357,32 @@ export function ConfiguracionesSIGL() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {cambiosPendientes && (
-              <BadgeSIGL variant="warning">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                 <AlertCircle className="w-3 h-3 mr-1" />
                 <span className="hidden sm:inline">Cambios sin guardar</span>
                 <span className="sm:hidden">Sin guardar</span>
-              </BadgeSIGL>
+              </span>
             )}
-            <ButtonSIGL variant="outline" onClick={restablecerDefecto} size="sm">
-              <RotateCcw className="w-4 h-4 sm:mr-2" />
+            <button
+              onClick={restablecerDefecto}
+              className="flex items-center gap-1 sm:gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+            >
+              <RotateCcw className="w-4 h-4" />
               <span className="hidden sm:inline">Restablecer</span>
-            </ButtonSIGL>
-            <ButtonSIGL 
-              variant="default" 
+            </button>
+            <button
               onClick={guardarConfiguraciones}
               disabled={!cambiosPendientes}
-              size="sm"
+              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                background: cambiosPendientes ? 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' : '#9CA3AF',
+                boxShadow: cambiosPendientes ? '0 2px 4px rgba(41, 98, 255, 0.2)' : 'none'
+              }}
             >
-              <Save className="w-4 h-4 sm:mr-2" />
+              <Save className="w-4 h-4" />
               <span className="hidden sm:inline">Guardar Cambios</span>
               <span className="sm:hidden">Guardar</span>
-            </ButtonSIGL>
+            </button>
           </div>
         </div>
       </div>
@@ -422,11 +400,10 @@ export function ConfiguracionesSIGL() {
                 <button
                   key={modulo.id}
                   onClick={() => setModuloActivo(modulo.id)}
-                  className={`flex-shrink-0 lg:w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors whitespace-nowrap lg:whitespace-normal ${
-                    moduloActivo === modulo.id
-                      ? 'bg-blue-50 text-blue-900 font-semibold'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`flex-shrink-0 lg:w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors whitespace-nowrap lg:whitespace-normal ${moduloActivo === modulo.id
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
+                    }`}
                 >
                   <div className="flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4" />
@@ -452,22 +429,32 @@ export function ConfiguracionesSIGL() {
           {moduloActual && (
             <div className="max-w-6xl mx-auto space-y-6">
               {/* Configuración de Estados/Columnas Kanban */}
-              <CardSIGL>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3 sm:p-4 lg:p-6">
                   <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
                     <div>
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                         <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                        Estados / Columnas Kanban
+                        {moduloActivo === 'asesoria-juridica' ? 'Etapas del Proceso' : 'Estados / Columnas Kanban'}
                       </h2>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Define las columnas que aparecerán en el tablero Kanban de {moduloActual.nombre}
+                        {moduloActivo === 'asesoria-juridica'
+                          ? `Define las etapas del proceso de ${moduloActual.nombre}`
+                          : `Define las columnas que aparecerán en el tablero Kanban de ${moduloActual.nombre}`
+                        }
                       </p>
                     </div>
-                    <ButtonSIGL variant="default" size="sm" onClick={agregarEstado}>
-                      <Plus className="w-4 h-4 mr-1 sm:mr-2" />
-                      <span className="text-xs sm:text-sm">Agregar</span>
-                    </ButtonSIGL>
+                    <button
+                      onClick={agregarEstado}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar</span>
+                    </button>
                   </div>
 
                   <DndContext
@@ -481,115 +468,23 @@ export function ConfiguracionesSIGL() {
                     >
                       <div className="space-y-3">
                         {moduloActual.estados.map((estado, index) => (
-                          <EstadoSortable 
-                            key={estado.id} 
-                            estado={estado} 
+                          <EstadoSortable
+                            key={estado.id}
+                            estado={estado}
                             index={index}
                             onUpdate={actualizarEstado}
-                            onDelete={eliminarEstado}
+                            onDelete={solicitarEliminarEstado}
                           />
                         ))}
                       </div>
                     </SortableContext>
                   </DndContext>
                 </div>
-              </CardSIGL>
-
-              {/* Configuración de Tiempos y Términos */}
-              <CardSIGL>
-                <div className="p-3 sm:p-4 lg:p-6">
-                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-                    <div>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                        <Clock className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
-                        Tiempos y Términos
-                      </h2>
-                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Configura los plazos legales y alertas automáticas para {moduloActual.nombre}
-                      </p>
-                    </div>
-                    <ButtonSIGL variant="default" size="sm" onClick={agregarTiempo}>
-                      <Plus className="w-4 h-4 mr-1 sm:mr-2" />
-                      <span className="text-xs sm:text-sm">Agregar</span>
-                    </ButtonSIGL>
-                  </div>
-
-                  <div className="space-y-3">
-                    {moduloActual.tiempos.map((tiempo) => (
-                      <div 
-                        key={tiempo.id}
-                        className="p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        {/* Fila 1: Tipo de Término + Eliminar */}
-                        <div className="flex items-center gap-2 mb-3">
-                          <input
-                            type="text"
-                            value={tiempo.tipo}
-                            onChange={(e) => actualizarTiempo(tiempo.id, { tipo: e.target.value })}
-                            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Tipo de término"
-                          />
-                          <button
-                            onClick={() => eliminarTiempo(tiempo.id)}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Fila 2: Días + Alerta + Activo */}
-                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                          {/* Días */}
-                          <div className="flex items-center gap-1.5 sm:gap-2">
-                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                              Plazo:
-                            </label>
-                            <input
-                              type="number"
-                              value={tiempo.dias}
-                              onChange={(e) => actualizarTiempo(tiempo.id, { dias: parseInt(e.target.value) || 0 })}
-                              className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              min="1"
-                            />
-                            <span className="text-xs sm:text-sm text-gray-600">días</span>
-                          </div>
-
-                          {/* Alerta */}
-                          <div className="flex items-center gap-1.5 sm:gap-2">
-                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                              Alerta:
-                            </label>
-                            <input
-                              type="number"
-                              value={tiempo.alertaDias}
-                              onChange={(e) => actualizarTiempo(tiempo.id, { alertaDias: parseInt(e.target.value) || 0 })}
-                              className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              min="1"
-                            />
-                            <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">días antes</span>
-                            <span className="text-xs text-gray-600 sm:hidden">d.a.</span>
-                          </div>
-
-                          {/* Toggle Activo */}
-                          <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
-                            <input
-                              type="checkbox"
-                              checked={tiempo.activo}
-                              onChange={(e) => actualizarTiempo(tiempo.id, { activo: e.target.checked })}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-xs sm:text-sm text-gray-700">Activo</span>
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardSIGL>
+              </div>
 
               {/* Configuración de Tipos de Procesos Judiciales - SOLO PARA DEFENSA JUDICIAL */}
               {moduloActual.tiposProcesos && moduloActual.tiposProcesos.length > 0 && (
-                <CardSIGL>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
                     <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
                       <div>
@@ -604,7 +499,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarTipoProceso}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -616,7 +511,7 @@ export function ConfiguracionesSIGL() {
 
                     <div className="space-y-3">
                       {moduloActual.tiposProcesos.map((tipo) => (
-                        <div 
+                        <div
                           key={tipo.id}
                           className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                         >
@@ -630,7 +525,7 @@ export function ConfiguracionesSIGL() {
                               placeholder="Nombre del tipo de proceso"
                             />
                             <button
-                              onClick={() => eliminarTipoProceso(tipo.id)}
+                              onClick={() => solicitarEliminarTipoProceso(tipo.id)}
                               className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -648,9 +543,41 @@ export function ConfiguracionesSIGL() {
                             />
                           </div>
 
-                          {/* Fila 3: Toggle Activo */}
-                          <div className="flex items-center justify-end">
-                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                          {/* Fila 3: Plazo + Alerta + Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            {/* Plazo */}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                Plazo:
+                              </label>
+                              <input
+                                type="number"
+                                value={tipo.plazo}
+                                onChange={(e) => actualizarTipoProceso(tipo.id, { plazo: parseInt(e.target.value) || 0 })}
+                                className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                min="1"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-600">días</span>
+                            </div>
+
+                            {/* Alerta */}
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                Alerta:
+                              </label>
+                              <input
+                                type="number"
+                                value={tipo.alertaDias}
+                                onChange={(e) => actualizarTipoProceso(tipo.id, { alertaDias: parseInt(e.target.value) || 0 })}
+                                className="w-14 sm:w-16 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                min="1"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">días antes</span>
+                              <span className="text-xs text-gray-600 sm:hidden">d.a.</span>
+                            </div>
+
+                            {/* Toggle Activo */}
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
                               <input
                                 type="checkbox"
                                 checked={tipo.activo}
@@ -658,7 +585,7 @@ export function ConfiguracionesSIGL() {
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               <span className="text-xs sm:text-sm text-gray-700 font-medium">
-                                {tipo.activo ? 'Activo' : 'Inactivo'}
+                                Activo
                               </span>
                             </label>
                           </div>
@@ -666,11 +593,11 @@ export function ConfiguracionesSIGL() {
                       ))}
                     </div>
                   </div>
-                </CardSIGL>
+                </div>
               )}
 
               {/* Info adicional */}
-              <CardSIGL>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-6 bg-blue-50 border-l-4 border-blue-500">
                   <div className="flex gap-3">
                     <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -687,11 +614,283 @@ export function ConfiguracionesSIGL() {
                     </div>
                   </div>
                 </div>
-              </CardSIGL>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* MODALES DE CONFIRMACIÓN */}
+
+      {/* Modal: Agregar Estado */}
+      {showModalAgregarEstado && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nuevo Estado</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo estado al tablero Kanban de {moduloActual?.nombre}?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarEstado(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo estado con el nombre "Nuevo Estado" que podrá personalizar posteriormente.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarEstado(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarEstado}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Estado
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar Estado */}
+      {showModalEliminarEstado && estadoAEliminar && (() => {
+        // Obtener cantidad de casos asignados al estado (conteo dinámico desde API)
+        const cantidadCasos = conteoDinamico[moduloActivo]?.[estadoAEliminar.id] || 0;
+        const puedeEliminar = cantidadCasos === 0;
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Eliminar Estado / Columna Kanban</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Verificando si es posible eliminar el estado
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowModalEliminarEstado(false)}
+                    className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+
+                {/* Información del estado */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-semibold text-gray-900 mb-2">
+                    Estado: "{estadoAEliminar.nombre}"
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Módulo: {moduloActual?.nombre}
+                  </p>
+                </div>
+
+                {/* Validación de casos asignados */}
+                {!puedeEliminar ? (
+                  // ❌ NO SE PUEDE ELIMINAR - Hay casos asignados
+                  <>
+                    <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-bold text-red-900 mb-2">
+                            ⚠️ No se puede eliminar este estado
+                          </p>
+                          <p className="text-sm text-red-800 mb-3">
+                            Esta columna tiene <strong>{cantidadCasos} {cantidadCasos === 1 ? 'caso' : 'casos'} asignado{cantidadCasos === 1 ? '' : 's'}</strong> actualmente.
+                          </p>
+                          <div className="bg-white border border-red-200 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-red-900 mb-2">
+                              Para poder eliminar este estado debe:
+                            </p>
+                            <ol className="text-xs text-red-800 space-y-1 list-decimal list-inside">
+                              <li>Mover todos los casos a otro estado</li>
+                              <li>Verificar que la columna esté completamente vacía</li>
+                              <li>Intentar eliminar nuevamente</li>
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        onClick={() => setShowModalEliminarEstado(false)}
+                        className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                        style={{
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        Entendido
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  // ✅ SÍ SE PUEDE ELIMINAR - Columna vacía
+                  <>
+                    <div className="bg-green-50 border border-green-300 rounded-lg p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-bold text-green-900 mb-1">
+                            ✓ Estado vacío - Se puede eliminar
+                          </p>
+                          <p className="text-xs text-green-800">
+                            Esta columna no tiene casos asignados. Es seguro eliminarla.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                      <p className="text-sm text-red-800">
+                        <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. El estado "{estadoAEliminar.nombre}" será eliminado permanentemente del tablero Kanban de {moduloActual?.nombre}.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        onClick={() => setShowModalEliminarEstado(false)}
+                        className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={confirmarEliminarEstado}
+                        className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                      >
+                        Eliminar Estado
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal: Agregar Tipo de Proceso */}
+      {showModalAgregarTipoProceso && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Tipo de Proceso</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de proceso judicial?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarTipoProceso(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo tipo de proceso con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarTipoProceso(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarTipoProceso}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar Tipo de Proceso */}
+      {showModalEliminarTipoProceso && tipoProcesoAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Proceso</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de proceso?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarTipoProceso(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Tipo: "{tipoProcesoAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {tipoProcesoAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de nueva demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarTipoProceso(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarTipoProceso}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -717,13 +916,13 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
       ref={setNodeRef}
       style={style}
       className="p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200"
-      {...attributes}
-      {...listeners}
     >
-      {/* Fila 1: Drag + Orden + Nombre + Eliminar (Mobile) */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-0">
-        <GripVertical className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 cursor-move flex-shrink-0" />
-        
+      {/* Fila 1: Drag + Orden + Nombre + Eliminar + Activo */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div {...attributes} {...listeners} className="cursor-move">
+          <GripVertical className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 flex-shrink-0" />
+        </div>
+
         <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
           {index + 1}
         </div>
@@ -736,55 +935,26 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
           placeholder="Nombre del estado"
         />
 
-        <button
-          onClick={() => onDelete(estado.id)}
-          className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Fila 2: Color + Preview + Activo */}
-      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-        {/* Color Picker */}
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={estado.color}
-            onChange={(e) => onUpdate(estado.id, { color: e.target.value })}
-            className="w-8 h-8 sm:w-10 sm:h-10 rounded border border-gray-300 cursor-pointer flex-shrink-0"
-          />
-          <select
-            value={estado.color}
-            onChange={(e) => onUpdate(estado.id, { color: e.target.value })}
-            className="px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {coloresPredefinidos.map(color => (
-              <option key={color.hex} value={color.hex}>
-                {color.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Preview */}
-        <div 
-          className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-white text-xs sm:text-sm font-semibold"
-          style={{ backgroundColor: estado.color }}
-        >
-          Preview
-        </div>
-
         {/* Toggle Activo */}
-        <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+        <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={estado.activo}
             onChange={(e) => onUpdate(estado.id, { activo: e.target.checked })}
             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          <span className="text-xs sm:text-sm text-gray-700">Activo</span>
+          <span className="text-xs sm:text-sm text-gray-700 whitespace-nowrap">Activo</span>
         </label>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(estado.id);
+          }}
+          className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

@@ -30,9 +30,9 @@
     "docx-templates": "^4.15.0",
     "docxtemplater": "^3.67.6",
     "jszip-utils": "^0.1.0",
-    "nodemailer": "^6.9.14",
     "pg": "^8.16.3",
     "pizzip": "^3.2.0",
+    "puppeteer": "^24.34.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.21"

@@ -1,14 +1,48 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { Riesgo, TipoRiesgo, ZonaRiesgo, EtapaRiesgo, EstadoRiesgo } from '../entities/riesgo.entity';
+import { RiesgoHistorial, TipoEventoRiesgo } from '../entities/riesgo-historial.entity';
 
 @Injectable()
 export class RiesgosService {
     constructor(
         @InjectRepository(Riesgo)
         private readonly riesgoRepo: Repository<Riesgo>,
+        @InjectRepository(RiesgoHistorial)
+        private readonly historialRepo: Repository<RiesgoHistorial>,
     ) { }
+
+    // ============================================
+    // HISTORIAL
+    // ============================================
+    async getHistorial(riesgoId: string): Promise<RiesgoHistorial[]> {
+        return this.historialRepo.find({
+            where: { riesgoId },
+            order: { createdAt: 'DESC' }
+        });
+    }
+
+    private async registrarEvento(
+        riesgoId: string,
+        tipoEvento: TipoEventoRiesgo,
+        descripcion: string,
+        campoModificado?: string,
+        valorAnterior?: string,
+        valorNuevo?: string,
+        usuario: string = 'Sistema'
+    ): Promise<void> {
+        const evento = this.historialRepo.create({
+            riesgoId,
+            tipoEvento,
+            descripcion,
+            campoModificado,
+            valorAnterior,
+            valorNuevo,
+            usuario
+        });
+        await this.historialRepo.save(evento);
+    }
 
     // ============================================
     // CRUD BÁSICO
@@ -27,23 +61,67 @@ export class RiesgosService {
     }
 
     async create(data: Partial<Riesgo>): Promise<Riesgo> {
-        // Generar código automático
+        // Generar código automático basado en el último existente
         const year = new Date().getFullYear();
-        const count = await this.riesgoRepo.count();
-        data.codigo = `R-${year}-${String(count + 1).padStart(3, '0')}`;
+        const lastRiesgo = await this.riesgoRepo.findOne({
+            where: { codigo: Like(`R-${year}-%`) },
+            order: { codigo: 'DESC' }
+        });
+
+        let nextNum = 1;
+        if (lastRiesgo && lastRiesgo.codigo) {
+            const parts = lastRiesgo.codigo.split('-');
+            if (parts.length === 3) {
+                const currentNum = parseInt(parts[2], 10);
+                if (!isNaN(currentNum)) {
+                    nextNum = currentNum + 1;
+                }
+            }
+        }
+
+        data.codigo = `R-${year}-${String(nextNum).padStart(3, '0')}`;
 
         // Calcular zona inherente y residual
         data.zonaInherente = this.calcularZona(data.probabilidadInherente || 3, data.impactoInherente || 3);
         data.zonaResidual = this.calcularZona(data.probabilidadResidual || data.probabilidadInherente || 3, data.impactoResidual || data.impactoInherente || 3);
 
         const riesgo = this.riesgoRepo.create(data);
-        return this.riesgoRepo.save(riesgo);
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar evento de creación
+        await this.registrarEvento(
+            saved.id,
+            'CREACION',
+            `Riesgo ${saved.codigo} creado con zona ${saved.zonaResidual}`,
+            undefined,
+            undefined,
+            undefined,
+            data['createdBy'] || 'Sistema'
+        );
+
+        return saved;
     }
 
     async update(id: string, data: Partial<Riesgo>): Promise<Riesgo> {
         const riesgo = await this.findOne(id);
+        const cambiosMatriz: string[] = [];
+
+        // Solo detectar cambios en la MATRIZ de riesgos (los 4 valores de 1-5)
+        if (data.probabilidadInherente !== undefined && data.probabilidadInherente !== riesgo.probabilidadInherente) {
+            cambiosMatriz.push(`probabilidad inherente: ${riesgo.probabilidadInherente} → ${data.probabilidadInherente}`);
+        }
+        if (data.impactoInherente !== undefined && data.impactoInherente !== riesgo.impactoInherente) {
+            cambiosMatriz.push(`impacto inherente: ${riesgo.impactoInherente} → ${data.impactoInherente}`);
+        }
+        if (data.probabilidadResidual !== undefined && data.probabilidadResidual !== riesgo.probabilidadResidual) {
+            cambiosMatriz.push(`probabilidad residual: ${riesgo.probabilidadResidual} → ${data.probabilidadResidual}`);
+        }
+        if (data.impactoResidual !== undefined && data.impactoResidual !== riesgo.impactoResidual) {
+            cambiosMatriz.push(`impacto residual: ${riesgo.impactoResidual} → ${data.impactoResidual}`);
+        }
 
         // Recalcular zonas si cambian probabilidad o impacto
+        const zonaAnterior = riesgo.zonaResidual;
         if (data.probabilidadInherente !== undefined || data.impactoInherente !== undefined) {
             data.zonaInherente = this.calcularZona(
                 data.probabilidadInherente ?? riesgo.probabilidadInherente,
@@ -58,7 +136,35 @@ export class RiesgosService {
         }
 
         Object.assign(riesgo, data);
-        return this.riesgoRepo.save(riesgo);
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar evento de actualización solo si hubo cambios en la matriz
+        if (cambiosMatriz.length > 0) {
+            await this.registrarEvento(
+                id,
+                'ACTUALIZACION',
+                `Matriz actualizada: ${cambiosMatriz.join(', ')}`,
+                cambiosMatriz.length === 1 ? cambiosMatriz[0].split(':')[0] : 'múltiples valores',
+                undefined,
+                undefined,
+                'Sistema'
+            );
+        }
+
+        // Registrar cambio de zona si aplica
+        if (data.zonaResidual && data.zonaResidual !== zonaAnterior) {
+            await this.registrarEvento(
+                id,
+                'CAMBIO_ZONA',
+                `Zona de riesgo cambió de ${zonaAnterior} a ${saved.zonaResidual}`,
+                'zonaResidual',
+                zonaAnterior,
+                saved.zonaResidual,
+                'Sistema'
+            );
+        }
+
+        return saved;
     }
 
     async delete(id: string): Promise<void> {
@@ -71,14 +177,41 @@ export class RiesgosService {
     // ============================================
     async cambiarEtapa(id: string, nuevaEtapa: EtapaRiesgo): Promise<Riesgo> {
         const riesgo = await this.findOne(id);
+        const etapaAnterior = riesgo.etapa;
         riesgo.etapa = nuevaEtapa;
-        return this.riesgoRepo.save(riesgo);
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar cambio de etapa
+        await this.registrarEvento(
+            id,
+            'CAMBIO_ETAPA',
+            `Etapa cambió de ${etapaAnterior} a ${nuevaEtapa}`,
+            'etapa',
+            etapaAnterior,
+            nuevaEtapa,
+            'Sistema'
+        );
+
+        return saved;
     }
 
     async archivar(id: string): Promise<Riesgo> {
         const riesgo = await this.findOne(id);
         riesgo.estado = 'ARCHIVADO';
-        return this.riesgoRepo.save(riesgo);
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar archivado
+        await this.registrarEvento(
+            id,
+            'ARCHIVADO',
+            `Riesgo ${riesgo.codigo} archivado`,
+            'estado',
+            'ACTIVO',
+            'ARCHIVADO',
+            'Sistema'
+        );
+
+        return saved;
     }
 
     async findByProceso(proceso: string): Promise<Riesgo[]> {
@@ -132,3 +265,4 @@ export class RiesgosService {
         return 'BAJO';
     }
 }
+

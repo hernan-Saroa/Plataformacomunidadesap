@@ -9,6 +9,9 @@ import {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Plus,
   Search,
   Users,
@@ -38,6 +41,7 @@ import { useConfirmation } from './ConfirmationModal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
+import { useAuth } from '../../hooks';
 
 // ============================================================================
 // TIPOS
@@ -245,6 +249,9 @@ const ICON_MAP: Record<string, any> = {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Cog
 };
 
@@ -278,6 +285,20 @@ export function RolesAdministrationModulePremium() {
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
   const { confirm, ConfirmationDialog } = useConfirmation();
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
+
+  // Normaliza el rol seleccionado para el modal de edición
+  const selectedRoleForModal = selectedRole
+    ? {
+        id: selectedRole.id,
+        nombre: (selectedRole as any).nombre || selectedRole.name || '',
+        descripcion: (selectedRole as any).descripcion || selectedRole.description || '',
+        icono: (selectedRole as any).icono || selectedRole.icon || 'Shield',
+        color: selectedRole.color || '#003DA5',
+        tipo: ((selectedRole as any).tipo || selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+      }
+    : null;
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -335,6 +356,7 @@ export function RolesAdministrationModulePremium() {
       const newRole = await rolesService.createRole({
         name: roleData.nombre,
         description: roleData.descripcion,
+        code: roleData.codigo,
         icon: roleData.icono,
         color: roleData.color,
         type: 'personalizado',
@@ -366,7 +388,7 @@ export function RolesAdministrationModulePremium() {
     if (!selectedRole) return;
 
     try {
-      await rolesService.updateRole(selectedRole.id, {
+      const updatedRole = await rolesService.updateRole(selectedRole.id, {
         name: roleData.nombre,
         description: roleData.descripcion,
         icon: roleData.icono,
@@ -377,6 +399,7 @@ export function RolesAdministrationModulePremium() {
 
       // Recargar datos
       await loadRoles();
+      setSelectedRole(updatedRole);
 
       toast.success('Rol Actualizado', {
         description: `Los cambios en "${roleData.nombre}" se han guardado`
@@ -607,13 +630,15 @@ export function RolesAdministrationModulePremium() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Rol</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Crear Rol</span>
+          </button>
+        )}
       </motion.div>
 
       {/* Búsqueda y Filtros Premium */}
@@ -1195,13 +1220,13 @@ export function RolesAdministrationModulePremium() {
         onCreateRole={handleCreateRole}
       />
 
-      {selectedRole && (
+      {selectedRoleForModal && (
         <>
           <EditRoleModal
             open={isEditModalOpen}
             onOpenChange={setIsEditModalOpen}
             onEditRole={handleEditRole}
-            role={selectedRole}
+            role={selectedRoleForModal}
           />
 
           <RolePermissionsEditor

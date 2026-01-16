@@ -4,6 +4,7 @@
  * ✅ Responsive mobile-first FUNCIONAL
  * ✅ Colores corporativos ESAP (#003DA5)
  * ✅ Diseño mandatorio 100% igual a Control Disciplinario
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useEffect } from 'react';
@@ -21,7 +22,8 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
 import { legalService } from '../../../../services/api/legal.service';
 import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
@@ -39,6 +41,9 @@ import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 type VistaModulo = 'kanban' | 'lista';
 
 // Tipo para drag and drop
@@ -47,6 +52,9 @@ const ItemTypes = {
 };
 
 export function ModuloDefensaJudicialV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
@@ -56,6 +64,14 @@ export function ModuloDefensaJudicialV3() {
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ✅ Log de configuraciones cargadas
+  useEffect(() => {
+    console.log('🎯 DEFENSA JUDICIAL - Configuraciones centralizadas cargadas:');
+    console.log('   📊 Estados activos:', estadosActivos.length);
+    console.log('   ⚖️ Tipos de procesos activos:', tiposProcesosActivos.length);
+    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
+  }, [estadosActivos, tiposProcesosActivos]);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -80,6 +96,7 @@ export function ModuloDefensaJudicialV3() {
         uuid: exp.id, // Guardar UUID real para operaciones de API
         id: exp.radicado || exp.id, // Usar radicado como ID visible, fallback al UUID
         tipo: exp.tipoProceso || 'declarativo',
+        tipoProceso: exp.tipoProceso || '', // ✅ Agregar explícitamente para filtros
         medioControl: exp.medioControl || 'NRD Art.138',
         jurisdiccion: exp.jurisdiccion || 'Contencioso Administrativo',
         etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
@@ -133,7 +150,7 @@ export function ModuloDefensaJudicialV3() {
     }
   };
 
-  const handleMoverExpediente = async (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => {
+  const handleMoverExpediente = async (expedienteId: string, nuevaEtapa: string) => {
     if (!nuevaEtapa) {
       console.error('❌ Intento de mover expediente a etapa indefinida');
       return;
@@ -151,7 +168,7 @@ export function ModuloDefensaJudicialV3() {
     setExpedientes((prevExpedientes) =>
       prevExpedientes.map((exp) =>
         exp.id === expedienteId
-          ? { ...exp, etapa: nuevaEtapa }
+          ? { ...exp, etapa: nuevaEtapa as any } // Cast as any because ExpedienteJudicial might still have rigid type
           : exp
       )
     );
@@ -192,54 +209,54 @@ export function ModuloDefensaJudicialV3() {
     loadExpedientes();
   }, []);
 
-  // Agrupar expedientes por etapa
-  const expedientesPorEtapa = {
-    NOTIFICADA: expedientes.filter(exp => exp.etapa === 'NOTIFICADA'),
-    CONTESTACIÓN: expedientes.filter(exp => exp.etapa === 'CONTESTACIÓN'),
-    PROBATORIA: expedientes.filter(exp => exp.etapa === 'PROBATORIA'),
-    ALEGATOS: expedientes.filter(exp => exp.etapa === 'ALEGATOS'),
-  };
+  // ✅ Primero aplicar filtros globales (búsqueda, tipo de proceso)
+  const expedientesFiltrados = expedientes.filter(exp => {
+    // Filtro por búsqueda
+    const matchBusqueda = busqueda === '' ||
+      exp.id?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      exp.demandante?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
+      exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
-  // Calcular estadísticas - solo expedientes en las 4 etapas visibles del Kanban
-  const expedientesVisibles = [...expedientesPorEtapa.NOTIFICADA, ...expedientesPorEtapa.CONTESTACIÓN, ...expedientesPorEtapa.PROBATORIA, ...expedientesPorEtapa.ALEGATOS];
+    // Filtro por tipo de proceso
+    const tipoProceso = (exp as any).tipoProceso || exp.tipo || '';
+    const matchTipo = filtroTipo === 'TODOS' || tipoProceso === filtroTipo;
+
+    return matchBusqueda && matchTipo;
+  });
+
+  // Agrupar expedientes filtrados por etapa de forma dinámica
+  const expedientesPorEtapa = estadosActivos.reduce((acc, estado) => {
+    // Si hay filtro de etapa, solo incluir esa etapa
+    if (filtroEtapa !== 'TODAS' && estado.nombre !== filtroEtapa) {
+      acc[estado.id] = [];
+      return acc;
+    }
+
+    acc[estado.id] = expedientesFiltrados.filter(exp => {
+      const stage = exp.etapa ? exp.etapa.toString().toLowerCase().replace(/_/g, ' ') : '';
+      const stateId = estado.id.toLowerCase().replace(/-/g, ' ');
+      const stateName = estado.nombre.toLowerCase();
+
+      return stage === stateId || stage === stateName || exp.etapa === estado.id;
+    });
+    return acc;
+  }, {} as Record<string, ExpedienteJudicial[]>);
+
+  // Calcular estadísticas - solo expedientes en las etapas activas
+  const expedientesVisibles = Object.values(expedientesPorEtapa).flat();
   const totalExpedientes = expedientesVisibles.length;
   const expedientesCriticos = expedientesVisibles.filter(e => e.diasRestantes <= 5).length;
   const expedientesEnTermino = expedientesVisibles.filter(e => e.diasRestantes > 15).length;
 
-  const etapas = [
-    {
-      nombre: 'Notificada',
-      valor: 'NOTIFICADA' as const,
-      color: '#6B7280',
-      icono: <FileCheck className="w-4 h-4 text-gray-600" />,
-      diasEstimados: 10,
-      expedientes: expedientesPorEtapa.NOTIFICADA
-    },
-    {
-      nombre: 'Contestación',
-      valor: 'CONTESTACIÓN' as const,
-      color: '#F59E0B',
-      icono: <Edit className="w-4 h-4 text-amber-600" />,
-      diasEstimados: 30,
-      expedientes: expedientesPorEtapa.CONTESTACIÓN
-    },
-    {
-      nombre: 'Probatoria',
-      valor: 'PROBATORIA' as const,
-      color: '#3B82F6',
-      icono: <Search className="w-4 h-4 text-blue-600" />,
-      diasEstimados: 60,
-      expedientes: expedientesPorEtapa.PROBATORIA
-    },
-    {
-      nombre: 'Alegatos',
-      valor: 'ALEGATOS' as const,
-      color: '#003DA5',
-      icono: <Scale className="w-4 h-4" style={{ color: '#003DA5' }} />,
-      diasEstimados: 20,
-      expedientes: expedientesPorEtapa.ALEGATOS
-    },
-  ];
+  const etapas = estadosActivos.map(estado => ({
+    nombre: estado.nombre,
+    valor: estado.id, // Usamos el ID del estado como valor para mover
+    color: estado.color,
+    icono: <FileText className="w-4 h-4" style={{ color: estado.color }} />, // Icono genérico o mapeado si es posible
+    diasEstimados: 15, // TODO: Mapear desde 'tiempos' si hay relación, o default
+    expedientes: expedientesPorEtapa[estado.id] || []
+  }));
 
   // Handler para guardar nueva demanda
   const handleSaveNuevaDemanda = async (demandaData: NuevaDemandaData) => {
@@ -247,7 +264,7 @@ export function ModuloDefensaJudicialV3() {
       // Mapear datos del formulario al formato del backend
       const expedienteData = {
         radicado: demandaData.numeroRadicado,
-        tipoProceso: demandaData.medioControl,
+        tipoProceso: demandaData.tipoProceso, // ✅ Usar el campo correcto del formulario
         jurisdiccion: 'Contencioso Administrativo',
         demandante: demandaData.demandante,
         demandado: demandaData.demandado || 'ESAP',
@@ -396,11 +413,37 @@ export function ModuloDefensaJudicialV3() {
 
       {/* Filtros */}
       <ModuleFilters
+        searchValue={busqueda}
         onSearchChange={setBusqueda}
-        onEtapaChange={setFiltroEtapa}
-        onTipoChange={setFiltroTipo}
-        etapas={etapas.map(e => e.nombre)}
-        tipos={['TODOS', 'NOTIFICADA', 'CONTESTACIÓN', 'PROBATORIA', 'ALEGATOS']}
+        filters={[
+          {
+            type: 'select',
+            label: 'Etapa Procesal',
+            value: filtroEtapa,
+            onChange: setFiltroEtapa,
+            options: [
+              { value: 'TODAS', label: 'Todas las etapas' },
+              ...etapas.map(e => ({ value: e.nombre, label: e.nombre }))
+            ]
+          },
+          {
+            type: 'select',
+            label: 'Tipo de Proceso',
+            value: filtroTipo,
+            onChange: setFiltroTipo,
+            options: [
+              { value: 'TODOS', label: 'Todos los tipos' },
+              ...tiposProcesosActivos.map(t => ({ value: t.id, label: t.nombre }))
+            ]
+          }
+        ]}
+        totalItems={totalExpedientes}
+        filteredItems={expedientesVisibles.length}
+        onClearFilters={() => {
+          setBusqueda('');
+          setFiltroEtapa('TODAS');
+          setFiltroTipo('TODOS');
+        }}
       />
 
       {/* Tablero Kanban - IGUAL A DISCIPLINARIO */}
@@ -463,7 +506,7 @@ export function ModuloDefensaJudicialV3() {
 interface ColumnaKanbanProps {
   etapa: {
     nombre: string;
-    valor: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
+    valor: string;
     color: string;
     icono: React.ReactNode;
     diasEstimados: number;
@@ -471,7 +514,7 @@ interface ColumnaKanbanProps {
   };
   isMobile: boolean;
   isTablet: boolean;
-  onMoverExpediente: (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => void;
+  onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
   onRefresh?: () => void;
 }
 
@@ -486,6 +529,9 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
 
   const backgroundColor = isOver ? '#F0F7FF' : 'transparent';
   const borderColor = isOver ? '#2962FF' : 'transparent';
+
+  // Cast drop ref to any to avoid React 18 type conflict with React DnD
+  const dropRef = drop as unknown as React.LegacyRef<HTMLDivElement>;
 
   return (
     <motion.div
@@ -520,7 +566,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
 
         {/* Lista de Expedientes */}
         <div
-          ref={drop}
+          ref={dropRef}
           className={`${isMobile ? 'p-2' : 'p-3'} space-y-3 overflow-y-auto`}
           style={{
             minHeight: isMobile ? '400px' : '500px',
@@ -561,8 +607,8 @@ interface TarjetaExpedienteProps {
   expediente: ExpedienteJudicial;
   isMobile: boolean;
   onRefresh?: () => void;
-  onMoverExpediente: (expedienteId: string, nuevaEtapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS') => void;
-  etapaActual: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
+  onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
+  etapaActual: string;
 }
 
 function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
@@ -599,10 +645,13 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
     }),
   });
 
+  // Cast drag ref
+  const dragRef = drag as unknown as React.LegacyRef<HTMLDivElement>;
+
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: 'move' }}>
+    <div ref={dragRef} style={{ opacity, cursor: 'move' }}>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
         <div className="h-1" style={{ background: '#003DA5' }} />
 
@@ -794,29 +843,4 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
       </Card>
     </div>
   );
-
 }
-
-// ==================== COMPONENTE VISTA LISTA ====================
-interface VistaListaProps {
-  expedientes: ExpedienteJudicial[];
-  isMobile: boolean;
-  isTablet: boolean;
-}
-
-function VistaLista({ expedientes, isMobile, isTablet }: VistaListaProps) {
-  return (
-    <div className="space-y-3">
-      {expedientes.map((expediente) => (
-        <TarjetaExpediente
-          key={expediente.id}
-          expediente={expediente}
-          isMobile={isMobile}
-          onMoverExpediente={handleMoverExpediente}
-          etapaActual={expediente.etapa as 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS'}
-        />
-      ))}
-    </div>
-  );
-}
-

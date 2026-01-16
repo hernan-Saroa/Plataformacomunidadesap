@@ -34,8 +34,10 @@ export class JuzgamientoController {
                 abogadoAsignado: exp.abogadoSustanciador,
                 diasRestantes: diasRestantes,
                 diasDescargos: 15,
-                documentos: exp.actuaciones || [],
+                // Merge actuaciones and evidencias for documents list
+                documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
                 actuaciones: exp.actuaciones || [],
+                evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
@@ -90,17 +92,21 @@ export class JuzgamientoController {
             throw new BadRequestException('Expediente no encontrado');
         }
 
-        const contexto = body.tipo === 'EVIDENCIA' ? 'Pruebas' : body.tipo === 'DOCUMENTO' ? 'Documentos' : 'General';
+        const tipoUpper = (body.tipo || 'DOCUMENTO').toUpperCase();
+        // Mapear tipo a tipoActuacion y descripción
+        const esEvidencia = tipoUpper.includes('EVIDENCIA') || tipoUpper === 'PRUEBAS';
+        const contexto = esEvidencia ? 'Pruebas' : tipoUpper === 'OTROS' ? 'Otros Documentos' : 'Documentos';
         const descripcionBase = body.descripcion || file.originalname;
         const descripcionCompleta = `${descripcionBase} (Cargado desde ${contexto})`;
 
         // Create Actuacion as Evidence/Document
+        // tipoActuacion guarda el tipo original para mapeo en frontend
         return this.expedienteService.agregarActuacion(expediente.id, {
-            tipoActuacion: body.tipo || 'DOCUMENTO', // 'EVIDENCIA' or 'DOCUMENTO'
+            tipoActuacion: tipoUpper, // Guardar tipo original: 'OTROS', 'PRUEBAS', 'EVIDENCIA', etc.
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
-            documentoUrl: `http://localhost:3008/legal/files/${file.filename}`, // Ensure absolute URL for frontend
+            documentoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
             usuarioResponsable: 'Usuario Actual' // Mock user for now
         });
     }

@@ -1,6 +1,7 @@
 /**
  * ModuloAsesoriaJuridicaV3 - MOD-03: Asesoría Jurídica
  * DISEÑO DATATABLE PROFESIONAL CON FILTROS AVANZADOS
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -9,7 +10,7 @@ import {
   Scale, FileText, Clock, AlertTriangle, CheckCircle, User, Building,
   Eye, Edit, Plus, Download, Filter, Search, Calendar, TrendingUp,
   Archive, MessageSquare, History, Send, FileCheck, Mail, Columns3, List,
-  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2
+  AlertCircle, FolderOpen, FileQuestion, SortAsc, SortDesc, XCircle, Trash2, Settings
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -29,10 +30,16 @@ import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
+// ✅ Importar configuraciones centralizadas
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
 type VistaModulo = 'tabla' | 'tarjetas';
-type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
+type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema' | 'etapa';
 
 export function ModuloAsesoriaJuridicaV3() {
+  // ✅ Obtener configuraciones desde el Context API
+  const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
@@ -129,6 +136,10 @@ export function ModuloAsesoriaJuridicaV3() {
   };
 
   const mapEstadoToEtapa = (estado: string): string => {
+    // 1. Try to find exact match in configured states (by ID)
+    const exactMatch = estadosActivos.find(e => e.id === estado);
+    if (exactMatch) return exactMatch.nombre.toUpperCase();
+
     const map: Record<string, string> = {
       'en_radicacion': 'RADICADA',
       'asignado': 'ANÁLISIS',
@@ -259,6 +270,9 @@ export function ModuloAsesoriaJuridicaV3() {
           break;
         case 'tema':
           comparacion = a.temaJuridico.localeCompare(b.temaJuridico);
+          break;
+        case 'etapa':
+          comparacion = a.etapa.localeCompare(b.etapa);
           break;
       }
       return direccionOrden === 'asc' ? comparacion : -comparacion;
@@ -410,10 +424,13 @@ export function ModuloAsesoriaJuridicaV3() {
             onChange: setFiltroEtapa,
             options: [
               { value: 'TODAS', label: 'Todas las etapas' },
-              { value: 'RADICADA', label: 'Radicada' },
-              { value: 'ANÁLISIS', label: 'En Análisis' },
-              { value: 'RESPUESTA', label: 'En Respuesta' },
-              { value: 'ENVIADA', label: 'Enviada' }
+              ...estadosActivos.map(estado => ({
+                value: estado.nombre.toUpperCase(), // Assuming mapped strings are UPPERCASE (RADICADA, etc) 
+                // OR better: use ID if we change map logic. 
+                // Current mapEstadoToEtapa returns 'RADICADA', 'ANÁLISIS' etc.
+                // Let's rely on the Configured Name but check casing.
+                label: estado.nombre
+              }))
             ]
           },
           {
@@ -696,6 +713,19 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
             <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">
               <button
                 className="flex items-center gap-1"
+                onClick={() => onOrdenar('etapa')}
+              >
+                Etapa
+                {orden === 'etapa' && (
+                  <span className="text-xs">
+                    {direccionOrden === 'asc' ? <SortAsc className="w-3 h-3" /> : <SortDesc className="w-3 h-3" />}
+                  </span>
+                )}
+              </button>
+            </th>
+            <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">
+              <button
+                className="flex items-center gap-1"
                 onClick={() => onOrdenar('tema')}
               >
                 Tema Jurídico
@@ -727,6 +757,11 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                 >
                   <div className="w-2 h-2 rounded-full bg-white" />
                   {consulta.diasRestantes} días
+                </Badge>
+              </td>
+              <td className="px-4 py-3 text-sm text-gray-500">
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                  {consulta.etapa}
                 </Badge>
               </td>
               <td className="px-4 py-3 text-sm text-gray-500">{consulta.temaJuridico}</td>
