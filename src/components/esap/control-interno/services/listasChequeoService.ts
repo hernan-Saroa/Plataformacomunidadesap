@@ -68,7 +68,6 @@ export async function crearListaChequeo(
 ): Promise<ListaChequeoFrontend | null> {
   try {
     const datosBackend = mapearListaChequeoFrontendABackend(data, tiposAuditoria) as CreateListaChequeoDto;
-    console.log('[ListaChequeo] 📤 Enviando datos al backend:', datosBackend);
     const nuevaLista = await listasChequeoService.create(datosBackend);
     toast.success('✅ Lista de chequeo creada exitosamente');
     return mapearListaChequeoBackendAFrontend(nuevaLista);
@@ -94,7 +93,6 @@ export async function actualizarListaChequeo(
 ): Promise<ListaChequeoFrontend | null> {
   try {
     const datosBackend = mapearListaChequeoFrontendABackend(data, tiposAuditoria);
-    console.log('[ListaChequeo] 📤 Actualizando con datos:', datosBackend);
     const listaActualizada = await listasChequeoService.update(id, datosBackend);
     toast.success('✅ Lista de chequeo actualizada exitosamente');
     return mapearListaChequeoBackendAFrontend(listaActualizada);

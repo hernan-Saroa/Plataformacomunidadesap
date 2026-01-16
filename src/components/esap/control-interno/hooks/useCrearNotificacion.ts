@@ -70,15 +70,6 @@ export function useCrearNotificacion() {
       // Asegurar que usuarioId sea string
       const usuarioIdString = String(params.usuarioId);
       
-      console.log('📤 [NOTIFICACION] Enviando petición DIRECTA de creación:', {
-        usuarioId: usuarioIdString,
-        tipoNotificacion: params.tipoNotificacion,
-        titulo: params.titulo,
-        mensaje: params.mensaje.substring(0, 50) + '...',
-        canal: params.canal || CanalNotificacionEnum.SISTEMA,
-        prioridad: params.prioridad || PrioridadNotificacionEnum.NORMAL,
-      });
-      
       // PETICIÓN DIRECTA SIN PASAR POR EL API WRAPPER
       const token = localStorage.getItem('esap_auth_token');
       const baseURL = 'http://localhost:3007'; // URL directa del servicio
@@ -102,8 +93,6 @@ export function useCrearNotificacion() {
         }),
       });
 
-      console.log('📥 [NOTIFICACION] Status HTTP:', response.status, response.statusText);
-
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ [NOTIFICACION] Error HTTP:', response.status, errorText);
@@ -111,7 +100,6 @@ export function useCrearNotificacion() {
       }
 
       const data = await response.json();
-      console.log('✅ [NOTIFICACION] Notificación creada exitosamente:', data);
 
       return { success: true, data };
     } catch (error) {

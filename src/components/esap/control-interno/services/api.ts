@@ -1106,7 +1106,6 @@ export const notificacionesApi = {
     leida?: boolean;
     prioridad?: string;
   }) => {
-    console.log('[notificacionesApi.obtenerTodas] Llamado con filtros:', filtros);
     const params = new URLSearchParams();
     if (filtros?.estado) params.append('estado', filtros.estado);
     if (filtros?.tipo) params.append('tipo', filtros.tipo);

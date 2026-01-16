@@ -156,10 +156,8 @@ async function cargarAuditorias(filtros?: Partial<AuditoriaFiltros>): Promise<Au
     };
 
     const url = buildUrl(API_CONFIG.endpoints.auditorias, queryParams);
-    console.log('[AuditoriaCambios] 🔗 GET', url);
 
     const data = await fetchWithTimeout<Auditoria[]>(url);
-    console.log(`[AuditoriaCambios] ✅ ${data.length} auditorías cargadas`);
     
     return data;
   } catch (error) {
@@ -176,10 +174,8 @@ async function cargarAuditorias(filtros?: Partial<AuditoriaFiltros>): Promise<Au
 async function cargarEstadisticas(): Promise<AuditoriaEstadisticas | null> {
   try {
     const url = buildUrl(API_CONFIG.endpoints.estadisticas);
-    console.log('[AuditoriaCambios] 🔗 GET', url);
 
     const data = await fetchWithTimeout<AuditoriaEstadisticas>(url);
-    console.log('[AuditoriaCambios] ✅ Estadísticas cargadas');
     
     return data;
   } catch (error) {
@@ -199,7 +195,7 @@ interface AuditoriaEstadisticas {
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function AuditoriaCambiosModule() {
+function AuditoriaCambiosModule() {
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
   const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
@@ -938,6 +934,7 @@ function obtenerColorPrioridad(prioridad: string): string {
   return colores[prioridad] || '#6B7280';
 }
 
+export { AuditoriaCambiosModule };
 export default AuditoriaCambiosModule;
 
 /* ============ DATOS MOCK COMENTADOS ============

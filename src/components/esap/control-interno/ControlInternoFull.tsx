@@ -296,12 +296,6 @@ function MenuDinamicoWrapper({
         !navegacionReciente &&
         puedeAcceder('planes-mejoramiento')) { // ✅ Nueva validación
       
-      console.log('🚀 Navegación automática activada:', {
-        auditoria: auditoriaSeleccionada.codigo,
-        seccionActual: seccionActiva,
-        seccionDestino: 'planes-mejoramiento'
-      });
-      
       setYaNavego(true); // ← Marcar que ya navegó
       onCambiarSeccion('planes-mejoramiento');
       

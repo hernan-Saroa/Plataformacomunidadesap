@@ -235,8 +235,6 @@ export function PlanificacionModuleRediseno() {
 
   // Handler para crear auditoría
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('📝 Nueva auditoría OCIG desde Planeación:', data);
-    
     try {
       // Validar fechas antes de enviar
       if (new Date(data.fechaFin) < new Date(data.fechaInicio)) {
@@ -397,7 +395,6 @@ export function PlanificacionModuleRediseno() {
       }
 
       const auditoriaCreada = response.data;
-      console.log('[handleCrearAuditoria] Auditoría creada:', auditoriaCreada);
 
       // ============ NOTIFICACIONES: Auditoría Creada ============
       // NOTA: Las notificaciones se crean automáticamente en el backend (crearNotificacionesAuditoriaCreada)
@@ -406,8 +403,6 @@ export function PlanificacionModuleRediseno() {
 
       // Crear los hallazgos si hay alguno
       if (data.hallazgos && data.hallazgos.length > 0) {
-        console.log(`[handleCrearAuditoria] Creando ${data.hallazgos.length} hallazgos...`);
-        
         // Mapear tipo del formulario al tipo opcional del backend
         const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
           const mapping: Record<string, 'no-conformidad' | 'observacion' | 'oportunidad-mejora'> = {
@@ -479,13 +474,10 @@ export function PlanificacionModuleRediseno() {
               : undefined,
           };
 
-          console.log('[handleCrearAuditoria] Datos del hallazgo a enviar:', hallazgoData);
-
           try {
             const hallazgoResponse = await hallazgosApi.create(hallazgoData);
             if (hallazgoResponse.success) {
               hallazgosCreados++;
-              console.log('[handleCrearAuditoria] Hallazgo creado exitosamente:', hallazgoResponse.data);
             } else {
               console.error('[handleCrearAuditoria] Error al crear hallazgo:', hallazgoResponse.message);
               console.error('[handleCrearAuditoria] Respuesta completa:', hallazgoResponse);

@@ -75,7 +75,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { auditoriasApi } from './services/api';
+import { auditoriasApi, notificacionesApi } from './services/api';
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -670,16 +670,20 @@ export function ExpedienteAuditoriaCompleto({
   }, [isOpen, auditoriaId]);
 
   // Cargar documentos de la auditoría
+  // Esperar a que la auditoría se cargue primero para tener el valor correcto del backend
   useEffect(() => {
-    if (!isOpen || !auditoriaId) return;
+    if (!isOpen || !auditoriaId || !auditoria.id || auditoria.id === AUDITORIA_EJEMPLO.id) return;
 
     const cargarDocumentos = async () => {
       setLoadingDocumentos(true);
       try {
         const docs = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
         
+        // Validar que docs sea un array
+        const documentosArray = Array.isArray(docs) ? docs : [];
+        
         // Mapear documentos de BD al formato del componente
-        const documentosMapeados: DocumentoExpediente[] = docs.map((doc: any) => ({
+        const documentosMapeados: DocumentoExpediente[] = documentosArray.map((doc: any) => ({
           id: doc.id,
           nombre: doc.nombre || doc.nombreArchivo,
           tipo: doc.tipoDocumento || 'otro',
@@ -694,25 +698,117 @@ export function ExpedienteAuditoriaCompleto({
         setDocumentos(documentosMapeados);
         
         // Actualizar estadísticas de documentos
-        setAuditoria(prev => ({
-          ...prev,
-          estadisticas: {
-            ...prev.estadisticas,
-            documentosCargados: documentosMapeados.length,
-          },
-        }));
-      } catch (error) {
-        console.error('Error al cargar documentos:', error);
-        toast.error('Error al cargar documentos', {
-          description: error instanceof Error ? error.message : 'Error desconocido',
+        // Usar siempre el máximo entre el valor del backend y el de la API
+        // Esto previene que se sobrescriba un valor positivo del backend con 0 de la API
+        setAuditoria(prev => {
+          const cantidadDocumentosAPI = documentosMapeados.length;
+          const valorBackend = prev.estadisticas.documentosCargados;
+          
+          // Siempre usar el máximo entre ambos valores
+          const cantidadFinal = Math.max(valorBackend, cantidadDocumentosAPI);
+          
+          return {
+            ...prev,
+            estadisticas: {
+              ...prev.estadisticas,
+              documentosCargados: cantidadFinal,
+            },
+          };
         });
+      } catch (error) {
+        console.error('[ExpedienteAuditoria] Error al cargar documentos:', error);
+        // No mostrar toast de error para no saturar, solo log en consola
+        // El valor del backend se mantiene
       } finally {
         setLoadingDocumentos(false);
       }
     };
 
     cargarDocumentos();
-  }, [isOpen, auditoriaId]);
+  }, [isOpen, auditoriaId, auditoria.id]);
+
+  // Cargar notificaciones relacionadas con la auditoría
+  // Espera a que los documentos estén cargados para poder relacionar por evidenciaId
+  useEffect(() => {
+    if (!isOpen || !auditoriaId || !user?.id) return;
+
+    const cargarNotificaciones = async () => {
+      try {
+        // Obtener TODAS las notificaciones del sistema para contar las relacionadas con esta auditoría
+        let todasNotificaciones: any[] = [];
+        
+        // Intentar obtener todas las notificaciones del sistema
+        try {
+          const responseTodas = await notificacionesApi.obtenerTodas();
+          if (responseTodas.success && responseTodas.data) {
+            todasNotificaciones = responseTodas.data;
+          }
+        } catch (err) {
+          // Si falla obtenerTodas, intentar obtener todas las notificaciones de todos los usuarios
+          // como fallback, obtener las del usuario actual (pero el backend debería permitir obtenerTodas)
+          console.warn('No se pudieron obtener todas las notificaciones, intentando por usuario:', err);
+          try {
+            const response = await notificacionesApi.obtenerPorUsuario(user.id.toString());
+            if (response.success && response.data) {
+              todasNotificaciones = response.data;
+            }
+          } catch (err2) {
+            console.error('Error al obtener notificaciones:', err2);
+            return;
+          }
+        }
+        
+        if (todasNotificaciones.length === 0) {
+          return;
+        }
+        
+        // Crear Set con IDs de documentos de esta auditoría (usar documentos ya cargados)
+        const documentosIds = new Set(documentos.map(doc => doc.id));
+        
+        // También agregar evidenciaIds si están disponibles en los documentos
+        documentos.forEach(doc => {
+          // Si el documento tiene un ID de evidencia relacionado, agregarlo también
+          if ((doc as any).evidenciaId) {
+            documentosIds.add((doc as any).evidenciaId);
+          }
+        });
+        
+        // Filtrar notificaciones relacionadas con esta auditoría
+        const notificacionesRelacionadas = todasNotificaciones.filter((notif: any) => {
+          // 1. Notificaciones directamente relacionadas con la auditoría
+          if (notif.metadata?.auditoriaId === auditoriaId) {
+            return true;
+          }
+          
+          // 2. Notificaciones relacionadas con documentos de esta auditoría (por evidenciaId)
+          if (notif.metadata?.evidenciaId && documentosIds.has(notif.metadata.evidenciaId)) {
+            return true;
+          }
+          
+          // 3. Notificaciones relacionadas por documentoId (si coincide con algún documento)
+          if (notif.metadata?.documentoId && documentosIds.has(notif.metadata.documentoId)) {
+            return true;
+          }
+          
+          return false;
+        });
+
+        // Actualizar estadísticas de notificaciones
+        setAuditoria(prev => ({
+          ...prev,
+          estadisticas: {
+            ...prev.estadisticas,
+            notificacionesEnviadas: notificacionesRelacionadas.length,
+          },
+        }));
+      } catch (error) {
+        console.error('Error al cargar notificaciones:', error);
+        // No mostrar toast de error para no saturar al usuario
+      }
+    };
+
+    cargarNotificaciones();
+  }, [isOpen, auditoriaId, documentos, auditoria.estadisticas.documentosCargados, user?.id]);
 
   // Generar historial desde cambios en la auditoría y documentos
   useEffect(() => {
