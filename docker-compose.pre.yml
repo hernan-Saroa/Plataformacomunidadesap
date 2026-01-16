@@ -311,6 +311,13 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
 
+      
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
+
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
