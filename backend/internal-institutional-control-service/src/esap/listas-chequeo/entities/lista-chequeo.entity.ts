@@ -31,6 +31,24 @@ export class ListaChequeo {
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: false })
+  tipo: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: false })
+  categoria: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: false })
+  version: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: false })
+  estado: string;
+
+  @Column({ name: 'aplicable_para', type: 'jsonb', nullable: false })
+  aplicablePara: any[];
+
+  @Column({ name: 'created_by', type: 'varchar', length: 255, nullable: false })
+  createdBy: string;
+
   @Column({ name: 'tipo_auditoria_id', type: 'uuid', nullable: true })
   tipoAuditoriaId?: string;
 

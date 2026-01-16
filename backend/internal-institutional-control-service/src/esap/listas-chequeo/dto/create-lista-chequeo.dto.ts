@@ -29,6 +29,29 @@ export class CreateListaChequeoDto {
   descripcion?: string;
 
   @IsOptional()
+  @IsString()
+  tipo?: string;
+
+  @IsOptional()
+  @IsString()
+  categoria?: string;
+
+  @IsOptional()
+  @IsString()
+  version?: string;
+
+  @IsOptional()
+  @IsString()
+  estado?: string;
+
+  @IsOptional()
+  aplicablePara?: any[];
+
+  @IsOptional()
+  @IsString()
+  createdBy?: string;
+
+  @IsOptional()
   @IsUUID()
   tipoAuditoriaId?: string;
 

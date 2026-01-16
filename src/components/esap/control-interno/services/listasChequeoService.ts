@@ -130,11 +130,33 @@ export function mapearListaChequeoFrontendABackend(lista: any): CreateListaChequ
   // Generar código si no existe
   const codigo = lista.codigo || `LC-${lista.nombre.substring(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`;
   
+  // Buscar el tipo de auditoría por nombre para obtener el ID
+  let tipoAuditoriaId: string | undefined = undefined;
+  if (lista.tipoAuditoria) {
+    // Si es un objeto con id, usar el id directamente
+    if (typeof lista.tipoAuditoria === 'object' && lista.tipoAuditoria.id) {
+      tipoAuditoriaId = lista.tipoAuditoria.id;
+    }
+    // Si es un string (nombre), buscar en tiposAuditoria si está disponible
+    else if (typeof lista.tipoAuditoria === 'string' && lista.tiposAuditoria) {
+      const tipoEncontrado = lista.tiposAuditoria.find((t: any) => t.nombre === lista.tipoAuditoria);
+      if (tipoEncontrado) {
+        tipoAuditoriaId = tipoEncontrado.id;
+      }
+    }
+  }
+  
   return {
     codigo,
     nombre: lista.nombre,
-    descripcion: lista.descripcion || undefined,
-    tipoAuditoriaId: lista.tipoAuditoriaId || undefined,
+    descripcion: lista.descripcion || '',
+    tipo: 'cumplimiento', // Valor por defecto requerido
+    categoria: lista.categoria || 'General', // Valor por defecto requerido
+    version: lista.version || '1.0', // Valor por defecto requerido
+    estado: lista.estado || 'activa', // Valor por defecto requerido
+    aplicablePara: lista.aplicablePara || [], // Valor por defecto requerido (JSONB)
+    createdBy: lista.createdBy || 'Sistema', // Valor por defecto requerido
+    tipoAuditoriaId: tipoAuditoriaId || undefined,
     items: (lista.items || []).map((item: ItemChequeo, index: number) => ({
       texto: item.texto,
       categoria: item.categoria || undefined,

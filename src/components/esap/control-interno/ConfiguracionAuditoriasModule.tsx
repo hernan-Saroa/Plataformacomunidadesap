@@ -442,6 +442,7 @@ export function ConfiguracionAuditoriasModule() {
               <SeccionListasChequeo 
                 listas={listas}
                 onActualizar={handleActualizarListas}
+                tiposAuditoria={tipos}
                 cargandoListas={cargandoListas}
               />
             )}
@@ -841,9 +842,10 @@ interface SeccionListasChequeoProps {
   listas: ListaChequeo[];
   onActualizar: (listas: ListaChequeo[]) => void;
   cargandoListas?: boolean;
+  tiposAuditoria: TipoAuditoria[];
 }
 
-function SeccionListasChequeo({ listas, onActualizar, cargandoListas }: SeccionListasChequeoProps) {
+function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAuditoria }: SeccionListasChequeoProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [listaEditando, setListaEditando] = useState<ListaChequeo | null>(null);
   const [modalVistaAbierto, setModalVistaAbierto] = useState(false);
@@ -1004,6 +1006,7 @@ function SeccionListasChequeo({ listas, onActualizar, cargandoListas }: SeccionL
               setModalAbierto(false);
               setListaEditando(null);
             }}
+            tiposAuditoria={tiposAuditoria}
           />
         )}
         {modalVistaAbierto && listaViendo && (
@@ -1028,9 +1031,10 @@ interface ModalListaChequeoProps {
   lista: ListaChequeo | null;
   onGuardar: (lista: ListaChequeo) => void;
   onCerrar: () => void;
+  tiposAuditoria: TipoAuditoria[];
 }
 
-function ModalListaChequeo({ lista, onGuardar, onCerrar }: ModalListaChequeoProps) {
+function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: ModalListaChequeoProps) {
   const [formData, setFormData] = useState<ListaChequeo>(
     lista || {
       id: '',
@@ -1148,10 +1152,12 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar }: ModalListaChequeoProp
                 onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option>Regular</option>
-                <option>Territorial</option>
-                <option>Especial</option>
-                <option>Auditoría Territorial</option>
+                <option value="">Seleccionar tipo...</option>
+                {tiposAuditoria.map((tipo) => (
+                  <option key={tipo.id} value={tipo.nombre}>
+                    {tipo.nombre}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
