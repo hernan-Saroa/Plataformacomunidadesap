@@ -407,6 +407,39 @@ const HISTORIAL_EJEMPLO: EventoHistorial[] = [
   },
 ];
 
+// ============ FUNCIONES HELPER ============
+
+// Función para parsear fechas en formato DD/MM/YYYY
+function parseFechaDDMMYYYY(fechaStr: string): Date {
+  if (!fechaStr) return new Date();
+  
+  const partes = fechaStr.split('/');
+  if (partes.length === 3) {
+    const dia = parseInt(partes[0], 10);
+    const mes = parseInt(partes[1], 10) - 1; // Los meses en JS son 0-indexed
+    const anio = parseInt(partes[2], 10);
+    return new Date(anio, mes, dia);
+  }
+  
+  // Si no es formato DD/MM/YYYY, intentar parsear como fecha ISO
+  return new Date(fechaStr);
+}
+
+// Función para calcular duración en días entre dos fechas
+function calcularDuracionDias(fechaInicio: string | Date | undefined, fechaFin: string | Date | undefined): number | null {
+  if (!fechaInicio || !fechaFin) return null;
+  
+  const inicio = typeof fechaInicio === 'string' && fechaInicio.includes('/')
+    ? parseFechaDDMMYYYY(fechaInicio)
+    : new Date(fechaInicio);
+  const fin = typeof fechaFin === 'string' && fechaFin.includes('/')
+    ? parseFechaDDMMYYYY(fechaFin)
+    : new Date(fechaFin);
+  
+  const diff = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : null;
+}
+
 // ============ COMPONENTE PRINCIPAL ============
 
 interface ExpedienteAuditoriaCompletoProps {
@@ -489,86 +522,131 @@ export function ExpedienteAuditoriaCompleto({
         if (response.success && response.data) {
           const aud = response.data;
           
+          const audAny = aud as any;
+          
+          // Mapear auditor líder - manejar diferentes estructuras del backend
+          let auditorLiderMapeado = {
+            id: '',
+            nombre: '',
+            email: '',
+            foto: undefined as string | undefined,
+          };
+          
+          if (audAny.auditorLider && typeof audAny.auditorLider === 'object') {
+            // Si viene como objeto auditorLider
+            auditorLiderMapeado = {
+              id: audAny.auditorLider.numeroIdentificacion || audAny.auditorLider.id || '',
+              nombre: audAny.auditorLider.nombre || '',
+              email: audAny.auditorLider.email || audAny.auditorLider.correo || '',
+              foto: audAny.auditorLider.foto,
+            };
+          } else if (audAny.auditorLiderNombre) {
+            // Si viene como campos separados
+            auditorLiderMapeado = {
+              id: audAny.auditorLiderId || '',
+              nombre: audAny.auditorLiderNombre,
+              email: audAny.auditorLiderEmail || '',
+              foto: audAny.auditorLiderFoto,
+            };
+          }
+          
           // Mapear datos de BD al formato del componente
           const auditoriaMapeada: Auditoria = {
             id: aud.id,
             codigo: aud.codigo || '',
-            nombre: aud.nombre || '',
-            tipo: (aud.tipo || 'Sede') as TipoAuditoria,
-            estado: (aud.estadoKanban?.toLowerCase() || aud.fase?.toLowerCase() || 'planeacion') as EstadoAuditoria,
-            areaAuditable: aud.territorial || aud.areaAuditable || '',
-            procesoNombre: aud.procesoAuditado || aud.procesoNombre || '',
-            nivelRiesgo: (aud.riesgoKanban || aud.nivelRiesgo || 'Medio') as NivelRiesgo,
+            nombre: audAny.nombre || audAny.titulo || '',
+            tipo: (audAny.tipo || 'Sede') as TipoAuditoria,
+            estado: (audAny.estadoKanban?.toLowerCase() || audAny.fase?.toLowerCase() || audAny.estado?.toLowerCase() || 'planeacion') as EstadoAuditoria,
+            areaAuditable: audAny.territorial || audAny.areaAuditable || '',
+            procesoNombre: audAny.procesoAuditado || audAny.procesoNombre || '',
+            nivelRiesgo: (audAny.riesgoKanban || audAny.riesgo || audAny.nivelRiesgo || 'Medio') as NivelRiesgo,
             responsableArea: {
-              id: aud.responsableAreaId || '',
-              nombre: aud.responsableAreaNombre || '',
-              cargo: aud.responsableAreaCargo || '',
-              email: aud.responsableAreaEmail || '',
-              telefono: aud.responsableAreaTelefono,
+              id: audAny.responsableAreaId || '',
+              nombre: audAny.responsableAreaNombre || '',
+              cargo: audAny.responsableAreaCargo || '',
+              email: audAny.responsableAreaEmail || '',
+              telefono: audAny.responsableAreaTelefono,
             },
-            auditorLider: {
-              id: aud.auditorLiderId || '',
-              nombre: aud.auditorLiderNombre || '',
-              email: aud.auditorLiderEmail || '',
-              foto: aud.auditorLiderFoto,
-            },
-            equipoAuditores: aud.equipoAuditores?.map((eq: any) => ({
-              id: eq.id || '',
-              nombre: eq.nombre || '',
-              rol: eq.rol || '',
-              email: eq.email || '',
-              foto: eq.foto,
-            })) || [],
+            auditorLider: auditorLiderMapeado,
+            equipoAuditores: Array.isArray(audAny.equipoAuditores) 
+              ? audAny.equipoAuditores.map((eq: any) => {
+                  // Si es un string, crear objeto básico
+                  if (typeof eq === 'string') {
+                    return {
+                      id: '',
+                      nombre: eq,
+                      rol: 'Auditor',
+                      email: '',
+                      foto: undefined,
+                    };
+                  }
+                  // Si es un objeto, mapear normalmente
+                  return {
+                    id: eq.id || '',
+                    nombre: eq.nombre || '',
+                    rol: eq.rol || 'Auditor',
+                    email: eq.email || eq.correo || '',
+                    foto: eq.foto,
+                  };
+                })
+              : [],
             cronograma: {
-              fechaCreacion: aud.fechaCreacion ? new Date(aud.fechaCreacion) : new Date(),
-              fechaInicio: aud.fechaInicio ? new Date(aud.fechaInicio) : new Date(),
-              fechaFin: aud.fechaFin ? new Date(aud.fechaFin) : new Date(),
-              fechaFinReal: aud.fechaFinReal ? new Date(aud.fechaFinReal) : undefined,
-              duracionDias: aud.duracionDias || 30,
-              diasTranscurridos: aud.diasTranscurridos || 0,
+              fechaCreacion: audAny.fechaCreacion ? (typeof audAny.fechaCreacion === 'string' && audAny.fechaCreacion.includes('/') 
+                ? parseFechaDDMMYYYY(audAny.fechaCreacion) 
+                : new Date(audAny.fechaCreacion)) : new Date(),
+              fechaInicio: audAny.fechaInicio ? (typeof audAny.fechaInicio === 'string' && audAny.fechaInicio.includes('/') 
+                ? parseFechaDDMMYYYY(audAny.fechaInicio) 
+                : new Date(audAny.fechaInicio)) : new Date(),
+              fechaFin: audAny.fechaFin ? (typeof audAny.fechaFin === 'string' && audAny.fechaFin.includes('/') 
+                ? parseFechaDDMMYYYY(audAny.fechaFin) 
+                : new Date(audAny.fechaFin)) : new Date(),
+              fechaFinReal: audAny.fechaFinReal ? (typeof audAny.fechaFinReal === 'string' && audAny.fechaFinReal.includes('/') 
+                ? parseFechaDDMMYYYY(audAny.fechaFinReal) 
+                : new Date(audAny.fechaFinReal)) : undefined,
+              duracionDias: audAny.duracionDias || calcularDuracionDias(audAny.fechaInicio, audAny.fechaFin) || 30,
+              diasTranscurridos: audAny.diasTranscurridos || 0,
             },
             progreso: {
               // El progreso se calculará dinámicamente basado en actividades completadas
               // Por ahora usamos el valor del backend como fallback
-              general: aud.progreso || 0,
-              planeacion: aud.progresoPlaneacion || 0,
-              ejecucion: aud.progresoEjecucion || 0,
-              comunicacion: aud.progresoComunicacion || 0,
+              general: audAny.progreso || 0,
+              planeacion: audAny.progresoPlaneacion || 0,
+              ejecucion: audAny.progresoEjecucion || 0,
+              comunicacion: audAny.progresoComunicacion || 0,
             },
             estadisticas: {
-              totalHallazgos: aud.hallazgos || 0,
-              hallazgosCriticos: aud.hallazgosCriticos || 0,
-              hallazgosMayores: aud.hallazgosMayores || 0,
-              hallazgosMenores: aud.hallazgosMenores || 0,
-              documentosCargados: 0, // Se actualizará al cargar documentos
-              notificacionesEnviadas: aud.notificacionesEnviadas || 0,
+              totalHallazgos: audAny.hallazgos || 0,
+              hallazgosCriticos: audAny.hallazgosCriticos || 0,
+              hallazgosMayores: audAny.hallazgosMayores || 0,
+              hallazgosMenores: audAny.hallazgosMenores || 0,
+              documentosCargados: audAny.documentos || 0, // Usar el valor del backend como inicial
+              notificacionesEnviadas: audAny.notificacionesEnviadas || 0,
             },
             fechasClave: {
-              planeacionInicio: aud.fechaPlaneacionInicio ? new Date(aud.fechaPlaneacionInicio) : undefined,
-              planeacionFin: aud.fechaPlaneacionFin ? new Date(aud.fechaPlaneacionFin) : undefined,
-              ejecucionInicio: aud.fechaEjecucionInicio ? new Date(aud.fechaEjecucionInicio) : undefined,
-              ejecucionFin: aud.fechaEjecucionFin ? new Date(aud.fechaEjecucionFin) : undefined,
-              comunicacionInicio: aud.fechaComunicacionInicio ? new Date(aud.fechaComunicacionInicio) : undefined,
-              comunicacionFin: aud.fechaComunicacionFin ? new Date(aud.fechaComunicacionFin) : undefined,
-              informePreliminar: aud.fechaInformePreliminar ? new Date(aud.fechaInformePreliminar) : undefined,
-              informeFinal: aud.fechaInformeFinal ? new Date(aud.fechaInformeFinal) : undefined,
+              planeacionInicio: audAny.fechaPlaneacionInicio ? new Date(audAny.fechaPlaneacionInicio) : undefined,
+              planeacionFin: audAny.fechaPlaneacionFin ? new Date(audAny.fechaPlaneacionFin) : undefined,
+              ejecucionInicio: audAny.fechaEjecucionInicio ? new Date(audAny.fechaEjecucionInicio) : undefined,
+              ejecucionFin: audAny.fechaEjecucionFin ? new Date(audAny.fechaEjecucionFin) : undefined,
+              comunicacionInicio: audAny.fechaComunicacionInicio ? new Date(audAny.fechaComunicacionInicio) : undefined,
+              comunicacionFin: audAny.fechaComunicacionFin ? new Date(audAny.fechaComunicacionFin) : undefined,
+              informePreliminar: audAny.fechaInformePreliminar ? new Date(audAny.fechaInformePreliminar) : undefined,
+              informeFinal: audAny.fechaInformeFinal ? new Date(audAny.fechaInformeFinal) : undefined,
             },
             metadata: {
-              creadoPor: aud.creadoPor || '',
-              fechaCreacion: aud.fechaCreacion ? new Date(aud.fechaCreacion) : new Date(),
-              ultimaModificacion: aud.updatedAt ? new Date(aud.updatedAt) : new Date(),
-              modificadoPor: aud.actualizadoPor || '',
-              version: aud.version || 1,
-              checklistCompletados: aud.checklistCompletados || {},
+              creadoPor: audAny.creadoPor || '',
+              fechaCreacion: audAny.fechaCreacion ? new Date(audAny.fechaCreacion) : new Date(),
+              ultimaModificacion: audAny.updatedAt ? new Date(audAny.updatedAt) : new Date(),
+              modificadoPor: audAny.actualizadoPor || '',
+              version: audAny.version || 1,
+              checklistCompletados: audAny.checklistCompletados || {},
             },
           };
           
           setAuditoria(auditoriaMapeada);
           
           // Cargar estado de checkboxes si existe (actualizar el estado que usan los tabs)
-          console.log('[Expediente] ChecklistCompletados desde BD:', aud.checklistCompletados);
-          if (aud.checklistCompletados && typeof aud.checklistCompletados === 'object') {
-            setChecklistCompletados(aud.checklistCompletados);
+          if (audAny.checklistCompletados && typeof audAny.checklistCompletados === 'object') {
+            setChecklistCompletados(audAny.checklistCompletados);
           } else {
             // Si no hay datos guardados, inicializar con objeto vacío
             setChecklistCompletados({});
@@ -702,11 +780,24 @@ export function ExpedienteAuditoriaCompleto({
     return Math.max(0, diff);
   }, [auditoria.cronograma.fechaFin]);
 
+  // Calcular días transcurridos basado en fecha actual vs fecha inicio
+  const diasTranscurridosCalculados = useMemo(() => {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const inicio = new Date(auditoria.cronograma.fechaInicio);
+    inicio.setHours(0, 0, 0, 0);
+    
+    if (hoy < inicio) return 0;
+    
+    const diff = Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+    return Math.min(diff, auditoria.cronograma.duracionDias);
+  }, [auditoria.cronograma.fechaInicio, auditoria.cronograma.duracionDias]);
+
   const progresoTiempo = useMemo(() => {
     return Math.round(
-      (auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100
+      (diasTranscurridosCalculados / auditoria.cronograma.duracionDias) * 100
     );
-  }, [auditoria.cronograma]);
+  }, [diasTranscurridosCalculados, auditoria.cronograma.duracionDias]);
 
   // Función helper para filtrar items no deseados
   const filtrarItemsNoDeseados = (items: any[]) => {
@@ -828,6 +919,15 @@ export function ExpedienteAuditoriaCompleto({
         tipoMime: doc.tipoMime, // Incluir tipo MIME para determinar si es previsualizable
       }));
       setDocumentos(documentosMapeados);
+      
+      // Actualizar estadísticas de documentos
+      setAuditoria(prev => ({
+        ...prev,
+        estadisticas: {
+          ...prev.estadisticas,
+          documentosCargados: documentosMapeados.length,
+        },
+      }));
       
       // ============ NOTIFICACIONES: Documento Subido ============
       if (documentoCompleto?.id && auditoria.codigo && user?.id) {
@@ -1111,6 +1211,8 @@ export function ExpedienteAuditoriaCompleto({
                   <TabGeneral 
                     auditoria={auditoria} 
                     progreso={progresoMostrar}
+                    diasTranscurridos={diasTranscurridosCalculados}
+                    progresoTiempo={progresoTiempo}
                   />
                 </TabsContent>
 
@@ -1206,21 +1308,21 @@ export function ExpedienteAuditoriaCompleto({
 // TAB 1: GENERAL
 function TabGeneral({ 
   auditoria, 
-  progreso 
+  progreso,
+  diasTranscurridos,
+  progresoTiempo
 }: { 
   auditoria: Auditoria;
   progreso: { general: number; planeacion: number; ejecucion: number; comunicacion: number };
+  diasTranscurridos: number;
+  progresoTiempo: number;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-h-[calc(100vh-28rem)] overflow-y-auto pr-2">
       {/* Resumen ejecutivo */}
       <CardSIGL>
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg text-gray-900">Resumen Ejecutivo</h3>
-          <ButtonSIGL variant="ghost" size="sm">
-            <Edit2 className="w-4 h-4 mr-2" />
-            Editar
-          </ButtonSIGL>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1286,32 +1388,55 @@ function TabGeneral({
             </div>
           </div>
 
-          {/* Columna 3: Equipo auditor */}
+          {/* Columna 3: Auditor Líder y Equipo auditor */}
           <div className="space-y-4">
             <label className="text-xs text-gray-500 uppercase tracking-wide">
-              Equipo Auditor
+              Auditor Líder
             </label>
-            <div className="space-y-3">
-              {/* Auditor Líder */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Award className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs text-blue-700 uppercase tracking-wide">
-                    Auditor Líder
-                  </span>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              {auditoria.auditorLider.nombre ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Award className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 truncate font-semibold">
+                      {auditoria.auditorLider.nombre}
+                    </p>
+                    {auditoria.auditorLider.email && (
+                      <p className="text-xs text-gray-500 mt-1">{auditoria.auditorLider.email}</p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-gray-900">{auditoria.auditorLider.nombre}</p>
-                <p className="text-xs text-gray-500 mt-1">{auditoria.auditorLider.email}</p>
-              </div>
-
-              {/* Equipo */}
-              {auditoria.equipoAuditores.map((auditor) => (
-                <div key={auditor.id} className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-900">{auditor.nombre}</p>
-                  <p className="text-xs text-gray-500">{auditor.rol}</p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                    <Award className="w-6 h-6 text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-500 italic">
+                      No asignado
+                    </p>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
+
+            {auditoria.equipoAuditores.length > 0 && (
+              <>
+                <label className="text-xs text-gray-500 uppercase tracking-wide">
+                  Equipo Auditor
+                </label>
+                <div className="space-y-3">
+                  {auditoria.equipoAuditores.map((auditor) => (
+                    <div key={auditor.id} className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-sm text-gray-900">{auditor.nombre}</p>
+                      <p className="text-xs text-gray-500">{auditor.rol}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </CardSIGL>
@@ -1373,7 +1498,7 @@ function TabGeneral({
               </span>
             </div>
             <p className="text-lg text-gray-900">
-              {auditoria.cronograma.diasTranscurridos} / {auditoria.cronograma.duracionDias}
+              {diasTranscurridos} / {auditoria.cronograma.duracionDias}
             </p>
           </div>
         </div>
@@ -1383,19 +1508,14 @@ function TabGeneral({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-700">Avance temporal</span>
             <span className="text-sm text-gray-900">
-              {Math.round(
-                (auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100
-              )}
-              %
+              {progresoTiempo}%
             </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full transition-all"
               style={{
-                width: `${
-                  (auditoria.cronograma.diasTranscurridos / auditoria.cronograma.duracionDias) * 100
-                }%`,
+                width: `${progresoTiempo}%`,
               }}
             />
           </div>

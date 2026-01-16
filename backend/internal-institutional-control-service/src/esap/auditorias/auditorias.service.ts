@@ -273,14 +273,81 @@ export class AuditoriasService {
   async findOne(id: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id },
+      relations: ['objetivos', 'equipoAuditores'],
     });
 
     if (!auditoria) {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
     }
 
+    // Obtener información de personas desde auth.personas
+    let auditorLider: any | undefined;
+    let auditorAsignado: any | undefined;
+
+    if (auditoria.auditorLiderId) {
+      try {
+        const lider = await this.auditoriaRepository.query(
+          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+           FROM auth.personas 
+           WHERE id_tercero = $1`,
+          [auditoria.auditorLiderId]
+        );
+        if (lider && lider.length > 0 && lider[0]) {
+          const p = lider[0];
+          const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          auditorLider = {
+            nombre: nombreCompleto,
+            cargo: 'Auditor Líder',
+            iniciales,
+            tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+            numeroIdentificacion: p.num_identificacion || '',
+          };
+        }
+      } catch (error) {
+        console.error(`Error al obtener auditor líder ${auditoria.auditorLiderId}:`, error);
+        // Continuar sin auditor líder si hay error
+      }
+    }
+
+    if (auditoria.auditorAsignadoId) {
+      try {
+        const asignado = await this.auditoriaRepository.query(
+          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+           FROM auth.personas 
+           WHERE id_tercero = $1`,
+          [auditoria.auditorAsignadoId]
+        );
+        if (asignado && asignado.length > 0 && asignado[0]) {
+          const p = asignado[0];
+          const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
+          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          auditorAsignado = {
+            nombre: nombreCompleto,
+            cargo: 'Auditor',
+            iniciales,
+            tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+            numeroIdentificacion: p.num_identificacion || '',
+          };
+        }
+      } catch (error) {
+        console.error(`Error al obtener auditor asignado ${auditoria.auditorAsignadoId}:`, error);
+        // Continuar sin auditor asignado si hay error
+      }
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
-    return this.serializeAuditoria(auditoria) as any;
+    const serialized = this.serializeAuditoria(auditoria) as any;
+    
+    // Agregar objetos de personas si existen
+    if (auditorLider) {
+      serialized.auditorLider = auditorLider;
+    }
+    if (auditorAsignado) {
+      serialized.auditorAsignado = auditorAsignado;
+    }
+
+    return serialized;
   }
 
   /**
