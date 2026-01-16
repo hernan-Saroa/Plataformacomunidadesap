@@ -24,7 +24,7 @@ import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
-import { buildApiUrl, getPublicBaseUrl } from '../../config/environment';
+import { getPublicBaseUrl } from '../../config/environment';
 import { certificadosService } from '../../services/api/certificados.service';
 
 interface CertificadoDetallePanelProps {
@@ -382,101 +382,32 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }, 800);
   };
 
-  const handleEnviarEmail = () => {
+  const handleEnviarEmail = async () => {
     if (isSendingEmail) return;
-    if (!certificado.empleado.email) {
+    if (!certificado.empleado.email || certificado.empleado.email === 'N/A') {
       toast.error('No hay un correo registrado para este empleado');
       return;
     }
     setIsSendingEmail(true);
     toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
-    setAutoPDFAction('email');
-    setShowPDFViewer(true);
-  };
 
-  const enviarCertificadoPorEmail = async (base64: string, fileName: string) => {
     try {
-      const url = buildApiUrl('notificaciones', '/api/v1/emails/send-with-attachment');
-      const subject = `Certificado Laboral ESAP - ${certificado.consecutivo}`;
-      const text = `Adjuntamos tu certificado laboral ${certificado.consecutivo}.`;
-      const html = `
-        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                Certificados ESAP
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Certificado laboral
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Hola ${certificado.empleado.nombre}, adjuntamos tu certificado laboral solicitado.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-                Certificado: <strong>${certificado.consecutivo}</strong>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                ESAP - Escuela Superior de Administración Pública
-              </td>
-            </tr>
-          </table>
-        </div>
-      `;
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: certificado.empleado.email,
-          subject,
-          text,
-          html,
-          attachmentName: fileName,
-          attachmentBase64: base64,
-          attachmentContentType: 'application/pdf'
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(errorText || 'No se pudo enviar el correo');
-      }
-
+      const response = await certificadosService.laborales.reenviar(certificado.id);
       toast.success('Correo reenviado', {
         id: 'send-certificate-email',
-        description: `Certificado enviado a ${certificado.empleado.email}`,
-        duration: 3000
+        description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
+        duration: 3000,
       });
     } catch (error: any) {
       toast.error('No se pudo reenviar el certificado', {
         id: 'send-certificate-email',
         description: error?.message || 'Intenta nuevamente',
-        duration: 5000
+        duration: 5000,
       });
     } finally {
       setIsSendingEmail(false);
       setAutoPDFAction(null);
-      setShowPDFViewer(false);
     }
-  };
-
-  const handleEmailError = () => {
-    toast.error('No se pudo generar el PDF', {
-      id: 'send-certificate-email',
-      description: 'Intenta nuevamente',
-      duration: 5000
-    });
-    setIsSendingEmail(false);
-    setAutoPDFAction(null);
-    setShowPDFViewer(false);
   };
 
   const handleImprimir = () => {
@@ -913,10 +844,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
             autoAction={autoPDFAction || undefined}
             hiddenMode={!!autoPDFAction}
             certificado={certificado}
-            onEmailReady={({ base64, fileName }) => {
-              void enviarCertificadoPorEmail(base64, fileName);
-            }}
-            onEmailError={handleEmailError}
           />
 
           {/* Modal Código QR */}
