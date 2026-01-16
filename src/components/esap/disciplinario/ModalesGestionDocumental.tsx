@@ -846,17 +846,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAbrirVisorAuto(auto, false);
+                            setVisorDocumento({ show: true, documento: auto });
                           }}
                           title="Ver documento"
-                          disabled={cargandoProceso}
                           style={{ borderColor: '#003DA5', color: '#003DA5' }}
                         >
-                          {cargandoProceso ? (
-                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
-                          ) : (
-                            <Eye className="w-3.5 h-3.5" />
-                          )}
+                          <Eye className="w-3.5 h-3.5" />
                         </Button>
                         <Button
                           type="button"
