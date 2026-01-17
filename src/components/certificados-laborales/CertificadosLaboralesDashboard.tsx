@@ -46,6 +46,7 @@ interface CertificadoLaboral {
   observations?: string;
   department?: string;
   department_parent?: string;
+  department_son?: string;
   campus?: string;
   technical_bonus?: number;
   empleado: {
@@ -153,20 +154,21 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         certificateHash: cert.verification_code,
         qrCode: cert.verification_code,
         position_location: cert.position_location || cert.positionLocation,
-        observations: cert.observations,
+        observations: cert.observations || cert.request?.observations,
         department: cert.department,
         department_parent: cert.department_parent || cert.departmentParent,
+        department_son: cert.department_son || cert.departmentSon,
         campus: cert.campus,
         technical_bonus: cert.technical_bonus,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
           cargo: cert.position_category,
-          dependencia: cert.department || '',
+          dependencia: cert.department_son || cert.departmentSon || 'Registro hijo',
           dependenciaPadre: cert.department_parent || cert.departmentParent || '',
           tipoVinculacion: cert.career_category,
           fechaVinculacion: cert.hiring_date,
-          grado: cert.position_location || '',
+          grado: cert.department || '',
           salario: Number(cert.monthly_salary),
           email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
         },
@@ -839,12 +841,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Dependencia Hijo */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.empleado.dependencia}</p>
+                          <p className="text-sm text-gray-900">{cert.empleado.dependencia || 'Registro hijo'}</p>
                         </td>
 
                         {/* Grado */}
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-900">{cert.observations || '-'}</p>
+                          <p className="text-sm text-gray-900">{cert.empleado.grado || '-'}</p>
                         </td>
 
                         {/* Fecha Solicitud */}

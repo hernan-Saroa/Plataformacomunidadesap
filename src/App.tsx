@@ -520,8 +520,7 @@ export default function App() {
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
           : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-          : hasControlInternoRoles ? 'control-interno'
-          : 'users-persons';
+          : 'control-interno';
           const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
           : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'

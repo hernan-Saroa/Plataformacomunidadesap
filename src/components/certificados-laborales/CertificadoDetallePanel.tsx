@@ -49,6 +49,8 @@ interface CertificadoDetallePanelProps {
     tipoSolicitud?: 'AUTOSERVICIO' | 'MANUAL';
     fechaSolicitud: string;
     fechaGeneracion: string;
+    position_location?: string;
+    campus?: string;
     solicitante?: {
       nombre: string;
       tipo: 'autoservicio' | 'manual';
@@ -67,6 +69,13 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
   const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+  const ubicacionCargo =
+    certificado.position_location ||
+    certificado.campus ||
+    certificado.empleado.dependencia ||
+    certificado.empleado.dependenciaPadre ||
+    '-';
+  const gradoTexto = certificado.empleado.grado || '-';
 
   // Helper para formatear fechas de forma segura
   const parseDateOnly = (fechaStr: string) => {
@@ -570,7 +579,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Grado */}
+                    {/* Fecha Vinculación y Ubicación */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -583,10 +592,31 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Ubicación
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {ubicacionCargo}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Grado y Correo */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Grado
                         </label>
                         <p className="text-sm text-gray-900">
-                          {certificado.empleado.grado}
+                          {gradoTexto}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Correo Electrónico
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.email}
                         </p>
                       </div>
                     </div>
@@ -608,12 +638,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.dependencia}
+                          {certificado.empleado.dependencia || 'Registro hijo'}
                         </p>
                       </div>
                     </div>
 
-                    {/* Salario y Correo */}
+                    {/* Salario */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -622,15 +652,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5 text-green-600" />
                           ${certificado.empleado.salario.toLocaleString('es-CO')} COP
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Correo Electrónico
-                        </label>
-                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.email}
                         </p>
                       </div>
                     </div>
