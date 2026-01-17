@@ -705,12 +705,24 @@ export class GraduationCertificatesService {
     let candidates = graduates;
 
     if (options.lastNameNormalized) {
-      const lastNameMatches = graduates.filter((graduate) =>
+      const lastNameMatches = candidates.filter((graduate) =>
         this.matchesLastName(graduate.fullName, options.lastNameNormalized || ''),
       );
-      if (lastNameMatches.length) {
-        candidates = lastNameMatches;
+      if (!lastNameMatches.length) {
+        return null;
       }
+      candidates = lastNameMatches;
+    }
+
+    if (options.gradDate) {
+      const gradDateMatches = candidates.filter(
+        (graduate) =>
+          this.normalizeDateString(graduate.graduationDate) === options.gradDate,
+      );
+      if (!gradDateMatches.length) {
+        return null;
+      }
+      candidates = gradDateMatches;
     }
 
     const scored = candidates.map((graduate) => {

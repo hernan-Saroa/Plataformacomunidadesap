@@ -186,6 +186,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return isDateOnly ? `${value}T00:00:00` : value;
   };
 
+  const normalizePhone = (value?: string) =>
+    (value || '').replace(/\D+/g, '').slice(0, 10);
+
   const generateDiplomaNumber = () => {
     const stamp = new Date();
     const year = stamp.getFullYear();
@@ -441,7 +444,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         fullName: graduate.fullName || prev.fullName,
         idNumber: graduate.idNumber || prev.idNumber,
         email: graduate.email || '',
-        phone: graduate.phone || '',
+        phone: normalizePhone(graduate.phone || ''),
         campus: graduate.campus || prev.campus,
         seccionalName: graduate.seccionalName || '',
         programName: graduate.programName || prev.programName,
@@ -466,13 +469,68 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleSaveCertificate = async () => {
     if (!selectedCertificate) return;
-    if (!editCertificateForm.fullName || !editCertificateForm.idNumber) {
-      toast.error('Nombre y documento son obligatorios');
+    const trimmedFullName = editCertificateForm.fullName.trim();
+    const trimmedIdNumber = editCertificateForm.idNumber.trim();
+    const trimmedEmail = editCertificateForm.email.trim();
+    const trimmedProgramName = editCertificateForm.programName.trim();
+    const trimmedProgramType = editCertificateForm.programType.trim();
+    const trimmedDegreeTitle = editCertificateForm.degreeTitle.trim();
+    const trimmedGraduationDate = editCertificateForm.graduationDate.trim();
+    const trimmedCampus = editCertificateForm.campus.trim();
+    const trimmedSeccionalName = editCertificateForm.seccionalName.trim();
+    const rawPhoneDigits = editCertificateForm.phone.replace(/\D+/g, '');
+    const phoneDigits = normalizePhone(editCertificateForm.phone);
+
+    if (!trimmedFullName) {
+      toast.error('El nombre completo es obligatorio');
       return;
     }
-    if (!editCertificateForm.programName || (!isExistingGraduate && !editCertificateForm.graduationDate)) {
-      toast.error('Programa y fecha de graduación son obligatorios');
+    if (!trimmedEmail) {
+      toast.error('El email es obligatorio');
       return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error('El email no tiene un formato valido');
+      return;
+    }
+    if (!rawPhoneDigits) {
+      toast.error('El telefono es obligatorio');
+      return;
+    }
+    if (rawPhoneDigits.length > 10) {
+      toast.error('El telefono no puede superar 10 digitos');
+      return;
+    }
+    if (!trimmedProgramName) {
+      toast.error('El programa es obligatorio');
+      return;
+    }
+    if (!trimmedProgramType) {
+      toast.error('El tipo de programa es obligatorio');
+      return;
+    }
+    if (!trimmedDegreeTitle) {
+      toast.error('El titulo es obligatorio');
+      return;
+    }
+    if (!trimmedCampus) {
+      toast.error('La sede es obligatoria');
+      return;
+    }
+    if (!trimmedSeccionalName) {
+      toast.error('La seccional es obligatoria');
+      return;
+    }
+    if (!isExistingGraduate) {
+      if (!trimmedIdNumber) {
+        toast.error('El documento es obligatorio');
+        return;
+      }
+      if (!trimmedGraduationDate) {
+        toast.error('La fecha de graduacion es obligatoria');
+        return;
+      }
     }
 
     setIsSavingGraduate(true);
@@ -482,6 +540,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const actaNumber = editCertificateForm.actaNumber || generateActaNumber();
       const nextForm = {
         ...editCertificateForm,
+        fullName: trimmedFullName,
+        idNumber: trimmedIdNumber,
+        email: trimmedEmail,
+        phone: phoneDigits,
+        programName: trimmedProgramName,
+        programType: trimmedProgramType,
+        degreeTitle: trimmedDegreeTitle,
+        graduationDate: trimmedGraduationDate,
+        campus: trimmedCampus,
+        seccionalName: trimmedSeccionalName,
         diplomaNumber,
         actaNumber,
       };
@@ -1866,7 +1934,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-full-name">Nombre completo</Label>
+                <Label htmlFor="edit-full-name">
+                  Nombre completo
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <Input
                   id="edit-full-name"
                   value={editCertificateForm.fullName}
@@ -1875,11 +1946,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   }
                   placeholder="Nombre completo"
                   disabled={isLoadingGraduate}
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-id-number">Documento</Label>
+                <Label htmlFor="edit-id-number">
+                  Documento
+                  {!isExistingGraduate && <span className="text-red-500"> *</span>}
+                </Label>
                 <Input
                   id="edit-id-number"
                   value={editCertificateForm.idNumber}
@@ -1888,11 +1963,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   }
                   placeholder="Numero de documento"
                   disabled={isLoadingGraduate || isExistingGraduate}
+                  required={!isExistingGraduate}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
+                <Label htmlFor="edit-email">
+                  Email
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <Input
                   id="edit-email"
                   type="email"
@@ -1902,24 +1981,36 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   }
                   placeholder="correo@ejemplo.com"
                   disabled={isLoadingGraduate}
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-phone">Telefono</Label>
+                <Label htmlFor="edit-phone">
+                  Telefono
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <Input
                   id="edit-phone"
                   value={editCertificateForm.phone}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, phone: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const digitsOnly = normalizePhone(e.target.value);
+                    setEditCertificateForm({ ...editCertificateForm, phone: digitsOnly });
+                  }}
                   placeholder="+57 300 1234567"
                   disabled={isLoadingGraduate}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={10}
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-program">Programa</Label>
+                <Label htmlFor="edit-program">
+                  Programa
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <select
                   id="edit-program"
                   value={editCertificateForm.programName}
@@ -1929,6 +2020,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                   style={{ borderColor: '#D1D5DB' }}
                   disabled={isLoadingGraduate}
+                  required
                 >
                   <option value="">Seleccionar programa</option>
                   {programNameOptions.map((program) => (
@@ -1938,7 +2030,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-program-type">Tipo de programa</Label>
+                <Label htmlFor="edit-program-type">
+                  Tipo de programa
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <select
                   id="edit-program-type"
                   value={editCertificateForm.programType}
@@ -1948,6 +2043,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                   style={{ borderColor: '#D1D5DB' }}
                   disabled={isLoadingGraduate}
+                  required
                 >
                   <option value="">Seleccionar tipo</option>
                   {programTypeOptions.map((programType) => (
@@ -1957,7 +2053,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-degree-title">Titulo</Label>
+                <Label htmlFor="edit-degree-title">
+                  Titulo
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <select
                   id="edit-degree-title"
                   value={editCertificateForm.degreeTitle}
@@ -1967,6 +2066,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                   style={{ borderColor: '#D1D5DB' }}
                   disabled={isLoadingGraduate}
+                  required
                 >
                   <option value="">Seleccionar titulo</option>
                   {degreeTitleOptions.map((title) => (
@@ -1976,7 +2076,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-graduation-date">Fecha de graduacion</Label>
+                <Label htmlFor="edit-graduation-date">
+                  Fecha de graduacion
+                  {!isExistingGraduate && <span className="text-red-500"> *</span>}
+                </Label>
                 <Input
                   id="edit-graduation-date"
                   type="date"
@@ -1985,6 +2088,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     setEditCertificateForm({ ...editCertificateForm, graduationDate: e.target.value })
                   }
                   disabled={isLoadingGraduate || isExistingGraduate}
+                  required={!isExistingGraduate}
                 />
               </div>
 
@@ -2015,7 +2119,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-campus">Sede</Label>
+                <Label htmlFor="edit-campus">
+                  Sede
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <select
                   id="edit-campus"
                   value={editCertificateForm.campus}
@@ -2025,6 +2132,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                   style={{ borderColor: '#D1D5DB' }}
                   disabled={isLoadingGraduate}
+                  required
                 >
                   <option value="">Seleccionar sede</option>
                   {sedesOptions.map((sede) => (
@@ -2034,7 +2142,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-seccional">Seccional</Label>
+                <Label htmlFor="edit-seccional">
+                  Seccional
+                  <span className="text-red-500"> *</span>
+                </Label>
                 <select
                   id="edit-seccional"
                   value={editCertificateForm.seccionalName}
@@ -2044,6 +2155,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                   style={{ borderColor: '#D1D5DB' }}
                   disabled={isLoadingGraduate}
+                  required
                 >
                   <option value="">Seleccionar seccional</option>
                   {seccionalesOptions.map((seccional) => (

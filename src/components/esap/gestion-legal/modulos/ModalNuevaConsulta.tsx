@@ -47,6 +47,40 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
     prioridad: 'MEDIA'
   });
   const [enviando, setEnviando] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // ✅ Helpers de validación de formato
+  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  // ✅ Handler con filtros de formato
+  const handleInputChange = (field: keyof NuevaConsultaData, value: string) => {
+    let filteredValue = value;
+
+    switch (field) {
+      case 'funcionarioSolicitante':
+      case 'cargo':
+        // Solo letras y espacios - usar helper (igual que NuevaDemanda)
+        filteredValue = onlyLetters(value);
+        break;
+      case 'emailSolicitante':
+        // Validar email en tiempo real (mostrar error si es inválido)
+        if (value && !isValidEmail(value)) {
+          setErrors(prev => ({ ...prev, emailSolicitante: 'Formato inválido (ej: usuario@dominio.com)' }));
+        } else {
+          setErrors(prev => ({ ...prev, emailSolicitante: '' }));
+        }
+        filteredValue = value;
+        break;
+      default:
+        filteredValue = value;
+    }
+
+    setFormData(prev => ({ ...prev, [field]: filteredValue }));
+    if (field !== 'emailSolicitante' && errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +96,16 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
     }
     if (!formData.consulta?.trim()) {
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar la consulta jurídica' });
+      return;
+    }
+    // ✅ Validación de formato de email (OBLIGATORIO)
+    if (!formData.emailSolicitante?.trim()) {
+      toast.error('⚠️ Error de validación', { description: 'Debe ingresar el correo electrónico' });
+      return;
+    }
+    if (!isValidEmail(formData.emailSolicitante)) {
+      setErrors({ emailSolicitante: 'El correo debe tener formato válido (ej: usuario@dominio.com)' });
+      toast.error('⚠️ Error de validación', { description: 'El correo debe contener @ y un dominio válido (.com, .co, etc.)' });
       return;
     }
 
@@ -171,7 +215,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                   </Label>
                   <Select
                     value={formData.temaJuridico}
-                    onValueChange={(value) => setFormData({ ...formData, temaJuridico: value as TemaJuridico })}
+                    onValueChange={(value: string) => setFormData({ ...formData, temaJuridico: value as TemaJuridico })}
                   >
                     <SelectTrigger id="temaJuridico">
                       <SelectValue />
@@ -193,7 +237,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                   </Label>
                   <Select
                     value={formData.prioridad}
-                    onValueChange={(value) => setFormData({ ...formData, prioridad: value as PrioridadConsulta })}
+                    onValueChange={(value: string) => setFormData({ ...formData, prioridad: value as PrioridadConsulta })}
                   >
                     <SelectTrigger id="prioridad">
                       <SelectValue />
@@ -242,7 +286,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                       id="funcionario"
                       placeholder="Nombre completo del funcionario"
                       value={formData.funcionarioSolicitante || ''}
-                      onChange={(e) => setFormData({ ...formData, funcionarioSolicitante: e.target.value })}
+                      onChange={(e) => handleInputChange('funcionarioSolicitante', e.target.value)}
                       required
                     />
                   </div>
@@ -256,9 +300,13 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                       type="email"
                       placeholder="correo@esap.edu.co"
                       value={formData.emailSolicitante || ''}
-                      onChange={(e) => setFormData({ ...formData, emailSolicitante: e.target.value })}
+                      onChange={(e) => handleInputChange('emailSolicitante', e.target.value)}
+                      className={errors.emailSolicitante ? 'border-red-500' : ''}
                       required
                     />
+                    {errors.emailSolicitante && (
+                      <p className="text-xs text-red-600 mt-1">{errors.emailSolicitante}</p>
+                    )}
                   </div>
                 </div>
 
@@ -270,7 +318,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                     id="cargo"
                     placeholder="Ej: Coordinador, Profesional Especializado..."
                     value={formData.cargo || ''}
-                    onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                    onChange={(e) => handleInputChange('cargo', e.target.value)}
                   />
                 </div>
               </div>
