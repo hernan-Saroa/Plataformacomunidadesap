@@ -75,9 +75,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { controlInternoService } from '../../../services/api/controlInternoService';
-import { auditoriasApi, notificacionesApi } from './services/api';
+import { auditoriasApi, notificacionesApi, listasChequeoApi } from './services/api';
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../../config/environment';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -469,18 +470,24 @@ export function ExpedienteAuditoriaCompleto({
   // Estado para listas de chequeo
   const [listasChequeo, setListasChequeo] = useState<any[]>([]);
   const [loadingListasChequeo, setLoadingListasChequeo] = useState(false);
-    // Fetch de listas de chequeo desde backend
+    // Fetch de listas de chequeo desde backend usando el servicio
     useEffect(() => {
       if (!isOpen) return;
       setLoadingListasChequeo(true);
-      fetch('http://localhost:3007/listas-chequeo')
-        .then(res => res.ok ? res.json() : Promise.reject('Error al obtener listas de chequeo'))
-        .then(data => {
-          setListasChequeo(Array.isArray(data) ? data : []);
+      listasChequeoApi.getAll()
+        .then(response => {
+          if (response.success && response.data) {
+            setListasChequeo(Array.isArray(response.data) ? response.data : []);
+          } else {
+            console.error('Error al obtener listas de chequeo:', response.error);
+            toast.error(response.error || 'Error al cargar listas de chequeo');
+            setListasChequeo([]);
+          }
         })
         .catch(err => {
           console.error('Error al cargar listas de chequeo:', err);
           toast.error('Error al cargar listas de chequeo');
+          setListasChequeo([]);
         })
         .finally(() => setLoadingListasChequeo(false));
     }, [isOpen]);
@@ -2251,16 +2258,12 @@ function TabDocumentacion({
 
   // Construir URL base de la API (usando la misma lógica que el servicio)
   const getApiBaseUrl = () => {
-    // Usar la misma configuración que controlInternoService
-    const API_MODE = import.meta.env.VITE_API_MODE || 'gateway';
-    let baseUrl: string;
-    
+    // Usar las funciones de environment.ts para mantener consistencia
     if (API_MODE === 'gateway') {
-      baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const baseUrl = getServiceUrl('control-institucional');
       return `${baseUrl}/control-institucional/api/v1`;
     } else {
-      baseUrl = 'http://localhost:3007';
-      return baseUrl;
+      return MICROSERVICE_URLS['control-institucional'];
     }
   };
 
