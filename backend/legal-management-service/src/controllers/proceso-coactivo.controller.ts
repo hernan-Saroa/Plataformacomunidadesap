@@ -96,9 +96,11 @@ export class ProcesoCoactivoController {
                 ],
             }),
         ) file: Express.Multer.File,
+        @Body() body: { tipo?: string; descripcion?: string },
     ) {
         try {
-            return await this.procesoCoactivoService.addAdjunto(id, file);
+            const tipo = body?.tipo || 'DOCUMENTO';
+            return await this.procesoCoactivoService.addAdjunto(id, file, tipo);
         } catch (error) {
             console.error('Error subiendo adjunto:', error);
             throw new HttpException('Error al subir documento', HttpStatus.INTERNAL_SERVER_ERROR);

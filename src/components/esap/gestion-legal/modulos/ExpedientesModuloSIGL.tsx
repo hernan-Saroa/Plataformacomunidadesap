@@ -282,11 +282,12 @@ export function ExpedientesModuloSIGL() {
       setCargando(true);
 
       // Fetch concurrent from ALL legal services
-      const [legalRes, juzgamientoRes, asesoriaRes, ocRes] = await Promise.allSettled([
+      const [legalRes, juzgamientoRes, asesoriaRes, ocRes, coactivosRes] = await Promise.allSettled([
         legalService.getExpedientes(),
         legalService.getJuzgamientoProcesos(),
         legalService.getConsultasJuridicas(),
-        legalService.getRequerimientosOC()
+        legalService.getRequerimientosOC(),
+        legalService.getProcesosCoactivos()
       ]);
 
       const nuevosExpedientes: Expediente[] = [];
@@ -517,7 +518,52 @@ export function ExpedientesModuloSIGL() {
         });
       }
 
-      // PROCESOS_COACTIVOS: Pendiente de implementación
+      // 5. Procesar PROCESOS COACTIVOS
+      if (coactivosRes.status === 'fulfilled') {
+        const procesosCoactivos = coactivosRes.value;
+        for (const proc of procesosCoactivos) {
+          let docsExp: Documento[] = [];
+          try {
+            // Cargar adjuntos del proceso coactivo
+            const adjuntos = await legalService.getCoactivoAdjuntos(proc.id);
+            docsExp = (Array.isArray(adjuntos) ? adjuntos : []).map((d: any) => {
+              // Usar tipo del backend directamente si es válido, sino usar mapeo
+              let docTipo = d.tipo?.toUpperCase() || '';
+              const tiposValidos = ['DEMANDA', 'CONTESTACION', 'EVIDENCIAS', 'PRUEBAS', 'SENTENCIAS', 'TUTELAS', 'RECURSOS', 'CONCEPTOS', 'ACTAS', 'NOTIFICACIONES', 'OFICIOS', 'OTROS', 'DOCUMENTO'];
+              if (!tiposValidos.includes(docTipo)) {
+                docTipo = mapearTipoDocumento(d.nombreOriginal || '', docTipo);
+              }
+              if (docTipo === 'DOCUMENTO') docTipo = 'OTROS';
+
+              return {
+                id: d.id,
+                nombre: d.nombreOriginal || d.nombre || 'Documento sin nombre',
+                tipo: docTipo as TipoDocumento,
+                tipoArchivo: d.extension?.toUpperCase() || d.mimeType?.split('/')[1]?.toUpperCase() || 'PDF',
+                tamanio: d.tamano ? `${(d.tamano / 1024).toFixed(0)} KB` : 'N/A',
+                fechaCreacion: d.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+                autor: d.subidoPor || 'Usuario',
+                url: normalizarDocUrl(d.archivoUrl || d.url || (d.nombreArchivo ? `/files/${d.nombreArchivo}` : ''))
+              };
+            });
+          } catch (error) {
+            console.warn(`Error cargando adjuntos coactivo ${proc.id}`, error);
+          }
+
+          nuevosExpedientes.push({
+            id: proc.id,
+            radicado: proc.radicado || proc.proceso?.substring(0, 10) || proc.id.substring(0, 8).toUpperCase(),
+            nombreProceso: `Coactivo - ${proc.deudor || proc.titulo || 'Sin deudor'}`,
+            tipoProceso: 'PROCESOS_COACTIVOS',
+            fechaInicio: proc.fechaInicio?.split('T')[0] || proc.createdAt?.split('T')[0],
+            fechaActualizacion: proc.updatedAt?.split('T')[0],
+            estado: mapEstado(proc.estado || 'ACTIVO'),
+            responsable: proc.abogado || proc.funcionario || 'No asignado',
+            totalDocumentos: docsExp.length,
+            documentos: docsExp
+          });
+        }
+      }
 
       setExpedientes(nuevosExpedientes);
 
@@ -613,7 +659,13 @@ export function ExpedientesModuloSIGL() {
             formData.append('tipoDocumento', tipoId);
             await legalService.uploadDocumentoConsulta(expediente.id, formData);
           } else if (expediente.tipoProceso === 'PROCESOS_COACTIVOS') {
-            throw new Error('Módulo Coactivos no implementado');
+            // Carga para Procesos Coactivos
+            await legalService.uploadCoactivoAdjunto(
+              expediente.id,
+              file,
+              tipoId,
+              `Cargado desde Expedientes Electrónicos`
+            );
           }
 
           // Recargar expedientes para ver el nuevo documento

@@ -81,6 +81,7 @@ export function ModuloTerminosInformesV3() {
         id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
         etapa: t.estado as any,
         tipoInforme: t.origenModulo,
+        moduloOrigen: t.origenModulo, // Add this for filter compatibility
         enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
