@@ -138,6 +138,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
   };
 
   const handleChange = (field: string, value: any) => {
+    // ✅ Filtro de solo letras y espacios para responsable
+    if (field === 'responsable') {
+      value = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -509,8 +513,8 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                             className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                           />
                           <span className={`text-xs font-bold px-2 py-0.5 rounded ${control.efectividad >= 70 ? 'bg-green-100 text-green-700' :
-                              control.efectividad >= 40 ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-red-100 text-red-700'
+                            control.efectividad >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
                             }`}>
                             {control.efectividad}%
                           </span>

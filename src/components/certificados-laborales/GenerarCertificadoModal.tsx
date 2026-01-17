@@ -152,11 +152,11 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           nombre: cert.full_name,
           documento: cert.id_number,
           cargo: cert.position_category,
-          dependencia: cert.department || '',
+          dependencia: cert.department_son || cert.departmentSon || 'Registro hijo',
           dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
           tipoVinculacion: cert.career_category,
           fechaVinculacion: cert.hiring_date,
-          grado: cert.position_location || '',
+          grado: cert.department || '',
           salario: Number(cert.monthly_salary),
           email: cert.email || cert.request?.email || 'No disponible'
         },

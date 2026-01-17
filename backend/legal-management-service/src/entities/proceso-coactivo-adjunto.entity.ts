@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { ProcesoCoactivo } from './proceso-coactivo.entity';
 
-@Entity('procesos_coactivos_adjuntos')
+@Entity({ name: 'procesos_coactivos_adjuntos', schema: 'legal_management' })
 export class ProcesoCoactivoAdjunto {
     @PrimaryGeneratedColumn('uuid')
     id: string;
