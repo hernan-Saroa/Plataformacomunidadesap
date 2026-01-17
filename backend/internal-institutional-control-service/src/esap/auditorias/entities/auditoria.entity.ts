@@ -17,14 +17,9 @@ import { AuditoriaEspecialInfo } from './auditoria-especial-info.entity';
 import { CriterioAuditoria } from './criterio-auditoria.entity';
 
 export enum TipoAuditoria {
-  GESTION = 'Gestión',
-  CONTROL_INTERNO = 'Control Interno',
-  ACADEMICA = 'Académica',
-  RRHH = 'RRHH',
-  FINANCIERA = 'Financiera',
-  TI = 'TI',
-  CUMPLIMIENTO = 'Cumplimiento',
-  OPERACIONAL = 'Operacional',
+  REGULAR = 'Regular',
+  TERRITORIAL = 'Territorial',
+  ESPECIAL = 'Especial',
 }
 
 export enum FaseAuditoria {
@@ -190,15 +185,15 @@ export class Auditoria {
   @Column({ name: 'actividades_pendientes', type: 'integer', default: 0 })
   actividadesPendientes: number;
 
-  // Foreign Keys a auth.personas
+  // Foreign Keys a auth.personas (ID_TERCERO es NUMERIC/BIGINT, no UUID)
   @Column({ name: 'auditor_lider_id', type: 'bigint', nullable: true })
-  auditorLiderId?: number;
+  auditorLiderId?: number | null;
 
   @Column({ name: 'auditor_asignado_id', type: 'bigint', nullable: true })
-  auditorAsignadoId?: number;
+  auditorAsignadoId?: number | null;
 
   @Column({ name: 'supervisor_asignado_id', type: 'bigint', nullable: true })
-  supervisorAsignadoId?: number;
+  supervisorAsignadoId?: number | null;
 
   // Campos adicionales del formulario
   @Column({ type: 'text', nullable: true })

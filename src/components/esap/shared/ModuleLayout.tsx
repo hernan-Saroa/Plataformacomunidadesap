@@ -20,6 +20,7 @@ export interface MenuItem {
   icon: ReactNode;
   badge?: number;
   color?: string;
+  visible?: boolean; // Si es false, no se muestra en el menú (por defecto true)
 }
 
 interface ModuleLayoutProps {
@@ -392,7 +393,7 @@ export function ModuleLayout({
       </motion.aside>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 overflow-hidden flex flex-col w-full">
+      <main className="flex-1 flex flex-col w-full overflow-y-auto">
         {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
         {isMobile && (
           <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
@@ -409,8 +410,8 @@ export function ModuleLayout({
         )}
 
         {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-4 md:p-5 lg:p-6 h-full">
+        <div className="flex-1">
+          <div className="p-3 sm:p-4 md:p-5 lg:p-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}
@@ -418,7 +419,6 @@ export function ModuleLayout({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className="h-full"
               >
                 {children}
               </motion.div>

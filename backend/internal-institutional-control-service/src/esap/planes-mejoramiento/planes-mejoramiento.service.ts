@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import {
   PlanMejoramiento,
   PlanMejoramientoEstado,
@@ -12,15 +12,19 @@ import {
 } from './entities/accion-correctiva.entity';
 import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
+import { EventoTimeline, TipoEventoTimeline } from './entities/evento-timeline.entity';
 import { CreatePlanMejoramientoDto } from './dto/create-plan-mejoramiento.dto';
 import { UpdatePlanMejoramientoDto } from './dto/update-plan-mejoramiento.dto';
 import { CreateAccionDto } from './dto/create-accion.dto';
 import { UpdateAccionDto } from './dto/update-accion.dto';
 import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
+import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -33,12 +37,16 @@ export class PlanesMejoramientoService {
     private readonly seguimientoRepository: Repository<SeguimientoTrimestral>,
     @InjectRepository(RegistroSeguimiento)
     private readonly registroRepository: Repository<RegistroSeguimiento>,
+    @InjectRepository(EventoTimeline)
+    private readonly eventoTimelineRepository: Repository<EventoTimeline>,
     @InjectRepository(Hallazgo)
     private readonly hallazgoRepository: Repository<Hallazgo>,
     @InjectRepository(Auditoria)
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(Aprobacion)
     private readonly aprobacionRepository: Repository<Aprobacion>,
+    private readonly notificacionesService: NotificacionesService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -294,12 +302,42 @@ export class PlanesMejoramientoService {
     const codigo = await this.generarCodigo();
 
     // Resolver hallazgo
-    let hallazgoId: string | null = createDto.hallazgoId || null;
-    if (!hallazgoId && createDto.hallazgoCodigo) {
+    let hallazgoId: string | null = null;
+    
+    if (createDto.hallazgoId) {
+      // Verificar si es un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = uuidRegex.test(createDto.hallazgoId);
+      
+      if (isUUID) {
+        // Si es un UUID, usarlo directamente
+        hallazgoId = createDto.hallazgoId;
+        console.log(`[PlanesMejoramientoService] HallazgoId es UUID, usando directamente: ${hallazgoId}`);
+      } else {
+        // Si no es un UUID, buscar el hallazgo por código
+        console.log(`[PlanesMejoramientoService] Buscando hallazgo por código: "${createDto.hallazgoId}"`);
+        const hallazgo = await this.hallazgoRepository.findOne({
+          where: { codigo: createDto.hallazgoId },
+        });
+        if (hallazgo) {
+          hallazgoId = hallazgo.id;
+          console.log(`[PlanesMejoramientoService] Hallazgo encontrado: ${hallazgo.id} (código: ${hallazgo.codigo})`);
+        } else {
+          console.warn(`[PlanesMejoramientoService] No se encontró hallazgo con código: "${createDto.hallazgoId}"`);
+        }
+      }
+    } else if (createDto.hallazgoCodigo) {
+      // Si se proporciona hallazgoCodigo, buscar por código
+      console.log(`[PlanesMejoramientoService] Buscando hallazgo por código (hallazgoCodigo): "${createDto.hallazgoCodigo}"`);
       const hallazgo = await this.hallazgoRepository.findOne({
         where: { codigo: createDto.hallazgoCodigo },
       });
-      hallazgoId = hallazgo?.id ?? null;
+      if (hallazgo) {
+        hallazgoId = hallazgo.id;
+        console.log(`[PlanesMejoramientoService] Hallazgo encontrado: ${hallazgo.id} (código: ${hallazgo.codigo})`);
+      } else {
+        console.warn(`[PlanesMejoramientoService] No se encontró hallazgo con código: "${createDto.hallazgoCodigo}"`);
+      }
     }
 
     // Resolver auditoría
@@ -329,6 +367,8 @@ export class PlanesMejoramientoService {
 
     const savedPlan = await this.planRepository.save(plan);
 
+    console.log(`[PlanesMejoramientoService.create] Plan creado exitosamente: ${savedPlan.codigo} (ID: ${savedPlan.id})`);
+
     // Crear acciones si se proporcionaron
     if (createDto.acciones && createDto.acciones.length > 0) {
       const acciones = createDto.acciones.map((accionDto) =>
@@ -349,6 +389,16 @@ export class PlanesMejoramientoService {
       );
 
       await this.accionRepository.save(acciones);
+      console.log(`[PlanesMejoramientoService.create] ${acciones.length} acción(es) creada(s) para el plan ${savedPlan.codigo}`);
+    }
+
+    // Crear notificaciones después de guardar el plan
+    try {
+      await this.crearNotificacionesPlanCreado(savedPlan, auditoriaId);
+    } catch (notifError) {
+      // No fallar la creación del plan si las notificaciones fallan
+      console.error('[PlanesMejoramientoService.create] Error al crear notificaciones:', notifError);
+      console.error('[PlanesMejoramientoService.create] Stack trace:', notifError?.stack);
     }
 
     const saved = await this.findOne(savedPlan.id);
@@ -376,16 +426,44 @@ export class PlanesMejoramientoService {
 
     // Actualizar hallazgoId si se proporciona
     if (updateDto.hallazgoId !== undefined) {
-      plan.hallazgoId = updateDto.hallazgoId;
+      // Verificar si es un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = uuidRegex.test(updateDto.hallazgoId);
+      
+      let resolvedHallazgoId: string | null = null;
+      
+      if (isUUID) {
+        // Si es un UUID, usarlo directamente
+        resolvedHallazgoId = updateDto.hallazgoId;
+      } else {
+        // Si no es un UUID, buscar el hallazgo por código
+        const hallazgo = await this.hallazgoRepository.findOne({
+          where: { codigo: updateDto.hallazgoId },
+        });
+        resolvedHallazgoId = hallazgo?.id ?? null;
+      }
+      
+      plan.hallazgoId = resolvedHallazgoId;
       
       // IMPORTANTE: Sincronizar auditoriaId con el hallazgo actualizado
       // Si se cambia el hallazgo, actualizar la auditoría desde el nuevo hallazgo
-      if (updateDto.hallazgoId) {
+      if (resolvedHallazgoId) {
         const hallazgo = await this.hallazgoRepository.findOne({
-          where: { id: updateDto.hallazgoId },
+          where: { id: resolvedHallazgoId },
           relations: ['auditoriaEntity'],
         });
         if (hallazgo?.auditoriaEntity) {
+          plan.auditoriaId = hallazgo.auditoriaEntity.id;
+        }
+      }
+    } else if (updateDto.hallazgoCodigo !== undefined) {
+      // Si se proporciona hallazgoCodigo, buscar por código
+      const hallazgo = await this.hallazgoRepository.findOne({
+        where: { codigo: updateDto.hallazgoCodigo },
+      });
+      if (hallazgo) {
+        plan.hallazgoId = hallazgo.id;
+        if (hallazgo.auditoriaEntity) {
           plan.auditoriaId = hallazgo.auditoriaEntity.id;
         }
       }
@@ -665,6 +743,7 @@ export class PlanesMejoramientoService {
 
     const accion = this.accionRepository.create({
       planId: plan.id,
+      hallazgoId: createDto.hallazgoId || null,
       descripcion: createDto.descripcion,
       tipo: createDto.tipo || AccionCorrectivaTipo.CORRECTIVA,
       responsable: createDto.responsable,
@@ -701,6 +780,7 @@ export class PlanesMejoramientoService {
       throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
     }
 
+    if (updateDto.hallazgoId !== undefined) accion.hallazgoId = updateDto.hallazgoId || null;
     if (updateDto.descripcion !== undefined) accion.descripcion = updateDto.descripcion;
     if (updateDto.tipo !== undefined) accion.tipo = updateDto.tipo;
     if (updateDto.responsable !== undefined) accion.responsable = updateDto.responsable;
@@ -984,6 +1064,247 @@ export class PlanesMejoramientoService {
     }
 
     return { fechaInicio, fechaFin };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA EVENTOS DEL TIMELINE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene todos los eventos del timeline de un plan
+   */
+  async getEventosTimeline(planId: string): Promise<EventoTimeline[]> {
+    const plan = await this.planRepository.findOne({ where: { id: planId } });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${planId} no encontrado`);
+    }
+
+    const eventos = await this.eventoTimelineRepository.find({
+      where: { planMejoramientoId: planId },
+      order: { fecha: 'DESC' },
+    });
+
+    return eventos;
+  }
+
+  /**
+   * Crea un nuevo evento en el timeline
+   */
+  async createEventoTimeline(
+    planId: string,
+    createDto: CreateEventoTimelineDto,
+  ): Promise<EventoTimeline> {
+    const plan = await this.planRepository.findOne({ where: { id: planId } });
+    if (!plan) {
+      throw new NotFoundException(`Plan de mejoramiento con ID ${planId} no encontrado`);
+    }
+
+    const evento = this.eventoTimelineRepository.create({
+      planMejoramientoId: planId,
+      ...createDto,
+      fecha: new Date(),
+    });
+
+    return await this.eventoTimelineRepository.save(evento);
+  }
+
+  /**
+   * Registra un evento de forma programática (usado internamente)
+   */
+  async registrarEvento(
+    planId: string,
+    tipo: TipoEventoTimeline,
+    descripcion: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+    metadata?: any,
+  ): Promise<EventoTimeline> {
+    const evento = this.eventoTimelineRepository.create({
+      planMejoramientoId: planId,
+      tipo,
+      descripcion,
+      usuarioId,
+      usuarioNombre,
+      metadata,
+      fecha: new Date(),
+    });
+
+    return await this.eventoTimelineRepository.save(evento);
+  }
+
+  /**
+   * Registra un evento de evidencia cargada
+   */
+  async registrarEventoEvidencia(
+    planId: string,
+    accionId: string,
+    nombreArchivo: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+  ): Promise<EventoTimeline> {
+    return this.registrarEvento(
+      planId,
+      TipoEventoTimeline.EVIDENCIA,
+      `Cargada evidencia "${nombreArchivo}"`,
+      usuarioId,
+      usuarioNombre,
+      { accionId, nombreArchivo },
+    );
+  }
+
+  /**
+   * Registra un evento de comentario agregado
+   */
+  async registrarEventoComentario(
+    planId: string,
+    comentario: string,
+    usuarioId?: string,
+    usuarioNombre?: string,
+  ): Promise<EventoTimeline> {
+    const descripcionCorta = comentario.length > 100 
+      ? comentario.substring(0, 100) + '...' 
+      : comentario;
+    
+    return this.registrarEvento(
+      planId,
+      TipoEventoTimeline.COMENTARIO,
+      `Nuevo comentario: "${descripcionCorta}"`,
+      usuarioId,
+      usuarioNombre,
+      { comentarioCompleto: comentario },
+    );
+  }
+
+  /**
+   * Crea notificaciones cuando se crea un plan de mejoramiento
+   */
+  private async crearNotificacionesPlanCreado(
+    plan: PlanMejoramiento,
+    auditoriaId: string | null,
+  ): Promise<void> {
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Iniciando creación de notificaciones para plan ${plan.codigo}`);
+    
+    // Obtener información de la auditoría si existe
+    let auditoriaCodigo = 'N/A';
+    let auditoriaNombre = 'Auditoría no especificada';
+    
+    if (auditoriaId) {
+      try {
+        const auditoria = await this.auditoriaRepository.findOne({
+          where: { id: auditoriaId },
+        });
+        if (auditoria) {
+          auditoriaCodigo = auditoria.codigo || auditoriaId.substring(0, 8).toUpperCase();
+          auditoriaNombre = auditoria.nombre || auditoriaCodigo;
+          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditoría encontrada: ${auditoriaCodigo}`);
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditoría:`, error);
+      }
+    }
+
+    // Obtener usuarios que deben recibir notificaciones
+    const usuariosNotificar: string[] = [];
+
+    // 1. Buscar el responsable de implementación por nombre
+    if (plan.responsableImplementacion) {
+      try {
+        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
+        const responsable = await this.dataSource.query(
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          [`%${plan.responsableImplementacion}%`]
+        );
+        
+        if (responsable && responsable.length > 0) {
+          const idTercero = String(responsable[0].id_tercero);
+          usuariosNotificar.push(idTercero);
+          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_tercero=${idTercero}`);
+        } else {
+          console.warn(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre: "${plan.responsableImplementacion}"`);
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`, error);
+      }
+    }
+
+    // 2. Obtener Jefes de Control Interno
+    try {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      usuariosNotificar.push(...jefesOCI);
+      console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
+    } catch (error) {
+      console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`, error);
+    }
+
+    // 3. Obtener auditor líder si hay auditoría
+    if (auditoriaId) {
+      try {
+        const auditoria = await this.auditoriaRepository.findOne({
+          where: { id: auditoriaId },
+        });
+        if (auditoria?.auditorLiderId) {
+          const auditorLiderId = String(auditoria.auditorLiderId);
+          if (!usuariosNotificar.includes(auditorLiderId)) {
+            usuariosNotificar.push(auditorLiderId);
+            console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_tercero=${auditorLiderId}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`, error);
+      }
+    }
+
+    // Eliminar duplicados
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
+
+    // Crear notificaciones para cada usuario
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.APROBACION_PLAN,
+          titulo: `Plan de Mejoramiento Creado: ${plan.codigo}`,
+          mensaje: `Se ha creado el Plan de Mejoramiento ${plan.codigo} para la auditoría ${auditoriaCodigo}. El plan debe ser presentado y revisado.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            planMejoramientoId: plan.id,
+            auditoriaId: auditoriaId || undefined,
+            codigoPlan: plan.codigo,
+            codigoAuditoria: auditoriaCodigo,
+          },
+          accionUrl: `/control-interno/planes-mejoramiento/${plan.id}`,
+        });
+        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Notificación creada para usuario: ${usuarioId}`);
+      } catch (error) {
+        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al crear notificación para usuario ${usuarioId}:`, error);
+      }
+    }
+
+    console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Proceso de notificaciones completado para plan ${plan.codigo}`);
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   */
+  private async obtenerJefesControlInterno(): Promise<string[]> {
+    try {
+      const result = await this.dataSource.query(`
+        SELECT DISTINCT u.id_tercero
+        FROM auth."user" u
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
+        WHERE r.code = 'JEFE_CONTROL_INTERNO'
+          AND ur.is_active = true
+          AND u.is_active = true
+      `);
+
+      return result.map((row: any) => String(row.id_tercero));
+    } catch (error) {
+      console.error('[PlanesMejoramientoService.obtenerJefesControlInterno] Error:', error);
+      return [];
+    }
   }
 }
 

@@ -110,15 +110,6 @@ class APIClient {
             }
           }
           fullUrl = `${serviceUrl}${cleanPath}`;
-
-          console.log('🔗 API Client [DIRECT MODE - versioned]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            originalPath: restPath,
-            cleanPath,
-            finalURL: fullUrl,
-          });
         } else {
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
@@ -131,13 +122,6 @@ class APIClient {
         if (serviceUrl) {
           // Para rutas como /legal/riesgos, el backend espera /legal/riesgos (con prefijo)
           fullUrl = `${serviceUrl}${endpoint}`;
-
-          console.log('🔗 API Client [DIRECT MODE - simple]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            finalURL: fullUrl,
-          });
         } else {
           fullUrl = `${this.baseURL}${endpoint}`;
         }
@@ -148,11 +132,6 @@ class APIClient {
     } else {
       // Modo gateway: comportamiento normal
       fullUrl = `${this.baseURL}${endpoint}`;
-      console.log('🔗 API Client [GATEWAY MODE]:', {
-        endpoint,
-        baseURL: this.baseURL,
-        finalURL: fullUrl,
-      });
     }
 
     // Agregar parámetros de query

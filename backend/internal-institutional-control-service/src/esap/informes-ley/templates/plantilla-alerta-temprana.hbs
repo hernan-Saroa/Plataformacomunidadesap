@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{{nombreInforme}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; padding: 20mm 15mm; }
+    .header { background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%); color: white; padding: 20px 30px; margin-bottom: 30px; border-radius: 5px; }
+    .titulo-informe { text-align: center; margin: 30px 0; padding: 20px; background: #fee2e2; border-left: 5px solid #DC2626; }
+    .seccion { margin-bottom: 30px; }
+    .seccion h3 { font-size: 13pt; color: #DC2626; border-bottom: 2px solid #DC2626; padding-bottom: 8px; margin-bottom: 15px; }
+    .alerta { background: #fee2e2; padding: 15px; border-left: 4px solid #DC2626; border-radius: 3px; margin-bottom: 15px; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 10px; margin-bottom: 10px; background: #f8f9fa; border-left: 4px solid #DC2626; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1><p>Oficina de Control Interno de Gestión - ALERTA TEMPRANA</p></div>
+  <div class="titulo-informe"><h2>{{nombreInforme}}</h2><p>Periodo: {{periodo}}</p></div>
+  <div class="seccion">
+    <h3>1. Hallazgo</h3>
+    {{#if hallazgo}}<div class="alerta"><p><strong>Descripción:</strong> {{hallazgo.descripcion}}</p><p><strong>Fecha:</strong> {{hallazgo.fecha}}</p></div>{{else}}<p style="color: #999; font-style: italic;">No hay hallazgo registrado.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>2. Riesgo</h3>
+    {{#if riesgo}}<div class="alerta"><p><strong>Nivel:</strong> {{riesgo.nivel}}</p><p><strong>Descripción:</strong> {{riesgo.descripcion}}</p></div>{{else}}<p style="color: #999; font-style: italic;">No hay riesgo identificado.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>3. Impacto</h3>
+    {{#if impacto}}<div class="alerta"><p><strong>Descripción:</strong> {{impacto.descripcion}}</p><p><strong>Áreas Afectadas:</strong> {{impacto.areas}}</p></div>{{else}}<p style="color: #999; font-style: italic;">No hay impacto identificado.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>4. Acciones Inmediatas</h3>
+    {{#if accionesInmediatas}}{{#if accionesInmediatas.length}}<ul>{{#each accionesInmediatas}}<li>{{this}}</li>{{/each}}</ul>{{else}}<p style="color: #999; font-style: italic;">No hay acciones inmediatas registradas.</p>{{/if}}{{else}}<p style="color: #999; font-style: italic;">No hay acciones inmediatas registradas.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>5. Recomendaciones</h3>
+    {{#if recomendaciones}}{{#if recomendaciones.length}}<ul>{{#each recomendaciones}}<li>{{this}}</li>{{/each}}</ul>{{else}}<p style="color: #999; font-style: italic;">No hay recomendaciones registradas.</p>{{/if}}{{else}}<p style="color: #999; font-style: italic;">No hay recomendaciones registradas.</p>{{/if}}
+  </div>
+  {{#if baseNormativa}}<div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;"><strong>Base Normativa:</strong> {{baseNormativa}}</div>{{/if}}
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; font-size: 9pt;"><p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p></div>
+</body>
+</html>

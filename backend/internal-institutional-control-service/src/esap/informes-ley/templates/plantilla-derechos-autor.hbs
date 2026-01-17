@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Informe de Uso de Software Licenciado</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; padding: 20mm 15mm; }
+    .header { background: linear-gradient(135deg, #003DA5 0%, #0052CC 100%); color: white; padding: 20px 30px; margin-bottom: 30px; border-radius: 5px; }
+    .titulo-informe { text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-left: 5px solid #003DA5; }
+    .seccion { margin-bottom: 30px; }
+    .seccion h3 { font-size: 13pt; color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 8px; margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    table th, table td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+    table th { background: #003DA5; color: white; }
+    .metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+    .metrica { background: #f8f9fa; padding: 15px; border-left: 4px solid #003DA5; border-radius: 3px; }
+    .metrica h4 { color: #003DA5; margin-bottom: 8px; font-size: 12pt; }
+    .metrica .valor { font-size: 18pt; font-weight: bold; color: #333; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 10px; margin-bottom: 10px; background: #f8f9fa; border-left: 4px solid #003DA5; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1>
+    <p>Oficina de Control Interno de Gestión</p>
+  </div>
+  <div class="titulo-informe">
+    <h2>Informe de Uso de Software Licenciado</h2>
+    <p>Periodo: {{periodo}}{{#if mes}} - Mes: {{mes}}{{/if}}</p>
+  </div>
+
+  <div class="seccion">
+    <h3>1. Inventario de Software</h3>
+    {{#if software}}{{#if software.length}}
+    <table>
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Versión</th>
+          <th>Tipo</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each software}}
+        <tr>
+          <td>{{this.nombre}}</td>
+          <td>{{this.version}}</td>
+          <td>{{this.tipo}}</td>
+          <td>{{this.estado}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay software registrado.</p>
+    {{/if}}{{else}}
+    <p style="color: #999; font-style: italic;">No hay software registrado.</p>
+    {{/if}}
+  </div>
+
+  <div class="seccion">
+    <h3>2. Licencias de Software</h3>
+    {{#if licencias}}{{#if licencias.length}}
+    <table>
+      <thead>
+        <tr>
+          <th>Software</th>
+          <th>Tipo de Licencia</th>
+          <th>Fecha de Vencimiento</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each licencias}}
+        <tr>
+          <td>{{this.software}}</td>
+          <td>{{this.tipo}}</td>
+          <td>{{this.fechaVencimiento}}</td>
+          <td>{{this.estado}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay licencias registradas.</p>
+    {{/if}}{{else}}
+    <p style="color: #999; font-style: italic;">No hay licencias registradas.</p>
+    {{/if}}
+  </div>
+
+  <div class="seccion">
+    <h3>3. Cumplimiento de Licenciamiento</h3>
+    {{#if cumplimiento}}
+    <div class="metricas">
+      <div class="metrica">
+        <h4>Total Software</h4>
+        <div class="valor">{{cumplimiento.totalSoftware}}</div>
+      </div>
+      <div class="metrica">
+        <h4>Software Licenciado</h4>
+        <div class="valor">{{cumplimiento.softwareLicenciado}}</div>
+      </div>
+      <div class="metrica">
+        <h4>% Cumplimiento</h4>
+        <div class="valor">{{cumplimiento.porcentajeCumplimiento}}%</div>
+      </div>
+      <div class="metrica">
+        <h4>Estado</h4>
+        <div class="valor">{{cumplimiento.estado}}</div>
+      </div>
+    </div>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay datos de cumplimiento disponibles.</p>
+    {{/if}}
+  </div>
+
+  {{#if observaciones}}
+  <div class="seccion">
+    <h3>4. Observaciones</h3>
+    {{#if observaciones.length}}
+    <ul>
+      {{#each observaciones}}
+      <li>{{this}}</li>
+      {{/each}}
+    </ul>
+    {{else}}
+    <p style="color: #999; font-style: italic;">No hay observaciones registradas.</p>
+    {{/if}}
+  </div>
+  {{/if}}
+
+  {{#if baseNormativa}}
+  <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;">
+    <strong>Base Normativa:</strong> {{baseNormativa}}
+  </div>
+  {{/if}}
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; font-size: 9pt;">
+    <p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p>
+  </div>
+</body>
+</html>

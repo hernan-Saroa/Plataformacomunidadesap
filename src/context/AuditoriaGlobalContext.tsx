@@ -19,12 +19,9 @@ export type EstadoAuditoria =
   | 'Reprogramada';
 
 export type TipoAuditoria = 
-  | 'Gestión'
-  | 'Cumplimiento'
-  | 'Financiera'
-  | 'Sistemas'
-  | 'Ambiental'
-  | 'Desempeño';
+  | 'Regular'
+  | 'Territorial'
+  | 'Especial';
 
 export type CategoriaRiesgo = 'Muy Alto' | 'Alto' | 'Medio' | 'Bajo' | 'Muy Bajo';
 
@@ -214,7 +211,7 @@ export function AuditoriaGlobalProvider({ children }: { children: ReactNode }) {
       id: `aud-${Date.now()}`,
       codigo: datos.codigo || `AUD-${new Date().getFullYear()}-${String(auditorias.length + 1).padStart(3, '0')}`,
       nombre: datos.nombre || '',
-      tipo: datos.tipo || 'Gestión',
+      tipo: datos.tipo || 'Regular',
       estado: 'Programada',
       fechaCreacion: new Date().toISOString().split('T')[0],
       fechaActualizacion: new Date().toISOString().split('T')[0],
@@ -398,12 +395,9 @@ export const estadosAuditoria: EstadoAuditoria[] = [
 ];
 
 export const tiposAuditoria: TipoAuditoria[] = [
-  'Gestión',
-  'Cumplimiento',
-  'Financiera',
-  'Sistemas',
-  'Ambiental',
-  'Desempeño'
+  'Regular',
+  'Territorial',
+  'Especial'
 ];
 
 export const categoriasRiesgo: CategoriaRiesgo[] = [

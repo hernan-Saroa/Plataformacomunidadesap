@@ -460,5 +460,44 @@ export class InformesLeyService {
 
     return entregasVencidas.length;
   }
+
+  /**
+   * Subir archivo para una entrega de informe
+   */
+  async uploadArchivoEntrega(
+    entregaId: string,
+    archivo: {
+      nombre: string;
+      url: string;
+      tamano: number;
+      formato: 'PDF' | 'Word' | 'Excel';
+    },
+    usuarioId: string,
+    usuarioNombre: string,
+  ): Promise<EntregaInformeLey> {
+    const entrega = await this.findOneEntrega(entregaId);
+    if (!entrega) {
+      throw new NotFoundException(`Entrega con ID ${entregaId} no encontrada`);
+    }
+
+    // Actualizar información del archivo
+    entrega.archivoNombre = archivo.nombre;
+    entrega.archivoUrl = archivo.url;
+    entrega.archivoTamano = archivo.tamano;
+    entrega.formatoArchivo = archivo.formato;
+    
+    // Actualizar generadoPor si no existe
+    if (!entrega.generadoPor) {
+      entrega.generadoPor = usuarioNombre;
+    }
+
+    // Si el estado es 'pendiente' y ahora tiene archivo, cambiar a 'en-proceso'
+    if (entrega.estado === 'pendiente' && archivo.url) {
+      entrega.estado = 'en-proceso';
+    }
+
+    // updatedAt se actualiza automáticamente por el decorador @UpdateDateColumn
+    return this.entregaRepository.save(entrega);
+  }
 }
 

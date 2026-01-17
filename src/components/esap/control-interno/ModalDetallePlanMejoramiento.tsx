@@ -18,15 +18,22 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, ChevronDown, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import * as XLSX from 'xlsx';
+import { planesMejoramientoApi, hallazgosApi, evidenciasApi } from './services/api';
+import type { PlanMejoramiento as PlanMejoramientoBD, AccionMejoramiento, Hallazgo as HallazgoBD } from './services/types';
+
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -38,6 +45,7 @@ interface Hallazgo {
   descripcion: string;
   criticidad: 'ALTA' | 'MEDIA' | 'BAJA';
   proceso: string;
+  area: string;
   responsable: string;
   accionesCount: number;
   accionesCompletadas: number;
@@ -80,6 +88,7 @@ interface PlanMejoramientoDetalle {
   nombre: string;
   area: string;
   responsableGeneral: string;
+  responsableAreaNombre?: string;
   fechaCreacion: string;
   fechaVencimiento: string;
   estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
@@ -118,6 +127,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de políticas documentadas de seguridad de la información',
       criticidad: 'ALTA',
       proceso: 'Gestión de Seguridad TI',
+      area: 'Gestión de TI',
       responsable: 'Jorge Silva',
       accionesCount: 3,
       accionesCompletadas: 1,
@@ -129,6 +139,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Ausencia de backups periódicos de bases de datos críticas',
       criticidad: 'ALTA',
       proceso: 'Infraestructura TI',
+      area: 'Gestión de TI',
       responsable: 'María González',
       accionesCount: 2,
       accionesCompletadas: 1,
@@ -140,6 +151,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Falta de capacitación en ciberseguridad para funcionarios',
       criticidad: 'MEDIA',
       proceso: 'Talento Humano TI',
+      area: 'Gestión de TI',
       responsable: 'Carlos Méndez',
       accionesCount: 2,
       accionesCompletadas: 2,
@@ -151,6 +163,7 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
       descripcion: 'Documentación desactualizada de procedimientos técnicos',
       criticidad: 'BAJA',
       proceso: 'Gestión Documental TI',
+      area: 'Gestión de TI',
       responsable: 'Ana Torres',
       accionesCount: 1,
       accionesCompletadas: 0,
@@ -332,6 +345,241 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+// FUNCIONES DE MAPEO
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Mapea el estado del backend al estado del modal
+ */
+function mapearEstadoBD(estadoBD: string): PlanMejoramientoDetalle['estado'] {
+  switch (estadoBD) {
+    case 'borrador':
+      return 'FORMULACION';
+    case 'aprobado':
+      return 'APROBACION';
+    case 'en-ejecucion':
+      return 'EN_EJECUCION';
+    case 'cerrado':
+      return 'CUMPLIDO';
+    default:
+      return 'FORMULACION';
+  }
+}
+
+/**
+ * Mapea el estado de acción del backend al estado del modal
+ */
+function mapearEstadoAccionBD(estadoBD: string): AccionCorrectiva['estado'] {
+  switch (estadoBD) {
+    case 'programada':
+      return 'PENDIENTE';
+    case 'en-progreso':
+    case 'en-ejecucion':
+      return 'EN_EJECUCION';
+    case 'implementada':
+    case 'completada':
+      return 'COMPLETADA';
+    case 'vencida':
+    case 'atrasada':
+      return 'VENCIDA';
+    default:
+      return 'PENDIENTE';
+  }
+}
+
+/**
+ * Mapea la gravedad del backend a criticidad del modal
+ */
+function mapearGravedadACriticidad(gravedad: string): Hallazgo['criticidad'] {
+  const gravedadLower = gravedad?.toLowerCase() || '';
+  if (gravedadLower === 'alta' || gravedadLower === 'crítica' || gravedadLower === 'critica') {
+    return 'ALTA';
+  }
+  if (gravedadLower === 'media' || gravedadLower === 'moderado' || gravedadLower === 'moderada') {
+    return 'MEDIA';
+  }
+  return 'BAJA';
+}
+
+/**
+ * Calcula el progreso global basado en las acciones
+ */
+function calcularProgresoGlobalDesdeAcciones(
+  acciones: AccionCorrectiva[],
+  porcentajeAvanceGeneral?: number | null
+): number {
+  // SIEMPRE calcular basado en las acciones si hay acciones
+  if (acciones.length > 0) {
+    const sumaProgreso = acciones.reduce((sum, accion) => sum + accion.progreso, 0);
+    return Math.round(sumaProgreso / acciones.length);
+  }
+  // Si no hay acciones pero hay porcentajeAvanceGeneral, usarlo como fallback
+  return porcentajeAvanceGeneral || 0;
+}
+
+/**
+ * Mapea un PlanMejoramiento del backend a PlanMejoramientoDetalle del modal
+ */
+async function mapearPlanDetalleDesdeBD(
+  planBD: any, // Usar any temporalmente para manejar diferentes estructuras del backend
+  hallazgosCargados: HallazgoBD[] = []
+): Promise<PlanMejoramientoDetalle> {
+  
+  // Mapear acciones - pueden venir como AccionCorrectiva del backend o AccionMejoramiento del tipo
+  const accionesMapeadas: AccionCorrectiva[] = (planBD.acciones || []).map((accion: any) => {
+    // Calcular estado real basado en el progreso
+    let estado = mapearEstadoAccionBD(accion.estado);
+    
+    // Si el progreso es menor a 100%, NO puede estar completada
+    if (estado === 'COMPLETADA' && accion.porcentajeAvance < 100) {
+      estado = accion.porcentajeAvance > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
+    }
+    
+    // Verificar si está vencida
+    if (estado === 'PENDIENTE' || estado === 'EN_EJECUCION') {
+      const hoy = new Date();
+      const fechaFin = new Date(accion.fechaFin);
+      if (fechaFin < hoy && accion.porcentajeAvance < 100) {
+        estado = 'VENCIDA';
+      }
+    }
+
+    // Formatear fechas (pueden venir en formato ISO o YYYY-MM-DD)
+    const fechaInicioStr = accion.fechaInicio ? String(accion.fechaInicio) : '';
+    const fechaFinStr = accion.fechaFin ? String(accion.fechaFin) : '';
+    
+    const fechaInicio = fechaInicioStr.includes('T') 
+      ? fechaInicioStr.split('T')[0] 
+      : fechaInicioStr;
+    const fechaFin = fechaFinStr.includes('T') 
+      ? fechaFinStr.split('T')[0] 
+      : fechaFinStr;
+
+    // Usar el hallazgoId de la acción si existe, sino usar el del plan como fallback
+    const hallazgoIdAccion = accion.hallazgoId || planBD.hallazgoId || planBD.hallazgo?.id || '';
+
+    // Calcular progreso: si está completada, usar 100%, de lo contrario usar porcentajeAvance
+    let progreso = accion.porcentajeAvance || 0;
+    if (estado === 'COMPLETADA') {
+      progreso = 100; // Si está completada, el progreso siempre es 100%
+    }
+
+    return {
+      id: accion.id,
+      hallazgoId: hallazgoIdAccion, // Usar el hallazgoId específico de la acción
+      descripcion: accion.descripcion || '',
+      responsable: accion.responsable || '',
+      fechaInicio: fechaInicio || new Date().toISOString().split('T')[0],
+      fechaVencimiento: fechaFin || new Date().toISOString().split('T')[0],
+      estado,
+      progreso,
+      evidencias: (accion.evidencias && Array.isArray(accion.evidencias)) ? accion.evidencias.length : 0,
+      observaciones: accion.observaciones || ''
+    };
+  });
+
+  // Mapear hallazgos
+  const hallazgosMapeados: Hallazgo[] = hallazgosCargados.map((h: HallazgoBD) => {
+    const accionesHallazgo = accionesMapeadas.filter(a => a.hallazgoId === h.id);
+    const accionesCompletadas = accionesHallazgo.filter(a => a.estado === 'COMPLETADA').length;
+    
+    // Calcular progreso basado en el promedio del progreso de las acciones, no solo las completadas
+    let progreso = 0;
+    if (accionesHallazgo.length > 0) {
+      const sumaProgreso = accionesHallazgo.reduce((sum, accion) => sum + accion.progreso, 0);
+      progreso = Math.round(sumaProgreso / accionesHallazgo.length);
+    }
+
+    // Obtener responsable del hallazgo o usar el responsableAreaNombre de la auditoría como fallback
+    const hallazgoAny = h as any;
+    const responsableHallazgo = hallazgoAny.responsable || 
+      hallazgoAny.auditoriaEntity?.responsableAreaNombre || 
+      '';
+
+    return {
+      id: h.id,
+      codigo: h.codigo,
+      descripcion: h.descripcion || h.titulo || '',
+      criticidad: mapearGravedadACriticidad(h.gravedad || ''),
+      proceso: h.criterioIncumplido || '', // Usar criterioIncumplido como proceso
+      area: hallazgoAny.area || '',
+      responsable: responsableHallazgo,
+      accionesCount: accionesHallazgo.length,
+      accionesCompletadas,
+      progreso
+    };
+  });
+
+  // Calcular fecha de vencimiento (usar la fecha más lejana de las acciones o fechaLimite/fechaCreacion + 1 año)
+  const fechaElaboracion = new Date(planBD.fechaLimite || planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date());
+  let fechaVencimiento = new Date(fechaElaboracion);
+  fechaVencimiento.setFullYear(fechaVencimiento.getFullYear() + 1);
+
+  if (accionesMapeadas.length > 0) {
+    const fechasFin = accionesMapeadas.map(a => new Date(a.fechaVencimiento));
+    const fechaMax = new Date(Math.max(...fechasFin.map(d => d.getTime())));
+    if (fechaMax > fechaVencimiento) {
+      fechaVencimiento = fechaMax;
+    }
+  }
+
+  // ✅ CARGAR EVENTOS REALES DEL BACKEND
+  let timeline: ActividadTimeline[] = [];
+  
+  try {
+    const eventosResponse = await planesMejoramientoApi.getEventosTimeline(planBD.id);
+    
+    if (eventosResponse.success && eventosResponse.data?.eventos) {
+      // Mapear eventos desde el backend al formato del frontend
+      timeline = eventosResponse.data.eventos.map((evento: any) => ({
+        id: evento.id,
+        tipo: evento.tipo as ActividadTimeline['tipo'],
+        descripcion: evento.descripcion,
+        usuario: evento.usuarioNombre || 'Sistema',
+        fecha: new Date(evento.fecha).toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      }));
+    }
+  } catch (error) {
+    console.warn('[ModalDetallePlan] Error al cargar eventos del timeline:', error);
+    // Si falla, el timeline quedará vacío
+  }
+
+  // El backend puede tener 'titulo' en lugar de 'nombre', 'fechaLimite' en lugar de 'fechaElaboracion'
+  const nombrePlan = planBD.nombre || planBD.titulo || planBD.codigo || 'Plan sin nombre';
+  const fechaCreacionPlan = planBD.fechaCreacion || planBD.createdAt || planBD.fechaElaboracion || new Date().toISOString().split('T')[0];
+  const responsablePlan = planBD.responsable || planBD.responsableImplementacion || '';
+  const areaPlan = planBD.area || planBD.areaResponsable || '';
+  const auditoriaCodigo = planBD.auditoriaCodigo || planBD.auditoria?.codigo || '';
+  // Obtener responsableAreaNombre de la auditoría
+  const responsableAreaNombre = (planBD.auditoria as any)?.responsableAreaNombre || '';
+
+  return {
+    id: planBD.id,
+    codigo: planBD.codigo,
+    nombre: nombrePlan,
+    area: areaPlan,
+    responsableGeneral: responsablePlan,
+    responsableAreaNombre: responsableAreaNombre, // Agregar responsableAreaNombre
+    fechaCreacion: fechaCreacionPlan,
+    fechaVencimiento: fechaVencimiento.toISOString().split('T')[0],
+    estado: mapearEstadoBD(planBD.estado),
+    progresoGlobal: calcularProgresoGlobalDesdeAcciones(accionesMapeadas, planBD.porcentajeAvanceGeneral),
+    hallazgos: hallazgosMapeados,
+    acciones: accionesMapeadas,
+    documentos: [], // Los documentos se cargarían por separado si existe un endpoint
+    timeline,
+    auditoria: auditoriaCodigo,
+    observaciones: planBD.observaciones || ''
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -343,17 +591,183 @@ interface ModalDetallePlanProps {
 export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePlanProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
   const [modalActualizacion, setModalActualizacion] = useState(false);
-  const plan = PLAN_MOCK; // En producción: cargar según planId
+  const [plan, setPlan] = useState<PlanMejoramientoDetalle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [conteoDocumentos, setConteoDocumentos] = useState<number>(0);
+
+  // Cargar datos del plan desde el backend
+  useEffect(() => {
+    const cargarPlan = async () => {
+      if (!planId) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Cargar plan desde el backend
+        const response = await planesMejoramientoApi.getById(planId);
+        
+        if (!response.success || !response.data) {
+          throw new Error(response.error || 'Error al cargar el plan');
+        }
+
+        const planBD = response.data;
+
+        // Cargar TODOS los hallazgos de la auditoría, no solo el asociado al plan
+        let hallazgosCargados: HallazgoBD[] = [];
+        
+        // Si el plan tiene auditoriaId, cargar todos los hallazgos de esa auditoría
+        if (planBD.auditoriaId) {
+          try {
+            const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
+            if (hallazgosResponse.success && hallazgosResponse.data) {
+              hallazgosCargados = hallazgosResponse.data;
+            }
+          } catch (errorHallazgos) {
+            console.warn('[ModalDetallePlan] Error al cargar hallazgos de la auditoría:', errorHallazgos);
+            // Si falla, intentar con el método alternativo
+          }
+        }
+        
+        // Si no se cargaron hallazgos desde la auditoría, intentar métodos alternativos
+        if (hallazgosCargados.length === 0) {
+          // Si viene el objeto hallazgo directamente (estructura del backend)
+          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
+            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
+          }
+          // Si viene un array de IDs
+          else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
+            try {
+              // Cargar cada hallazgo por ID
+              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
+                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
+              );
+              const hallazgosResults = await Promise.all(hallazgosPromises);
+              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
+            } catch (errorHallazgos) {
+              console.warn('[ModalDetallePlan] Error al cargar hallazgos por IDs:', errorHallazgos);
+            }
+          }
+          // Si viene un solo ID de hallazgo (hallazgoId)
+          else if (planBD.hallazgoId) {
+            try {
+              const hallazgoResponse = await hallazgosApi.getById(planBD.hallazgoId);
+              if (hallazgoResponse.success && hallazgoResponse.data) {
+                hallazgosCargados = [hallazgoResponse.data];
+              }
+            } catch (errorHallazgos) {
+              console.warn('[ModalDetallePlan] Error al cargar hallazgo por ID:', errorHallazgos);
+            }
+          }
+        }
+
+        // Mapear plan a formato del modal
+        const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
+        setPlan(planMapeado);
+      } catch (err: any) {
+        console.error('[ModalDetallePlan] Error al cargar plan:', err);
+        setError(err.message || 'Error al cargar el plan de mejoramiento');
+        toast.error('Error al cargar el plan', {
+          description: err.message || 'No se pudo cargar la información del plan'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarPlan();
+  }, [planId]);
+
+  // Función para recargar el plan después de crear/editar acciones
+  const handleRecargarPlan = async () => {
+    if (!planId) return;
+
+    try {
+      setLoading(true);
+      const response = await planesMejoramientoApi.getById(planId);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Error al recargar el plan');
+      }
+
+      const planBD = response.data;
+
+      // Cargar TODOS los hallazgos de la auditoría
+      let hallazgosCargados: HallazgoBD[] = [];
+      
+      if (planBD.auditoriaId) {
+        try {
+          const hallazgosResponse = await hallazgosApi.getByAuditoria(planBD.auditoriaId);
+          if (hallazgosResponse.success && hallazgosResponse.data) {
+            hallazgosCargados = hallazgosResponse.data;
+          }
+        } catch (errorHallazgos) {
+          console.warn('[ModalDetallePlan] Error al recargar hallazgos de la auditoría:', errorHallazgos);
+          // Fallback a métodos alternativos
+          if (planBD.hallazgo && typeof planBD.hallazgo === 'object') {
+            hallazgosCargados = [planBD.hallazgo as HallazgoBD];
+          } else if (planBD.hallazgosIds && Array.isArray(planBD.hallazgosIds) && planBD.hallazgosIds.length > 0) {
+            try {
+              const hallazgosPromises = planBD.hallazgosIds.map((id: string) => 
+                hallazgosApi.getById(id).then(r => r.success && r.data ? r.data : null).catch(() => null)
+              );
+              const hallazgosResults = await Promise.all(hallazgosPromises);
+              hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== null && h !== undefined);
+            } catch (errorHallazgos2) {
+              console.warn('[ModalDetallePlan] Error al recargar hallazgos por IDs:', errorHallazgos2);
+            }
+          }
+        }
+      }
+
+      const planMapeado = await mapearPlanDetalleDesdeBD(planBD, hallazgosCargados);
+      setPlan(planMapeado);
+    } catch (err: any) {
+      console.error('[ModalDetallePlan] Error al recargar plan:', err);
+      toast.error('Error al recargar el plan', {
+        description: err.message || 'No se pudo recargar la información'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Estado para el formulario de actualización
   const [datosActualizacion, setDatosActualizacion] = useState({
-    estado: plan.estado,
-    fechaVencimiento: plan.fechaVencimiento,
-    responsableGeneral: plan.responsableGeneral,
-    observaciones: plan.observaciones || ''
+    estado: 'FORMULACION' as PlanMejoramientoDetalle['estado'],
+    fechaVencimiento: '',
+    responsableGeneral: '',
+    observaciones: ''
   });
 
+  // Actualizar datos de actualización cuando se carga el plan
+  useEffect(() => {
+    if (plan) {
+      setDatosActualizacion({
+        estado: plan.estado,
+        fechaVencimiento: plan.fechaVencimiento,
+        responsableGeneral: plan.responsableGeneral,
+        observaciones: plan.observaciones || ''
+      });
+    }
+  }, [plan]);
+
   const estadisticas = useMemo(() => {
+    if (!plan) {
+      return {
+        totalAcciones: 0,
+        accionesCompletadas: 0,
+        accionesEnEjecucion: 0,
+        accionesPendientes: 0,
+        accionesVencidas: 0,
+        totalHallazgos: 0,
+        hallazgosResueltos: 0,
+        hallazgosCriticosAbiertos: 0,
+        porcentajeCompletado: 0
+      };
+    }
+
     const totalAcciones = plan.acciones.length;
     const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
     const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
@@ -381,7 +795,9 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     setModalActualizacion(true);
   };
 
-  const handleGuardarActualizacion = () => {
+  const handleGuardarActualizacion = async () => {
+    if (!plan) return;
+
     // Validaciones básicas
     if (!datosActualizacion.estado) {
       toast.error('Debes seleccionar un estado');
@@ -393,41 +809,169 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
       return;
     }
 
-    // Simular actualización (en producción, aquí se haría el PUT al backend)
-    toast.success('Plan de Mejoramiento Actualizado', {
-      description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
-      duration: 4000,
-    });
+    try {
+      // Actualizar en el backend
+      await planesMejoramientoApi.update(plan.id, {
+        estado: datosActualizacion.estado === 'FORMULACION' ? 'borrador' :
+                datosActualizacion.estado === 'APROBACION' ? 'aprobado' :
+                datosActualizacion.estado === 'EN_EJECUCION' ? 'en-ejecucion' :
+                datosActualizacion.estado === 'CUMPLIDO' ? 'cerrado' : 'borrador',
+        observaciones: datosActualizacion.observaciones
+      });
 
-    // Registrar en timeline simulado
-    console.log('📝 Actualizando plan:', {
-      planId: plan.id,
-      estadoAnterior: plan.estado,
-      estadoNuevo: datosActualizacion.estado,
-      observaciones: datosActualizacion.observaciones,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      toast.success('Plan de Mejoramiento Actualizado', {
+        description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
+        duration: 4000,
+      });
 
-    setModalActualizacion(false);
-    
-    // Aquí podrías actualizar el estado local o refrescar los datos
-    // onPlanActualizado?.();
+      setModalActualizacion(false);
+      
+      // Recargar datos del plan
+      const response = await planesMejoramientoApi.getById(planId);
+      if (response.success && response.data) {
+        // Recargar también hallazgos si es necesario
+        let hallazgosCargados: HallazgoBD[] = [];
+        if (response.data.hallazgosIds && response.data.hallazgosIds.length > 0) {
+          try {
+            const hallazgosPromises = response.data.hallazgosIds.map((id: string) => 
+              hallazgosApi.getById(id).then(r => r.data)
+            );
+            const hallazgosResults = await Promise.all(hallazgosPromises);
+            hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== undefined);
+          } catch (errorHallazgos) {
+            console.warn('[ModalDetallePlan] Error al recargar hallazgos:', errorHallazgos);
+          }
+        }
+        const planMapeado = await mapearPlanDetalleDesdeBD(response.data, hallazgosCargados);
+        setPlan(planMapeado);
+      }
+    } catch (err: any) {
+      console.error('[ModalDetallePlan] Error al actualizar plan:', err);
+      toast.error('Error al actualizar el plan', {
+        description: err.message || 'No se pudo actualizar el plan'
+      });
+    }
   };
 
-  const handleDescargarReporte = () => {
-    toast.success('Generando Reporte PDF', {
-      description: 'El reporte del plan se está descargando...',
-      duration: 3000,
-    });
-    
-    // Simular descarga
-    console.log('📄 Descargando reporte del plan:', {
-      planId: plan.id,
-      codigo: plan.codigo,
-      formato: 'PDF',
-      timestamp: new Date().toISOString()
-    });
+  const handleDescargarReporte = async () => {
+    if (!plan) return;
+
+    try {
+      toast.info('Generando Reporte Excel', {
+        description: 'El reporte del plan se está generando...',
+        duration: 2000,
+      });
+
+      // Crear un nuevo libro de trabajo
+      const workbook = XLSX.utils.book_new();
+
+      // ============ HOJA 1: INFORMACIÓN GENERAL ============
+      const infoGeneralData = [
+        ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA'],
+        ['REPORTE DE PLAN DE MEJORAMIENTO'],
+        [`Generado el ${new Date().toLocaleDateString('es-CO', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        })}`],
+        [],
+        ['INFORMACIÓN GENERAL'],
+        [],
+        ['Código', plan.codigo],
+        ['Nombre', plan.nombre || 'Sin nombre'],
+        ['Estado', plan.estado],
+        ['Área Responsable', plan.area],
+        ['Responsable General', plan.responsableGeneral],
+        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')],
+        ['Fecha Vencimiento', new Date(plan.fechaVencimiento).toLocaleDateString('es-CO')],
+        ['Progreso Global', `${plan.progresoGlobal}%`],
+        ['Auditoría Origen', plan.auditoria]
+      ];
+
+      const infoGeneralSheet = XLSX.utils.aoa_to_sheet(infoGeneralData);
+      XLSX.utils.book_append_sheet(workbook, infoGeneralSheet, 'Información General');
+
+      // ============ HOJA 2: RESUMEN DE ACCIONES ============
+      const totalAcciones = plan.acciones.length;
+      const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
+      const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
+      const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
+
+      const resumenAccionesData = [
+        ['RESUMEN DE ACCIONES'],
+        [],
+        ['Concepto', 'Cantidad', 'Porcentaje'],
+        ['Total de Acciones', totalAcciones, '100%'],
+        ['Completadas', accionesCompletadas, `${totalAcciones > 0 ? Math.round((accionesCompletadas / totalAcciones) * 100) : 0}%`],
+        ['En Ejecución', accionesEnEjecucion, `${totalAcciones > 0 ? Math.round((accionesEnEjecucion / totalAcciones) * 100) : 0}%`],
+        ['Pendientes', accionesPendientes, `${totalAcciones > 0 ? Math.round((accionesPendientes / totalAcciones) * 100) : 0}%`]
+      ];
+
+      const resumenAccionesSheet = XLSX.utils.aoa_to_sheet(resumenAccionesData);
+      XLSX.utils.book_append_sheet(workbook, resumenAccionesSheet, 'Resumen Acciones');
+
+      // ============ HOJA 3: HALLAZGOS ============
+      if (plan.hallazgos.length > 0) {
+        const hallazgosData = [
+          ['HALLAZGOS'],
+          [],
+          ['Código', 'Descripción', 'Criticidad', 'Acciones Completadas', 'Total Acciones', 'Progreso (%)']
+        ];
+
+        plan.hallazgos.forEach(h => {
+          hallazgosData.push([
+            h.codigo,
+            h.descripcion,
+            h.criticidad,
+            String(h.accionesCompletadas),
+            String(h.accionesCount),
+            `${h.progreso}%`
+          ]);
+        });
+
+        const hallazgosSheet = XLSX.utils.aoa_to_sheet(hallazgosData);
+        XLSX.utils.book_append_sheet(workbook, hallazgosSheet, 'Hallazgos');
+      }
+
+      // ============ HOJA 4: ACCIONES CORRECTIVAS ============
+      if (plan.acciones.length > 0) {
+        const accionesData = [
+          ['ACCIONES CORRECTIVAS'],
+          [],
+          ['Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Vencimiento', 'Estado', 'Progreso (%)', 'Evidencias']
+        ];
+
+        plan.acciones.forEach(a => {
+          accionesData.push([
+            a.descripcion,
+            a.responsable,
+            new Date(a.fechaInicio).toLocaleDateString('es-CO'),
+            new Date(a.fechaVencimiento).toLocaleDateString('es-CO'),
+            a.estado,
+            `${a.progreso}%`,
+            String(a.evidencias || 0)
+          ]);
+        });
+
+        const accionesSheet = XLSX.utils.aoa_to_sheet(accionesData);
+        XLSX.utils.book_append_sheet(workbook, accionesSheet, 'Acciones Correctivas');
+      }
+
+      // Generar el archivo Excel
+      const nombreArchivo = `Reporte_Plan_${plan.codigo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, nombreArchivo);
+
+      toast.success('Reporte generado exitosamente', {
+        description: `El archivo ${nombreArchivo} ha sido descargado`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      console.error('Error al generar reporte Excel:', error);
+      toast.error('Error al generar reporte', {
+        description: error.message || 'No se pudo generar el archivo Excel',
+        duration: 4000,
+      });
+    }
   };
 
   const estadoConfig = {
@@ -437,6 +981,42 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     EN_SEGUIMIENTO: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'En Seguimiento' },
     CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
   };
+
+  // Manejar estados de carga y error
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="absolute inset-0" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
+            <p className="text-gray-600">Cargando plan de mejoramiento...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !plan) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="absolute inset-0" onClick={onClose} />
+        <div className="relative bg-white rounded-2xl shadow-2xl p-8 z-[9999] max-w-md">
+          <div className="flex flex-col items-center gap-4">
+            <AlertCircle className="w-12 h-12 text-red-500" />
+            <h3 className="text-lg font-semibold text-gray-900">Error al cargar el plan</h3>
+            <p className="text-gray-600 text-center">{error || 'No se pudo cargar la información del plan'}</p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#2a6dbd] transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const config = estadoConfig[plan.estado];
 
@@ -580,7 +1160,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               onClick={() => setTabActiva('documentos')}
               icon={<FileText className="w-4 h-4" />}
               label="Documentos"
-              badge={plan.documentos.length.toString()}
+              badge={(conteoDocumentos ?? 0).toString()}
             />
             <TabButton
               active={tabActiva === 'seguimiento'}
@@ -603,8 +1183,8 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
             >
               {tabActiva === 'resumen' && <TabResumen plan={plan} estadisticas={estadisticas} />}
               {tabActiva === 'hallazgos' && <TabHallazgos plan={plan} />}
-              {tabActiva === 'acciones' && <TabAcciones plan={plan} />}
-              {tabActiva === 'documentos' && <TabDocumentos plan={plan} />}
+              {tabActiva === 'acciones' && <TabAcciones plan={plan} planId={planId} onAccionCreada={handleRecargarPlan} />}
+              {tabActiva === 'documentos' && <TabDocumentos plan={plan} onDocumentosCargados={setConteoDocumentos} />}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
           </AnimatePresence>
@@ -622,7 +1202,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                 onClick={handleDescargarReporte}
               >
                 <Download className="w-4 h-4" />
-                Descargar Reporte
+                Descargar Excel
               </button>
               <button
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm"
@@ -673,6 +1253,9 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
                     <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
                     <InfoItem label="Área Responsable" valor={plan.area} />
                     <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
+                    {plan.responsableAreaNombre && (
+                      <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
+                    )}
                     <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
                     <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
                     <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -845,6 +1428,9 @@ function TabResumen({ plan, estadisticas }: { plan: PlanMejoramientoDetalle; est
           <InfoItem label="Auditoría Origen" valor={plan.auditoria} />
           <InfoItem label="Área Responsable" valor={plan.area} />
           <InfoItem label="Responsable General" valor={plan.responsableGeneral} />
+          {plan.responsableAreaNombre && (
+            <InfoItem label="Responsable del Área Auditada" valor={plan.responsableAreaNombre} />
+          )}
           <InfoItem label="Fecha Creación" valor={plan.fechaCreacion} />
           <InfoItem label="Fecha Vencimiento" valor={plan.fechaVencimiento} />
           <InfoItem label="Progreso Global" valor={`${plan.progresoGlobal}%`} />
@@ -959,8 +1545,12 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
             <p className="text-sm text-gray-700 mb-2">{hallazgo.descripcion}</p>
             <div className="flex items-center gap-4 text-xs text-gray-600">
               <div className="flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                {hallazgo.area || 'No especificada'}
+              </div>
+              <div className="flex items-center gap-1">
                 <User className="w-3 h-3" />
-                {hallazgo.responsable}
+                {hallazgo.responsable || 'No asignado'}
               </div>
               <div className="flex items-center gap-1">
                 <Target className="w-3 h-3" />
@@ -1036,8 +1626,9 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
 // TAB: ACCIONES
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
+function TabAcciones({ plan, planId, onAccionCreada }: { plan: PlanMejoramientoDetalle; planId: string; onAccionCreada?: () => void }) {
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | AccionCorrectiva['estado']>('TODOS');
+  const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
   const accionesFiltradas = filtroEstado === 'TODOS'
     ? plan.acciones
@@ -1052,42 +1643,82 @@ function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
         </div>
 
         <div className="flex gap-2">
-          <FiltroButton
-            active={filtroEstado === 'TODOS'}
-            onClick={() => setFiltroEstado('TODOS')}
-            label="Todas"
-          />
-          <FiltroButton
-            active={filtroEstado === 'COMPLETADA'}
-            onClick={() => setFiltroEstado('COMPLETADA')}
-            label="Completadas"
-            color="green"
-          />
-          <FiltroButton
-            active={filtroEstado === 'EN_EJECUCION'}
-            onClick={() => setFiltroEstado('EN_EJECUCION')}
-            label="En Ejecución"
-            color="yellow"
-          />
-          <FiltroButton
-            active={filtroEstado === 'PENDIENTE'}
-            onClick={() => setFiltroEstado('PENDIENTE')}
-            label="Pendientes"
-            color="gray"
-          />
+          <button
+            onClick={() => setModalCrearAccion(true)}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Acción
+          </button>
         </div>
       </div>
 
-      {accionesFiltradas.map((accion) => (
-        <CardAccion key={accion.id} accion={accion} plan={plan} />
-      ))}
+      <div className="flex gap-2 mb-4">
+        <FiltroButton
+          active={filtroEstado === 'TODOS'}
+          onClick={() => setFiltroEstado('TODOS')}
+          label="Todas"
+        />
+        <FiltroButton
+          active={filtroEstado === 'COMPLETADA'}
+          onClick={() => setFiltroEstado('COMPLETADA')}
+          label="Completadas"
+          color="green"
+        />
+        <FiltroButton
+          active={filtroEstado === 'EN_EJECUCION'}
+          onClick={() => setFiltroEstado('EN_EJECUCION')}
+          label="En Ejecución"
+          color="yellow"
+        />
+        <FiltroButton
+          active={filtroEstado === 'PENDIENTE'}
+          onClick={() => setFiltroEstado('PENDIENTE')}
+          label="Pendientes"
+          color="gray"
+        />
+      </div>
+
+      {accionesFiltradas.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <Target className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay acciones</h3>
+          <p className="text-sm text-gray-600 mb-4">Comienza agregando una acción correctiva al plan</p>
+          <button
+            onClick={() => setModalCrearAccion(true)}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Primera Acción
+          </button>
+        </div>
+      ) : (
+        accionesFiltradas.map((accion) => (
+          <CardAccion key={accion.id} accion={accion} plan={plan} planId={planId} onAccionEditada={onAccionCreada} />
+        ))
+      )}
+
+      {modalCrearAccion && (
+        <ModalCrearAccion
+          planId={planId}
+          plan={plan}
+          onClose={() => setModalCrearAccion(false)}
+          onAccionCreada={() => {
+            setModalCrearAccion(false);
+            onAccionCreada?.();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle }) {
+function CardAccion({ accion, plan, planId, onAccionEditada }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle; planId: string; onAccionEditada?: () => void }) {
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
+  const [marcandoCompletada, setMarcandoCompletada] = useState(false);
+  const [evidencias, setEvidencias] = useState<any[]>([]);
+  const [loadingEvidencias, setLoadingEvidencias] = useState(false);
   
   const estadoConfig = {
     PENDIENTE: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pendiente', icon: Clock },
@@ -1100,6 +1731,25 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
   const Icon = config.icon;
   const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
+  // Cargar evidencias de la acción
+  useEffect(() => {
+    const cargarEvidencias = async () => {
+      try {
+        setLoadingEvidencias(true);
+        const response = await evidenciasApi.getByAccion(accion.id);
+        if (response.success && response.data) {
+          setEvidencias(response.data);
+        }
+      } catch (error) {
+        console.error('[CardAccion] Error al cargar evidencias:', error);
+      } finally {
+        setLoadingEvidencias(false);
+      }
+    };
+
+    cargarEvidencias();
+  }, [accion.id]);
+
   const handleEditar = () => {
     setModalEditar(true);
   };
@@ -1108,7 +1758,43 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
     setModalEvidencia(true);
   };
 
-  const handleMarcarCompletada = () => {
+  const handleEvidenciaCargada = async () => {
+    // Recargar evidencias después de cargar
+    try {
+      const response = await evidenciasApi.getByAccion(accion.id);
+      if (response.success && response.data) {
+        setEvidencias(response.data);
+      }
+    } catch (error) {
+      console.error('[CardAccion] Error al recargar evidencias:', error);
+    }
+  };
+
+  const handleDescargarEvidencia = async (evidencia: any) => {
+    try {
+      const blob = await evidenciasApi.download(evidencia.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Evidencia Descargada', {
+        description: `${evidencia.nombre} se ha descargado exitosamente`,
+        duration: 2000,
+      });
+    } catch (error: any) {
+      console.error('[CardAccion] Error al descargar:', error);
+      toast.error('Error al descargar evidencia', {
+        description: error.message || 'No se pudo descargar el archivo'
+      });
+    }
+  };
+
+  const handleMarcarCompletada = async () => {
     // Validar que no esté ya completada
     if (accion.estado === 'COMPLETADA') {
       toast.warning('Acción ya completada', {
@@ -1117,25 +1803,52 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
       return;
     }
 
-    // Simular actualización (en producción: PUT al backend)
-    toast.success('Acción Marcada como Completada', {
-      description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
-      duration: 4000,
-    });
+    // Prevenir múltiples clicks mientras se procesa
+    if (marcandoCompletada) {
+      return;
+    }
 
-    // Log para debugging
-    console.log('✅ Marcando acción como completada:', {
-      accionId: accion.id,
-      estadoAnterior: accion.estado,
-      progresoAnterior: accion.progreso,
-      estadoNuevo: 'COMPLETADA',
-      progresoNuevo: 100,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+    try {
+      setMarcandoCompletada(true);
 
-    // Aquí se actualizaría el estado o se refrescarían los datos
-    // onAccionActualizada?.();
+      // Mapear estado del frontend al backend
+      const estadoBackend = 'completada';
+
+      // Actualizar acción en el backend
+      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
+        estado: estadoBackend,
+        porcentajeAvance: 100,
+      });
+
+      if (response.success) {
+        toast.success('Acción Marcada como Completada', {
+          description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
+          duration: 4000,
+        });
+
+        // Log para debugging
+        console.log('✅ Acción marcada como completada:', {
+          accionId: accion.id,
+          estadoAnterior: accion.estado,
+          progresoAnterior: accion.progreso,
+          estadoNuevo: 'COMPLETADA',
+          progresoNuevo: 100,
+          timestamp: new Date().toISOString()
+        });
+
+        // Refrescar los datos del plan
+        onAccionEditada?.();
+      } else {
+        throw new Error(response.error || 'Error al actualizar la acción');
+      }
+    } catch (err: any) {
+      console.error('[CardAccion] Error al marcar acción como completada:', err);
+      toast.error('Error al completar la acción', {
+        description: err.message || 'No se pudo actualizar el estado de la acción. Por favor, intenta nuevamente.'
+      });
+    } finally {
+      setMarcandoCompletada(false);
+    }
   };
 
   return (
@@ -1212,9 +1925,47 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
                 <Paperclip className="w-3 h-3" />
                 <span>Evidencias</span>
               </div>
-              <div className="text-gray-900">{accion.evidencias} archivos</div>
+              <div className="text-gray-900">
+                {loadingEvidencias ? (
+                  <Loader2 className="w-3 h-3 animate-spin inline" />
+                ) : (
+                  `${evidencias.length} archivo(s)`
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Evidencias */}
+          {evidencias.length > 0 && (
+            <div className="mb-3 p-3 bg-gray-50 border border-gray-200 rounded">
+              <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                <Paperclip className="w-3 h-3" />
+                Evidencias ({evidencias.length})
+              </div>
+              <div className="space-y-1">
+                {evidencias.slice(0, 3).map((evidencia) => (
+                  <div key={evidencia.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-gray-200">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                      <span className="text-gray-700 truncate">{evidencia.nombre}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDescargarEvidencia(evidencia)}
+                      className="p-1 text-gray-600 hover:text-[#1e5da8] transition-colors flex-shrink-0"
+                      title="Descargar"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {evidencias.length > 3 && (
+                  <div className="text-xs text-gray-500 text-center pt-1">
+                    +{evidencias.length - 3} más
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Observaciones */}
           {accion.observaciones && (
@@ -1242,10 +1993,20 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
             {accion.estado !== 'COMPLETADA' && (
               <button 
                 onClick={handleMarcarCompletada}
-                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"
+                disabled={marcandoCompletada}
+                className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Marcar Completada
+                {marcandoCompletada ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Marcar Completada
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -1255,8 +2016,10 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
       {/* Modal Editar Acción */}
       {modalEditar && (
         <ModalEditarAccion 
-          accion={accion} 
+          accion={accion}
+          planId={planId}
           onClose={() => setModalEditar(false)}
+          onAccionActualizada={onAccionEditada}
         />
       )}
 
@@ -1264,7 +2027,13 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
       {modalEvidencia && (
         <ModalCargarEvidencia 
           accion={accion} 
+          planId={planId}
           onClose={() => setModalEvidencia(false)}
+          onEvidenciaCargada={() => {
+            handleEvidenciaCargada();
+            onAccionEditada?.();
+          }}
+          conteoEvidenciasActual={evidencias.length}
         />
       )}
     </div>
@@ -1300,52 +2069,103 @@ function MiniCardAccion({ accion }: { accion: AccionCorrectiva }) {
 // TAB: DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
+function TabDocumentos({ plan, onDocumentosCargados }: { plan: PlanMejoramientoDetalle; onDocumentosCargados?: (count: number) => void }) {
   const [modalCargarDocumento, setModalCargarDocumento] = useState(false);
-  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoPlan | null>(null);
+  const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<any | null>(null);
+  const [evidencias, setEvidencias] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Cargar evidencias del plan desde el backend
+  useEffect(() => {
+    const cargarEvidencias = async () => {
+      try {
+        setLoading(true);
+        const response = await evidenciasApi.getByPlan(plan.id);
+        if (response.success && response.data) {
+          setEvidencias(response.data);
+          // Notificar al componente padre el conteo de documentos
+          onDocumentosCargados?.(response.data.length);
+        }
+      } catch (error) {
+        console.error('[TabDocumentos] Error al cargar evidencias:', error);
+        toast.error('Error al cargar documentos', {
+          description: 'No se pudieron cargar los documentos del plan'
+        });
+        onDocumentosCargados?.(0);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarEvidencias();
+  }, [plan.id, onDocumentosCargados]);
 
   const handleCargarDocumento = () => {
     setModalCargarDocumento(true);
   };
 
-  const handleVerDocumento = (doc: DocumentoPlan) => {
-    setDocumentoVistaPrevia(doc);
-    
-    toast.info('Abriendo Vista Previa', {
-      description: `Cargando ${doc.nombre}...`,
-      duration: 2000,
-    });
-
-    // Log para debugging
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    // En producción: abrir modal de vista previa o redirigir a URL del documento
-    // window.open(doc.url, '_blank');
+  const handleVerDocumento = async (evidencia: any) => {
+    try {
+      // Verificar si el archivo se puede previsualizar (solo imágenes y PDFs)
+      const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
+      const esImagen = tipoMime.startsWith('image/');
+      const esPdf = tipoMime === 'application/pdf' || tipoMime.includes('pdf');
+      
+      if (esImagen || esPdf) {
+        // Intentar abrir preview solo para imágenes y PDFs
+        const url = `${import.meta.env.VITE_API_URL || 'http://localhost:3007'}/evidencias/${evidencia.id}/preview`;
+        const token = localStorage.getItem('esap_auth_token');
+        
+        if (token) {
+          window.open(`${url}?token=${token}`, '_blank');
+        } else {
+          window.open(url, '_blank');
+        }
+      } else {
+        // Para otros tipos de archivo, descargar directamente
+        await handleDescargarDocumento(evidencia);
+        toast.info('Archivo descargado', {
+          description: 'Este tipo de archivo se descarga directamente. Solo se pueden previsualizar imágenes y PDFs.'
+        });
+      }
+    } catch (error) {
+      console.error('[TabDocumentos] Error al abrir documento:', error);
+      toast.error('Error al abrir documento', {
+        description: 'No se pudo abrir la vista previa'
+      });
+    }
   };
 
-  const handleDescargarDocumento = (doc: DocumentoPlan) => {
-    toast.success('Descargando Documento', {
-      description: `${doc.nombre} se está descargando...`,
-      duration: 3000,
-    });
+  const handleDescargarDocumento = async (evidencia: any) => {
+    try {
+      const blob = await evidenciasApi.download(evidencia.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = evidencia.nombreArchivoOriginal || evidencia.nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
 
-    // Log para debugging
-    console.log('📥 Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      toast.success('Documento Descargado', {
+        description: `${evidencia.nombre} se ha descargado exitosamente`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      console.error('[TabDocumentos] Error al descargar:', error);
+      toast.error('Error al descargar documento', {
+        description: error.message || 'No se pudo descargar el archivo'
+      });
+    }
+  };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
   return (
@@ -1353,7 +2173,7 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-medium text-gray-900">Documentos y Evidencias</h3>
-          <p className="text-sm text-gray-600">{plan.documentos.length} archivos</p>
+          <p className="text-sm text-gray-600">{loading ? 'Cargando...' : `${evidencias.length} archivos`}</p>
         </div>
 
         <button 
@@ -1365,50 +2185,118 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        {plan.documentos.map((doc) => (
-          <div key={doc.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-[#1e5da8]" />
+        </div>
+      ) : evidencias.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay documentos</h3>
+          <p className="text-sm text-gray-600 mb-4">Comienza agregando un documento al plan</p>
+          <button
+            onClick={handleCargarDocumento}
+            className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium mx-auto"
+          >
+            <Upload className="w-4 h-4" />
+            Cargar Primer Documento
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {evidencias.map((evidencia) => (
+            <div key={evidencia.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                </div>
 
-              <div className="flex-1">
-                <h4 className="text-sm text-gray-900 font-medium mb-1">{doc.nombre}</h4>
-                <div className="flex items-center gap-4 text-xs text-gray-600">
-                  <span>{doc.tipo}</span>
-                  <span>{doc.tamanio}</span>
-                  <span>{doc.fechaCarga}</span>
-                  <span>{doc.autor}</span>
+                <div className="flex-1">
+                  <h4 className="text-sm text-gray-900 font-medium mb-1">{evidencia.nombre}</h4>
+                  <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
+                    <span>{evidencia.tipoDocumento?.replace(/_/g, ' ')}</span>
+                    <span>{formatFileSize(evidencia.tamanioBytes || 0)}</span>
+                    <span>{new Date(evidencia.fechaSubida).toLocaleDateString('es-CO')}</span>
+                    <span>{evidencia.subidoPor}</span>
+                    {/* Mostrar vinculación */}
+                    {evidencia.hallazgoId && (
+                      <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+                        Hallazgo
+                      </span>
+                    )}
+                    {evidencia.accionCorrectivaId && (
+                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                        Acción
+                      </span>
+                    )}
+                    {evidencia.planMejoramientoId && (
+                      <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">
+                        Plan
+                      </span>
+                    )}
+                    {evidencia.auditoriaId && (
+                      <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-700">
+                        Auditoría
+                      </span>
+                    )}
+                    {evidencia.estadoValidacion && (
+                      <span className={`px-2 py-0.5 rounded ${
+                        evidencia.estadoValidacion === 'aceptado' ? 'bg-green-100 text-green-700' :
+                        evidencia.estadoValidacion === 'rechazado' ? 'bg-red-100 text-red-700' :
+                        evidencia.estadoValidacion === 'con_observaciones' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {evidencia.estadoValidacion}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  {(() => {
+                    const tipoMime = evidencia.tipoMime?.toLowerCase() || '';
+                    const esPrevisualizable = tipoMime.startsWith('image/') || 
+                                            tipoMime === 'application/pdf' || 
+                                            tipoMime.includes('pdf');
+                    
+                    return esPrevisualizable ? (
+                      <button 
+                        onClick={() => handleVerDocumento(evidencia)}
+                        className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                        title="Ver documento"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    ) : null;
+                  })()}
+                  <button 
+                    onClick={() => handleDescargarDocumento(evidencia)}
+                    className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
+                    title="Descargar documento"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleVerDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Ver documento"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => handleDescargarDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Descargar documento"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal Cargar Documento */}
       {modalCargarDocumento && (
         <ModalCargarDocumentoPlan
           planId={plan.id}
-          onClose={() => setModalCargarDocumento(false)}
+          onClose={() => {
+            setModalCargarDocumento(false);
+            // Recargar evidencias después de cargar
+            evidenciasApi.getByPlan(plan.id).then(response => {
+              if (response.success && response.data) {
+                setEvidencias(response.data);
+                onDocumentosCargados?.(response.data.length);
+              }
+            });
+          }}
         />
       )}
 
@@ -1448,12 +2336,16 @@ function TimelineItem({ actividad, isLast }: { actividad: ActividadTimeline; isL
   const tipoConfig = {
     CREACION: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Plus },
     ACTUALIZACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Edit2 },
+    APROBACION: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: CheckCircle2 },
     COMPLETADA: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle2 },
     EVIDENCIA: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Paperclip },
-    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare }
+    COMENTARIO: { bg: 'bg-gray-100', text: 'text-gray-700', icon: MessageSquare },
+    PROGRESO: { bg: 'bg-blue-100', text: 'text-blue-700', icon: TrendingUp },
+    ESTADO: { bg: 'bg-orange-100', text: 'text-orange-700', icon: RefreshCw },
+    HALLAZGO_COMPLETADO: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle2 }
   };
 
-  const config = tipoConfig[actividad.tipo];
+  const config = tipoConfig[actividad.tipo] || tipoConfig.ACTUALIZACION; // fallback si el tipo no existe
   const Icon = config.icon;
 
   return (
@@ -1540,7 +2432,218 @@ function FiltroButton({ active, onClick, label, color = 'gray' }: any) {
   );
 }
 
-import { ChevronDown } from 'lucide-react';
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: CREAR ACCIÓN
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalCrearAccionProps {
+  planId: string;
+  plan: PlanMejoramientoDetalle;
+  onClose: () => void;
+  onAccionCreada: () => void;
+}
+
+function ModalCrearAccion({ planId, plan, onClose, onAccionCreada }: ModalCrearAccionProps) {
+  const [datosAccion, setDatosAccion] = useState({
+    hallazgoId: plan.hallazgos.length > 0 ? plan.hallazgos[0].id : '', // Seleccionar primer hallazgo por defecto
+    descripcion: '',
+    responsable: plan.responsableGeneral || '',
+    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaFin: plan.fechaVencimiento || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    observaciones: ''
+  });
+
+  const handleGuardar = async () => {
+    // Validaciones
+    if (!datosAccion.hallazgoId) {
+      toast.error('Debe seleccionar un hallazgo');
+      return;
+    }
+
+    if (!datosAccion.descripcion.trim()) {
+      toast.error('La descripción es obligatoria');
+      return;
+    }
+
+    if (!datosAccion.responsable.trim()) {
+      toast.error('El responsable es obligatorio');
+      return;
+    }
+
+    try {
+      // Crear acción en el backend con hallazgoId
+      const response = await planesMejoramientoApi.addAccion(planId, {
+        hallazgoId: datosAccion.hallazgoId, // ✅ VINCULAR AL HALLAZGO
+        descripcion: datosAccion.descripcion,
+        responsable: datosAccion.responsable,
+        fechaInicio: datosAccion.fechaInicio,
+        fechaFin: datosAccion.fechaFin,
+        observaciones: datosAccion.observaciones || undefined,
+        estado: 'programada',
+        porcentajeAvance: 0
+      });
+
+      if (response.success) {
+        toast.success('Acción Creada', {
+          description: 'La acción correctiva ha sido vinculada al hallazgo exitosamente',
+          duration: 3000,
+        });
+        onAccionCreada();
+      } else {
+        throw new Error(response.error || 'Error al crear la acción');
+      }
+    } catch (err: any) {
+      console.error('[ModalCrearAccion] Error al crear acción:', err);
+      toast.error('Error al crear la acción', {
+        description: err.message || 'No se pudo crear la acción correctiva'
+      });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10001] overflow-hidden flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-xl font-medium mb-1">Nueva Acción Correctiva</h3>
+              <p className="text-sm text-blue-100">Agregar una nueva acción al plan {plan.codigo}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="flex-1 overflow-auto px-6 py-6">
+          <div className="space-y-4">
+            {/* Selección de Hallazgo */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Hallazgo a Corregir <span className="text-red-500">*</span>
+              </label>
+              {plan.hallazgos.length === 0 ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">⚠️ Este plan no tiene hallazgos asociados</p>
+                </div>
+              ) : (
+                <select
+                  value={datosAccion.hallazgoId}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, hallazgoId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                >
+                  <option value="">Seleccionar hallazgo...</option>
+                  {plan.hallazgos.map((hallazgo) => (
+                    <option key={hallazgo.id} value={hallazgo.id}>
+                      {hallazgo.codigo} - {hallazgo.titulo}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                La acción correctiva se vinculará a este hallazgo específico
+              </p>
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={datosAccion.descripcion}
+                onChange={(e) => setDatosAccion({ ...datosAccion, descripcion: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Descripción detallada de la acción correctiva"
+              />
+            </div>
+
+            {/* Responsable */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Responsable <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={datosAccion.responsable}
+                onChange={(e) => setDatosAccion({ ...datosAccion, responsable: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Nombre del responsable"
+              />
+            </div>
+
+            {/* Fechas */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Inicio
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaInicio}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaInicio: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha Fin <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={datosAccion.fechaFin}
+                  onChange={(e) => setDatosAccion({ ...datosAccion, fechaFin: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Observaciones
+              </label>
+              <textarea
+                value={datosAccion.observaciones}
+                onChange={(e) => setDatosAccion({ ...datosAccion, observaciones: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Observaciones adicionales (opcional)"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm font-medium"
+            >
+              Crear Acción
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // MODAL: EDITAR ACCIÓN
@@ -1548,10 +2651,12 @@ import { ChevronDown } from 'lucide-react';
 
 interface ModalEditarAccionProps {
   accion: AccionCorrectiva;
+  planId: string;
   onClose: () => void;
+  onAccionActualizada?: () => void;
 }
 
-function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
+function ModalEditarAccion({ accion, planId, onClose, onAccionActualizada }: ModalEditarAccionProps) {
   const [datosEdicion, setDatosEdicion] = useState({
     descripcion: accion.descripcion,
     responsable: accion.responsable,
@@ -1562,7 +2667,29 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
     observaciones: accion.observaciones || ''
   });
 
-  const handleGuardar = () => {
+  // Actualizar estado automáticamente cuando cambia el progreso
+  const handleProgresoChange = (nuevoProgreso: number) => {
+    let nuevoEstado = datosEdicion.estado;
+    
+    if (nuevoProgreso === 100) {
+      nuevoEstado = 'COMPLETADA';
+    } else if (nuevoProgreso > 0 && nuevoProgreso < 100) {
+      // Si estaba completada y ahora es menor a 100%, cambiar a EN_EJECUCION
+      if (datosEdicion.estado === 'COMPLETADA') {
+        nuevoEstado = 'EN_EJECUCION';
+      }
+    } else if (nuevoProgreso === 0) {
+      nuevoEstado = 'PENDIENTE';
+    }
+    
+    setDatosEdicion({
+      ...datosEdicion,
+      progreso: nuevoProgreso,
+      estado: nuevoEstado
+    });
+  };
+
+  const handleGuardar = async () => {
     // Validaciones
     if (!datosEdicion.descripcion.trim()) {
       toast.error('La descripción es obligatoria');
@@ -1579,21 +2706,40 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
       return;
     }
 
-    // Simular actualización
-    toast.success('Acción Actualizada', {
-      description: 'Los cambios han sido guardados exitosamente',
-      duration: 3000,
-    });
+    try {
+      // Mapear estado del frontend al backend
+      const estadoBackend = datosEdicion.estado === 'PENDIENTE' ? 'programada' :
+                           datosEdicion.estado === 'EN_EJECUCION' ? 'en-progreso' :
+                           datosEdicion.estado === 'COMPLETADA' ? 'completada' :
+                           datosEdicion.estado === 'VENCIDA' ? 'vencida' : 'programada';
 
-    console.log('📝 Actualizando acción:', {
-      accionId: accion.id,
-      datosAnteriores: accion,
-      datosNuevos: datosEdicion,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+      // Actualizar acción en el backend
+      const response = await planesMejoramientoApi.updateAccion(planId, accion.id, {
+        descripcion: datosEdicion.descripcion,
+        responsable: datosEdicion.responsable,
+        fechaInicio: datosEdicion.fechaInicio,
+        fechaFin: datosEdicion.fechaVencimiento,
+        estado: estadoBackend,
+        porcentajeAvance: datosEdicion.progreso,
+        observaciones: datosEdicion.observaciones || undefined
+      });
 
-    onClose();
+      if (response.success) {
+        toast.success('Acción Actualizada', {
+          description: 'Los cambios han sido guardados exitosamente',
+          duration: 3000,
+        });
+        onAccionActualizada?.();
+        onClose();
+      } else {
+        throw new Error(response.error || 'Error al actualizar la acción');
+      }
+    } catch (err: any) {
+      console.error('[ModalEditarAccion] Error al actualizar acción:', err);
+      toast.error('Error al actualizar la acción', {
+        description: err.message || 'No se pudo actualizar la acción correctiva'
+      });
+    }
   };
 
   return (
@@ -1696,7 +2842,8 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
             {/* Progreso */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Progreso: {datosEdicion.progreso}%
+                Progreso: {datosEdicion.progreso}% 
+                <span className="text-xs text-gray-500 ml-2">(Estado se ajusta automáticamente)</span>
               </label>
               <input
                 type="range"
@@ -1704,7 +2851,7 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
                 max="100"
                 step="5"
                 value={datosEdicion.progreso}
-                onChange={(e) => setDatosEdicion({ ...datosEdicion, progreso: parseInt(e.target.value) })}
+                onChange={(e) => handleProgresoChange(parseInt(e.target.value))}
                 className="w-full"
               />
               <div className="flex justify-between text-xs text-gray-600 mt-1">
@@ -1759,17 +2906,33 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
 
 interface ModalCargarEvidenciaProps {
   accion: AccionCorrectiva;
+  planId: string;
   onClose: () => void;
+  onEvidenciaCargada?: () => void;
+  conteoEvidenciasActual?: number;
 }
 
-function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
+function ModalCargarEvidencia({ accion, planId, onClose, onEvidenciaCargada, conteoEvidenciasActual = 0 }: ModalCargarEvidenciaProps) {
+  // Hooks para notificaciones
+  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
   const [observaciones, setObservaciones] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+      // Validar tamaño (10MB máximo por archivo)
+      const archivosValidos = nuevosArchivos.filter(archivo => {
+        if (archivo.size > 10 * 1024 * 1024) {
+          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 10MB)`);
+          return false;
+        }
+        return true;
+      });
+      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
     }
   };
 
@@ -1778,31 +2941,89 @@ function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const handleCargar = () => {
+  const getFileType = (fileName: string, mimeType: string): string => {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    if (['pdf'].includes(extension)) return 'PDF';
+    if (['doc', 'docx'].includes(extension)) return 'Word';
+    if (['xls', 'xlsx'].includes(extension)) return 'Excel';
+    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return 'Imagen';
+    return mimeType.split('/')[1]?.toUpperCase() || 'Archivo';
+  };
+
+  const handleCargar = async () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    // Simular carga de archivos
-    toast.success('Evidencias Cargadas', {
-      description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
-      duration: 3000,
-    });
+    setSubiendo(true);
 
-    console.log('📎 Cargando evidencias:', {
-      accionId: accion.id,
-      archivos: archivosSeleccionados.map(f => ({
-        nombre: f.name,
-        tamanio: f.size,
-        tipo: f.type
-      })),
-      observaciones,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
+    try {
+      // Obtener información del plan para las notificaciones
+      let planInfo: { codigo: string } | null = null;
+      try {
+        const planResponse = await planesMejoramientoApi.getById(planId);
+        if (planResponse.success && planResponse.data) {
+          planInfo = {
+            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
+          };
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener información del plan para notificaciones:', error);
+      }
 
-    onClose();
+      // Subir cada archivo usando el nuevo servicio de evidencias
+      for (const archivo of archivosSeleccionados) {
+        const response = await evidenciasApi.create(
+          archivo,
+          {
+            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
+            descripcion: observaciones || undefined,
+            tipoDocumento: 'evidencia_accion',
+            accionCorrectivaId: accion.id,
+            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+          },
+          (progress) => {
+            // Progreso individual por archivo (opcional)
+            // Progress tracking removed for cleaner console
+          }
+        );
+
+        if (!response.success) {
+          throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
+
+        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
+        if (planInfo && response.data && user?.id) {
+          try {
+            await notificarDocumentoSubidoPlanMejoramiento(
+              response.data.id,
+              archivo.name,
+              planId,
+              planInfo.codigo,
+              user.id
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+      }
+
+      toast.success('Evidencias Cargadas', {
+        description: `${archivosSeleccionados.length} archivo(s) cargado(s) exitosamente`,
+        duration: 3000,
+      });
+
+      onEvidenciaCargada?.();
+      onClose();
+    } catch (error: any) {
+      console.error('[ModalCargarEvidencia] Error al cargar evidencias:', error);
+      toast.error('Error al cargar evidencias', {
+        description: error.message || 'No se pudieron cargar las evidencias'
+      });
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -1842,7 +3063,7 @@ function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
               <div className="text-sm font-medium text-blue-900 mb-1">Acción Correctiva</div>
               <div className="text-sm text-blue-700">{accion.descripcion}</div>
               <div className="text-xs text-blue-600 mt-2">
-                Evidencias actuales: {accion.evidencias} archivo(s)
+                Evidencias actuales: {conteoEvidenciasActual} archivo(s)
               </div>
             </div>
 
@@ -1937,10 +3158,20 @@ function ModalCargarEvidencia({ accion, onClose }: ModalCargarEvidenciaProps) {
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={subiendo}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Archivo(s)` : 'Evidencias'}
+              {subiendo ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Archivo(s)` : 'Evidencias'}
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1959,14 +3190,27 @@ interface ModalCargarDocumentoPlanProps {
 }
 
 function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanProps) {
+  // Hooks para notificaciones
+  const { notificarDocumentoSubidoPlanMejoramiento } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([]);
-  const [tipoDocumento, setTipoDocumento] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState<'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro'>('documento_plan');
   const [descripcion, setDescripcion] = useState('');
+  const [subiendo, setSubiendo] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const nuevosArchivos = Array.from(e.target.files);
-      setArchivosSeleccionados([...archivosSeleccionados, ...nuevosArchivos]);
+      // Validar tamaño (50MB máximo por archivo)
+      const archivosValidos = nuevosArchivos.filter(archivo => {
+        if (archivo.size > 50 * 1024 * 1024) {
+          toast.error(`El archivo ${archivo.name} es demasiado grande (máx. 50MB)`);
+          return false;
+        }
+        return true;
+      });
+      setArchivosSeleccionados([...archivosSeleccionados, ...archivosValidos]);
     }
   };
 
@@ -1975,37 +3219,75 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
     setArchivosSeleccionados(nuevosArchivos);
   };
 
-  const handleCargar = () => {
+  const handleCargar = async () => {
     if (archivosSeleccionados.length === 0) {
       toast.error('Debes seleccionar al menos un archivo');
       return;
     }
 
-    if (!tipoDocumento) {
-      toast.error('Debes seleccionar el tipo de documento');
-      return;
+    setSubiendo(true);
+
+    try {
+      // Obtener información del plan para las notificaciones
+      let planInfo: { codigo: string } | null = null;
+      try {
+        const planResponse = await planesMejoramientoApi.getById(planId);
+        if (planResponse.success && planResponse.data) {
+          planInfo = {
+            codigo: planResponse.data.codigo || `PM-${new Date().getFullYear()}-${planResponse.data.id.substring(0, 6).toUpperCase()}`
+          };
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener información del plan para notificaciones:', error);
+      }
+
+      // Subir cada archivo usando el nuevo servicio de evidencias
+      for (const archivo of archivosSeleccionados) {
+        const response = await evidenciasApi.create(
+          archivo,
+          {
+            nombre: archivo.name.replace(/\.[^/.]+$/, ''), // Nombre sin extensión
+            descripcion: descripcion || undefined,
+            tipoDocumento: tipoDocumento,
+            planMejoramientoId: planId,
+            subidoPor: 'Usuario Actual', // TODO: Obtener del contexto de autenticación
+          }
+        );
+
+        if (!response.success) {
+          throw new Error(response.error || `Error al cargar ${archivo.name}`);
+        }
+
+        // ============ NOTIFICACIONES: Documento Subido en Plan de Mejoramiento ============
+        if (planInfo && response.data && user?.id) {
+          try {
+            await notificarDocumentoSubidoPlanMejoramiento(
+              response.data.id,
+              archivo.name,
+              planId,
+              planInfo.codigo,
+              user.id
+            );
+          } catch (notifError) {
+            console.error('Error al enviar notificaciones:', notifError);
+          }
+        }
+      }
+
+      toast.success('Documentos Cargados', {
+        description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
+        duration: 3000,
+      });
+
+      onClose();
+    } catch (error: any) {
+      console.error('[ModalCargarDocumentoPlan] Error al cargar documentos:', error);
+      toast.error('Error al cargar documentos', {
+        description: error.message || 'No se pudieron cargar los documentos'
+      });
+    } finally {
+      setSubiendo(false);
     }
-
-    // Simular carga de documentos
-    toast.success('Documentos Cargados', {
-      description: `${archivosSeleccionados.length} documento(s) cargado(s) exitosamente al plan`,
-      duration: 3000,
-    });
-
-    console.log('📄 Cargando documentos al plan:', {
-      planId,
-      tipoDocumento,
-      descripcion,
-      archivos: archivosSeleccionados.map(f => ({
-        nombre: f.name,
-        tamanio: f.size,
-        tipo: f.type
-      })),
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    onClose();
   };
 
   const formatFileSize = (bytes: number) => {
@@ -2047,12 +3329,11 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
               </label>
               <select
                 value={tipoDocumento}
-                onChange={(e) => setTipoDocumento(e.target.value)}
+                onChange={(e) => setTipoDocumento(e.target.value as any)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
               >
-                <option value="">Seleccionar tipo...</option>
-                <option value="plan">Plan de Mejoramiento</option>
-                <option value="evidencia">Evidencia</option>
+                <option value="documento_plan">Documento del Plan</option>
+                <option value="evidencia_plan">Evidencia del Plan</option>
                 <option value="informe">Informe de Seguimiento</option>
                 <option value="acta">Acta</option>
                 <option value="certificado">Certificado</option>
@@ -2151,10 +3432,20 @@ function ModalCargarDocumentoPlan({ planId, onClose }: ModalCargarDocumentoPlanP
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={subiendo}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
+              {subiendo ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} Documento(s)` : 'Documentos'}
+                </>
+              )}
             </button>
           </div>
         </div>

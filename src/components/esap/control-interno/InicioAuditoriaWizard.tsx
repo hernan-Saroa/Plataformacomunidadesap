@@ -33,7 +33,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Users, Calendar, CheckCircle, X, ChevronRight, 
@@ -41,7 +41,8 @@ import {
   Building2, MapPin, Clock, Target, FileCheck, Mail, Shield, Settings,
   Edit, Upload, Save
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import jsPDF from 'jspdf';
 
 // Componentes del design system
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -50,6 +51,7 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 
 // Servicios API
 import { auditoriasApi } from './services/api';
+import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
 
 // ============ TIPOS ============
 
@@ -136,6 +138,184 @@ const AUDITORIA_MOCK: AuditoriaProgramada = {
     comunicacion: 12
   }
 };
+
+// ============ FUNCIÓN HELPER PARA GENERAR ACTIVIDADES DINÁMICAS ============
+
+/**
+ * Genera el texto de actividades para una fase desde la BD
+ */
+function generarActividadesDinamicas(nombreFase: string, duracionDias: number, actividadesPorFase: Record<string, any[]>): string {
+  const actividades = actividadesPorFase[nombreFase] || [];
+  
+  // Mapear número de fase
+  const numeroFase = nombreFase === 'Planeación' ? 1 : nombreFase === 'Ejecución' ? 2 : 3;
+  
+  // Si no hay actividades en BD, usar mensaje informativo
+  if (actividades.length === 0) {
+    return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
+□ (No se han configurado actividades para esta fase en el sistema)`;
+  }
+  
+  // Generar lista de actividades ordenadas por orden
+  const actividadesOrdenadas = [...actividades].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  const listaActividades = actividadesOrdenadas
+    .map(act => `□ ${act.nombre || act.titulo}${act.esObligatoria ? ' (*)' : ''}`)
+    .join('\n');
+  
+  return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
+${listaActividades}
+${actividades.some(a => a.esObligatoria) ? '\n(*) Actividades obligatorias' : ''}`;
+}
+
+// ============ FUNCIÓN HELPER PARA DESCARGAR PDF ============
+
+/**
+ * Genera y descarga un PDF a partir del contenido de un documento
+ */
+function descargarDocumentoPDF(documento: DocumentoGenerado): void {
+  try {
+    toast.loading('Generando PDF...', { id: 'generar-pdf' });
+    
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxWidth = pageWidth - 2 * margin;
+    let yPos = margin;
+
+    // Encabezado con color
+    doc.setFillColor(59, 130, 246); // Azul #3B82F6
+    doc.rect(0, 0, pageWidth, 40, 'F');
+    
+    // Título del documento en el encabezado
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    const tituloLines = doc.splitTextToSize(documento.titulo, maxWidth);
+    doc.text(tituloLines, pageWidth / 2, 20, { align: 'center' });
+    
+    // Información adicional en el encabezado
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const fechaGeneracion = documento.generadoEn.toLocaleDateString('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    doc.text(`Generado el: ${fechaGeneracion}`, pageWidth / 2, 32, { align: 'center' });
+
+    // Contenido del documento
+    yPos = 50;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+
+    // Procesar el contenido línea por línea
+    const lineas = documento.contenido.split('\n');
+    
+    for (let i = 0; i < lineas.length; i++) {
+      let linea = lineas[i];
+      
+      // Limpiar caracteres especiales de formato markdown y tablas
+      linea = linea
+        .replace(/\*\*/g, '') // Eliminar **
+        .replace(/═+/g, '') // Eliminar líneas de tabla
+        .replace(/╔|╗|╠|╣|╚|╝|║/g, '') // Eliminar bordes de tabla
+        .replace(/^[-*•]\s*/, '') // Eliminar viñetas
+        .trim();
+      
+      // Si la línea está vacía, agregar espacio
+      if (linea === '') {
+        yPos += 5;
+        continue;
+      }
+
+      // Detectar títulos (líneas que son cortas y están en mayúsculas o tienen formato especial)
+      const esTitulo = (linea.length < 60 && /^[A-ZÁÉÍÓÚÑ0-9]/.test(linea) && !linea.includes(':')) ||
+                      /^\d+\.\s+[A-Z]/.test(linea) || // Números seguidos de mayúscula
+                      linea === linea.toUpperCase() && linea.length < 80;
+
+      if (esTitulo && linea.length > 0) {
+        // Si hay poco espacio, crear nueva página
+        if (yPos > pageHeight - 30) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
+        // Formatear título
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        const tituloLines = doc.splitTextToSize(linea, maxWidth);
+        doc.text(tituloLines, margin, yPos);
+        yPos += tituloLines.length * 7 + 3;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+      } else {
+        // Texto normal
+        if (yPos > pageHeight - 20) {
+          doc.addPage();
+          yPos = margin;
+        }
+        
+        // Procesar texto normal, manejando listas
+        let textoFinal = linea;
+        if (linea.startsWith('□')) {
+          textoFinal = '☐ ' + linea.substring(1).trim();
+        }
+        
+        const textoLines = doc.splitTextToSize(textoFinal, maxWidth);
+        doc.text(textoLines, margin, yPos);
+        yPos += textoLines.length * 5 + 2;
+      }
+    }
+
+    // Pie de página
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      doc.text(
+        `Página ${i} de ${totalPages} - ESAP - Oficina de Control Interno`,
+        pageWidth / 2,
+        pageHeight - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Generar nombre del archivo
+    const nombreArchivo = `${documento.titulo.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    // Generar blob y descargar manualmente
+    const pdfBlob = doc.output('blob');
+    const url = window.URL.createObjectURL(pdfBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = nombreArchivo;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    toast.success('PDF descargado exitosamente', { 
+      id: 'generar-pdf',
+      description: nombreArchivo
+    });
+  } catch (error) {
+    console.error('Error al generar PDF:', error);
+    toast.error('Error al generar el PDF', {
+      id: 'generar-pdf',
+      description: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+}
 
 // ============ GENERADORES DE DOCUMENTOS ============
 
@@ -308,7 +488,7 @@ ${auditoria.auditorLider.nombre}
 `;
 }
 
-function generarProgramaIndividual(auditoria: AuditoriaProgramada, config: ConfiguracionAuditoria): string {
+function generarProgramaIndividual(auditoria: AuditoriaProgramada, config: ConfiguracionAuditoria, actividadesPorFase: Record<string, any[]> = {}): string {
   const fechaHoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
   
   return `
@@ -366,7 +546,14 @@ Email: ${auditoria.responsableArea.email}
 
 **8. ACTIVIDADES POR FASE**
 
-**FASE 1: PLANEACIÓN (${auditoria.duracionDias.planeacion} días)**
+${generarActividadesDinamicas('Planeación', auditoria.duracionDias.planeacion, actividadesPorFase)}
+
+${generarActividadesDinamicas('Ejecución', auditoria.duracionDias.ejecucion, actividadesPorFase)}
+
+${generarActividadesDinamicas('Comunicación', auditoria.duracionDias.comunicacion, actividadesPorFase)}
+
+/* ACTIVIDADES HARDCODEADAS ORIGINALES (COMENTADAS - AHORA SE USAN LAS DE BD)
+**FASE 1: PLANEACIÓN**
 □ Revisión de documentación del proceso
 □ Análisis de riesgos del área auditada
 □ Solicitud de información preliminar
@@ -374,7 +561,7 @@ Email: ${auditoria.responsableArea.email}
 □ Reunión de apertura con el área
 □ Definición de muestras y pruebas
 
-**FASE 2: EJECUCIÓN (${auditoria.duracionDias.ejecucion} días)**
+**FASE 2: EJECUCIÓN**
 □ Aplicación de listas de chequeo
 □ Revisión de documentos y registros
 □ Entrevistas con personal clave
@@ -384,13 +571,14 @@ Email: ${auditoria.responsableArea.email}
 □ Recopilación de evidencias
 □ Reunión de cierre con el área
 
-**FASE 3: COMUNICACIÓN (${auditoria.duracionDias.comunicacion} días)**
+**FASE 3: COMUNICACIÓN**
 □ Elaboración de informe preliminar
 □ Socialización con el área auditada
 □ Atención de controversias (si aplica)
 □ Elaboración de informe final
 □ Generación de informe ejecutivo
 □ Formalización de plan de mejoramiento
+*/
 
 **9. RECURSOS NECESARIOS**
 
@@ -454,6 +642,41 @@ export function InicioAuditoriaWizard({
   const [documentosGenerados, setDocumentosGenerados] = useState<DocumentoGenerado[]>([]);
   const [loading, setLoading] = useState(false);
   const [documentoVistaPrevia, setDocumentoVistaPrevia] = useState<DocumentoGenerado | null>(null);
+  const [actividadesPorFase, setActividadesPorFase] = useState<Record<string, any[]>>({});
+
+  // Cargar actividades desde la BD al montar el componente
+  useEffect(() => {
+    const cargarActividades = async () => {
+      try {
+        // Cargar tableros Kanban
+        const tableros = await tablerosKanbanService.cargarTablerosKanban();
+        
+        // Buscar el tablero de auditorías
+        const tableroAuditorias = tableros.find(t => t.tipo === 'auditorias' && t.activo);
+        
+        if (!tableroAuditorias || !tableroAuditorias.etapas) {
+          console.warn('No se encontró configuración de tablero para auditorías');
+          return;
+        }
+        
+        // Mapear las actividades por nombre de etapa
+        const actividadesCargadas: Record<string, any[]> = {};
+        
+        for (const etapa of tableroAuditorias.etapas) {
+          // Las actividades están en cada etapa
+          // Por ahora, generamos un array vacío ya que las actividades se gestionan de otra manera
+          // La estructura real depende de cómo se almacenan en la BD
+          actividadesCargadas[etapa.nombre] = [];
+        }
+        
+        setActividadesPorFase(actividadesCargadas);
+      } catch (error) {
+        console.error('Error al cargar actividades:', error);
+      }
+    };
+    
+    cargarActividades();
+  }, []); // Solo al montar
 
   // Generar documentos
   const generarDocumentos = () => {
@@ -491,7 +714,7 @@ export function InicioAuditoriaWizard({
         {
           tipo: 'programa-individual',
           titulo: 'Programa Individual',
-          contenido: generarProgramaIndividual(auditoria, configuracion),
+          contenido: generarProgramaIndividual(auditoria, configuracion, actividadesPorFase),
           generadoEn: new Date(),
           size: '3.2 KB',
           icono: <FileCheck className="w-5 h-5" />,
@@ -524,7 +747,7 @@ export function InicioAuditoriaWizard({
         : [];
 
       // Preparar datos para actualizar
-      const updateData = {
+      const updateData: any = {
         alcance: configuracion.alcance || undefined,
         fechaReunionApertura: configuracion.fechaReunionApertura?.toISOString() || undefined,
         observacionesAdicionales: configuracion.observaciones || undefined,
@@ -657,6 +880,15 @@ export function InicioAuditoriaWizard({
                   documentos={documentosGenerados}
                   loading={loading}
                   onPreview={setDocumentoVistaPrevia}
+                  onUpdateDocumento={(tipo, contenido) => {
+                    setDocumentosGenerados(prev => 
+                      prev.map(doc => 
+                        doc.tipo === tipo 
+                          ? { ...doc, contenido, generadoEn: new Date() }
+                          : doc
+                      )
+                    );
+                  }}
                 />
               )}
               {pasoActual === 4 && (
@@ -672,7 +904,7 @@ export function InicioAuditoriaWizard({
           {/* Footer - Botones */}
           <div className="p-3 sm:p-6 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <ButtonSIGL
-              variant="outline"
+              variant="secondary"
               icon={<ChevronLeft className="w-4 h-4" />}
               onClick={pasoActual === 1 ? onClose : retrocederPaso}
               className="w-full sm:w-auto"
@@ -799,8 +1031,8 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
           <div className="space-y-2 sm:space-y-3">
             <div className="bg-green-50 border border-green-200 rounded-lg p-2">
               <p className="text-[10px] sm:text-xs text-green-700 font-semibold mb-1">Auditor Líder</p>
-              <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.auditorLider.nombre}</p>
-              <p className="text-[10px] sm:text-xs text-gray-600 truncate">{auditoria.auditorLider.email}</p>
+              <p className="text-xs sm:text-sm text-gray-900 font-medium">{auditoria.auditorLider?.nombre || 'Sin asignar'}</p>
+              <p className="text-[10px] sm:text-xs text-gray-600 truncate">{auditoria.auditorLider?.email || 'sin.asignar@esap.edu.co'}</p>
             </div>
             <div>
               <p className="text-[10px] sm:text-xs text-gray-600 mb-1">Equipo de Apoyo:</p>
@@ -997,11 +1229,13 @@ function Paso2Configuracion({
 function Paso3Documentos({ 
   documentos, 
   loading,
-  onPreview 
+  onPreview,
+  onUpdateDocumento
 }: { 
   documentos: DocumentoGenerado[];
   loading: boolean;
   onPreview: (doc: DocumentoGenerado) => void;
+  onUpdateDocumento: (tipo: TipoDocumento, contenido: string) => void;
 }) {
   const [documentoEditar, setDocumentoEditar] = useState<DocumentoGenerado | null>(null);
   const [documentoCargar, setDocumentoCargar] = useState<TipoDocumento | null>(null);
@@ -1051,7 +1285,7 @@ function Paso3Documentos({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
             >
-              <CardSIGL hover className="p-3 sm:p-4">
+              <CardSIGL hoverable className="p-3 sm:p-4">
                 <div className="flex items-start gap-3 sm:gap-4">
                   <div 
                     className="p-2 sm:p-3 rounded-lg flex-shrink-0"
@@ -1072,7 +1306,7 @@ function Paso3Documentos({
                     </div>
                     <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Eye className="w-3 h-3" />}
                         onClick={() => onPreview(doc)}
@@ -1081,7 +1315,7 @@ function Paso3Documentos({
                         Ver
                       </ButtonSIGL>
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Edit className="w-3 h-3" />}
                         onClick={() => setDocumentoEditar(doc)}
@@ -1089,7 +1323,7 @@ function Paso3Documentos({
                         Editar
                       </ButtonSIGL>
                       <ButtonSIGL
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         icon={<Upload className="w-3 h-3" />}
                         onClick={() => setDocumentoCargar(doc.tipo)}
@@ -1125,7 +1359,7 @@ function Paso3Documentos({
           documento={documentoEditar}
           onClose={() => setDocumentoEditar(null)}
           onSave={(contenido) => {
-            // Actualizar el contenido del documento
+            onUpdateDocumento(documentoEditar.tipo, contenido);
             toast.success(`✅ ${documentoEditar.titulo} actualizado`);
             setDocumentoEditar(null);
           }}
@@ -1137,8 +1371,9 @@ function Paso3Documentos({
         <ModalCargarDocumento
           tipo={documentoCargar}
           onClose={() => setDocumentoCargar(null)}
-          onUpload={(file) => {
-            toast.success(`✅ Archivo cargado: ${file.name}`);
+          onUpload={(contenido) => {
+            onUpdateDocumento(documentoCargar, contenido);
+            toast.success(`✅ Archivo cargado y documento actualizado`);
             setDocumentoCargar(null);
           }}
         />
@@ -1294,9 +1529,9 @@ function ModalVistaPrevia({
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
+            onClick={() => descargarDocumentoPDF(documento)}
           >
             Descargar PDF
           </ButtonSIGL>
@@ -1360,22 +1595,34 @@ function ModalEditarDocumento({
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
           <div className="bg-white rounded-lg shadow-sm p-8 max-w-3xl mx-auto">
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Contenido del documento
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Edite el contenido del documento. Los cambios se guardarán cuando presione "Guardar Cambios".
+              </p>
+            </div>
             <textarea
               value={contenido}
               onChange={(e) => setContenido(e.target.value)}
-              rows={15}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={20}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono resize-y min-h-[400px] focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Edite el contenido del documento..."
             />
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <span>{contenido.length} caracteres</span>
+              <span>{contenido.split('\n').length} líneas</span>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
+            onClick={() => descargarDocumentoPDF({ ...documento, contenido })}
           >
             Descargar PDF
           </ButtonSIGL>
@@ -1386,7 +1633,7 @@ function ModalEditarDocumento({
             Guardar Cambios
           </ButtonSIGL>
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
           >
             Cancelar
@@ -1406,9 +1653,10 @@ function ModalCargarDocumento({
 }: { 
   tipo: TipoDocumento;
   onClose: () => void;
-  onUpload: (file: File) => void;
+  onUpload: (contenido: string) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -1416,9 +1664,25 @@ function ModalCargarDocumento({
     }
   };
 
-  const handleUpload = () => {
-    if (file) {
-      onUpload(file);
+  const handleUpload = async () => {
+    if (!file) return;
+    
+    setLoading(true);
+    try {
+      // Solo leer archivos de texto
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        const contenido = await file.text();
+        onUpload(contenido);
+      } else {
+        // Para otros tipos de archivo, mostrar mensaje y permitir edición
+        toast.error('Solo se pueden cargar archivos de texto (.txt). Para otros formatos, use la opción de editar.');
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.error('Error al leer el archivo:', error);
+      toast.error('Error al leer el archivo. Por favor, intente nuevamente.');
+      setLoading(false);
     }
   };
   
@@ -1469,12 +1733,18 @@ function ModalCargarDocumento({
               </div>
             </div>
             <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Seleccionar archivo de texto
+              </label>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx"
+                accept=".txt,text/plain"
                 onChange={handleFileChange}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <p className="text-xs text-gray-500 mt-2">
+                Solo se aceptan archivos de texto (.txt). El contenido del archivo reemplazará el documento actual.
+              </p>
             </div>
           </div>
         </div>
@@ -1482,22 +1752,16 @@ function ModalCargarDocumento({
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end gap-2">
           <ButtonSIGL
-            variant="outline"
-            icon={<Download className="w-4 h-4" />}
-            onClick={() => toast.success('Descargando documento...')}
-          >
-            Descargar PDF
-          </ButtonSIGL>
-          <ButtonSIGL
             variant="primary"
             onClick={handleUpload}
-            disabled={!file}
+            disabled={!file || loading}
           >
-            Cargar Archivo
+            {loading ? 'Cargando...' : 'Cargar Archivo'}
           </ButtonSIGL>
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             onClick={onClose}
+            disabled={loading}
           >
             Cancelar
           </ButtonSIGL>

@@ -150,15 +150,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       console.error('❌ Error de autenticación:', error);
 
       // Manejar diferentes tipos de errores
-      if (error.response?.status === 401) {
-        toast.error('Credenciales incorrectas', {
-          description: 'El correo electrónico o contraseña son incorrectos.',
-          duration: 5000,
-        });
-        setErrors({
-          email: 'Verifica tu correo electrónico',
-          password: 'Verifica tu contraseña'
-        });
+      if (error.response?.data.statusCode === 401) {
+        if (error.response?.data.message === 'El usuario no tiene roles asignados') {
+          toast.error('Acceso denegado', {
+            description: 'El usuario no tiene roles asignados. Por favor, solicita que te asignen un rol e intenta nuevamente.',
+            duration: 10000,
+          });
+        } else {
+          toast.error('Credenciales incorrectas', {
+            description: 'El correo electrónico o contraseña son incorrectos.',
+            duration: 5000,
+          });
+          setErrors({
+            email: 'Verifica tu correo electrónico',
+            password: 'Verifica tu contraseña'
+          });
+        }
       } else if (error.response?.status === 400) {
         toast.error('Datos inválidos', {
           description: 'Por favor verifica la información ingresada.',

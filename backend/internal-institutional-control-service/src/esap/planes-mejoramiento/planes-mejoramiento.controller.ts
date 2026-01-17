@@ -18,6 +18,7 @@ import { CreateAccionDto } from './dto/create-accion.dto';
 import { UpdateAccionDto } from './dto/update-accion.dto';
 import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
+import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
 import { RechazarPlanDto } from './dto/rechazar-plan.dto';
 
 @Controller('planes-mejoramiento')
@@ -271,6 +272,47 @@ export class PlanesMejoramientoController {
       body.accionId,
       body,
     );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENDPOINTS PARA EVENTOS DEL TIMELINE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /planes-mejoramiento/:planId/eventos
+   * Obtiene todos los eventos del timeline de un plan
+   */
+  @Get(':planId/eventos')
+  async getEventosTimeline(@Param('planId') planId: string) {
+    try {
+      const eventos = await this.planesMejoramientoService.getEventosTimeline(planId);
+      return {
+        success: true,
+        eventos,
+      };
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
+  }
+
+  /**
+   * POST /planes-mejoramiento/:planId/eventos
+   * Crea un nuevo evento en el timeline
+   */
+  @Post(':planId/eventos')
+  async createEventoTimeline(
+    @Param('planId') planId: string,
+    @Body() createDto: CreateEventoTimelineDto,
+  ) {
+    try {
+      const evento = await this.planesMejoramientoService.createEventoTimeline(planId, createDto);
+      return {
+        success: true,
+        evento,
+      };
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
   }
 }
 

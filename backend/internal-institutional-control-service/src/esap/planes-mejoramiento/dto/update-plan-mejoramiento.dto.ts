@@ -64,7 +64,7 @@ export class UpdatePlanMejoramientoDto {
   @IsOptional()
   objetivos?: string[];
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   hallazgoId?: string;
 
@@ -107,16 +107,4 @@ export class UpdatePlanMejoramientoDto {
   @IsString()
   @IsOptional()
   motivoRechazo?: string;
-
 }
-
-
-
-
-
-
-
-
-
-
-

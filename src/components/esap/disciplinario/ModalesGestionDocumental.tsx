@@ -1,6 +1,6 @@
 ﻿/**
  * MODALES DE GESTIÃ“N DOCUMENTAL - CONTROL INTERNO DISCIPLINARIO
- * Componentes para gestiÃ³n de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
+ * Componentes para Gestión de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
  */
 
 import { useEffect, useState } from 'react';
@@ -84,7 +84,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../ui/alert-dialog';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { VisorPDFAuto } from './VisorPDFAuto';
 
 interface Persona {
   nombre: string;
@@ -125,6 +126,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [autoParaEliminar, setAutoParaEliminar] = useState<any | null>(null);
   const [eliminandoAuto, setEliminandoAuto] = useState(false);
   const [autoEnviandoRevision, setAutoEnviandoRevision] = useState<string | null>(null);
+  const [modalEditarAuto, setModalEditarAuto] = useState<{ show: boolean; auto: any | null }>({ show: false, auto: null });
+  const [editandoAuto, setEditandoAuto] = useState(false);
+  const [visorAuto, setVisorAuto] = useState<{ show: boolean; auto: any | null; modoPlantilla?: boolean; modoEdicion?: boolean }>({ show: false, auto: null });
+  const [cargandoProceso, setCargandoProceso] = useState(false);
 
   // Estados para editor con plantillas
   const [plantillas, setPlantillas] = useState<any[]>([]);
@@ -405,6 +410,72 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     }
   };
 
+  const handleEditarAuto = (auto: any) => {
+    setModalEditarAuto({ show: true, auto });
+  };
+
+  const handleAbrirVisorAuto = async (auto: any, modoPlantilla: boolean = false) => {
+     if (!processId) {
+       toast.error('No se puede identificar el proceso');
+       return;
+     }
+
+     setCargandoProceso(true);
+     try {
+       // Obtener el proceso completo usando el endpoint específico por radicado
+       const procesoCompleto = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
+
+       // Construir el objeto auto con la información completa del proceso
+       const autoCompleto = {
+         ...auto,
+         process: {
+           radicadoProceso: procesoCompleto.radicadoProceso,
+           news: procesoCompleto.news ? {
+             hechos: procesoCompleto.news.hechos || '',
+             fechaQueja: procesoCompleto.news.fechaQueja,
+             denunciante: procesoCompleto.news.denunciante,
+             disciplinable: procesoCompleto.news.disciplinable
+           } : undefined
+         }
+       };
+
+       console.log('Auto completo para visor:', autoCompleto);
+       console.log('Proceso encontrado:', procesoCompleto);
+       console.log('News del proceso:', procesoCompleto.news);
+       setVisorAuto({ show: true, auto: autoCompleto, modoPlantilla });
+     } catch (error) {
+       console.error('Error obteniendo información del proceso:', error);
+       toast.error('No se pudo cargar la información del proceso');
+       // Abrir el visor con la información básica disponible
+       setVisorAuto({ show: true, auto, modoPlantilla });
+     } finally {
+       setCargandoProceso(false);
+     }
+   };
+
+  const handleGuardarEdicionAuto = async () => {
+    if (!modalEditarAuto.auto) return;
+    setEditandoAuto(true);
+    try {
+      // Solo enviar los campos que se pueden editar (metadatos básicos)
+      const updateData = {
+        numero: modalEditarAuto.auto.numero,
+        tipo: modalEditarAuto.auto.tipo,
+        comentarios: modalEditarAuto.auto.comentarios || ''
+      };
+
+      await disciplinaryService.updateAuto(modalEditarAuto.auto.id, updateData);
+      await cargarAutos(processId);
+      toast.success('Auto actualizado', { description: modalEditarAuto.auto.numero });
+      setModalEditarAuto({ show: false, auto: null });
+    } catch (error) {
+      console.error('Error actualizando auto', error);
+      toast.error('No se pudo actualizar el auto');
+    } finally {
+      setEditandoAuto(false);
+    }
+  };
+
   const generarTituloAutomatico = (tipo: any) => {
     const numeroConsecutivo = String(autos.length + 1).padStart(3, '0');
     return `${tipo.nombre} No. ${numeroConsecutivo} - ${proceso.numeroProceso}`;
@@ -500,7 +571,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
   const tiposAuto = [
     { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
-    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de IndagaciÃ³n Preliminar', icon: Search, color: '#06B6D4' },
+    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
     { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de InvestigaciÃ³n', icon: FileText, color: '#10B981' },
     { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de FormulaciÃ³n de Pliego', icon: FileCheck, color: '#F59E0B' },
     { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
@@ -537,7 +608,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Autos y Providencias
+                  Gestión de Autos y Providencias
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - {proceso.denunciado.nombre}
@@ -561,11 +632,14 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                Lista de Autos
              </button>
              <button
-               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'editor' ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
-               onClick={() => setVistaActual('editor')}
+               className={`px-4 py-2 rounded-t-lg font-bold text-sm text-gray-600 hover:bg-gray-100`}
+               onClick={(e) => {
+                 e.stopPropagation();
+                 window.open('/editor-plantillas', '_blank');
+               }}
              >
                <Edit2 className="w-4 h-4 inline mr-2" />
-               Editor con Plantillas
+               Editor de Plantillas
              </button>
            </div>
          </div>
@@ -801,14 +875,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Abrir plantilla en nueva ventana
-                            const plantillaUrl = buildApiUrl('legal', `/api/v1/autos/${auto.id}/plantilla`);
-                            window.open(plantillaUrl, '_blank');
+                            handleEditarAuto(auto);
                           }}
-                          title="Ver plantilla"
-                          style={{ borderColor: '#8B5CF6', color: '#8B5CF6' }}
+                          title="Editar auto"
+                          style={{ borderColor: '#059669', color: '#059669' }}
                         >
-                          <FileText className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                         <Button
                           type="button"
@@ -816,12 +888,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            editarAutoEnEditor(auto);
+                            handleAbrirVisorAuto(auto, true);
                           }}
-                          title="Editar en editor"
-                          style={{ borderColor: '#059669', color: '#059669' }}
+                          title="Ver plantilla BD"
+                          disabled={cargandoProceso}
+                          style={{ borderColor: '#10B981', color: '#10B981' }}
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          {cargandoProceso ? (
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5" />
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -906,7 +983,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">
-                    DescripciÃ³n (opcional)
+                    Descripción (opcional)
                   </label>
                   <textarea
                     value={descripcion}
@@ -1099,6 +1176,126 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         )}
       </AnimatePresence>
 
+      {/* Modal Editar Auto */}
+      <AnimatePresence>
+        {modalEditarAuto.show && modalEditarAuto.auto && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+            onClick={() => setModalEditarAuto({ show: false, auto: null })}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b bg-gradient-to-r from-purple-50 to-blue-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-purple-100">
+                      <Edit2 className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900">Editar Auto</h3>
+                      <p className="text-sm text-gray-600">{modalEditarAuto.auto.numero}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setModalEditarAuto({ show: false, auto: null })}
+                    className="p-2 hover:bg-white/50 rounded-lg"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Número del Auto
+                  </label>
+                  <input
+                    type="text"
+                    value={modalEditarAuto.auto.numero}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, numero: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Tipo de Auto
+                  </label>
+                  <select
+                    value={modalEditarAuto.auto.tipo}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, tipo: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  >
+                    {tiposAuto.map((tipo) => (
+                      <option key={tipo.id} value={tipo.nombre}>
+                        {tipo.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Comentarios
+                  </label>
+                  <textarea
+                    value={modalEditarAuto.auto.comentarios || ''}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, comentarios: e.target.value }
+                    }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Comentarios adicionales..."
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setModalEditarAuto({ show: false, auto: null })}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleGuardarEdicionAuto}
+                  disabled={editandoAuto}
+                  style={{ background: '#8B5CF6', color: '#FFFFFF' }}
+                >
+                  {editandoAuto ? (
+                    <>
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Guardar Cambios
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AlertDialog
         open={Boolean(autoParaEliminar)}
         onOpenChange={(open) => {
@@ -1131,6 +1328,16 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal Visor de Auto */}
+      {(visorAuto.auto || visorAuto.modoPlantilla) && (
+        <VisorPDFAuto
+          isOpen={visorAuto.show}
+          onClose={() => setVisorAuto({ show: false, auto: null })}
+          auto={visorAuto.auto}
+          modoPlantilla={visorAuto.modoPlantilla}
+        />
+      )}
     </motion.div>
   );
 }
@@ -1320,7 +1527,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
@@ -1338,7 +1545,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Evidencias
+                  Gestión de Evidencias
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - Material Probatorio
@@ -1492,13 +1699,13 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-600">DescripciÃ³n (opcional)</label>
+                <label className="text-xs font-semibold text-gray-600">Descripción (opcional)</label>
                 <input
                   type="text"
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="DescripciÃ³n breve"
+                  placeholder="Descripción breve"
                 />
               </div>
             </div>
@@ -1520,7 +1727,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       {cargando ? 'Subiendo archivo...' : 'Adjuntar evidencia'}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {archivo ? archivo.name : 'Click para seleccionar archivo (mÃ¡x 50 MB)'}
+                      {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
                     </p>
                     {archivoError && (
                       <p className="text-xs text-red-600 mt-2">{archivoError}</p>
@@ -1575,6 +1782,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </motion.div>
   );
 }
@@ -1792,7 +2000,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Oficios
+                  Gestión de Oficios
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - Comunicaciones Oficiales

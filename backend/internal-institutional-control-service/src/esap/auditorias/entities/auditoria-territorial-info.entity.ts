@@ -13,8 +13,8 @@ import { Auditoria } from './auditoria.entity';
 @Entity('auditoria_territorial_info', { schema: 'control_interno' })
 @Index(['auditoriaId'], { unique: true })
 export class AuditoriaTerritorialInfo {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ name: 'auditoria_id', type: 'uuid', unique: true, nullable: false })
   auditoriaId: string;
@@ -38,6 +38,7 @@ export class AuditoriaTerritorialInfo {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
+
 
 
 

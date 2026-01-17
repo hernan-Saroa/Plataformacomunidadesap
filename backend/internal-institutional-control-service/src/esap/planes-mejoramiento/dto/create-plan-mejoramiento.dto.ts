@@ -61,7 +61,7 @@ export class CreatePlanMejoramientoDto {
   @IsOptional()
   objetivos?: string[];
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   hallazgoId?: string;
 
@@ -92,14 +92,3 @@ export class CreatePlanMejoramientoDto {
   @IsOptional()
   acciones?: AccionDto[];
 }
-
-
-
-
-
-
-
-
-
-
-

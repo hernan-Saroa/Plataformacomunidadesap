@@ -26,9 +26,8 @@ export class CreateInformeLeyDto {
   descripcion: string;
 
   @IsString()
-  @IsNotEmpty()
-  @Length(1, 255)
-  normativaBase: string;
+  @IsOptional()
+  normativa?: string;
 
   @IsEnum(['financiero', 'administrativo', 'contractual', 'talento-humano', 'transparencia', 'control'])
   @IsNotEmpty()
