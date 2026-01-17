@@ -76,6 +76,26 @@ export function ModuloAsesoriaJuridicaV3() {
     // prioridad removed - calculated automatically based on time
   });
 
+  // ✅ Helpers de validación de formato para nueva consulta
+  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  // ✅ Handler con filtros de formato para nueva consulta
+  const handleNewConsultaInput = (field: string, value: string) => {
+    let filteredValue = value;
+
+    switch (field) {
+      case 'nombreSolicitante':
+      case 'cargoSolicitante':
+        filteredValue = onlyLetters(value);
+        break;
+      default:
+        filteredValue = value;
+    }
+
+    setNewConsultaData(prev => ({ ...prev, [field]: filteredValue }));
+  };
+
   // Load data from API
   useEffect(() => {
     loadConsultas();
@@ -180,6 +200,11 @@ export function ModuloAsesoriaJuridicaV3() {
   const handleCreateConsulta = async () => {
     if (!newConsultaData.descripcion || !newConsultaData.nombreSolicitante || !newConsultaData.abogadoAsignadoId) {
       toast.error('Completa los campos obligatorios (incluyendo Abogado)');
+      return;
+    }
+    // ✅ Validación de formato de email
+    if (newConsultaData.emailSolicitante && !isValidEmail(newConsultaData.emailSolicitante)) {
+      toast.error('El correo debe contener @ y un dominio válido (.com, .co, etc.)');
       return;
     }
     const toastId = toast.loading('Creando consulta...');
@@ -556,7 +581,7 @@ export function ModuloAsesoriaJuridicaV3() {
                 <Input
                   placeholder="Nombre completo"
                   value={newConsultaData.nombreSolicitante}
-                  onChange={e => setNewConsultaData({ ...newConsultaData, nombreSolicitante: e.target.value })}
+                  onChange={e => handleNewConsultaInput('nombreSolicitante', e.target.value)}
                 />
               </div>
             </div>
@@ -567,7 +592,7 @@ export function ModuloAsesoriaJuridicaV3() {
                 <Input
                   placeholder="Cargo del solicitante"
                   value={newConsultaData.cargoSolicitante}
-                  onChange={e => setNewConsultaData({ ...newConsultaData, cargoSolicitante: e.target.value })}
+                  onChange={e => handleNewConsultaInput('cargoSolicitante', e.target.value)}
                 />
               </div>
               <div className="grid gap-2">

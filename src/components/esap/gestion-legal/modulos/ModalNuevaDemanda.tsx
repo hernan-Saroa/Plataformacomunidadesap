@@ -168,8 +168,42 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
   };
 
+  // ✅ Helpers de validación de formato
+  const onlyNumbers = (value: string): string => value.replace(/[^0-9]/g, '');
+  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+  const phoneFormat = (value: string): string => value.replace(/[^0-9+\s-]/g, '');
+  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
   const handleInputChange = (field: keyof NuevaDemandaData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let filteredValue = value;
+
+    // Aplicar filtros según el campo
+    switch (field) {
+      case 'cuantia':
+        // Solo números para cuantía
+        filteredValue = onlyNumbers(value);
+        break;
+      case 'identificacionDemandante':
+        // Solo números si es persona natural
+        if (formData.tipoPersona === 'natural') {
+          filteredValue = onlyNumbers(value);
+        }
+        break;
+      case 'demandante':
+      case 'demandanteApoderado':
+        // Solo letras y espacios para nombres
+        filteredValue = onlyLetters(value);
+        break;
+      case 'demandanteTelefono':
+      case 'demandadoTelefono':
+        // Formato teléfono internacional
+        filteredValue = phoneFormat(value);
+        break;
+      default:
+        filteredValue = value;
+    }
+
+    setFormData(prev => ({ ...prev, [field]: filteredValue }));
     // Limpiar error del campo
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -205,6 +239,14 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
     if (!formData.pretensiones.trim()) {
       newErrors.pretensiones = 'Las pretensiones son obligatorias';
+    }
+
+    // ✅ Validación de formato de correo electrónico
+    if (formData.demandanteEmail && !isValidEmail(formData.demandanteEmail)) {
+      newErrors.demandanteEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
+    }
+    if (formData.demandadoEmail && !isValidEmail(formData.demandadoEmail)) {
+      newErrors.demandadoEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
     }
 
     setErrors(newErrors);
@@ -554,9 +596,18 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 type="email"
                 value={formData.demandanteEmail || ''}
                 onChange={(e) => handleInputChange('demandanteEmail', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandanteEmail
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="Ej: demandante@email.com"
               />
+              {errors.demandanteEmail && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.demandanteEmail}
+                </p>
+              )}
             </div>
 
             {/* Apoderado del demandante */}
@@ -665,9 +716,18 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 type="email"
                 value={formData.demandadoEmail}
                 onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandadoEmail
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="juridica@esap.edu.co"
               />
+              {errors.demandadoEmail && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.demandadoEmail}
+                </p>
+              )}
             </div>
           </div>
 
