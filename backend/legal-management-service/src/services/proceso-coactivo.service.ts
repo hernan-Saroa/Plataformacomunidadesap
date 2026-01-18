@@ -141,7 +141,7 @@ export class ProcesoCoactivoService {
 
     // ============ GESTIÓN DE DOCUMENTOS ============
 
-    async addAdjunto(procesoId: string, file: Express.Multer.File): Promise<ProcesoCoactivoAdjunto> {
+    async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO'): Promise<ProcesoCoactivoAdjunto> {
         const proceso = await this.findOne(procesoId);
 
         const adjunto = this.adjuntoRepository.create({
@@ -150,6 +150,8 @@ export class ProcesoCoactivoService {
             nombreArchivo: file.filename,
             mimeType: file.mimetype,
             tamano: file.size,
+            tipo,
+            archivoUrl: `/files/${file.filename}`,
             fechaCreacion: new Date()
         });
 

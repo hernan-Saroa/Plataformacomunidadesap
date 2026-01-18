@@ -548,6 +548,33 @@ function ModalNuevoProceso({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
+  // ✅ Helpers de validación de formato
+  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+  const onlyNumbers = (value: string): string => value.replace(/[^0-9]/g, '');
+  const phoneFormat = (value: string): string => value.replace(/[^0-9+\s-]/g, '');
+  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  // ✅ Handler con filtros de formato
+  const handleInputChange = (field: string, value: string) => {
+    let filteredValue = value;
+
+    switch (field) {
+      case 'deudorNombre':
+        filteredValue = onlyLetters(value);
+        break;
+      case 'deudorIdentificacion':
+        filteredValue = onlyNumbers(value);
+        break;
+      case 'deudorTelefono':
+        filteredValue = phoneFormat(value);
+        break;
+      default:
+        filteredValue = value;
+    }
+
+    setFormData(prev => ({ ...prev, [field]: filteredValue }));
+  };
+
   // Limpiar archivos al abrir/cerrar
   useEffect(() => {
     if (isOpen) {
@@ -594,6 +621,11 @@ function ModalNuevoProceso({
       toast.error('Campos requeridos', {
         description: 'Por favor complete todos los campos obligatorios'
       });
+      return;
+    }
+    // ✅ Validación de formato de email
+    if (formData.deudorEmail && !isValidEmail(formData.deudorEmail)) {
+      toast.error('El correo debe contener @ y un dominio válido (.com, .co, etc.)');
       return;
     }
 
@@ -705,7 +737,7 @@ function ModalNuevoProceso({
               <input
                 type="text"
                 value={formData.deudorNombre}
-                onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
+                onChange={(e) => handleInputChange('deudorNombre', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                 placeholder="Ej: Juan Carlos Pérez"
               />
@@ -717,9 +749,9 @@ function ModalNuevoProceso({
               <input
                 type="text"
                 value={formData.deudorIdentificacion}
-                onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
+                onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                placeholder="Ej: 1.012.345.678"
+                placeholder="Ej: 1012345678"
                 disabled={!!procesoEditar}
               />
             </div>
@@ -730,7 +762,7 @@ function ModalNuevoProceso({
                 <input
                   type="text"
                   value={formData.deudorTelefono}
-                  onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
+                  onChange={(e) => handleInputChange('deudorTelefono', e.target.value)}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                   placeholder="+57 300 123 4567"
                 />
@@ -961,10 +993,12 @@ function ModalDetalleProceso({
     try {
       setLoadingAdjuntos(true);
       const docs = await procesosCoactivosService.getAdjuntos(proceso.id);
-      setAdjuntos(docs);
+      // ✅ Asegurar que siempre sea un array
+      setAdjuntos(Array.isArray(docs) ? docs : []);
     } catch (error) {
       console.error('Error cargando adjuntos:', error);
-      toast.error('Error cargando documentos adjuntos');
+      setAdjuntos([]); // ✅ Fallback a array vacío en caso de error
+      // No mostrar toast de error para evitar spam cuando el backend tiene problemas
     } finally {
       setLoadingAdjuntos(false);
     }
