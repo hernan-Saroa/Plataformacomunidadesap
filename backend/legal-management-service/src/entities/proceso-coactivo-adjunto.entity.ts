@@ -25,6 +25,12 @@ export class ProcesoCoactivoAdjunto {
     @Column({ type: 'int' })
     tamano: number;
 
+    @Column({ nullable: true })
+    tipo: string;
+
+    @Column({ name: 'archivo_url', nullable: true })
+    archivoUrl: string;
+
     @CreateDateColumn({ name: 'fecha_creacion' })
     fechaCreacion: Date;
 }

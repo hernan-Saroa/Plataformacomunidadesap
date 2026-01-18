@@ -5,6 +5,7 @@ import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { Expediente } from '../entities/expediente.entity';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
+import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 
 @Injectable()
 export class TerminosService {
@@ -19,6 +20,8 @@ export class TerminosService {
         private consultaRepository: Repository<ConsultaJuridica>,
         @InjectRepository(RequerimientoOC)
         private requerimientoOCRepository: Repository<RequerimientoOC>,
+        @InjectRepository(ProcesoCoactivo)
+        private procesoCoactivoRepository: Repository<ProcesoCoactivo>,
     ) { }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
@@ -29,7 +32,7 @@ export class TerminosService {
 
 
     async createAutomatico(
-        origen: 'DEFENSA' | 'JUZGAMIENTO' | 'ASESORIA' | 'MANUAL' | 'ORGANOS_CONTROL',
+        origen: 'DEFENSA' | 'JUZGAMIENTO' | 'ASESORIA' | 'MANUAL' | 'ORGANOS_CONTROL' | 'PROCESOS_COACTIVOS',
         referenciaId: string,
         radicado: string,
         nombreActuacion: string,
@@ -482,15 +485,53 @@ export class TerminosService {
             }
         }
 
+        // 4. Procesos Coactivos
+        const procesosCoactivos = await this.procesoCoactivoRepository.find();
+
+        this.logger.log(`[PROCESOS_COACTIVOS] Encontrados ${procesosCoactivos.length} procesos para procesar.`);
+
+        for (const proc of procesosCoactivos) {
+            const responsableNombre = proc.responsable || 'Sin asignar';
+
+            // El proceso coactivo tiene fecha de vencimiento en la obligación
+            const fechaVencimiento = proc.obligacion?.fechaVencimiento
+                ? new Date(proc.obligacion.fechaVencimiento)
+                : null;
+
+            const estadoActivo = proc.estado !== 'FINALIZADO';
+
+            if (fechaVencimiento && estadoActivo) {
+                this.logger.debug(`[PROCESOS_COACTIVOS] Sincronizando ${proc.radicado}...`);
+
+                await this.createAutomatico(
+                    'PROCESOS_COACTIVOS',
+                    proc.id,
+                    proc.radicado || `COA-${proc.id.substring(0, 8)}`,
+                    `Cobro Coactivo - ${proc.obligacion?.concepto || 'Obligación'}`,
+                    proc.fechaCreacion || new Date(),
+                    30, // Default 30 días para coactivos
+                    undefined,
+                    responsableNombre,
+                    'CALENDARIO',
+                    fechaVencimiento,
+                    `[Coactivo] Deudor: ${proc.deudor?.nombre || 'N/A'}. Valor: $${proc.obligacion?.valor?.toLocaleString() || 0}`
+                );
+                nuevos++;
+            } else {
+                this.logger.warn(`[PROCESOS_COACTIVOS] SKIPPING ${proc.radicado}: Vencimiento=${fechaVencimiento}, Estado=${proc.estado}`);
+            }
+        }
+
         this.logger.log(`Sincronización finalizada. Procesados: ${nuevos}`);
 
         return {
-            total: expedientes.length + consultas.length + requerimientosOC.length,
+            total: expedientes.length + consultas.length + requerimientosOC.length + procesosCoactivos.length,
             nuevos,
             detalles: {
                 expedientes: expedientes.length,
                 consultas: consultas.length,
-                requerimientosOC: requerimientosOC.length
+                requerimientosOC: requerimientosOC.length,
+                procesosCoactivos: procesosCoactivos.length
             }
         };
     }

@@ -36,6 +36,7 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // ============ TIPOS ============
 
@@ -69,8 +70,19 @@ interface AuditoriaFiltros {
 
 // ============ CONFIGURACIÓN API ============
 
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
+const MICROSERVICIO_PORT = 3007; // Puerto del control-institucional-service
+
+/**
+ * Detecta si estamos en localhost para hacer peticiones directas al microservicio
+ */
+function esLocalhost(): boolean {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+}
+
 const API_CONFIG = {
-  baseUrl: 'http://localhost:3007',
   endpoints: {
     auditorias: '/auditorias',
     estadisticas: '/auditorias/estadisticas'
@@ -94,9 +106,20 @@ function getAuthHeaders(): HeadersInit {
 
 /**
  * Construye la URL con query params de forma segura
+ * Si estamos en localhost, va directo al microservicio (sin prefijos)
+ * Si no, va por el gateway con el prefijo del servicio
  */
 function buildUrl(endpoint: string, params?: Record<string, string | undefined>): string {
-  const url = new URL(`${API_CONFIG.baseUrl}${endpoint}`);
+  let baseUrl: string;
+  if (esLocalhost()) {
+    // En localhost, ir directo al microservicio (sin prefijos)
+    baseUrl = `http://localhost:${MICROSERVICIO_PORT}`;
+  } else {
+    // En producción, usar el gateway con el prefijo del servicio
+    baseUrl = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}`;
+  }
+  
+  const url = new URL(`${baseUrl}${endpoint}`);
   
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
