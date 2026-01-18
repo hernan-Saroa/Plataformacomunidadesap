@@ -83,6 +83,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: auth
 
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+
       # JWT - IMPORTANTE: Cambiar en producción real
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
       JWT_EXPIRES_IN: 1h
@@ -180,12 +186,6 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: certification
-
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -313,7 +313,6 @@ services:
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
       EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
 
-
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -392,6 +391,7 @@ services:
     networks:
       - superapp-net-pre
     restart: unless-stopped
+
  # ============ AUDIT SERVICE ============
   audit-service:
     build:
@@ -415,6 +415,7 @@ services:
     networks:
       - superapp-net
     restart: unless-stopped
+    
   # ============ POSTGRES ============
   db:
     image: postgres:16
