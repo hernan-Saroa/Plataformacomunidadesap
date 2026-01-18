@@ -18,39 +18,41 @@ const SERVICE_PREFIX = '/control-disciplinario/api/v1';
 // ============================================================================
 
 export interface DisciplinaryNews {
-    id: string;
-    radicado: string;
-    origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
-    fechaQueja?: string;
-    fechaRecepcion?: string;
-    territorial: string;
-    dependenciaDenunciado: string;
-    hechos: string;
-    conductas?: string[];
-    adjuntos?: string[];
-    denunciante: Array<{
-        nombre: string;
-        email: string;
-        telefono?: string;
-        direccion?: string;
-        cargo?: string;
-        cedula?: string;
-        dependencia?: string;
-        entidad?: string;
-    }>;
-    disciplinable: Array<{
-        nombre: string;
-        cargo: string;
-        cedula?: string;
-        email?: string;
-        telefono?: string;
-        dependencia?: string;
-    }>;
-    estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
-    kanbanStage?: string;
-    createdAt: string;
-    updatedAt: string;
-}
+     id: string;
+     radicado: string;
+     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
+     fechaQueja?: string;
+     fechaRecepcion?: string;
+     territorial: string;
+     dependenciaDenunciado: string;
+     hechos: string;
+     conductas?: string[];
+     adjuntos?: string[];
+     denunciante?: {
+         nombre: string;
+         email?: string;
+         telefono?: string;
+         direccion?: string;
+         cargo?: string;
+         cedula?: string;
+         documento?: string;
+         dependencia?: string;
+         entidad?: string;
+     };
+     disciplinable?: {
+         nombre: string;
+         cargo: string;
+         cedula?: string;
+         documento?: string;
+         email?: string;
+         telefono?: string;
+         dependencia?: string;
+     };
+     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
+     kanbanStage?: string;
+     createdAt: string;
+     updatedAt: string;
+ }
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
 
@@ -338,7 +340,46 @@ class DisciplinaryService {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar archivo desde una URL directa (para Autos y otros)
+     */
+    async downloadFileFromUrl(url: string, filename: string): Promise<void> {
+        // La URL ya viene relativa del backend (ej: /control-disciplinario/api/v1/...)
+        // NO remover el slash inicial
+        const fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = {
+            'Accept': '*/*', // Aceptar cualquier cosa (binarios)
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(objUrl);
     }
 
     /**
@@ -389,6 +430,10 @@ class DisciplinaryService {
 
     async deleteAuto(id: string): Promise<void> {
         return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
+    async updateAuto(id: string, data: any): Promise<LegalAuto> {
+        return apiClient.put<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`, data);
     }
 
     async updateAutoContent(id: string, contenidoHtml: string): Promise<LegalAuto> {
@@ -545,11 +590,24 @@ class DisciplinaryService {
         );
     }
 
+    // --- PLANTILLAS DE AUTOS ---
+    async getPlantillaAuto(tipoAuto: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/${tipoAuto}`);
+    }
+
+    async getConfiguracionPlantillaAuto(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/config`);
+    }
+
+    async updateConfiguracionPlantillaAuto(config: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/auto-templates/config`, config);
+    }
+
     // --- EVIDENCIAS ---
     // Nota: Estos endpoints pertenecen al microservicio legal-management
-    // Prefix: /legal-management/api/v1 -> api/legal/*
+    // Prefix: /legal/api/v1 -> api-gateway:3000/legal/api/v1/* -> legal-management-service:3008/*
     async getEvidencias(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal-management/api/v1/evidencias/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`/legal/api/v1/evidencias/expediente/${expedienteId}`);
     }
 
     async createEvidencia(expedienteId: string, data: any, file: File): Promise<any> {
@@ -560,20 +618,20 @@ class DisciplinaryService {
         formData.append('tipo', data.tipo || 'Documental');
         formData.append('prioridad', data.prioridad || 'Media');
 
-        return apiClient.upload<any>(`/legal-management/api/v1/evidencias/${expedienteId}`, formData);
+        return apiClient.upload<any>(`/legal/api/v1/evidencias/${expedienteId}`, formData);
     }
 
     async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal-management/api/v1/evidencias/${id}/estado`, { estado });
+        return apiClient.patch<any>(`/legal/api/v1/evidencias/${id}/estado`, { estado });
     }
 
     async deleteEvidenciaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal-management/api/v1/evidencias/${id}`);
+        return apiClient.delete<void>(`/legal/api/v1/evidencias/${id}`);
     }
 
     // --- ACTAS ---
     async getActas(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal-management/api/v1/actas/expediente/${expedienteId}`);
+        return apiClient.get<any[]>(`/legal/api/v1/actas/expediente/${expedienteId}`);
     }
 
     async createActa(expedienteId: string, data: any, file: File): Promise<any> {
@@ -584,15 +642,15 @@ class DisciplinaryService {
                 formData.append(key, data[key]);
             }
         });
-        return apiClient.upload<any>(`/legal-management/api/v1/actas/${expedienteId}`, formData);
+        return apiClient.upload<any>(`/legal/api/v1/actas/${expedienteId}`, formData);
     }
 
     async updateActaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal-management/api/v1/actas/${id}/estado`, { estado });
+        return apiClient.patch<any>(`/legal/api/v1/actas/${id}/estado`, { estado });
     }
 
     async deleteActaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal-management/api/v1/actas/${id}`);
+        return apiClient.delete<void>(`/legal/api/v1/actas/${id}`);
     }
 }
 

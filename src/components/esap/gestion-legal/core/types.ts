@@ -164,6 +164,8 @@ export interface ProcesoDisciplinario {
   // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
   ultimaActuacion?: string; // Descripción breve de la última actuación procesal
   tipoFalta?: string;  // Added for compatibility with Frontend
+  diasTotales?: number; // Added for frontend semaphore
+  disciplinado?: string; // Alias for investigado
 }
 
 export interface DecisionDisciplinaria {
@@ -407,6 +409,7 @@ export interface SolicitudInforme {
   datosRequeridos?: string[]
   documentos?: Documento[];
   timeline?: EventoTimeline[];
+  metadata?: Record<string, any>;
 
   // ========== CAMPOS PARA INTEGRACIÓN TRANSVERSAL ==========
   moduloOrigen?: ModuloOrigen; // De qué módulo proviene este término

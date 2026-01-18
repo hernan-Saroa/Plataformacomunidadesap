@@ -8,6 +8,7 @@ import {
   Max,
   IsBoolean,
   IsArray,
+  IsUUID,
 } from 'class-validator';
 import { 
   TipoAuditoria, 
@@ -143,17 +144,14 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   actividadesPendientes?: number;
 
-  @IsInt()
   @IsOptional()
-  auditorLiderId?: number;
+  auditorLiderId?: string | number;
 
-  @IsInt()
   @IsOptional()
-  auditorAsignadoId?: number;
+  auditorAsignadoId?: string | number;
 
-  @IsInt()
   @IsOptional()
-  supervisorAsignadoId?: number;
+  supervisorAsignadoId?: string | number;
 
   @IsString()
   @IsOptional()

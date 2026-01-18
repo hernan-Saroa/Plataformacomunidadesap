@@ -47,6 +47,7 @@ services:
       LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service-pre:3008
       NOTIFICATIONS_SERVICE_URL: http://notifications-service-pre:3009
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-pre:3010
+      AUDIT_SERVICE_URL: http://audit-service-pre:3011
     ports:
       - "3000:3000"
     depends_on:
@@ -60,6 +61,7 @@ services:
       - legal-management-service
       - notifications-service
       - travel-expenses-service
+      - audit-service
     networks:
       - superapp-net-pre
     restart: unless-stopped
@@ -185,12 +187,6 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: certification
 
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
-
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -311,6 +307,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
 
+      
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -340,6 +342,12 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: notifications
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -384,6 +392,30 @@ services:
       - superapp-net-pre
     restart: unless-stopped
 
+ # ============ AUDIT SERVICE ============
+  audit-service:
+    build:
+      context: ./backend/audit-service
+      dockerfile: Dockerfile
+    container_name: audit-service
+    environment:
+      NODE_ENV: production
+      PORT: 3011
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+    ports:
+      - "3011:3011"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net
+    restart: unless-stopped
+    
   # ============ POSTGRES ============
   db:
     image: postgres:16

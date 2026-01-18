@@ -183,7 +183,7 @@ export function VisorPDFModal({ isOpen, onClose, documento, expedienteId }: Viso
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl h-[95vh] p-0 overflow-hidden flex flex-col">
+      <DialogContent hideCloseButton className="max-w-5xl h-[95vh] p-0 overflow-hidden flex flex-col">
         <DialogDescription className="sr-only">
           Visor de documento {documento.numero}
         </DialogDescription>

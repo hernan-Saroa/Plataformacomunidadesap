@@ -24,6 +24,9 @@ export class PlanMejoramiento {
   @Column({ name: 'responsable_id', nullable: true })
   responsableId: string; // FK to Abogados/Users
 
+  @Column({ name: 'responsable_nombre', nullable: true })
+  responsableNombre: string; // Text name when no abogado is linked
+
   @Column({ name: 'fecha_inicio' })
   fechaInicio: Date; // Keep as Date object for TypeORM
 
@@ -41,6 +44,21 @@ export class PlanMejoramiento {
 
   @Column({ default: 'ABIERTO' })
   estado: string; // 'ABIERTO', 'EN_EJECUCION', 'VENCIDO', 'CERRADO'
+
+  @Column({ name: 'documento_origen', nullable: true })
+  documentoOrigen: string;
+
+  @Column({ name: 'area_responsable', nullable: true })
+  areaResponsable: string;
+
+  @Column({ name: 'fecha_recepcion', nullable: true })
+  fechaRecepcion: Date;
+
+  @Column({ name: 'fecha_respuesta', nullable: true })
+  fechaRespuesta: Date;
+
+  @Column({ nullable: true })
+  severidad: string; // 'CRITICO', 'ALTO', 'MEDIO', 'BAJO'
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

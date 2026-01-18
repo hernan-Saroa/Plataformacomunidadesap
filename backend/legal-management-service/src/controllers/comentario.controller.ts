@@ -2,7 +2,7 @@ import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
 import { ComentarioService } from '../services/comentario.service';
 import { CreateComentarioDto } from '../dtos/comentario.dto';
 
-@Controller('legal/expedientes/:expedienteId/comentarios')
+@Controller('expedientes/:expedienteId/comentarios')
 export class ComentarioController {
     constructor(private readonly comentarioService: ComentarioService) { }
 
@@ -25,3 +25,5 @@ export class ComentarioController {
         return { message: 'Comentario eliminado' };
     }
 }
+
+

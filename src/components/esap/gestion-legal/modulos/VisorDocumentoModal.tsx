@@ -1,7 +1,7 @@
 /**
  * VisorDocumentoModal - Visor de Documentos PDF con Funcionalidad Real
  * ✅ Visualización completa de documentos
- * ✅ Descarga funcional
+ * ✅ Sin botones de descarga/impresión (solo visor)
  * ✅ Diseño corporativo ESAP 2025
  */
 
@@ -9,13 +9,11 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { 
-  X, Download, Printer, ZoomIn, ZoomOut, FileText, 
-  Eye, AlertCircle, ChevronLeft, ChevronRight, Maximize2
+import {
+  X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
-import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface VisorDocumentoModalProps {
   isOpen: boolean;
@@ -25,239 +23,71 @@ interface VisorDocumentoModalProps {
   asunto?: string;
 }
 
-export function VisorDocumentoModal({ 
-  isOpen, 
-  onClose, 
-  archivo, 
-  numero, 
-  asunto 
+export function VisorDocumentoModal({
+  isOpen,
+  onClose,
+  archivo,
+  numero,
+  asunto
 }: VisorDocumentoModalProps) {
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = 3; // Simulado
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Reset loading state when archivo changes
+  useEffect(() => {
+    if (archivo) {
+      setIsLoading(true);
+      setHasError(false);
+    }
+  }, [archivo]);
 
   if (!archivo || !numero) {
     return null;
   }
 
   /**
-   * ✅ FUNCIONALIDAD REAL: Descargar documento
-   */
-  const handleDescargar = () => {
-    toast.loading('⏳ Generando documento...', { 
-      duration: 1500,
-      id: 'descarga-doc' 
-    });
-    
-    setTimeout(() => {
-      // Generar contenido HTML del documento
-      const contenidoHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${numero}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 40px;
-              line-height: 1.6;
-            }
-            .header { 
-              text-align: center; 
-              border-bottom: 3px solid #1976D2; 
-              padding-bottom: 20px; 
-              margin-bottom: 30px; 
-            }
-            .header h1 { 
-              color: #1976D2; 
-              margin: 0 0 10px 0;
-              font-size: 24px;
-            }
-            .header p { 
-              margin: 5px 0; 
-              color: #666;
-            }
-            .metadata { 
-              margin: 30px 0; 
-              padding: 20px; 
-              background: #f5f5f5;
-              border-left: 4px solid #1976D2;
-            }
-            .metadata-item { 
-              margin: 10px 0; 
-            }
-            .metadata-label { 
-              font-weight: bold; 
-              color: #1976D2;
-              display: inline-block;
-              width: 150px;
-            }
-            .content { 
-              margin: 30px 0;
-              text-align: justify;
-            }
-            .footer { 
-              margin-top: 50px; 
-              padding-top: 20px; 
-              border-top: 2px solid #ddd;
-              text-align: center;
-              color: #666;
-              font-size: 12px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
-            <p>ESAP - República de Colombia</p>
-            <p>Oficina Jurídica</p>
-          </div>
-          
-          <div class="metadata">
-            <div class="metadata-item">
-              <span class="metadata-label">OFICIO No:</span>
-              <span>${numero}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">ASUNTO:</span>
-              <span>${asunto || 'Comunicación Oficial'}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">FECHA:</span>
-              <span>${new Date().toLocaleDateString('es-CO', { 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}</span>
-            </div>
-            <div class="metadata-item">
-              <span class="metadata-label">ARCHIVO:</span>
-              <span>${archivo}</span>
-            </div>
-          </div>
-          
-          <div class="content">
-            <p><strong>Respetado(a) Doctor(a),</strong></p>
-            
-            <p>Por medio del presente oficio nos permitimos comunicar lo siguiente:</p>
-            
-            <p>Este es el contenido del oficio oficial número ${numero}. El documento ha sido generado 
-            por el Sistema de Gestión Legal de la ESAP y contiene información relevante para el proceso 
-            judicial en curso.</p>
-            
-            <p>El presente documento ha sido revisado y aprobado por la Oficina Jurídica de la entidad, 
-            cumpliendo con todos los requisitos legales y formales establecidos en la normatividad vigente.</p>
-            
-            <p>Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar nuestra 
-            disposición para atender cualquier solicitud de su Despacho.</p>
-            
-            <p><strong>Cordialmente,</strong></p>
-            
-            <p style="margin-top: 40px;">
-              <strong>Oficina Jurídica ESAP</strong><br>
-              Escuela Superior de Administración Pública<br>
-              República de Colombia
-            </p>
-          </div>
-          
-          <div class="footer">
-            <p>Este es un documento oficial generado por el Sistema de Gestión Legal ESAP</p>
-            <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
-          </div>
-        </body>
-        </html>
-      `;
-      
-      // Crear blob y descargar
-      const blob = new Blob([contenidoHTML], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = archivo.replace('.pdf', '.html');
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      toast.success('✅ Documento descargado', {
-        id: 'descarga-doc',
-        description: `${archivo} guardado en Descargas`,
-        duration: 4000
-      });
-      
-      // Log para analytics
-      console.log('📊 Documento descargado:', {
-        numero,
-        archivo,
-        timestamp: new Date().toISOString()
-      });
-    }, 1500);
-  };
-
-  /**
-   * Imprimir documento
-   */
-  const handleImprimir = () => {
-    toast.loading('🖨️ Preparando impresión...', { id: 'print' });
-    
-    setTimeout(() => {
-      toast.success('✅ Diálogo de impresión abierto', {
-        id: 'print',
-        description: 'Selecciona tu impresora',
-        duration: 2000
-      });
-      
-      // Simular apertura de diálogo de impresión
-      window.print();
-    }, 1000);
-  };
-
-  /**
-   * Zoom
+   * Zoom controls
    */
   const handleZoomIn = () => {
     if (zoomLevel < 200) {
-      setZoomLevel(prev => prev + 10);
-      toast.success(`🔍 Zoom: ${zoomLevel + 10}%`, { duration: 1000 });
+      setZoomLevel(prev => prev + 25);
+      toast.success(`Zoom: ${zoomLevel + 25}%`, { duration: 1000 });
     }
   };
 
   const handleZoomOut = () => {
     if (zoomLevel > 50) {
-      setZoomLevel(prev => prev - 10);
-      toast.success(`🔍 Zoom: ${zoomLevel - 10}%`, { duration: 1000 });
+      setZoomLevel(prev => prev - 25);
+      toast.success(`Zoom: ${zoomLevel - 25}%`, { duration: 1000 });
     }
   };
 
-  /**
-   * Navegación de páginas
-   */
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(prev => prev - 1);
-      toast.success(`📄 Página ${currentPage - 1} de ${totalPages}`, { duration: 1000 });
-    }
+  const handleIframeLoad = () => {
+    setIsLoading(false);
   };
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(prev => prev + 1);
-      toast.success(`📄 Página ${currentPage + 1} de ${totalPages}`, { duration: 1000 });
-    }
+  const handleIframeError = () => {
+    setIsLoading(false);
+    setHasError(true);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+      <DialogContent
+        hideCloseButton
+        className="!max-w-[90vw] !w-[90vw] !h-[90vh] overflow-hidden flex flex-col p-0"
+        style={{ zIndex: 9999 }}
+      >
         <DialogTitle className="sr-only">Visor de Documento - {numero}</DialogTitle>
         <DialogDescription className="sr-only">
           Visualización del documento {archivo}
         </DialogDescription>
 
         {/* ==================== HEADER ==================== */}
-        <div 
-          className="px-6 py-4 flex items-center justify-between border-b" 
+        <div
+          className="flex-shrink-0 px-6 py-4 flex items-center justify-between border-b"
           style={{ background: 'linear-gradient(135deg, #1976D2 0%, #1565C0 100%)' }}
         >
           <div className="flex items-center gap-3">
@@ -265,13 +95,13 @@ export function VisorDocumentoModal({
               <FileText className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-black text-white text-base">{numero}</h3>
-              <p className="text-xs text-blue-100">{asunto || 'Comunicación Oficial'}</p>
+              <h3 className="font-black text-white text-base truncate max-w-[400px]">{numero}</h3>
+              <p className="text-xs text-blue-100">{asunto || 'Documento'}</p>
             </div>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onClose}
             className="text-white hover:bg-white/20"
           >
@@ -279,34 +109,9 @@ export function VisorDocumentoModal({
           </Button>
         </div>
 
-        {/* ==================== TOOLBAR ==================== */}
-        <div className="px-6 py-3 bg-gray-50 border-b flex items-center justify-between flex-wrap gap-3">
-          {/* Navegación de páginas */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePreviousPage}
-              disabled={currentPage === 1}
-              className="font-bold"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-bold text-gray-700 px-3">
-              Página {currentPage} de {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNextPage}
-              disabled={currentPage === totalPages}
-              className="font-bold"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-
-          {/* Zoom */}
+        {/* ==================== SIMPLE TOOLBAR (ONLY ZOOM) ==================== */}
+        <div className="flex-shrink-0 px-6 py-2 bg-gray-50 border-b flex items-center justify-between">
+          {/* Zoom controls */}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -317,7 +122,7 @@ export function VisorDocumentoModal({
             >
               <ZoomOut className="w-4 h-4" />
             </Button>
-            <span className="text-sm font-bold text-gray-700 px-3">
+            <span className="text-sm font-bold text-gray-700 px-3 min-w-[60px] text-center">
               {zoomLevel}%
             </span>
             <Button
@@ -331,159 +136,112 @@ export function VisorDocumentoModal({
             </Button>
           </div>
 
-          {/* Acciones */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleImprimir}
-              className="font-bold"
-            >
-              <Printer className="w-4 h-4 mr-1" />
-              Imprimir
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleDescargar}
-              className="font-bold text-white"
-              style={{ background: '#1976D2' }}
-            >
-              <Download className="w-4 h-4 mr-1" />
-              Descargar
-            </Button>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Eye className="w-4 h-4" />
+            <span>Vista previa del documento</span>
           </div>
         </div>
 
-        {/* ==================== CONTENIDO DEL DOCUMENTO ==================== */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
-          <Card 
-            className="max-w-4xl mx-auto bg-white shadow-xl" 
-            style={{ 
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top center',
-              transition: 'transform 0.2s'
-            }}
-          >
-            {/* Encabezado del documento */}
-            <div className="p-8 border-b-4 border-blue-600">
+        {/* ==================== DOCUMENT VIEWER AREA ==================== */}
+        <div className="flex-1 overflow-hidden bg-gray-200 relative">
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
               <div className="text-center">
-                <h1 className="text-2xl font-black text-blue-900 mb-1">
-                  ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
-                </h1>
-                <p className="text-sm text-gray-600 font-bold">ESAP - República de Colombia</p>
-                <p className="text-xs text-gray-500 mt-1">Oficina Jurídica</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600 font-medium">Cargando documento...</p>
               </div>
             </div>
+          )}
 
-            {/* Contenido */}
-            <div className="p-8 space-y-6">
-              {/* Metadatos */}
-              <div className="grid grid-cols-2 gap-4 text-sm pb-4 border-b">
-                <div>
-                  <p className="text-gray-600 font-bold">OFICIO No:</p>
-                  <p className="text-gray-900 font-black">{numero}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600 font-bold">FECHA:</p>
-                  <p className="text-gray-900 font-black">
-                    {new Date().toLocaleDateString('es-CO', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-600 font-bold">ASUNTO:</p>
-                  <p className="text-gray-900">{asunto || 'Comunicación Oficial'}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-600 font-bold">ARCHIVO:</p>
-                  <p className="text-gray-900">{archivo}</p>
-                </div>
-              </div>
-
-              {/* Cuerpo del documento */}
-              <div className="text-sm leading-relaxed space-y-4 text-justify">
-                <p><strong>Respetado(a) Doctor(a),</strong></p>
-                
-                <p>
-                  Por medio del presente oficio nos permitimos comunicar lo siguiente:
-                </p>
-                
-                <p>
-                  Este es el contenido del oficio oficial número <strong>{numero}</strong>. 
-                  El documento ha sido generado por el Sistema de Gestión Legal de la ESAP y 
-                  contiene información relevante para el proceso judicial en curso.
-                </p>
-                
-                <p>
-                  El presente documento ha sido revisado y aprobado por la Oficina Jurídica de 
-                  la entidad, cumpliendo con todos los requisitos legales y formales establecidos 
-                  en la normatividad vigente.
-                </p>
-                
-                <p>
-                  Quedamos atentos a cualquier requerimiento adicional y nos permitimos manifestar 
-                  nuestra disposición para atender cualquier solicitud de su Despacho.
-                </p>
-                
-                <p><strong>Cordialmente,</strong></p>
-              </div>
-
-              {/* Firma */}
-              <div className="pt-8 mt-8 border-t">
-                <p className="font-bold text-gray-900">Oficina Jurídica ESAP</p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Escuela Superior de Administración Pública
-                </p>
-                <p className="text-sm text-gray-600">República de Colombia</p>
+          {/* Error state */}
+          {hasError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+              <div className="text-center p-10">
+                <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-gray-700 mb-2">Error al cargar documento</h3>
+                <p className="text-gray-500">No se pudo cargar la vista previa del documento.</p>
               </div>
             </div>
+          )}
 
-            {/* Footer del documento */}
-            <div className="p-4 bg-gray-50 border-t text-center text-xs text-gray-500">
-              <p>Este es un documento oficial generado por el Sistema de Gestión Legal ESAP</p>
-              <p className="mt-1">
-                Generado el: {new Date().toLocaleString('es-CO')}
-              </p>
-            </div>
-          </Card>
+          {/* PDF/Image viewer */}
+          {archivo && (
+            (() => {
+              const extension = archivo.split('.').pop()?.toLowerCase();
+              const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf');
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i);
 
-          {/* Indicador de página */}
-          {currentPage !== totalPages && (
-            <div className="text-center mt-4">
-              <Badge variant="outline" className="font-bold">
-                Continúa en página {currentPage + 1}
-              </Badge>
-            </div>
+              if (isPdf) {
+                return (
+                  <div
+                    className="w-full h-full overflow-auto flex items-start justify-center p-4"
+                    style={{
+                      transform: `scale(${zoomLevel / 100})`,
+                      transformOrigin: 'top center'
+                    }}
+                  >
+                    <iframe
+                      ref={iframeRef}
+                      src={`${archivo}#toolbar=0&navpanes=0&scrollbar=1`}
+                      className="w-full bg-white shadow-lg border-0"
+                      style={{
+                        minHeight: '100%',
+                        height: 'calc(95vh - 150px)'
+                      }}
+                      title="Visor PDF"
+                      onLoad={handleIframeLoad}
+                      onError={handleIframeError}
+                    />
+                  </div>
+                );
+              } else if (isImage) {
+                return (
+                  <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                    <img
+                      src={archivo}
+                      alt={numero || 'Documento'}
+                      className="max-w-full max-h-full object-contain shadow-lg"
+                      style={{
+                        transform: `scale(${zoomLevel / 100})`,
+                        transformOrigin: 'center center'
+                      }}
+                      onLoad={() => setIsLoading(false)}
+                      onError={() => { setIsLoading(false); setHasError(true); }}
+                    />
+                  </div>
+                );
+              } else {
+                return (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center p-10 bg-white rounded-lg shadow-md">
+                      <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-bold text-gray-700 mb-2">Vista previa no disponible</h3>
+                      <p className="text-gray-500">
+                        Este tipo de archivo no se puede visualizar directamente.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+            })()
           )}
         </div>
 
         {/* ==================== FOOTER ==================== */}
-        <div className="px-6 py-3 bg-gray-50 border-t flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <FileText className="w-4 h-4" />
-            <span className="font-bold">{archivo}</span>
+        <div className="flex-shrink-0 px-6 py-3 bg-gray-50 border-t flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-gray-600 truncate max-w-[400px]">
+            <FileText className="w-4 h-4 flex-shrink-0" />
+            <span className="font-bold truncate">{numero}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="font-bold"
-            >
-              <X className="w-4 h-4 mr-1" />
-              Cerrar
-            </Button>
-            <Button
-              onClick={handleDescargar}
-              className="font-bold text-white"
-              style={{ background: '#1976D2' }}
-            >
-              <Download className="w-4 h-4 mr-1" />
-              Descargar PDF
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="font-bold"
+          >
+            <X className="w-4 h-4 mr-1" />
+            Cerrar
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -54,8 +54,8 @@ const TIPO_RIESGO_MAP: Record<string, string> = {
 // Función para convertir RiesgoAPI a Riesgo (tipo local)
 function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
   return {
-    id: api.codigo || api.id,
-    codigo: api.codigo,
+    id: api.id, // UUID real para llamadas API
+    codigo: api.codigo, // Código para mostrar en UI
     etapa: api.etapa as EtapaRiesgo,
     proceso: api.proceso,
     tipo: api.tipoRiesgo,
@@ -96,8 +96,9 @@ export function Riesgos() {
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estado para el modal de nuevo riesgo
+  // Estado para el modal de nuevo riesgo (también usado para edición)
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
+  const [riesgoEditando, setRiesgoEditando] = useState<Riesgo | null>(null);
 
   // Estado para el modal de detalle
   const [riesgoSeleccionado, setRiesgoSeleccionado] = useState<Riesgo | null>(null);
@@ -150,15 +151,80 @@ export function Riesgos() {
   const altos = riesgos.filter(r => r.zonaResidual === 'ALTO').length;
   const moderados = riesgos.filter(r => r.zonaResidual === 'MODERADO').length;
 
-  // Handler para agregar nuevo riesgo
-  const handleRiesgoCreado = (nuevoRiesgo: Riesgo) => {
-    setRiesgos(prev => [nuevoRiesgo, ...prev]);
+  // Handler para agregar nuevo riesgo - LLAMA AL BACKEND
+  const handleRiesgoCreado = async (formData: any) => {
+    const toastId = toast.loading('Creando riesgo...');
+    try {
+      // Enviar al backend
+      const created = await riesgosService.create(formData);
+
+      // Convertir respuesta y agregar a la lista
+      const nuevoRiesgo = apiToLocalRiesgo(created);
+      setRiesgos(prev => [nuevoRiesgo, ...prev]);
+
+      // Cerrar modal y notificar éxito
+      setModalNuevoOpen(false);
+      toast.success('Riesgo creado exitosamente', {
+        id: toastId,
+        description: `Código: ${created.codigo}`
+      });
+    } catch (error) {
+      console.error('Error creando riesgo:', error);
+      toast.error('Error al crear el riesgo', { id: toastId });
+    }
   };
 
   // Handler para ver detalle de riesgo
   const handleVerDetalle = (riesgo: Riesgo) => {
     setRiesgoSeleccionado(riesgo);
     setModalDetalleOpen(true);
+  };
+
+  // Handler para iniciar edición de riesgo
+  const handleEditarRiesgo = (riesgo: Riesgo) => {
+    setRiesgoEditando(riesgo);
+    setModalNuevoOpen(true);
+  };
+
+  // Handler para guardar riesgo actualizado
+  const handleRiesgoActualizado = async (formData: any) => {
+    if (!riesgoEditando) return;
+
+    const toastId = toast.loading('Actualizando riesgo...');
+    try {
+      const updated = await riesgosService.update(riesgoEditando.id, formData);
+      const riesgoActualizado = apiToLocalRiesgo(updated);
+
+      // Actualizar en la lista local
+      setRiesgos(prev => prev.map(r => r.id === riesgoActualizado.id ? riesgoActualizado : r));
+
+      setModalNuevoOpen(false);
+      setRiesgoEditando(null);
+      toast.success('Riesgo actualizado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error actualizando riesgo:', error);
+      toast.error('Error al actualizar el riesgo', { id: toastId });
+    }
+  };
+
+  // Handler para eliminar riesgo
+  const handleEliminarRiesgo = async (riesgo: Riesgo) => {
+    const toastId = toast.loading('Eliminando riesgo...');
+    try {
+      await riesgosService.delete(riesgo.id);
+
+      // Actualizar estado local eliminando el item
+      setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
+
+      toast.success('Riesgo eliminado permanentemente', {
+        id: toastId,
+        description: `${riesgo.codigo || riesgo.id} ha sido eliminado`
+      });
+      setModalDetalleOpen(false);
+    } catch (error) {
+      console.error('Error eliminando riesgo:', error);
+      toast.error('Error al eliminar el riesgo', { id: toastId });
+    }
   };
 
   return (
@@ -317,11 +383,15 @@ export function Riesgos() {
         <TablaRiesgos riesgos={riesgosFiltrados} onVerDetalle={handleVerDetalle} />
       )}
 
-      {/* Modal Nuevo Riesgo */}
+      {/* Modal Nuevo/Editar Riesgo */}
       <ModalNuevoRiesgo
         open={modalNuevoOpen}
-        onClose={() => setModalNuevoOpen(false)}
-        onRiesgoCreado={handleRiesgoCreado}
+        onClose={() => {
+          setModalNuevoOpen(false);
+          setRiesgoEditando(null);
+        }}
+        onRiesgoCreado={riesgoEditando ? handleRiesgoActualizado : handleRiesgoCreado}
+        riesgoEditar={riesgoEditando}
       />
 
       {/* Modal Detalle Riesgo */}
@@ -329,6 +399,8 @@ export function Riesgos() {
         open={modalDetalleOpen}
         onClose={() => setModalDetalleOpen(false)}
         riesgo={riesgoSeleccionado}
+        onEdit={handleEditarRiesgo}
+        onDelete={handleEliminarRiesgo}
       />
     </div>
   );
@@ -425,7 +497,7 @@ function MatrizRiesgos({ riesgos, onVerDetalle }: MatrizRiesgosProps) {
                             </Badge>
                             <div className="text-[10px] text-gray-600">
                               {riesgosEnCelda.slice(0, 2).map(r => (
-                                <div key={r.id} className="truncate">{r.id}</div>
+                                <div key={r.id} className="truncate">{r.codigo || r.nombre || r.id}</div>
                               ))}
                               {riesgosEnCelda.length > 2 && (
                                 <div>+{riesgosEnCelda.length - 2} más</div>
@@ -483,7 +555,8 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">ID</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Código</th>
+              <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Nombre</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Descripción</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Proceso</th>
               <th className="px-4 py-3 text-left text-sm font-bold text-gray-500">Tipo</th>
@@ -497,7 +570,8 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
               const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
               return (
                 <tr key={riesgo.id} className="border-t border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.codigo || riesgo.id}</td>
+                  <td className="px-4 py-3 text-sm text-gray-800 font-medium">{riesgo.nombre}</td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     <div className="line-clamp-2">{riesgo.descripcion}</div>
                   </td>
@@ -556,7 +630,10 @@ function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaPr
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <h5 className="font-bold text-sm" style={{ color: '#003DA5' }}>{riesgo.id}</h5>
+          <h5 className="font-bold text-sm" style={{ color: '#003DA5' }}>
+            {riesgo.codigo || riesgo.id}
+          </h5>
+          <p className="text-xs text-gray-800 font-medium line-clamp-1">{riesgo.nombre}</p>
           <p className="text-xs text-gray-600 line-clamp-2">{riesgo.descripcion}</p>
         </div>
         <Badge

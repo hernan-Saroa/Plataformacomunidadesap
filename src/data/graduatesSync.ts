@@ -127,3 +127,56 @@ export function getGraduatesStats() {
 export function existsGraduateWithCedula(cedula: string): boolean {
   return findGraduateByCedula(cedula) !== undefined;
 }
+
+/**
+ * Valida un graduado usando los 3 campos del servicio público:
+ * - Cédula
+ * - Fecha de Grado
+ * - Apellido
+ * 
+ * Esta es la función que coordina el servicio público de "Certificación de Títulos"
+ * con el módulo de "Gestión de Graduados" del backoffice.
+ */
+export function validateGraduateForPublicService(
+  cedula: string,
+  fechaGrado: string,
+  apellido: string
+): { isValid: boolean; graduate?: Graduate; error?: string } {
+  // 1. Buscar graduado por cédula
+  const graduate = findGraduateByCedula(cedula);
+  
+  if (!graduate) {
+    return {
+      isValid: false,
+      error: 'No se encontró un graduado con esta cédula en nuestros registros'
+    };
+  }
+
+  // 2. Validar apellido (case insensitive)
+  const apellidoNormalizado = apellido.toLowerCase().trim();
+  const apellidoGraduadoNormalizado = graduate.apellido.toLowerCase().trim();
+  
+  if (apellidoGraduadoNormalizado !== apellidoNormalizado) {
+    return {
+      isValid: false,
+      error: 'El apellido no coincide con nuestros registros'
+    };
+  }
+
+  // 3. Validar fecha de grado (comparar solo la fecha, sin hora)
+  const fechaGradoInput = new Date(fechaGrado).toISOString().split('T')[0];
+  const fechaGradoRegistro = new Date(graduate.fechaGrado).toISOString().split('T')[0];
+  
+  if (fechaGradoInput !== fechaGradoRegistro) {
+    return {
+      isValid: false,
+      error: 'La fecha de grado no coincide con nuestros registros'
+    };
+  }
+
+  // ✅ TODOS LOS DATOS COINCIDEN
+  return {
+    isValid: true,
+    graduate: graduate
+  };
+}

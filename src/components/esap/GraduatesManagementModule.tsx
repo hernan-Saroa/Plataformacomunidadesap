@@ -53,6 +53,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
@@ -62,6 +63,7 @@ import React from 'react';
 import graduadosService, { GraduadoData } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
+import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
 
 type GraduateRow = {
   id: string;
@@ -104,6 +106,7 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
+  const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -511,12 +514,13 @@ export function GraduatesManagementModule() {
   };
 
   const handleEdit = (user: GraduateRow) => {
+    const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      phone: user.phone,
+      phone: sanitizedPhone,
       document: user.document,
       program: user.program || '',
       location: user.location,
@@ -526,6 +530,15 @@ export function GraduatesManagementModule() {
         '',
     });
     setIsEditModalOpen(true);
+  };
+
+  const handleLocationChange = (value: string) => {
+    const mappedTerritorial = territorialBySede.get(normalizeKey(value));
+    setEditForm((prev) => ({
+      ...prev,
+      location: value,
+      territorial: mappedTerritorial || prev.territorial || '',
+    }));
   };
 
   const handleDelete = (user: GraduateRow) => {
@@ -548,9 +561,11 @@ export function GraduatesManagementModule() {
     });
   };
 
-  const handleVerifyTitle = (user: GraduateRow) => {
-    setSelectedUser(user);
-    window.location.href = '/verificar-certificado-graduado';
+  const handleVerifyTitle = (user?: GraduateRow) => {
+    // setSelectedUser(user);
+    // window.location.href = '/verificar-certificado-graduado';
+    // ✅ NUEVO: Abrir vista completa de validación de certificados de grado
+    setMostrarValidador(true);
   };
 
   const handleGenerateCertificate = (user: GraduateRow) => {
@@ -570,17 +585,82 @@ export function GraduatesManagementModule() {
   // Handlers para confirmar acciones en modales
   const confirmEdit = async () => {
     if (!selectedUser) return;
+    const trimmedFirstName = editForm.firstName.trim();
+    const trimmedLastName = editForm.lastName.trim();
+    const trimmedDocument = editForm.document.trim();
+    const trimmedEmail = editForm.email.trim();
+    const trimmedProgram = editForm.program.trim();
+    const trimmedLocation = editForm.location.trim();
+    const effectiveTerritorial =
+      (
+        editForm.territorial ||
+        (editForm.location
+          ? territorialBySede.get(normalizeKey(editForm.location))
+          : '')
+      ).trim();
+    const phoneDigits = editForm.phone.replace(/\D+/g, '');
+
+    if (!trimmedFirstName) {
+      toast.error('El nombre es obligatorio');
+      return;
+    }
+    if (trimmedFirstName.length > 30) {
+      toast.error('El nombre no puede superar 30 caracteres');
+      return;
+    }
+    if (!trimmedLastName) {
+      toast.error('El apellido es obligatorio');
+      return;
+    }
+    if (trimmedLastName.length > 30) {
+      toast.error('El apellido no puede superar 30 caracteres');
+      return;
+    }
+    if (!trimmedDocument) {
+      toast.error('El documento es obligatorio');
+      return;
+    }
+    if (!phoneDigits) {
+      toast.error('El telefono es obligatorio');
+      return;
+    }
+    if (phoneDigits.length > 10) {
+      toast.error('El telefono no puede superar 10 digitos');
+      return;
+    }
+    if (!trimmedEmail) {
+      toast.error('El correo electronico es obligatorio');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error('El correo electronico no tiene un formato valido');
+      return;
+    }
+    if (!trimmedProgram) {
+      toast.error('El programa academico es obligatorio');
+      return;
+    }
+    if (!trimmedLocation) {
+      toast.error('La sede es obligatoria');
+      return;
+    }
+    if (!effectiveTerritorial) {
+      toast.error('La seccional es obligatoria');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const fullName = `${editForm.firstName} ${editForm.lastName}`.trim();
+      const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
-        email: editForm.email,
-        phone: editForm.phone,
-        idNumber: editForm.document,
-        programName: editForm.program || selectedUser.program || '',
-        campus: editForm.location || undefined,
-        seccionalName: editForm.territorial || undefined,
+        email: trimmedEmail,
+        phone: phoneDigits,
+        idNumber: trimmedDocument,
+        programName: trimmedProgram || selectedUser.program || '',
+        campus: trimmedLocation || undefined,
+        seccionalName: effectiveTerritorial || undefined,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -596,13 +676,13 @@ export function GraduatesManagementModule() {
           graduate.id === selectedUser.id
             ? {
                 ...graduate,
-                firstName: editForm.firstName,
-                lastName: editForm.lastName,
-                email: editForm.email,
-                phone: editForm.phone,
-                document: editForm.document,
-                program: editForm.program || graduate.program,
-                location: editForm.location || graduate.location,
+                firstName: trimmedFirstName,
+                lastName: trimmedLastName,
+                email: trimmedEmail,
+                phone: phoneDigits,
+                document: trimmedDocument,
+                program: trimmedProgram || graduate.program,
+                location: trimmedLocation || graduate.location,
                 territorial: updatedTerritorial || graduate.territorial,
               }
             : graduate
@@ -610,7 +690,7 @@ export function GraduatesManagementModule() {
       );
 
       toast.success('Graduado Actualizado', {
-        description: `Los datos de ${editForm.firstName} ${editForm.lastName} han sido actualizados exitosamente.`,
+        description: `Los datos de ${trimmedFirstName} ${trimmedLastName} han sido actualizados exitosamente.`,
       });
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -638,8 +718,8 @@ export function GraduatesManagementModule() {
   };
 
   const confirmVerifyTitle = () => {
-    toast.success('Título Verificado', {
-      description: `El título de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
+    toast.success('Certificado Verificado', {
+      description: `El certificado de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
     });
     setIsVerifyTitleModalOpen(false);
   };
@@ -756,6 +836,11 @@ export function GraduatesManagementModule() {
     ? territorialBySede.get(normalizeKey(editForm.location))
     : undefined;
 
+  // ✅ NUEVO: Si el validador está activo, mostrar la vista completa de validación
+  if (mostrarValidador) {
+    return <ValidarCertificadoGrado onBack={() => setMostrarValidador(false)} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header - Según especificaciones Figma */}
@@ -829,9 +914,10 @@ export function GraduatesManagementModule() {
           </button>
 
           <button
-            onClick={() => {
-              window.location.href = '/verificar-certificado-graduado';
-            }}
+            // onClick={() => {
+            //   window.location.href = '/verificar-certificado-graduado';
+            // }}
+            onClick={() => handleVerifyTitle()}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#003DA5',
@@ -855,7 +941,7 @@ export function GraduatesManagementModule() {
             }}
           >
             <BadgeCheck className="w-5 h-5" strokeWidth={2} />
-            <span>Verificar Título</span>
+            <span>Verificar Certificado</span>
           </button>
         </div>
       </motion.div>
@@ -1235,7 +1321,11 @@ export function GraduatesManagementModule() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
-                            Editar graduado
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
+                            <BadgeCheck className="w-4 h-4 mr-2" />
+                            Verificar Certificado
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1263,6 +1353,18 @@ export function GraduatesManagementModule() {
                             <FileText className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.document}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Correo
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {user.email || 'Sin correo'}
                             </p>
                           </div>
                         </div>
@@ -1402,7 +1504,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Exportar Graduados */}
       <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -1465,7 +1567,7 @@ export function GraduatesManagementModule() {
 
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[92vw] max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
@@ -1478,64 +1580,96 @@ export function GraduatesManagementModule() {
 
           <div className="grid grid-cols-2 gap-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-firstName">Nombre</Label>
+              <Label htmlFor="edit-firstName">
+                Nombre
+                <span className="text-red-500"> *</span>
+              </Label>
               <Input
                 id="edit-firstName"
                 value={editForm.firstName}
                 onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
                 placeholder="Nombre del graduado"
+                maxLength={30}
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-lastName">Apellido</Label>
+              <Label htmlFor="edit-lastName">
+                Apellido
+                <span className="text-red-500"> *</span>
+              </Label>
               <Input
                 id="edit-lastName"
                 value={editForm.lastName}
                 onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
                 placeholder="Apellido del graduado"
+                maxLength={30}
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-document">Documento</Label>
+              <Label htmlFor="edit-document">
+                Documento
+                <span className="text-red-500"> *</span>
+              </Label>
               <Input
                 id="edit-document"
                 value={editForm.document}
                 onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
                 placeholder="Número de documento"
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-phone">Teléfono</Label>
+              <Label htmlFor="edit-phone">
+                Teléfono
+                <span className="text-red-500"> *</span>
+              </Label>
               <Input
                 id="edit-phone"
                 value={editForm.phone}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D+/g, '').slice(0, 10);
+                  setEditForm({ ...editForm, phone: digitsOnly });
+                }}
                 placeholder="+57 300 1234567"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={10}
+                required
               />
             </div>
 
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="edit-email">Correo Electrónico</Label>
+              <Label htmlFor="edit-email">
+                Correo Electrónico
+                <span className="text-red-500"> *</span>
+              </Label>
               <Input
                 id="edit-email"
                 type="email"
                 value={editForm.email}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 placeholder="correo@ejemplo.com"
+                required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-program">Programa Académico</Label>
+              <Label htmlFor="edit-program">
+                Programa Académico
+                <span className="text-red-500"> *</span>
+              </Label>
               <select
                 id="edit-program"
                 value={editForm.program}
                 onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
+                required
               >
                 <option value="">Seleccionar programa</option>
                 {uniquePrograms.map(prog => (
@@ -1545,13 +1679,17 @@ export function GraduatesManagementModule() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-location">Sede</Label>
+              <Label htmlFor="edit-location">
+                Sede
+                <span className="text-red-500"> *</span>
+              </Label>
               <select
                 id="edit-location"
                 value={editForm.location}
-                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                onChange={(e) => handleLocationChange(e.target.value)}
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
+                required
               >
                 <option value="">Seleccionar sede</option>
                 {sedesOptions.map((sede) => (
@@ -1561,13 +1699,17 @@ export function GraduatesManagementModule() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-territorial">Territorial</Label>
+              <Label htmlFor="edit-territorial">
+                Territorial
+                <span className="text-red-500"> *</span>
+              </Label>
               <select
                 id="edit-territorial"
                 value={editForm.territorial || selectedTerritorial || ''}
                 onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
                 style={{ borderColor: '#D1D5DB' }}
+                required
               >
                 <option value="">Seleccionar seccional</option>
                 {territorialOptions.map((territorial) => (
@@ -1597,16 +1739,16 @@ export function GraduatesManagementModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Verificar Título */}
+      {/* Modal: Verificar Certificado */}
       <Dialog open={isVerifyTitleModalOpen} onOpenChange={setIsVerifyTitleModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <BadgeCheck className="w-5 h-5" style={{ color: '#10B981' }} />
-              Verificar Título Académico
+              Verificar Certificado de Título
             </DialogTitle>
             <DialogDescription>
-              Confirma la verificación del título de {selectedUser?.firstName} {selectedUser?.lastName}
+              Confirma la verificación del certificado de {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -1616,7 +1758,7 @@ export function GraduatesManagementModule() {
                 <GraduationCap className="w-5 h-5 mt-0.5" style={{ color: '#003DA5' }} />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-gray-900 mb-1">
-                    Información del Título
+                    Información del Certificado
                   </p>
                   <div className="space-y-1 text-sm text-gray-600">
                     <p><strong>Graduado:</strong> {selectedUser?.firstName} {selectedUser?.lastName}</p>
@@ -1657,7 +1799,7 @@ export function GraduatesManagementModule() {
               style={{ background: '#10B981', color: '#FFFFFF' }}
             >
               <BadgeCheck className="w-4 h-4" />
-              Verificar Título
+              Verificar Certificado
             </button>
           </DialogFooter>
         </DialogContent>

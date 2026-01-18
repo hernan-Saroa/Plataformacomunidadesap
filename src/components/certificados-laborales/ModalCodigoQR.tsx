@@ -15,9 +15,9 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { QRCodeCanvas } from 'qrcode.react';
+import { copyToClipboard } from '../../utils/clipboard';
 import { getPublicBaseUrl } from '../../config/environment';
-import { copyToClipboard } from '../../utils/browser';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;
@@ -63,19 +63,19 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
   };
 
   const handleCopiarEnlace = async () => {
-    const copied = await copyToClipboard(urlVerificacion);
-    if (copied) {
+    const copiado = await copyToClipboard(urlVerificacion);
+    
+    if (copiado) {
       toast.success('Enlace copiado', {
         description: 'El enlace de verificación fue copiado al portapapeles',
         duration: 3000
       });
-      return;
+    } else {
+      toast.info('Enlace de verificación', {
+        description: urlVerificacion,
+        duration: 5000
+      });
     }
-
-    toast.error('No se pudo copiar el enlace', {
-      description: 'Copia manualmente la URL de verificación',
-      duration: 4000
-    });
   };
 
   const handleCompartir = async () => {

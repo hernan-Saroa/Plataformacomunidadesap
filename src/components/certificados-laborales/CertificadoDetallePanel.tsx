@@ -24,8 +24,8 @@ import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
-import { certificadosService } from '../../services/api/certificados.service';
 import { getPublicBaseUrl } from '../../config/environment';
+import { certificadosService } from '../../services/api/certificados.service';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -39,6 +39,7 @@ interface CertificadoDetallePanelProps {
       email: string;
       cargo: string;
       dependencia: string;
+      dependenciaPadre: string;
       tipoVinculacion: string;
       fechaVinculacion: string;
       grado: string;
@@ -48,6 +49,8 @@ interface CertificadoDetallePanelProps {
     tipoSolicitud?: 'AUTOSERVICIO' | 'MANUAL';
     fechaSolicitud: string;
     fechaGeneracion: string;
+    position_location?: string;
+    campus?: string;
     solicitante?: {
       nombre: string;
       tipo: 'autoservicio' | 'manual';
@@ -59,22 +62,45 @@ interface CertificadoDetallePanelProps {
 
 export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
-  const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | null>(null);
+  const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = React.useState(false);
   const [showQRModal, setShowQRModal] = React.useState(false);
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
   const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+  const ubicacionCargo =
+    certificado.position_location ||
+    certificado.campus ||
+    certificado.empleado.dependencia ||
+    certificado.empleado.dependenciaPadre ||
+    '-';
+  const gradoTexto = certificado.empleado.grado || '-';
 
   // Helper para formatear fechas de forma segura
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr || fechaStr === 'N/A') {
+      return null;
+    }
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed;
+  };
+
   const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
     try {
-      if (!fechaStr || fechaStr === 'N/A') {
-        return 'Fecha no disponible';
-      }
-      const fecha = new Date(fechaStr);
-      if (isNaN(fecha.getTime())) {
-        console.error('Fecha inválida:', fechaStr);
+      const fecha = parseDateOnly(fechaStr);
+      if (!fecha) {
+        console.error('Fecha invǭomlida:', fechaStr);
         return 'Fecha no disponible';
       }
       return fecha.toLocaleDateString('es-CO', opciones || {
@@ -365,11 +391,32 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }, 800);
   };
 
-  const handleEnviarEmail = () => {
-    toast.success('Email enviado', {
-      description: `Certificado enviado a ${certificado.empleado.email}`,
-      duration: 3000
-    });
+  const handleEnviarEmail = async () => {
+    if (isSendingEmail) return;
+    if (!certificado.empleado.email || certificado.empleado.email === 'N/A') {
+      toast.error('No hay un correo registrado para este empleado');
+      return;
+    }
+    setIsSendingEmail(true);
+    toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
+
+    try {
+      const response = await certificadosService.laborales.reenviar(certificado.id);
+      toast.success('Correo reenviado', {
+        id: 'send-certificate-email',
+        description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
+        duration: 3000,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo reenviar el certificado', {
+        id: 'send-certificate-email',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+      setAutoPDFAction(null);
+    }
   };
 
   const handleImprimir = () => {
@@ -420,8 +467,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleCopiarEnlace = async () => {
-    const ok = await copiarAlPortapapeles(verificationUrl);
-    if (ok) {
+    const enlace = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
+    const copiado = await copiarAlPortapapeles(enlace);
+
+    if (copiado) {
       toast.success('Enlace copiado', {
         description: 'El enlace de verificación fue copiado al portapapeles'
       });
@@ -431,10 +480,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleCopiarConsecutivo = async () => {
-    const ok = await copiarAlPortapapeles(certificado.consecutivo);
-    if (ok) {
+    const copiado = await copiarAlPortapapeles(certificado.consecutivo);
+    if (copiado) {
       toast.success('Consecutivo copiado', {
-        description: certificado.consecutivo
+        description: 'El numero de consecutivo fue copiado al portapapeles'
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
@@ -530,7 +579,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Grado */}
+                    {/* Fecha Vinculación y Ubicación */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -543,25 +592,59 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Grado
+                          Ubicación
                         </label>
                         <p className="text-sm text-gray-900">
-                          {certificado.empleado.grado}
+                          {ubicacionCargo}
                         </p>
                       </div>
                     </div>
 
-                    {/* Dependencia y Salario */}
+                    {/* Grado y Correo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Dependencia
+                          Grado
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {gradoTexto}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Correo Electrónico
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Dependencia Padre y Dependencia Hijo */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Dependencia Padre
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.dependencia}
+                          {certificado.empleado.dependenciaPadre || 'Registro padre'}
                         </p>
                       </div>
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                          Dependencia Hijo
+                        </label>
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                          {certificado.empleado.dependencia || 'Registro hijo'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Salario */}
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
@@ -571,17 +654,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           ${certificado.empleado.salario.toLocaleString('es-CO')} COP
                         </p>
                       </div>
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Correo Electrónico
-                      </label>
-                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {certificado.empleado.email}
-                      </p>
                     </div>
                   </div>
                 </div>

@@ -12,7 +12,7 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -27,8 +27,95 @@ import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios } from './ModalesGestionDocumental';
+import { EditorDocumentos } from './EditorDocumentos';
 
-// Interfaces
+// Modal de Selección de Tipo de Documento
+interface ModalSeleccionProps {
+  onClose: () => void;
+  onSelect: (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => void;
+}
+
+function ModalSeleccionDocumento({ onClose, onSelect }: ModalSeleccionProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+      >
+        <div className="p-6 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-gray-900">Seleccione el Tipo de Documento</h3>
+            <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-lg">
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+        </div>
+        <div className="p-8 grid grid-cols-2 gap-4">
+          <button
+            onClick={() => onSelect('auto')}
+            className="p-6 rounded-xl border-2 border-transparent bg-purple-50 hover:bg-purple-100 hover:border-purple-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center">
+              <Scale className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-purple-900">Auto / Fallo</h4>
+              <p className="text-xs text-purple-700 mt-1">Generación automática de títulos y consecutivos</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('evidencia')}
+            className="p-6 rounded-xl border-2 border-transparent bg-orange-50 hover:bg-orange-100 hover:border-orange-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-orange-100 group-hover:bg-orange-200 flex items-center justify-center">
+              <Archive className="w-6 h-6 text-orange-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-orange-900">Evidencia / Prueba</h4>
+              <p className="text-xs text-orange-700 mt-1">Gestión de material probatorio y anexos</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('oficio')}
+            className="p-6 rounded-xl border-2 border-transparent bg-cyan-50 hover:bg-cyan-100 hover:border-cyan-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-cyan-100 group-hover:bg-cyan-200 flex items-center justify-center">
+              <Mail className="w-6 h-6 text-cyan-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-cyan-900">Oficio / Comunicación</h4>
+              <p className="text-xs text-cyan-700 mt-1">Comunicaciones oficiales y respuestas</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('otro')}
+            className="p-6 rounded-xl border-2 border-transparent bg-gray-50 hover:bg-gray-100 hover:border-gray-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center">
+              <FileText className="w-6 h-6 text-gray-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-gray-900">Otro Documento</h4>
+              <p className="text-xs text-gray-600 mt-1">Carga genérica (Actas, Constancias, etc.)</p>
+            </div>
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
 interface Documento {
   id: string;
   nombre: string;
@@ -48,7 +135,13 @@ interface Documento {
     firmado?: boolean;
     notificado?: boolean;
     folios?: number;
+    firmado?: boolean;
+    notificado?: boolean;
+    folios?: number;
+    esAutoDigital?: boolean; // Nuevo flag
+    estado?: string;
   };
+  contenido?: string; // Nuevo campo para contenido HTML
 }
 
 interface VersionDocumento {
@@ -56,7 +149,9 @@ interface VersionDocumento {
   fecha: string;
   usuario: string;
   cambios: string;
+  cambios: string;
   tamaño: string;
+  downloadUrl?: string; // URL opcional para descargar versión
 }
 
 interface Persona {
@@ -294,10 +389,12 @@ function ModalVisorDocumento({
   documento,
   onClose,
   processId,
+  onEdit,
 }: {
   documento: Documento;
   onClose: () => void;
   processId?: string;
+  onEdit?: (documento: Documento) => void;
 }) {
   const [versionSeleccionada, setVersionSeleccionada] = useState(documento.version);
   // NO mostrar documento automáticamente - el usuario debe hacer clic en "Mostrar Documento"
@@ -340,12 +437,19 @@ function ModalVisorDocumento({
         setErrorPDF(null);
 
         // Usar buildApiUrl para construir la URL correctamente según el modo (gateway/direct)
-        // En modo directo: /disciplinary-processes/...
-        // En modo gateway: /api/v1/disciplinary-processes/...
-        const endpoint = API_MODE === 'direct'
-          ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
-          : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
-        const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+        let downloadUrl: string;
+
+        if (documento.downloadUrl) {
+          // Si el documento ya trae una URL de descarga (ej: Autos), usarla
+          // NO remover el slash inicial, buildApiUrl lo necesita o lo maneja
+          downloadUrl = buildApiUrl('control-disciplinario', documento.downloadUrl);
+        } else {
+          // Construcción legacy para evidencias
+          const endpoint = API_MODE === 'direct'
+            ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
+            : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
+          downloadUrl = buildApiUrl('control-disciplinario', endpoint);
+        }
         const token = localStorage.getItem('esap_access_token');
 
         const headers: HeadersInit = {
@@ -373,7 +477,7 @@ function ModalVisorDocumento({
 
         // Detectar tipo de archivo basado en el nombre del documento
         const nombreArchivo = documento.nombre.toLowerCase();
-        let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'otro' = 'otro';
+        let tipoDetectado: 'pdf' | 'word' | 'ppt' | 'xls' | 'html' | 'otro' = 'otro';
 
         if (nombreArchivo.endsWith('.pdf')) {
           tipoDetectado = 'pdf';
@@ -385,10 +489,19 @@ function ModalVisorDocumento({
           if (pdfHeader !== '%PDF') {
             const text = await blob.text();
             if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('<!doctype')) {
-              throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+              // Si es un auto, es normal que sea HTML
+              if (documento.metadatos?.esAutoDigital || nombreArchivo.endsWith('.html')) {
+                tipoDetectado = 'html';
+                // No lanzamos error, permitimos que se setee como html
+              } else {
+                throw new Error('El servidor devolvió HTML en lugar de PDF. Verifique la autenticación y la URL.');
+              }
+            } else {
+              throw new Error('El archivo no es un PDF válido. Header esperado: %PDF, recibido: ' + pdfHeader);
             }
-            throw new Error('El archivo no es un PDF válido. Header esperado: %PDF, recibido: ' + pdfHeader);
           }
+        } else if (documento.metadatos?.esAutoDigital || nombreArchivo.endsWith('.html')) {
+          tipoDetectado = 'html';
         } else if (nombreArchivo.endsWith('.doc') || nombreArchivo.endsWith('.docx')) {
           tipoDetectado = 'word';
         } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
@@ -451,11 +564,18 @@ function ModalVisorDocumento({
         return;
       }
 
+      const version = documento.versiones.find(v => v.numero === versionSeleccionada);
+
+      if (version && version.downloadUrl) {
+        toast.loading(`Descargando versión ${versionSeleccionada}...`, { id: 'download' });
+        await disciplinaryService.downloadFileFromUrl(version.downloadUrl, `Version-${versionSeleccionada}-${documento.nombre}`);
+        toast.success('Versión descargada', { id: 'download' });
+        return;
+      }
+
       toast.loading('Generando PDF...', { id: 'download' });
 
-      // Descargar el archivo original primero usando buildApiUrl
-      // En modo directo: /disciplinary-processes/...
-      // En modo gateway: /api/v1/disciplinary-processes/...
+      // Fallback para documentos sin URL específica de versión
       const endpoint = API_MODE === 'direct'
         ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
         : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
@@ -720,6 +840,18 @@ function ModalVisorDocumento({
               </div>
             </div>
 
+            {/* Botón Editar - Solo para Autos DIGITALES del sistema y si hay función de edición */}
+            {documento.tipo === 'auto' && documento.metadatos?.esAutoDigital && onEdit && (
+              <button
+                onClick={() => onEdit(documento)}
+                className="p-2 mr-2 hover:bg-white/50 rounded-lg transition-colors text-blue-700 bg-blue-50 border border-blue-200 flex items-center gap-1"
+                title="Editar Documento"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span className="text-sm font-medium">Editar</span>
+              </button>
+            )}
+
             <button onClick={handleCerrarModal} className="p-2 hover:bg-white/50 rounded-lg transition-colors">
               <X className="w-6 h-6 text-gray-600" />
             </button>
@@ -894,52 +1026,62 @@ function ModalVisorDocumento({
                   )}
                   {pdfBlobUrl && !cargandoPDF && !errorPDF && tipoArchivo !== 'pdf' && (
                     <div className="h-full w-full bg-white relative flex items-center justify-center">
-                      {/* Usar object tag para mejor compatibilidad con diferentes tipos de archivo */}
-                      <object
-                        data={pdfBlobUrl}
-                        type={
-                          tipoArchivo === 'word'
-                            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                            : tipoArchivo === 'ppt'
-                              ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-                              : tipoArchivo === 'xls'
-                                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                                : 'application/octet-stream'
-                        }
-                        className="w-full h-full"
-                        style={{ minHeight: '100%', width: '100%' }}
-                      >
-                        {/* Fallback: si el object no funciona, mostrar mensaje y opción de descarga */}
-                        <div className="flex flex-col items-center justify-center p-8 text-center">
-                          <FileText className="w-16 h-16 text-gray-400 mb-4" />
-                          <p className="text-lg font-semibold text-gray-700 mb-2">
-                            Vista previa no disponible
-                          </p>
-                          <p className="text-sm text-gray-600 mb-6">
-                            El navegador no puede mostrar este tipo de archivo directamente.
-                          </p>
-                          <Button
-                            onClick={() => {
-                              const link = document.createElement('a');
-                              link.href = pdfBlobUrl;
-                              link.download = documento.nombre;
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
-                            }}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Descargar para ver
-                          </Button>
-                        </div>
-                      </object>
+                      {tipoArchivo === 'html' ? (
+                        <iframe
+                          src={pdfBlobUrl}
+                          className="w-full h-full border-none bg-white p-8"
+                          title="Vista Previa HTML"
+                        />
+                      ) : (
+                        <object
+                          data={pdfBlobUrl}
+                          type={
+                            tipoArchivo === 'word'
+                              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                              : tipoArchivo === 'ppt'
+                                ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                                : tipoArchivo === 'xls'
+                                  ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                  : 'application/octet-stream'
+                          }
+                          className="w-full h-full"
+                          style={{ minHeight: '100%', width: '100%' }}
+                        >
+                          {/* Fallback: si el object no funciona, mostrar mensaje y opción de descarga */}
+                          <div className="flex flex-col items-center justify-center p-8 text-center">
+                            <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                            <p className="text-lg font-semibold text-gray-700 mb-2">
+                              Vista previa no disponible
+                            </p>
+                            <p className="text-sm text-gray-600 mb-6">
+                              El navegador no puede mostrar este tipo de archivo directamente.
+                            </p>
+                            <Button
+                              onClick={() => {
+                                const link = document.createElement('a');
+                                link.href = pdfBlobUrl;
+                                link.download = documento.nombre;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              <Download className="w-4 h-4 mr-2" />
+                              Descargar Original (PDF)
+                            </Button>
+                          </div>
+
+                        </object>
+                      )}
                     </div>
                   )}
                 </div>
               </Card>
             </div>
-          )}
+          )
+          }
 
           {/* Información del Documento - Siempre visible */}
           <div className="p-6 overflow-y-auto flex-1" style={{ maxHeight: viendoPDF ? 'calc(95vh - 700px)' : 'calc(95vh - 280px)' }}>
@@ -1032,10 +1174,10 @@ function ModalVisorDocumento({
               </div>
             </div>
           </div>
-        </div>
+        </div >
 
         {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex gap-3">
+        < div className="p-6 border-t bg-gray-50 flex gap-3" >
           <Button
             onClick={handleDescargarVersion}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -1043,42 +1185,55 @@ function ModalVisorDocumento({
             <Download className="w-4 h-4 mr-2" />
             Descargar Versión {versionSeleccionada}
           </Button>
-          {(documento.urlExterna || (processId && documento.id)) && (
-            <Button
-              onClick={() => setViendoPDF(!viendoPDF)}
-              className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
-            >
-              <Eye className="w-4 h-4 mr-2" />
-              {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
-            </Button>
-          )}
+          {
+            (documento.urlExterna || (processId && documento.id)) && (
+              <Button
+                onClick={() => setViendoPDF(!viendoPDF)}
+                className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
+              </Button>
+            )
+          }
           <Button onClick={handleCerrarModal} className="bg-gray-500 ml-auto">
             Cerrar
           </Button>
-        </div>
-      </motion.div>
-    </motion.div>
+        </div >
+      </motion.div >
+    </motion.div >
   );
 }
 
 // Modal de Subir Documento
 function ModalSubirDocumento({
   procesoId,
+  defaultEtapa,
   onClose,
-  onConfirm
+  onConfirm,
+  onSwitchType
 }: {
   procesoId: string;
+  defaultEtapa?: string;
   onClose: () => void;
   onConfirm: (doc: any) => void;
+  onSwitchType?: (tipo: 'auto' | 'evidencia' | 'oficio') => void;
 }) {
   const [nombreDocumento, setNombreDocumento] = useState('');
-  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('auto');
-  const [etapa, setEtapa] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState<Documento['tipo']>('otro');
+  const [etapa, setEtapa] = useState(defaultEtapa || '');
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [usarEnlaceExterno, setUsarEnlaceExterno] = useState(false);
   const [urlExterna, setUrlExterna] = useState('');
   const [dragActive, setDragActive] = useState(false);
+
+  // Sync state with prop
+  useEffect(() => {
+    if (defaultEtapa) {
+      setEtapa(defaultEtapa);
+    }
+  }, [defaultEtapa]);
 
   // Tipos de archivo permitidos
   const tiposPermitidos = [
@@ -1191,7 +1346,13 @@ function ModalSubirDocumento({
             </label>
             <select
               value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value as Documento['tipo'])}
+              onChange={(e) => {
+                const nuevoTipo = e.target.value as Documento['tipo'];
+                setTipoDocumento(nuevoTipo);
+                if (onSwitchType && (nuevoTipo === 'auto' || nuevoTipo === 'evidencia' || nuevoTipo === 'oficio')) {
+                  onSwitchType(nuevoTipo);
+                }
+              }}
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="auto">Auto</option>
@@ -1214,12 +1375,18 @@ function ModalSubirDocumento({
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione...</option>
-              <option value="Noticia">Noticia Disciplinaria</option>
+              <option value="Noticia Disciplinaria">Noticia Disciplinaria</option>
               <option value="Valoración">Valoración</option>
               <option value="Indagación Preliminar">Indagación Preliminar</option>
               <option value="Investigación Formal">Investigación Formal</option>
               <option value="Descargos">Descargos</option>
-              <option value="Cierre">Cierre de Investigación</option>
+              <option value="Cierre de Investigación">Cierre de Investigación</option>
+              {defaultEtapa && ![
+                "Noticia Disciplinaria", "Valoración", "Indagación Preliminar",
+                "Investigación Formal", "Descargos", "Cierre de Investigación"
+              ].includes(defaultEtapa) && (
+                  <option value={defaultEtapa}>{defaultEtapa}</option>
+                )}
             </select>
           </div>
 
@@ -1337,13 +1504,26 @@ function isValidUUID(str: string): boolean {
 }
 
 // Componente Principal
-export function ExpedienteElectronico() {
+interface ExpedienteElectronicoProps {
+  initialProcesoId?: string | null;
+}
+
+export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronicoProps = {}) {
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(null);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTipo, setFilterTipo] = useState('all');
   const [showModalVisor, setShowModalVisor] = useState(false);
   const [showModalSubir, setShowModalSubir] = useState(false);
+  const [editingAutoForModal, setEditingAutoForModal] = useState<Documento | null>(null);
+
+  // Modales especializados
+  const [showModalAutos, setShowModalAutos] = useState(false);
+  const [showModalEvidencias, setShowModalEvidencias] = useState(false);
+  const [showModalOficios, setShowModalOficios] = useState(false);
+  const [showModalSeleccion, setShowModalSeleccion] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState<Documento | null>(null);
   const [vistaActual, setVistaActual] = useState<'documentos' | 'indice' | 'auditoria'>('documentos');
   const [showModalFlujo, setShowModalFlujo] = useState(false);
@@ -1356,6 +1536,44 @@ export function ExpedienteElectronico() {
   const [showProcesoDropdown, setShowProcesoDropdown] = useState(false);
   const [procesosRecientes, setProcesosRecientes] = useState<Proceso[]>([]);
   const [radicadosDisponibles, setRadicadosDisponibles] = useState<string[]>([]);
+
+  // Editor State
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<any>(null);
+
+  // MANEJO DE EDICIÓN DE DOCUMENTOS
+  const handleGuardarEdicion = async (nuevoContenido: string, nuevaVersion: number) => {
+    try {
+      if (!editingDoc) return;
+
+      toast.loading('Guardando nueva versión...', { id: 'save-version' });
+
+      console.log('Guardando edición para documento ID:', editingDoc.id);
+
+      // 1. Actualizar contenido en backend (esto debe crear nueva versión)
+      await disciplinaryService.updateAutoContent(editingDoc.id, nuevoContenido);
+
+      // 2. Recargar documentos
+      if (procesoSeleccionado?.id) {
+        const respuesta = await disciplinaryService.getDocumentosExpediente(procesoSeleccionado.id);
+        if (respuesta && respuesta.documentos) {
+          setDocumentos(respuesta.documentos as Documento[]);
+
+          // Actualizar documento en edición si sigue abierto (opcional, por ahora cerramos)
+          setShowEditor(false);
+          setEditingDoc(null);
+
+          toast.success('Nueva versión guardada exitosamente', { id: 'save-version' });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error al guardar edición:', error);
+      toast.error('Error al guardar versión', {
+        id: 'save-version',
+        description: error.message || 'No se pudo actualizar el documento'
+      });
+    }
+  };
 
   // Cargar procesos desde la API
   useEffect(() => {
@@ -1394,11 +1612,26 @@ export function ExpedienteElectronico() {
         const radicados = procesosConvertidos.map(p => p.numero);
         setRadicadosDisponibles(radicados);
 
-        // Seleccionar el primer proceso si hay alguno
-        if (procesosConvertidos.length > 0 && !procesoSeleccionado) {
-          setProcesoSeleccionado(procesosConvertidos[0]);
-          setProcesoSearchQuery(procesosConvertidos[0].numero);
-          setProcesosRecientes(procesosConvertidos.slice(0, 5));
+        // Seleccionar proceso: priorizar initialProcesoId si existe
+        if (procesosConvertidos.length > 0) {
+          if (initialProcesoId) {
+            const targetProceso = procesosConvertidos.find(p => p.id === initialProcesoId);
+            if (targetProceso) {
+              setProcesoSeleccionado(targetProceso);
+              setProcesoSearchQuery(targetProceso.numero);
+              setProcesosRecientes(procesosConvertidos.slice(0, 5));
+            } else {
+              // initialProcesoId provided but not found, fallback to first
+              setProcesoSeleccionado(procesosConvertidos[0]);
+              setProcesoSearchQuery(procesosConvertidos[0].numero);
+              setProcesosRecientes(procesosConvertidos.slice(0, 5));
+            }
+          } else if (!procesoSeleccionado) {
+            // No initialProcesoId, select first only if nothing selected
+            setProcesoSeleccionado(procesosConvertidos[0]);
+            setProcesoSearchQuery(procesosConvertidos[0].numero);
+            setProcesosRecientes(procesosConvertidos.slice(0, 5));
+          }
         }
       } catch (error: any) {
         console.error('Error al cargar procesos:', error);
@@ -1413,7 +1646,7 @@ export function ExpedienteElectronico() {
     };
 
     cargarProcesos();
-  }, []);
+  }, [initialProcesoId]);
 
   // Cargar documentos desde la BD cuando se selecciona un proceso
   useEffect(() => {
@@ -1457,7 +1690,7 @@ export function ExpedienteElectronico() {
     };
 
     cargarDocumentos();
-  }, [procesoSeleccionado?.id]);
+  }, [procesoSeleccionado?.id, refreshTrigger]);
 
   // Sincronizar el input con el proceso seleccionado
   useEffect(() => {
@@ -1465,6 +1698,41 @@ export function ExpedienteElectronico() {
       setProcesoSearchQuery(procesoSeleccionado.numero);
     }
   }, [procesoSeleccionado]);
+
+  // Manejo de Modales Especializados
+  const handleCerrarModalesEspecializados = () => {
+    setShowModalAutos(false);
+    setShowModalEvidencias(false);
+    setShowModalOficios(false);
+    setShowModalAutos(false);
+    setShowModalEvidencias(false);
+    setShowModalOficios(false);
+    setRefreshTrigger(prev => prev + 1);
+    setEditingAutoForModal(null); // Limpiar edición
+  };
+
+  const handleSeleccionTipoDocumento = (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => {
+    setShowModalSeleccion(false);
+    if (tipo === 'auto') setShowModalAutos(true);
+    else if (tipo === 'evidencia') setShowModalEvidencias(true);
+    else if (tipo === 'oficio') setShowModalOficios(true);
+    else setShowModalSubir(true);
+  };
+
+  // Helper para mapear proceso
+  const mapProcesoToEspecializado = (proc: Proceso | null): any => {
+    if (!proc) return null;
+    return {
+      id: proc.id,
+      numeroProceso: proc.numero,
+      etapaActual: proc.etapaActual,
+      denunciante: { nombre: 'N/A', tipoIdentificacion: 'CC', numeroIdentificacion: '000' },
+      profesionalAsignado: { nombre: 'N/A', tipoIdentificacion: 'CC', numeroIdentificacion: '000' },
+      denunciado: typeof proc.denunciado === 'string'
+        ? { nombre: proc.denunciado, tipoIdentificacion: 'CC', numeroIdentificacion: '000' }
+        : proc.denunciado
+    };
+  };
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoSeleccionado(doc);
@@ -1494,11 +1762,17 @@ export function ExpedienteElectronico() {
 
       toast.loading('Descargando documento...', { id: 'download-doc' });
 
-      await disciplinaryService.downloadDocument(
-        procesoSeleccionado.id,
-        doc.id,
-        doc.nombre
-      );
+      toast.loading('Descargando documento...', { id: 'download-doc' });
+
+      if (doc.downloadUrl) {
+        await disciplinaryService.downloadFileFromUrl(doc.downloadUrl, doc.nombre);
+      } else {
+        await disciplinaryService.downloadDocument(
+          procesoSeleccionado.id,
+          doc.id,
+          doc.nombre
+        );
+      }
 
       toast.success('Descarga completada', {
         id: 'download-doc',
@@ -2053,7 +2327,7 @@ export function ExpedienteElectronico() {
               <option value="otro">Otros</option>
             </select>
             <button
-              onClick={() => setShowModalSubir(true)}
+              onClick={() => setShowModalSeleccion(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
               style={{ background: '#10B981' }}
             >
@@ -2315,6 +2589,39 @@ export function ExpedienteElectronico() {
 
       {/* Modales */}
       <AnimatePresence>
+        {showModalSeleccion && (
+          <ModalSeleccionDocumento
+            onClose={() => setShowModalSeleccion(false)}
+            onSelect={handleSeleccionTipoDocumento}
+          />
+        )}
+
+        {showModalAutos && procesoSeleccionado && (
+          <ModalGestionAutos
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onCrearAuto={handleCerrarModalesEspecializados}
+            initialView={editingAutoForModal ? 'crear' : 'lista'} // Si hay edición, ir directo al form
+            initialAuto={editingAutoForModal}
+          />
+        )}
+
+        {showModalEvidencias && procesoSeleccionado && (
+          <ModalGestionEvidencias
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onSubirEvidencia={handleCerrarModalesEspecializados}
+          />
+        )}
+
+        {showModalOficios && procesoSeleccionado && (
+          <ModalGestionOficios
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
+            onCrearOficio={handleCerrarModalesEspecializados}
+          />
+        )}
+
         {showModalVisor && documentoSeleccionado && (
           <ModalVisorDocumento
             documento={documentoSeleccionado}
@@ -2323,14 +2630,39 @@ export function ExpedienteElectronico() {
               setShowModalVisor(false);
               setDocumentoSeleccionado(null);
             }}
+            onEdit={(doc) => {
+              // En lugar de EditorDocumentos, abrir ModalGestionAutos en modo edición
+              setEditingAutoForModal(doc);
+              setShowModalVisor(false);
+              setShowModalAutos(true);
+            }}
+          />
+        )}
+
+        {showEditor && editingDoc && procesoSeleccionado && (
+          <EditorDocumentos
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            plantilla={{ nombre: editingDoc.nombre, contenido: editingDoc.contenido || '' }}
+            borradorExistente={editingDoc}
+            onClose={() => {
+              setShowEditor(false);
+              setEditingDoc(null);
+            }}
+            onGuardar={handleGuardarEdicion}
+            onEnviarRevision={() => { }} // No aplica para edición directa en expediente por ahora
           />
         )}
 
         {showModalSubir && (
           <ModalSubirDocumento
             procesoId={procesoSeleccionado?.id || ''}
+            defaultEtapa={procesoSeleccionado?.etapaActual}
             onClose={() => setShowModalSubir(false)}
             onConfirm={handleSubirDocumento}
+            onSwitchType={(tipo) => {
+              setShowModalSubir(false);
+              handleSeleccionTipoDocumento(tipo);
+            }}
           />
         )}
 

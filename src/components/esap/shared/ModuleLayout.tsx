@@ -11,13 +11,16 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { useKeyboardNavigation } from '../../../hooks/useKeyboardNavigation';
 import { KeyboardShortcutsHelper } from './KeyboardShortcutsHelper';
+import logoESAP from 'figma:asset/37be53b3a386e74bb2b064005155c7696a9d7d7e.png';
 
 export interface MenuItem {
   id: string;
   label: string;
+  subtitle?: string; // Subtítulo opcional para mostrar en tooltips
   icon: ReactNode;
   badge?: number;
   color?: string;
+  visible?: boolean; // Si es false, no se muestra en el menú (por defecto true)
 }
 
 interface ModuleLayoutProps {
@@ -272,20 +275,22 @@ export function ModuleLayout({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                  className="mx-auto relative group"
+                  className="w-full relative group"
                 >
                   <button
                     onClick={() => setSidebarCollapsed(false)}
-                    className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-                    style={{ background: `${moduleColor}15` }}
+                    className="w-full flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors relative py-2"
                     title="Expandir menú"
                   >
-                    <div style={{ color: moduleColor }}>
-                      {moduleIcon}
-                    </div>
+                    {/* Logo ESAP cuando está colapsado */}
+                    <img 
+                      src={logoESAP} 
+                      alt="ESAP Logo" 
+                      className="w-12 h-12 object-contain"
+                    />
                   </button>
                   {/* Tooltip */}
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50" 
+                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg" 
                        style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px' }}>
                     Expandir menú
                   </div>
@@ -348,11 +353,14 @@ export function ModuleLayout({
 
                   {/* Tooltip para sidebar colapsado */}
                   {sidebarCollapsed && (
-                    <div className="absolute left-full ml-2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50" 
-                         style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px' }}>
-                      {item.label}
+                    <div className="absolute left-full ml-3 top-2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg" 
+                         style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px', maxWidth: '250px' }}>
+                      <div className="font-semibold">{item.label}</div>
+                      {item.subtitle && (
+                        <div className="text-xs opacity-80 mt-0.5">{item.subtitle}</div>
+                      )}
                       {item.badge && (
-                        <span className="ml-2 px-2 py-0.5 rounded-full" style={{ background: itemColor }}>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: itemColor }}>
                           {item.badge}
                         </span>
                       )}
@@ -385,7 +393,7 @@ export function ModuleLayout({
       </motion.aside>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 overflow-hidden flex flex-col w-full">
+      <main className="flex-1 flex flex-col w-full overflow-y-auto">
         {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
         {isMobile && (
           <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
@@ -402,8 +410,8 @@ export function ModuleLayout({
         )}
 
         {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-4 md:p-5 lg:p-6 h-full">
+        <div className="flex-1">
+          <div className="p-3 sm:p-4 md:p-5 lg:p-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}
@@ -411,7 +419,6 @@ export function ModuleLayout({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className="h-full"
               >
                 {children}
               </motion.div>

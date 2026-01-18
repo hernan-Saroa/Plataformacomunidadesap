@@ -4,7 +4,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
 
-@Controller('legal/consultas-juridicas')
+@Controller('consultas-juridicas')
 export class ConsultasJuridicasController {
     constructor(private readonly consultasService: ConsultasJuridicasService) { }
 
@@ -68,8 +68,8 @@ export class ConsultasJuridicasController {
     }
 
     @Patch(':id/estado')
-    async updateEstado(@Param('id') id: string, @Body('estado') estado: string) {
-        return this.consultasService.updateEstado(id, estado);
+    async updateEstado(@Param('id') id: string, @Body('estado') estado: string, @Body('usuario') usuario?: string) {
+        return this.consultasService.updateEstado(id, estado, usuario);
     }
 
     @Patch(':id/respuesta')
@@ -90,20 +90,25 @@ export class ConsultasJuridicasController {
         const respuestaData = {
             numeroOficioRespuesta: body.numeroOficioRespuesta,
             tipoRespuesta: body.tipoRespuesta,
-            documentoRespuestaUrl: file ? `http://localhost:3008/legal/files/${file.filename}` : null,
+            documentoRespuestaUrl: file ? `files/${file.filename}` : null,
             observaciones: body.observaciones
         };
 
-        return this.consultasService.responder(id, respuestaData);
+        return this.consultasService.responder(id, respuestaData, body.usuario);
     }
 
     @Patch(':id/gestionar-respuesta')
     async gestionarRespuesta(
         @Param('id') id: string,
-        @Body() body: { respuesta: string, enviar: boolean | string }
+        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string }
     ) {
         const enviar = body.enviar === true || body.enviar === 'true';
-        return this.consultasService.updateRespuesta(id, body.respuesta, enviar);
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario);
+    }
+
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.consultasService.getHistorial(id);
     }
 
     @Delete(':id')
@@ -112,3 +117,5 @@ export class ConsultasJuridicasController {
         return { message: 'Consulta eliminada' };
     }
 }
+
+

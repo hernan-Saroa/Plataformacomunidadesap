@@ -36,7 +36,7 @@ export class AutosService {
             ...data,
             expedienteId: expediente.id,
             archivoNombre: file.originalname,
-            archivoUrl: `http://localhost:3008/api/legal/files/${file.filename}`, // Assuming standardized file serving
+            archivoUrl: `files/${file.filename}`, // Ruta relativa, el frontend construye la URL completa
             createdAt: new Date(),
             updatedAt: new Date()
         });
@@ -60,7 +60,7 @@ export class AutosService {
         return this.autoRepository.save(auto);
     }
 
-    async delete(id: string): Promise<void> {
+    async delete(id: string): Promise<{ success: boolean; message: string }> {
         const auto = await this.autoRepository.findOneBy({ id });
 
         if (!auto) {
@@ -70,6 +70,8 @@ export class AutosService {
         // Soft Delete: just change state
         auto.estado = 'Eliminado';
         await this.autoRepository.save(auto);
+
+        return { success: true, message: 'Auto eliminado correctamente' };
     }
 
     // Generate ZIP of all autos for an expediente

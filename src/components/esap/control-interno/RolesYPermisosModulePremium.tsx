@@ -1,208 +1,1580 @@
 /**
- * ROLES Y PERMISOS - VERSIÓN PREMIUM
- * Sistema RBAC para Control Interno
- * VERSIÓN: 3.0 - PREMIUM
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ASIGNACIÓN DE ROLES Y PERMISOS - MÓDULO CONTROL INTERNO
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * IMPORTANTE: Este módulo NO crea roles ni usuarios.
+ * Los roles y usuarios se gestionan desde "Gestión de Personas".
+ * 
+ * Aquí solo se:
+ * 1. Asignan personas existentes a roles del módulo Control Interno
+ * 2. Gestionan permisos específicos del módulo
+ * 3. Consultan el equipo de Control Interno
+ * 
+ * VERSIÓN: 4.0 - PREMIUM CORREGIDA
+ * ÚLTIMA ACTUALIZACIÓN: 4 Enero 2026
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Shield, Users, Key, Lock, UserCheck, Settings, HelpCircle,
-  Book, Mail, Phone, ExternalLink, Plus, Edit2, Trash2, Eye
+  Shield, Users, Key, UserPlus, Edit2, Trash2, Eye,
+  Search, CheckCircle2, XCircle, AlertCircle, Loader
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { TooltipGuia } from './TooltipGuia';
+import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
+import { usersService, type User } from '@/services/usersService';
+import { rolesService, type SystemRole } from '@/services/api';
 
-interface Rol {
+// ════════════════════════════════════════════════════════════════════════════
+// TIPOS
+// ════════════════════════════════════════════════════════════════════════════
+
+interface RolControlInterno {
   id: string;
   nombre: string;
   descripcion: string;
-  usuariosCount: number;
-  permisos: string[];
-  nivel: 'ADMIN' | 'JEFE' | 'AUDITOR' | 'CONSULTA';
-  activo: boolean;
+  nivel: 'JEFE_OCI' | 'PROFESIONAL_AUDITOR' | 'AUXILIAR_AUDITORIA' | 'CONSULTA';
+  permisos: PermisoModulo[];
+  color: string;
 }
 
-interface Usuario {
+interface PersonaAsignada {
   id: string;
-  nombre: string;
+  personaId: string; // ID de la persona en el módulo de Personas
+  nombreCompleto: string;
   email: string;
-  rol: string;
-  area: string;
+  telefono: string;
+  rolAsignado: string;
+  permisos: string[];
+  fechaAsignacion: string;
   estado: 'ACTIVO' | 'INACTIVO';
   ultimoAcceso: string;
 }
 
-type VistaActual = 'roles' | 'usuarios' | 'permisos' | 'soporte';
+interface PermisoModulo {
+  id: string;
+  modulo: string;
+  accion: 'leer' | 'crear' | 'editar' | 'eliminar' | 'aprobar' | 'full';
+  descripcion: string;
+}
 
-const ROLES_MOCK: Rol[] = [
-  { id: 'r1', nombre: 'Jefe OCI', descripcion: 'Control total del sistema', usuariosCount: 1, permisos: ['*'], nivel: 'ADMIN', activo: true },
-  { id: 'r2', nombre: 'Profesional Auditor', descripcion: 'Gestión de auditorías', usuariosCount: 3, permisos: ['auditorias:write', 'planes:write'], nivel: 'AUDITOR', activo: true },
-  { id: 'r3', nombre: 'Consulta', descripcion: 'Solo lectura', usuariosCount: 12, permisos: ['read:all'], nivel: 'CONSULTA', activo: true }
+type VistaActual = 'equipo' | 'permisos';
+
+// ════════════════════════════════════════════════════════════════════════════
+// DATOS MOCK - ROLES PREDEFINIDOS DEL MÓDULO
+// ════════════════════════════════════════════════════════════════════════════
+
+const ROLES_CONTROL_INTERNO: RolControlInterno[] = [
+  {
+    id: 'rol-jefe-oci',
+    nombre: 'Jefe de Control Interno',
+    descripcion: 'Control total sobre todos los módulos de Control Interno',
+    nivel: 'JEFE_OCI',
+    color: 'red',
+    permisos: [
+      { id: 'p1', modulo: 'Plan de Mejoramiento', accion: 'full', descripcion: 'Control total' },
+      { id: 'p2', modulo: 'Informes de Ley', accion: 'full', descripcion: 'Control total' },
+      { id: 'p3', modulo: 'Expedientes', accion: 'full', descripcion: 'Control total' },
+      { id: 'p4', modulo: 'Auditorías', accion: 'full', descripcion: 'Control total' },
+      { id: 'p5', modulo: 'Configuraciones', accion: 'full', descripcion: 'Control total' }
+    ]
+  },
+  {
+    id: 'rol-profesional-auditor',
+    nombre: 'Profesional Auditor',
+    descripcion: 'Gestión completa de auditorías y seguimiento de planes',
+    nivel: 'PROFESIONAL_AUDITOR',
+    color: 'blue',
+    permisos: [
+      { id: 'p6', modulo: 'Plan de Mejoramiento', accion: 'editar', descripcion: 'Crear y editar planes' },
+      { id: 'p7', modulo: 'Informes de Ley', accion: 'editar', descripcion: 'Crear y editar informes' },
+      { id: 'p8', modulo: 'Expedientes', accion: 'editar', descripcion: 'Gestionar expedientes' },
+      { id: 'p9', modulo: 'Auditorías', accion: 'editar', descripcion: 'Gestionar auditorías' },
+      { id: 'p10', modulo: 'Configuraciones', accion: 'leer', descripcion: 'Solo lectura' }
+    ]
+  },
+  {
+    id: 'rol-auxiliar',
+    nombre: 'Auxiliar de Auditoría',
+    descripcion: 'Soporte en procesos de auditoría y documentación',
+    nivel: 'AUXILIAR_AUDITORIA',
+    color: 'green',
+    permisos: [
+      { id: 'p11', modulo: 'Plan de Mejoramiento', accion: 'leer', descripcion: 'Solo lectura' },
+      { id: 'p12', modulo: 'Informes de Ley', accion: 'crear', descripcion: 'Crear informes' },
+      { id: 'p13', modulo: 'Expedientes', accion: 'crear', descripcion: 'Cargar documentos' },
+      { id: 'p14', modulo: 'Auditorías', accion: 'leer', descripción: 'Solo lectura' }
+    ]
+  },
+  {
+    id: 'rol-consulta',
+    nombre: 'Consulta',
+    descripcion: 'Solo lectura de información pública del módulo',
+    nivel: 'CONSULTA',
+    color: 'gray',
+    permisos: [
+      { id: 'p15', modulo: 'Plan de Mejoramiento', accion: 'leer', descripcion: 'Solo lectura' },
+      { id: 'p16', modulo: 'Informes de Ley', accion: 'leer', descripcion: 'Solo lectura' },
+      { id: 'p17', modulo: 'Expedientes', accion: 'leer', descripcion: 'Solo lectura' },
+      { id: 'p18', modulo: 'Auditorías', accion: 'leer', descripcion: 'Solo lectura' }
+    ]
+  }
 ];
 
-const USUARIOS_MOCK: Usuario[] = [
-  { id: 'u1', nombre: 'Fernando Ávila', email: 'favila@esap.edu.co', rol: 'Jefe OCI', area: 'Control Interno', estado: 'ACTIVO', ultimoAcceso: '2025-02-24' },
-  { id: 'u2', nombre: 'María Rodríguez', email: 'mrodriguez@esap.edu.co', rol: 'Profesional Auditor', area: 'Control Interno', estado: 'ACTIVO', ultimoAcceso: '2025-02-23' },
-  { id: 'u3', nombre: 'Carlos Gómez', email: 'cgomez@esap.edu.co', rol: 'Consulta', area: 'Talento Humano', estado: 'ACTIVO', ultimoAcceso: '2025-02-20' }
+// ════════════════════════════════════════════════════════════════════════════
+// DATOS MOCK - PERSONAS ASIGNADAS AL MÓDULO
+// ════════════════════════════════════════════════════════════════════════════
+
+const EQUIPO_MOCK: PersonaAsignada[] = [
+  {
+    id: 'eq-1',
+    personaId: 'persona-001', // ID de la persona en módulo Personas
+    nombreCompleto: 'Fernando Ávila Guevara',
+    email: 'fernando.avila@esap.edu.co',
+    telefono: '+57 310 555 1234',
+    rolAsignado: 'Jefe de Control Interno',
+    permisos: ['full:all'],
+    fechaAsignacion: '2024-01-15',
+    estado: 'ACTIVO',
+    ultimoAcceso: '2026-01-04 09:30'
+  },
+  {
+    id: 'eq-2',
+    personaId: 'persona-045',
+    nombreCompleto: 'María Camila Rodríguez Torres',
+    email: 'maria.rodriguez@esap.edu.co',
+    telefono: '+57 315 555 5678',
+    rolAsignado: 'Profesional Auditor',
+    permisos: ['auditorias:write', 'planes:write', 'informes:write'],
+    fechaAsignacion: '2024-03-20',
+    estado: 'ACTIVO',
+    ultimoAcceso: '2026-01-04 08:15'
+  },
+  {
+    id: 'eq-3',
+    personaId: 'persona-078',
+    nombreCompleto: 'Carlos Andrés Gómez Silva',
+    email: 'carlos.gomez@esap.edu.co',
+    telefono: '+57 320 555 9012',
+    rolAsignado: 'Profesional Auditor',
+    permisos: ['auditorias:write', 'planes:write', 'informes:write'],
+    fechaAsignacion: '2024-06-10',
+    estado: 'ACTIVO',
+    ultimoAcceso: '2026-01-03 17:45'
+  },
+  {
+    id: 'eq-4',
+    personaId: 'persona-112',
+    nombreCompleto: 'Ana Patricia Moreno Cruz',
+    email: 'ana.moreno@esap.edu.co',
+    telefono: '+57 311 555 3456',
+    rolAsignado: 'Auxiliar de Auditoría',
+    permisos: ['expedientes:create', 'informes:create'],
+    fechaAsignacion: '2024-08-05',
+    estado: 'ACTIVO',
+    ultimoAcceso: '2026-01-04 10:20'
+  },
+  {
+    id: 'eq-5',
+    personaId: 'persona-234',
+    nombreCompleto: 'Jorge Luis Peña Ramírez',
+    email: 'jorge.pena@esap.edu.co',
+    telefono: '+57 318 555 7890',
+    rolAsignado: 'Consulta',
+    permisos: ['read:all'],
+    fechaAsignacion: '2025-11-12',
+    estado: 'ACTIVO',
+    ultimoAcceso: '2026-01-02 14:30'
+  }
 ];
+
+// ════════════════════════════════════════════════════════════════════════════
+// COMPONENTE PRINCIPAL
+// ════════════════════════════════════════════════════════════════════════════
 
 export function RolesYPermisosModulePremium() {
-  const [vistaActiva, setVistaActiva] = useState<VistaActual>('roles');
+  const [vistaActiva, setVistaActiva] = useState<VistaActual>('equipo');
+  const [equipo, setEquipo] = useState<PersonaAsignada[]>([]);
+  const [cargandoEquipo, setCargandoEquipo] = useState(true);
+  const [rolesDisponibles, setRolesDisponibles] = useState<SystemRole[]>([]);
+
+  // Cargar usuarios desde el auth service
+  useEffect(() => {
+    const cargarEquipo = async () => {
+      try {
+        setCargandoEquipo(true);
+        
+        // Cargar roles disponibles
+        const rolesResponse = await rolesService.getRoles({ limit: 1000 });
+
+        if (rolesResponse.roles) {
+          setRolesDisponibles(rolesResponse.roles);
+        }
+
+        // Roles de Control Interno que debemos buscar
+        const rolesControlInterno = [
+          'JEFE_OCI',
+          'PROFESIONAL_AUDITOR',
+          'AUXILIAR_AUDITORIA',
+          'CONSULTA',
+          'JEFE_CONTROL_INTERNO', // Roles antiguos para compatibilidad
+          'AUDITOR_LIDER',
+          'CONTROL_INTERNO'
+        ];
+
+        // También incluir usuarios de Gestión Legal (según solicitud del usuario)
+        const rolesGestionLegal = [
+          'GESTION_LEGAL',
+          'GESTIONLEGAL',
+          'GESTION-LEGAL'
+        ];
+
+        // Combinar ambos arrays de roles
+        const rolesABuscar = [...rolesControlInterno, ...rolesGestionLegal];
+
+        // Usar el nuevo método para obtener usuarios por rol
+        const usuariosResponse = await usersService.getUsersByRole(rolesABuscar, {
+          limit: 1000,
+          status: 'active'
+        });
+
+        if (usuariosResponse.data) {
+          const usuariosConRolCI = usuariosResponse.data;
+
+          // Mapear usuarios de la API al formato PersonaAsignada
+          const equipoMapeado: PersonaAsignada[] = usuariosConRolCI.map((user: User) => {
+            // Buscar el rol de Control Interno del usuario (prioridad)
+            const rolControlInterno = user.roles?.find(role => {
+              const roleCode = role.code?.toUpperCase() || '';
+              const roleName = role.name?.toUpperCase() || '';
+              return rolesControlInterno.some(rolCI => 
+                roleCode.includes(rolCI) || roleName.includes(rolCI)
+              );
+            });
+
+            // Si no tiene rol de Control Interno, buscar rol de Gestión Legal
+            const rolGestionLegal = !rolControlInterno ? user.roles?.find(role => {
+              const roleCode = role.code?.toUpperCase() || '';
+              const roleName = role.name?.toUpperCase() || '';
+              return rolesGestionLegal.some(rolGL => 
+                roleCode.includes(rolGL) || roleName.includes(rolGL)
+              );
+            }) : null;
+
+            // Obtener el rol principal (prioridad: Control Interno > Gestión Legal > otros)
+            const rolPrincipal = rolControlInterno?.name || 
+              rolGestionLegal?.name ||
+              (user.roles && user.roles.length > 0 ? user.roles[0].name : 'Sin rol');
+
+            // Mapear permisos del usuario (basado en sus roles)
+            const permisos: string[] = user.roles?.flatMap(role => [
+              `${role.code}:read`,
+              `${role.code}:write`
+            ]) || [];
+
+            // Construir nombre completo con fallbacks
+            const nombreCompleto = user.person?.full_name?.trim() 
+              || `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() 
+              || user.username?.trim() 
+              || 'Usuario sin nombre';
+
+            return {
+              id: user.id_user || `user-${Date.now()}-${Math.random()}`, // Asegurar ID único
+              personaId: user.person?.id?.toString() || user.id_user || '',
+              nombreCompleto: nombreCompleto,
+              email: user.person?.email || user.username || '',
+              telefono: user.person?.phone || '',
+              rolAsignado: rolPrincipal,
+              permisos: permisos,
+              fechaAsignacion: user.created_at ? new Date(user.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              estado: user.is_active ? 'ACTIVO' : 'INACTIVO',
+              ultimoAcceso: user.updated_at ? new Date(user.updated_at).toLocaleString('es-CO') : 'N/A'
+            };
+          });
+
+          console.log('👥 Usuarios cargados (Control Interno + Gestión Legal):', {
+            totalUsuarios: usuariosResponse.meta.total,
+            activos: usuariosResponse.meta.totalActive,
+            bloqueados: usuariosResponse.meta.totalBlocked,
+            usuariosFiltrados: usuariosConRolCI.length,
+            equipoMapeado: equipoMapeado.length,
+            rolesBuscados: rolesABuscar
+          });
+
+          setEquipo(equipoMapeado);
+        } else {
+          console.log('⚠️ No se encontraron usuarios con roles de Control Interno');
+          setEquipo([]);
+        }
+      } catch (error) {
+        console.error('Error cargando equipo:', error);
+        toast.error('Error al cargar equipo', {
+          description: 'No se pudieron cargar los usuarios desde el servidor'
+        });
+      } finally {
+        setCargandoEquipo(false);
+      }
+    };
+
+    cargarEquipo();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModuloCIG titulo="Roles y Permisos" subtitulo="Control Interno de Gestión" />
+      <HeaderModuloCIG
+        titulo="Asignación de Roles y Permisos"
+        subtitulo="Control Interno de Gestión"
+      />
 
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="mx-auto px-8 max-w-[1920px]">
-          <div className="flex gap-1">
-            <TabButton active={vistaActiva === 'roles'} onClick={() => setVistaActiva('roles')} icon={<Shield className="w-4 h-4" />} label="Roles" badge={ROLES_MOCK.length.toString()} />
-            <TabButton active={vistaActiva === 'usuarios'} onClick={() => setVistaActiva('usuarios')} icon={<Users className="w-4 h-4" />} label="Usuarios" badge={USUARIOS_MOCK.length.toString()} />
-            <TabButton active={vistaActiva === 'permisos'} onClick={() => setVistaActiva('permisos')} icon={<Key className="w-4 h-4" />} label="Permisos" />
-            <TabButton active={vistaActiva === 'soporte'} onClick={() => setVistaActiva('soporte')} icon={<HelpCircle className="w-4 h-4" />} label="Soporte" />
+      {/* Banner Informativo */}
+      <div className="bg-blue-50 border-b border-blue-200">
+        <div className="mx-auto px-8 py-4 max-w-[1920px]">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-blue-900 font-medium mb-1">
+                Gestión de Accesos al Módulo de Control Interno
+              </p>
+              <p className="text-xs text-blue-700">
+                Los roles y usuarios se crean en <span className="font-semibold">Gestión de Personas → Administración de Personas → Roles y Permisos</span>. 
+                Aquí solo se asignan personas existentes al equipo de Control Interno y se gestionan sus permisos específicos del módulo.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Navegación */}
+      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+        <div className="mx-auto px-8 max-w-[1920px]">
+          <div className="flex gap-1">
+            <TabButton
+              active={vistaActiva === 'equipo'}
+              onClick={() => setVistaActiva('equipo')}
+              icon={<Users className="w-4 h-4" />}
+              label="Equipo Control Interno"
+              badge={equipo.length.toString()}
+            />
+            <TabButton
+              active={vistaActiva === 'permisos'}
+              onClick={() => setVistaActiva('permisos')}
+              icon={<Key className="w-4 h-4" />}
+              label="Matriz de Permisos"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Contenido */}
       <AnimatePresence mode="wait">
-        <motion.div key={vistaActiva} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-          {vistaActiva === 'roles' && <VistaRoles />}
-          {vistaActiva === 'usuarios' && <VistaUsuarios />}
+        <motion.div
+          key={vistaActiva}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          {vistaActiva === 'equipo' && <VistaEquipo equipo={equipo} cargandoEquipo={cargandoEquipo} />}
           {vistaActiva === 'permisos' && <VistaPermisos />}
-          {vistaActiva === 'soporte' && <VistaSoporte />}
         </motion.div>
       </AnimatePresence>
     </div>
   );
 }
 
-function TabButton({ active, onClick, icon, label, badge }: any) {
+// ════════════════════════════════════════════════════════════════════════════
+// TAB BUTTON
+// ════════════════════════════════════════════════════════════════════════════
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: string;
+}
+
+function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
   return (
-    <button onClick={onClick} className={`relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all ${active ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'}`}>
+    <button
+      onClick={onClick}
+      className={`
+        relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
+        ${active 
+          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
+          : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+        }
+      `}
+    >
       {icon}
       {label}
-      {badge && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'}`}>{badge}</span>}
+      {badge && (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
+        }`}>
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
 
-function VistaRoles() {
-  const stats = useMemo(() => ({
-    total: ROLES_MOCK.length,
-    admin: ROLES_MOCK.filter(r => r.nivel === 'ADMIN').length,
-    auditor: ROLES_MOCK.filter(r => r.nivel === 'AUDITOR').length,
-    consulta: ROLES_MOCK.filter(r => r.nivel === 'CONSULTA').length
-  }), []);
+// ════════════════════════════════════════════════════════════════════════════
+// VISTA: EQUIPO CONTROL INTERNO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface VistaEquipoProps {
+  equipo: PersonaAsignada[];
+  cargandoEquipo: boolean;
+}
+
+function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroRol, setFiltroRol] = useState<string>('TODOS');
+  const [modalAsignar, setModalAsignar] = useState(false);
+
+  const equipoFiltrado = useMemo(() => {
+    let resultado = equipo;
+
+    if (busqueda) {
+      const search = busqueda.toLowerCase();
+      resultado = resultado.filter(p =>
+        p.nombreCompleto.toLowerCase().includes(search) ||
+        p.email.toLowerCase().includes(search)
+      );
+    }
+
+    if (filtroRol !== 'TODOS') {
+      resultado = resultado.filter(p => p.rolAsignado === filtroRol);
+    }
+
+    return resultado;
+  }, [busqueda, filtroRol, equipo]);
+
+  const estadisticas = useMemo(() => {
+    const total = equipo.length;
+    const activos = equipo.filter(p => p.estado === 'ACTIVO').length;
+    const porRol = ROLES_CONTROL_INTERNO.map(rol => ({
+      rol: rol.nombre,
+      count: equipo.filter(p => p.rolAsignado === rol.nombre).length,
+      color: rol.color
+    }));
+
+    return { total, activos, porRol };
+  }, [equipo]);
+
+  const handleAsignarPersona = () => {
+    setModalAsignar(true);
+    
+    toast.info('Asignar persona al equipo', {
+      description: 'Selecciona una persona del módulo de Personas',
+      duration: 2000,
+    });
+
+    console.log('👥 Asignar persona al módulo Control Interno:', {
+      accion: 'abrir_selector_personas',
+      moduloOrigen: 'Gestión de Personas',
+      moduloDestino: 'Control Interno',
+      timestamp: new Date().toISOString()
+    });
+  };
 
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
+      {/* Header con Título y Botón */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div><h2 className="text-xl text-gray-900 font-medium mb-1">Gestión de Roles</h2><p className="text-sm text-gray-600">Control de acceso basado en roles (RBAC)</p></div>
-          <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"><Plus className="w-4 h-4" />Crear Rol</button>
-        </div>
-
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200"><div className="text-xs text-blue-700 mb-1">Total Roles</div><div className="text-2xl font-semibold text-blue-900">{stats.total}</div></div>
-          <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-lg p-4 border border-red-200"><div className="text-xs text-red-700 mb-1">Administradores</div><div className="text-2xl font-semibold text-red-900">{stats.admin}</div></div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200"><div className="text-xs text-green-700 mb-1">Auditores</div><div className="text-2xl font-semibold text-green-900">{stats.auditor}</div></div>
-          <div className="bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg p-4 border border-gray-200"><div className="text-xs text-gray-700 mb-1">Consulta</div><div className="text-2xl font-semibold text-gray-900">{stats.consulta}</div></div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {ROLES_MOCK.map(rol => (
-          <div key={rol.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-base text-gray-900 font-medium">{rol.nombre}</h3>
-                  <span className={`px-3 py-1 rounded-lg text-xs font-medium ${rol.nivel === 'ADMIN' ? 'bg-red-100 text-red-700' : rol.nivel === 'AUDITOR' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{rol.nivel}</span>
-                </div>
-                <p className="text-sm text-gray-600 mb-3">{rol.descripcion}</p>
-                <div className="text-xs text-gray-600">Usuarios asignados: <span className="font-medium text-gray-900">{rol.usuariosCount}</span></div>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"><Edit2 className="w-4 h-4" />Editar</button>
-                <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"><Eye className="w-4 h-4" />Ver Detalle</button>
-              </div>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <h2 className="text-xl text-gray-900 font-medium mb-1">Equipo de Control Interno</h2>
+            <p className="text-sm text-gray-600">
+              Personas asignadas al módulo con sus roles y permisos específicos
+            </p>
           </div>
-        ))}
+          <div className="flex items-center gap-3">
+            <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['equipo-control-interno']} />
+            <button
+              onClick={handleAsignarPersona}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              Asignar Persona
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Búsqueda y Filtros */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              placeholder="Buscar por nombre o email..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-[#1e5da8] text-sm"
+            />
+            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
+
+          <select
+            value={filtroRol}
+            onChange={(e) => setFiltroRol(e.target.value)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] text-sm"
+          >
+            <option value="TODOS">Todos los roles</option>
+            {ROLES_CONTROL_INTERNO.map(rol => (
+              <option key={rol.id} value={rol.nombre}>{rol.nombre}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Lista de Equipo */}
+      <div className="space-y-4">
+        {cargandoEquipo ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+            <Loader className="w-12 h-12 text-[#1e5da8] mx-auto mb-4 animate-spin" />
+            <h3 className="text-base text-gray-900 mb-2">Cargando equipo...</h3>
+            <p className="text-sm text-gray-600">
+              Obteniendo datos desde el servidor
+            </p>
+          </div>
+        ) : equipoFiltrado.length > 0 ? (
+          equipoFiltrado.map((persona, index) => (
+            <CardPersonaEquipo key={`${persona.id}-${persona.personaId}-${index}`} persona={persona} />
+          ))
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-base text-gray-900 mb-2">No se encontraron personas</h3>
+            <p className="text-sm text-gray-600">
+              {busqueda || filtroRol !== 'TODOS' 
+                ? 'Intenta con otros criterios de búsqueda'
+                : 'No hay personas asignadas al equipo de Control Interno'
+              }
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Modal Asignar Persona */}
+      {modalAsignar && (
+        <ModalAsignarPersona
+          equipoActual={equipo}
+          onClose={() => setModalAsignar(false)}
+          onAsignar={(nuevaPersona) => {
+            setEquipo([...equipo, nuevaPersona]);
+            setModalAsignar(false);
+            toast.success('Persona asignada exitosamente');
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function VistaUsuarios() {
-  const stats = useMemo(() => ({
-    total: USUARIOS_MOCK.length,
-    activos: USUARIOS_MOCK.filter(u => u.estado === 'ACTIVO').length,
-    inactivos: USUARIOS_MOCK.filter(u => u.estado === 'INACTIVO').length
-  }), []);
+// ════════════════════════════════════════════════════════════════════════════
+// CARD PERSONA EQUIPO
+// ════════════════════════════════════════════════════════════════════════════
+
+interface CardPersonaEquipoProps {
+  persona: PersonaAsignada;
+}
+
+function CardPersonaEquipo({ persona }: CardPersonaEquipoProps) {
+  const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
+  const [mostrarModalDetalle, setMostrarModalDetalle] = useState(false);
+  const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
+  
+  const rol = ROLES_CONTROL_INTERNO.find(r => r.nombre === persona.rolAsignado);
+
+  const colorClasses = {
+    red: 'bg-red-100 text-red-700 border-red-200',
+    blue: 'bg-blue-100 text-blue-700 border-blue-200',
+    green: 'bg-green-100 text-green-700 border-green-200',
+    gray: 'bg-gray-100 text-gray-700 border-gray-200'
+  };
+
+  const rolColor = colorClasses[rol?.color as keyof typeof colorClasses] || colorClasses.gray;
+
+  const handleEditarPermisos = () => {
+    setMostrarModalEditar(true);
+    console.log('✏️ Abrir modal Editar permisos:', {
+      personaId: persona.personaId,
+      nombreCompleto: persona.nombreCompleto,
+      rolActual: persona.rolAsignado,
+      permisosActuales: persona.permisos,
+    });
+  };
+
+  const handleRemoverEquipo = () => {
+    setMostrarModalEliminar(true);
+    console.log('🗑️ Abrir modal Remover:', {
+      personaId: persona.personaId,
+      nombreCompleto: persona.nombreCompleto,
+    });
+  };
+
+  const confirmarRemover = () => {
+    toast.success('Persona removida', {
+      description: `${persona.nombreCompleto} ha sido removido del equipo de Control Interno`,
+      duration: 3000,
+    });
+    setMostrarModalEliminar(false);
+    
+    console.log('✅ Persona removida exitosamente:', {
+      personaId: persona.personaId,
+      nombreCompleto: persona.nombreCompleto,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleVerDetalle = () => {
+    setMostrarModalDetalle(true);
+    console.log('👁️ Abrir modal Ver detalle:', {
+      personaId: persona.personaId,
+      nombreCompleto: persona.nombreCompleto,
+      rolAsignado: persona.rolAsignado,
+    });
+  };
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <div><h2 className="text-xl text-gray-900 font-medium mb-1">Gestión de Usuarios</h2><p className="text-sm text-gray-600">Administración de accesos al sistema</p></div>
-          <button className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"><Plus className="w-4 h-4" />Crear Usuario</button>
-        </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+    >
+      <div className="p-6">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+          <div className="flex items-start gap-4 flex-1">
+            {/* Avatar */}
+            <div className="w-12 h-12 bg-gradient-to-br from-[#1e5da8] to-[#2a6dbd] rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-semibold text-lg">
+                {persona.nombreCompleto && persona.nombreCompleto.trim()
+                  ? persona.nombreCompleto.split(' ').filter(n => n).map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U'
+                  : 'U'}
+              </span>
+            </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200"><div className="text-xs text-blue-700 mb-1">Total Usuarios</div><div className="text-2xl font-semibold text-blue-900">{stats.total}</div></div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200"><div className="text-xs text-green-700 mb-1">Activos</div><div className="text-2xl font-semibold text-green-900">{stats.activos}</div></div>
-          <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-lg p-4 border border-red-200"><div className="text-xs text-red-700 mb-1">Inactivos</div><div className="text-2xl font-semibold text-red-900">{stats.inactivos}</div></div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {USUARIOS_MOCK.map(usuario => (
-          <div key={usuario.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-base text-gray-900 font-medium">{usuario.nombre}</h3>
-                  <span className={`px-3 py-1 rounded-lg text-xs font-medium ${usuario.estado === 'ACTIVO' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{usuario.estado}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-4 text-sm mb-2">
-                  <div><span className="text-gray-600">Email:</span> <span className="ml-2 text-gray-900">{usuario.email}</span></div>
-                  <div><span className="text-gray-600">Rol:</span> <span className="ml-2 text-gray-900">{usuario.rol}</span></div>
-                  <div><span className="text-gray-600">Área:</span> <span className="ml-2 text-gray-900">{usuario.area}</span></div>
-                </div>
-                <div className="text-xs text-gray-600">Último acceso: {usuario.ultimoAcceso}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <h3 className="text-base text-gray-900 font-medium">{persona.nombreCompleto || 'Sin nombre'}</h3>
+                <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${rolColor} whitespace-nowrap`}>
+                  {persona.rolAsignado}
+                </span>
+                {persona.estado === 'ACTIVO' ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                )}
               </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"><Edit2 className="w-4 h-4" />Editar</button>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm mb-3">
+                <div className="min-w-0">
+                  <div className="text-gray-600 text-xs mb-1">Email</div>
+                  <div className="text-gray-900 truncate">{persona.email}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-gray-600 text-xs mb-1">Teléfono</div>
+                  <div className="text-gray-900">{persona.telefono}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-gray-600 text-xs mb-1">Asignado</div>
+                  <div className="text-gray-900">{persona.fechaAsignacion}</div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-gray-600 text-xs mb-1">Último acceso</div>
+                  <div className="text-gray-900">{persona.ultimoAcceso}</div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {persona.permisos.slice(0, 5).map((permiso, idx) => (
+                  <span key={idx} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs whitespace-nowrap">
+                    {permiso}
+                  </span>
+                ))}
+                {persona.permisos.length > 5 && (
+                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs whitespace-nowrap">
+                    +{persona.permisos.length - 5} más
+                  </span>
+                )}
               </div>
             </div>
           </div>
-        ))}
+
+          <div className="flex flex-wrap gap-2 lg:flex-nowrap lg:flex-shrink-0">
+            <button
+              onClick={handleEditarPermisos}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Editar Permisos</span>
+              <span className="sm:hidden">Editar</span>
+            </button>
+            <button
+              onClick={handleVerDetalle}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="hidden sm:inline">Ver Detalle</span>
+              <span className="sm:hidden">Ver</span>
+            </button>
+            <button
+              onClick={handleRemoverEquipo}
+              className="px-3 py-2 bg-white border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors text-sm flex-shrink-0"
+              title="Remover del equipo"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* Modal Editar Permisos */}
+      {mostrarModalEditar && (
+        <ModalEditarPermisos
+          onClose={() => setMostrarModalEditar(false)}
+          persona={persona}
+        />
+      )}
+
+      {/* Modal Ver Detalle */}
+      {mostrarModalDetalle && (
+        <ModalVerDetalle
+          onClose={() => setMostrarModalDetalle(false)}
+          persona={persona}
+        />
+      )}
+
+      {/* Modal Remover */}
+      {mostrarModalEliminar && (
+        <ModalRemover
+          onClose={() => setMostrarModalEliminar(false)}
+          onConfirmar={confirmarRemover}
+          persona={persona}
+        />
+      )}
+    </motion.div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// VISTA: MATRIZ DE PERMISOS
+// ════════════════════════════════════════════════════════════════════════════
 
 function VistaPermisos() {
+  const modulos = ['Plan de Mejoramiento', 'Informes de Ley', 'Expedientes', 'Auditorías', 'Configuraciones'];
+  const acciones = ['Leer', 'Crear', 'Editar', 'Eliminar', 'Aprobar'];
+
   return (
     <div className="mx-auto px-8 py-6 max-w-[1920px]">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-        <h2 className="text-xl text-gray-900 font-medium mb-6">Matriz de Permisos</h2>
-        <div className="text-center py-12"><Lock className="w-16 h-16 text-gray-400 mx-auto mb-4" /><h3 className="text-base text-gray-900 mb-2">Matriz de Permisos</h3><p className="text-sm text-gray-600">Configuración detallada de permisos por módulo</p></div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex-1">
+            <h2 className="text-xl text-gray-900 font-medium mb-2">Matriz de Permisos por Rol</h2>
+            <p className="text-sm text-gray-600">
+              Permisos específicos del módulo de Control Interno según el rol asignado
+            </p>
+          </div>
+          <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['matriz-permisos']} />
+        </div>
+
+        {/* Tabla de Permisos */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Módulo</th>
+                {ROLES_CONTROL_INTERNO.map(rol => (
+                  <th key={rol.id} className="text-center py-3 px-4 text-sm font-medium text-gray-700">
+                    {rol.nombre}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {modulos.map((modulo, idx) => (
+                <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4 text-sm text-gray-900 font-medium">{modulo}</td>
+                  {ROLES_CONTROL_INTERNO.map(rol => {
+                    const permiso = rol.permisos.find(p => p.modulo === modulo);
+                    return (
+                      <td key={rol.id} className="py-3 px-4 text-center">
+                        {permiso ? (
+                          <span className={`px-3 py-1 rounded-lg text-xs font-medium ${
+                            permiso.accion === 'full' ? 'bg-red-100 text-red-700' :
+                            permiso.accion === 'editar' ? 'bg-blue-100 text-blue-700' :
+                            permiso.accion === 'crear' ? 'bg-green-100 text-green-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {permiso.accion === 'full' ? 'Control Total' : 
+                             permiso.accion === 'editar' ? 'Editar' :
+                             permiso.accion === 'crear' ? 'Crear' :
+                             'Leer'}
+                          </span>
+                        ) : (
+                          <XCircle className="w-5 h-5 text-gray-300 mx-auto" />
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Descripción de Roles */}
+      <div className="grid grid-cols-2 gap-6">
+        {ROLES_CONTROL_INTERNO.map(rol => (
+          <div key={rol.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <Shield className={`w-5 h-5 text-${rol.color}-600`} />
+              <h3 className="text-base text-gray-900 font-medium">{rol.nombre}</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">{rol.descripcion}</p>
+            <div className="space-y-2">
+              {rol.permisos.map(permiso => (
+                <div key={permiso.id} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-700">{permiso.modulo}</span>
+                  <span className="text-gray-900 font-medium">{permiso.descripcion}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function VistaSoporte() {
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: ASIGNAR PERSONA
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalAsignarPersonaProps {
+  equipoActual: PersonaAsignada[];
+  onClose: () => void;
+  onAsignar: (persona: PersonaAsignada) => void;
+}
+
+function ModalAsignarPersona({ equipoActual, onClose, onAsignar }: ModalAsignarPersonaProps) {
+  const [usuarios, setUsuarios] = useState<User[]>([]);
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const [busquedaPersona, setBusquedaPersona] = useState('');
+  const [personaSeleccionada, setPersonaSeleccionada] = useState<User | null>(null);
+  const [rolSeleccionado, setRolSeleccionado] = useState<string>('');
+  const [permisosSeleccionados, setPermisosSeleccionados] = useState<string[]>([]);
+
+  // Cargar usuarios disponibles al abrir el modal
+  useEffect(() => {
+    const cargarUsuarios = async () => {
+      try {
+        setCargandoUsuarios(true);
+        const response = await usersService.getUsers({
+          limit: 1000,
+          status: 'active'
+        });
+
+        if (response.data) {
+          // Filtrar usuarios que ya están en el equipo
+          const idsEquipoActual = new Set(equipoActual.map(p => p.id));
+          const usuariosDisponibles = response.data.filter(
+            (user: User) => !idsEquipoActual.has(user.id_user)
+          );
+          setUsuarios(usuariosDisponibles);
+        }
+      } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        toast.error('Error al cargar usuarios', {
+          description: 'No se pudieron cargar los usuarios disponibles'
+        });
+      } finally {
+        setCargandoUsuarios(false);
+      }
+    };
+
+    cargarUsuarios();
+  }, [equipoActual]);
+
+  // Cuando se selecciona un rol, actualizar permisos seleccionados con los permisos del rol
+  useEffect(() => {
+    if (rolSeleccionado) {
+      const rol = ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado);
+      if (rol) {
+        // Inicializar con los permisos del rol
+        const permisosRol = rol.permisos.map(p => p.id);
+        setPermisosSeleccionados(permisosRol);
+      }
+    } else {
+      setPermisosSeleccionados([]);
+    }
+  }, [rolSeleccionado]);
+
+  // Filtrar usuarios por búsqueda
+  const usuariosFiltrados = useMemo(() => {
+    if (!busquedaPersona.trim()) return usuarios.slice(0, 10); // Mostrar solo los primeros 10
+
+    const search = busquedaPersona.toLowerCase();
+    return usuarios.filter((user: User) => {
+      const nombreCompleto = user.person?.full_name || 
+        `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || 
+        user.username;
+      const email = user.person?.email || '';
+      const documento = user.person?.identification_number || '';
+
+      return nombreCompleto.toLowerCase().includes(search) ||
+             email.toLowerCase().includes(search) ||
+             documento.toLowerCase().includes(search);
+    }).slice(0, 10);
+  }, [busquedaPersona, usuarios]);
+
+  const handleSeleccionarPersona = (user: User) => {
+    setPersonaSeleccionada(user);
+    setBusquedaPersona(
+      user.person?.full_name || 
+      `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || 
+      user.username
+    );
+  };
+
+  const handleTogglePermiso = (permisoId: string) => {
+    setPermisosSeleccionados(prev => 
+      prev.includes(permisoId)
+        ? prev.filter(p => p !== permisoId)
+        : [...prev, permisoId]
+    );
+  };
+
+  const handleAsignar = async () => {
+    if (!personaSeleccionada) {
+      toast.error('Debes seleccionar una persona');
+      return;
+    }
+
+    if (!rolSeleccionado) {
+      toast.error('Debes seleccionar un rol');
+      return;
+    }
+
+    if (permisosSeleccionados.length === 0) {
+      toast.error('Debes seleccionar al menos un permiso');
+      return;
+    }
+
+    try {
+      const rolSeleccionadoData = ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado);
+      
+      // Mapear permisos seleccionados a formato de permisos
+      const permisosMapeados = permisosSeleccionados.map(permisoId => {
+        const permiso = rolSeleccionadoData?.permisos.find(p => p.id === permisoId);
+        return permiso ? `${permiso.modulo.toLowerCase().replace(/\s+/g, '_')}:${permiso.accion}` : permisoId;
+      });
+
+      // Construir nombre completo con fallbacks
+      const nombreCompleto = personaSeleccionada.person?.full_name?.trim() 
+        || `${personaSeleccionada.person?.first_name || ''} ${personaSeleccionada.person?.last_name || ''}`.trim() 
+        || personaSeleccionada.username?.trim() 
+        || 'Usuario sin nombre';
+
+      // Crear objeto PersonaAsignada
+      const nuevaPersona: PersonaAsignada = {
+        id: personaSeleccionada.id_user,
+        personaId: personaSeleccionada.person?.id?.toString() || personaSeleccionada.id_user,
+        nombreCompleto: nombreCompleto,
+        email: personaSeleccionada.person?.email || personaSeleccionada.username || '',
+        telefono: personaSeleccionada.person?.phone || '',
+        rolAsignado: rolSeleccionadoData?.nombre || '',
+        permisos: permisosMapeados,
+        fechaAsignacion: new Date().toISOString().split('T')[0],
+        estado: personaSeleccionada.is_active ? 'ACTIVO' : 'INACTIVO',
+        ultimoAcceso: 'N/A'
+      };
+
+      // TODO: Aquí deberías llamar al backend para persistir la asignación
+      // Por ahora, solo actualizamos el estado local
+      onAsignar(nuevaPersona);
+
+      toast.success('Persona asignada al equipo', {
+        description: `${nuevaPersona.nombreCompleto} - ${rolSeleccionadoData?.nombre}`,
+        duration: 4000,
+      });
+    } catch (error) {
+      console.error('Error asignando persona:', error);
+      toast.error('Error al asignar persona', {
+        description: 'No se pudo completar la asignación'
+      });
+    }
+  };
+
   return (
-    <div className="mx-auto px-8 py-8 max-w-[1800px]">
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200"><div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4"><Book className="w-7 h-7 text-[#1e5da8]" /></div><h3 className="text-base text-gray-900 mb-2 font-medium">Documentación</h3><p className="text-sm text-gray-600 mb-4">Guías de seguridad</p><button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"><ExternalLink className="w-4 h-4" />Descargar</button></div>
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200"><div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4"><Mail className="w-7 h-7 text-[#1e5da8]" /></div><h3 className="text-base text-gray-900 mb-2 font-medium">Correo</h3><p className="text-sm text-gray-600 mb-4">controlinterno@esap.edu.co</p><button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"><ExternalLink className="w-4 h-4" />Contactar</button></div>
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-200"><div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4"><Phone className="w-7 h-7 text-[#1e5da8]" /></div><h3 className="text-base text-gray-900 mb-2 font-medium">Teléfono</h3><p className="text-sm text-gray-600 mb-4">Ext. 2450 - 2451</p><button className="w-full px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"><Phone className="w-4 h-4" />Llamar</button></div>
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Asignar Persona al Equipo de Control Interno</h3>
+          <p className="text-sm text-blue-100 mt-1">
+            Selecciona una persona existente del módulo de Gestión de Personas
+          </p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-medium mb-1">Importante</p>
+                  <p className="text-xs text-blue-700">
+                    Solo puedes asignar personas que ya existan en el módulo de <strong>Gestión de Personas</strong>. 
+                    Si la persona no existe, primero debes crearla desde Administración de Personas.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Búsqueda de Persona */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Buscar Persona <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={busquedaPersona}
+                  onChange={(e) => setBusquedaPersona(e.target.value)}
+                  placeholder="Nombre, email o documento..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+                <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Escribe para buscar en el módulo de Gestión de Personas
+              </p>
+            </div>
+
+            {/* Selección de Rol */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rol en Control Interno <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={rolSeleccionado}
+                onChange={(e) => setRolSeleccionado(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              >
+                <option value="">-- Selecciona un rol --</option>
+                {ROLES_CONTROL_INTERNO.map(rol => (
+                  <option key={rol.id} value={rol.id}>
+                    {rol.nombre} - {rol.descripcion}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Selección de Permisos */}
+            {rolSeleccionado && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-3">
+                  Permisos del rol seleccionado (puedes ajustarlos):
+                </h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado)?.permisos.map(permiso => {
+                    const isSelected = permisosSeleccionados.includes(permiso.id);
+                    return (
+                      <label
+                        key={permiso.id}
+                        className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleTogglePermiso(permiso.id)}
+                            className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
+                          />
+                          <span className="text-sm text-gray-700">{permiso.modulo}</span>
+                        </div>
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                          {permiso.descripcion}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleAsignar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              Asignar al Equipo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: EDITAR PERMISOS
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalEditarPermisosProps {
+  onClose: () => void;
+  persona: PersonaAsignada;
+}
+
+function ModalEditarPermisos({ onClose, persona }: ModalEditarPermisosProps) {
+  const [permisosSeleccionados, setPermisosSeleccionados] = useState<string[]>(persona.permisos);
+
+  const handleGuardar = () => {
+    toast.success('Permisos actualizados', {
+      description: `Permisos de ${persona.nombreCompleto} han sido actualizados`,
+      duration: 3000,
+    });
+    onClose();
+    
+    console.log('✅ Permisos actualizados exitosamente:', {
+      personaId: persona.personaId,
+      nombreCompleto: persona.nombreCompleto,
+      permisosNuevos: permisosSeleccionados,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Editar Permisos de {persona.nombreCompleto}</h3>
+          <p className="text-sm text-blue-100 mt-1">
+            Selecciona los permisos que deseas asignar a esta persona
+          </p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-medium mb-1">Importante</p>
+                  <p className="text-xs text-blue-700">
+                    Solo puedes asignar permisos que estén disponibles para el rol de {persona.rolAsignado}. 
+                    Si necesitas cambiar el rol, primero debes hacerlo desde la asignación de roles.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de Permisos */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Permisos <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-2">
+                {ROLES_CONTROL_INTERNO.find(r => r.nombre === persona.rolAsignado)?.permisos.map(permiso => (
+                  <div key={permiso.id} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={permisosSeleccionados.includes(permiso.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPermisosSeleccionados([...permisosSeleccionados, permiso.id]);
+                        } else {
+                          setPermisosSeleccionados(permisosSeleccionados.filter(p => p !== permiso.id));
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-gray-700">{permiso.descripcion}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleGuardar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Edit2 className="w-4 h-4" />
+              Guardar Cambios
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: VER DETALLE
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalVerDetalleProps {
+  onClose: () => void;
+  persona: PersonaAsignada;
+}
+
+function ModalVerDetalle({ onClose, persona }: ModalVerDetalleProps) {
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Detalle de {persona.nombreCompleto}</h3>
+          <p className="text-sm text-blue-100 mt-1">
+            Información completa de la persona asignada al equipo de Control Interno
+          </p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-medium mb-1">Importante</p>
+                  <p className="text-xs text-blue-700">
+                    Esta información es solo de lectura. Para hacer cambios, utiliza las opciones de edición disponibles.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Detalles de Persona */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nombre Completo
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.nombreCompleto}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.email}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Teléfono
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.telefono}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rol Asignado
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.rolAsignado}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Permisos
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.permisos.join(', ')}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fecha de Asignación
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.fechaAsignacion}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Último Acceso
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.ultimoAcceso}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODAL: REMOVER
+// ════════════════════════════════════════════════════════════════════════════
+
+interface ModalRemoverProps {
+  onClose: () => void;
+  onConfirmar: () => void;
+  persona: PersonaAsignada;
+}
+
+function ModalRemover({ onClose, onConfirmar, persona }: ModalRemoverProps) {
+  return (
+    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Remover a {persona.nombreCompleto} del Equipo</h3>
+          <p className="text-sm text-blue-100 mt-1">
+            ¿Estás seguro de que deseas remover a esta persona del equipo de Control Interno?
+          </p>
+        </div>
+
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-medium mb-1">Importante</p>
+                  <p className="text-xs text-blue-700">
+                    Esta acción no se puede deshacer. La persona será removida del equipo de Control Interno.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Detalles de Persona */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nombre Completo
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.nombreCompleto}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.email}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Teléfono
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.telefono}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rol Asignado
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.rolAsignado}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Permisos
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.permisos.join(', ')}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fecha de Asignación
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.fechaAsignacion}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Último Acceso
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={persona.ultimoAcceso}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onConfirmar}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Remover
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

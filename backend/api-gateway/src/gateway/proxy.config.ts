@@ -26,10 +26,15 @@ export const serviceMap = {
 
   // Legal Management Service - Puerto 3008
   legal: USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
+  'legal-management': USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
+  'legal-management-service': USE_LOCALHOST ? 'http://localhost:3008' : 'http://legal-management-service:3008',
 
   // Notifications Service - Puerto 3009
   notificaciones: USE_LOCALHOST ? 'http://localhost:3009' : 'http://notifications-service:3009',
 
   // Travel Expenses Service - Puerto 3010
   viaticos: USE_LOCALHOST ? 'http://localhost:3010' : 'http://travel-expenses-service:3010',
+
+  // Audit Service - Puerto 3011
+  audit: USE_LOCALHOST ? 'http://localhost:3011' : 'http://audit-service:3011',
 };

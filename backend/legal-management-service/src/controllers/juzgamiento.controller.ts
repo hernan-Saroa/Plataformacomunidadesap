@@ -5,7 +5,7 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 
-@Controller('legal/juzgamiento')
+@Controller('juzgamiento')
 export class JuzgamientoController {
     constructor(private readonly expedienteService: ExpedienteService) { }
 
@@ -34,8 +34,10 @@ export class JuzgamientoController {
                 abogadoAsignado: exp.abogadoSustanciador,
                 diasRestantes: diasRestantes,
                 diasDescargos: 15,
-                documentos: exp.actuaciones || [],
+                // Merge actuaciones and evidencias for documents list
+                documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
                 actuaciones: exp.actuaciones || [],
+                evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
@@ -90,19 +92,31 @@ export class JuzgamientoController {
             throw new BadRequestException('Expediente no encontrado');
         }
 
-        const contexto = body.tipo === 'EVIDENCIA' ? 'Pruebas' : body.tipo === 'DOCUMENTO' ? 'Documentos' : 'General';
+        const tipoUpper = (body.tipo || 'DOCUMENTO').toUpperCase();
+        // Mapear tipo a tipoActuacion y descripción
+        const esEvidencia = tipoUpper.includes('EVIDENCIA') || tipoUpper === 'PRUEBAS';
+        const contexto = esEvidencia ? 'Pruebas' : tipoUpper === 'OTROS' ? 'Otros Documentos' : 'Documentos';
         const descripcionBase = body.descripcion || file.originalname;
         const descripcionCompleta = `${descripcionBase} (Cargado desde ${contexto})`;
 
         // Create Actuacion as Evidence/Document
+        // tipoActuacion guarda el tipo original para mapeo en frontend
         return this.expedienteService.agregarActuacion(expediente.id, {
-            tipoActuacion: body.tipo || 'DOCUMENTO', // 'EVIDENCIA' or 'DOCUMENTO'
+            tipoActuacion: tipoUpper, // Guardar tipo original: 'OTROS', 'PRUEBAS', 'EVIDENCIA', etc.
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
-            documentoUrl: `http://localhost:3008/legal/files/${file.filename}`, // Ensure absolute URL for frontend
+            documentoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
             usuarioResponsable: 'Usuario Actual' // Mock user for now
         });
+    }
+
+    @Get(':radicado/actuaciones')
+    async getActuaciones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        // Return sorted actuations
+        return expediente.actuaciones || [];
     }
 
     @Get(':radicado/decisiones')
@@ -118,4 +132,26 @@ export class JuzgamientoController {
         if (!expediente) throw new BadRequestException('Expediente no encontrado');
         return this.expedienteService.createDecision(expediente.id, data);
     }
+
+    // ==================== EXCEPCIONES PROCESALES ====================
+
+    @Get(':radicado/excepciones')
+    async getExcepciones(@Param('radicado') radicado: string) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.getExcepciones(expediente.id);
+    }
+
+    @Post(':radicado/excepciones')
+    async createExcepcion(@Param('radicado') radicado: string, @Body() data: any) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) throw new BadRequestException('Expediente no encontrado');
+        return this.expedienteService.createExcepcion(expediente.id, data);
+    }
+
+    @Patch('excepciones/:id/resolver')
+    async resolverExcepcion(@Param('id') id: string, @Body() data: any) {
+        return this.expedienteService.resolverExcepcion(id, data);
+    }
 }
+

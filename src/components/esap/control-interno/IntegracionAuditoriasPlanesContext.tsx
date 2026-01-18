@@ -7,7 +7,7 @@
  * Auditoría Finalizada → Crear Plan → Formular Acciones → Seguimiento
  */
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useMemo } from 'react';
 
 // ============ TIPOS ============
 
@@ -53,6 +53,7 @@ interface IntegracionContextType {
   // Lista de auditorías que requieren plan
   auditoriasConHallazgos: AuditoriaParaPlan[];
   agregarAuditoriaConHallazgos: (auditoria: AuditoriaParaPlan) => void;
+  limpiarAuditoriasConHallazgos: () => void; // Nuevo método para limpiar
   actualizarEstadoPlan: (auditoriaId: string, estado: AuditoriaParaPlan['estadoPlan']) => void;
 
   // Planes creados
@@ -96,6 +97,10 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
     });
   };
 
+  const limpiarAuditoriasConHallazgos = () => {
+    setAuditoriasConHallazgos([]);
+  };
+
   const actualizarEstadoPlan = (auditoriaId: string, estado: AuditoriaParaPlan['estadoPlan']) => {
     setAuditoriasConHallazgos((prev) =>
       prev.map((a) => (a.id === auditoriaId ? { ...a, estadoPlan: estado } : a))
@@ -107,21 +112,27 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
     actualizarEstadoPlan(plan.auditoriaId, 'EN_FORMULACION');
   };
 
+  const value = useMemo(() => ({
+    auditoriaSeleccionada,
+    seleccionarAuditoria,
+    limpiarSeleccion,
+    auditoriasConHallazgos,
+    agregarAuditoriaConHallazgos,
+    limpiarAuditoriasConHallazgos,
+    actualizarEstadoPlan,
+    planesCreados,
+    crearPlan,
+    navegarAFormulacion,
+    setNavegarAFormulacion,
+  }), [
+    auditoriaSeleccionada,
+    auditoriasConHallazgos,
+    planesCreados,
+    navegarAFormulacion
+  ]);
+
   return (
-    <IntegracionContext.Provider
-      value={{
-        auditoriaSeleccionada,
-        seleccionarAuditoria,
-        limpiarSeleccion,
-        auditoriasConHallazgos,
-        agregarAuditoriaConHallazgos,
-        actualizarEstadoPlan,
-        planesCreados,
-        crearPlan,
-        navegarAFormulacion,
-        setNavegarAFormulacion,
-      }}
-    >
+    <IntegracionContext.Provider value={value}>
       {children}
     </IntegracionContext.Provider>
   );

@@ -31,6 +31,7 @@ export class PdfGeneratorService {
    */
   async generateCertificatePDF(
     certificate: GraduationCertificate,
+    frontendBaseUrl?: string,
   ): Promise<Buffer> {
     // Leer plantilla HTML
     const templateHtml = fs.readFileSync(this.templatePath, 'utf-8');
@@ -45,10 +46,11 @@ export class PdfGeneratorService {
     );
 
     // URL de validación pública
-    const validationUrl = `${process.env.FRONTEND_URL || 'https://certificados.esap.edu.co'}/validar/${certificate.verificationCode}`;
+    const baseUrl = frontendBaseUrl || process.env.FRONTEND_URL || 'https://certificados.esap.edu.co';
+    const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
     // Formatear fecha de expedición
-    const fechaExpedicion = this.formatDate(certificate.issueDate);
+    const fechaExpedicion = this.formatDate(certificate.issueDate || new Date());
 
     // Formatear lugar y fecha de expedición del título
     const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOYACÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
@@ -68,9 +70,12 @@ export class PdfGeneratorService {
       .replace(/{{FOOTER_IMG}}/g, footerImg);
 
     // Generar PDF con Puppeteer
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
     });
 
     const page = await browser.newPage();
@@ -149,26 +154,13 @@ export class PdfGeneratorService {
    * Ejemplo: "24 de Diciembre de 2025"
    */
   private formatDate(date: Date | string): string {
-    const d = new Date(date);
-    const dia = d.getDate();
-    const meses = [
-      'Enero',
-      'Febrero',
-      'Marzo',
-      'Abril',
-      'Mayo',
-      'Junio',
-      'Julio',
-      'Agosto',
-      'Septiembre',
-      'Octubre',
-      'Noviembre',
-      'Diciembre',
-    ];
-    const mes = meses[d.getMonth()];
-    const año = d.getFullYear();
-
-    return `${dia} de ${mes} de ${año}`;
+    const d = this.toSafeDate(date);
+    return new Intl.DateTimeFormat('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
+    }).format(d);
   }
 
   /**
@@ -176,25 +168,30 @@ export class PdfGeneratorService {
    * Ejemplo: "30 DE SEPTIEMBRE DE 2022"
    */
   private formatDateLong(date: Date | string): string {
-    const d = new Date(date);
-    const dia = d.getDate();
-    const meses = [
-      'ENERO',
-      'FEBRERO',
-      'MARZO',
-      'ABRIL',
-      'MAYO',
-      'JUNIO',
-      'JULIO',
-      'AGOSTO',
-      'SEPTIEMBRE',
-      'OCTUBRE',
-      'NOVIEMBRE',
-      'DICIEMBRE',
-    ];
-    const mes = meses[d.getMonth()];
-    const año = d.getFullYear();
+    const d = this.toSafeDate(date);
+    return new Intl.DateTimeFormat('es-CO', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Bogota',
+    }).format(d).toUpperCase();
+  }
 
-    return `${dia} DE ${mes} DE ${año}`;
+  private toSafeDate(value: Date | string): Date {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map((part) => Number(part));
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+
+    const d = new Date(value);
+    if (
+      d.getHours() === 0 &&
+      d.getMinutes() === 0 &&
+      d.getSeconds() === 0 &&
+      d.getMilliseconds() === 0
+    ) {
+      d.setHours(12, 0, 0, 0);
+    }
+    return d;
   }
 }

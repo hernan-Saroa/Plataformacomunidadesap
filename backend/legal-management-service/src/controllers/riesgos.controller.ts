@@ -3,7 +3,7 @@ import { RiesgosService } from '../services/riesgos.service';
 import { Riesgo } from '../entities/riesgo.entity';
 import type { EtapaRiesgo, ZonaRiesgo } from '../entities/riesgo.entity';
 
-@Controller('legal/riesgos')
+@Controller('riesgos')
 export class RiesgosController {
     constructor(private readonly riesgosService: RiesgosService) { }
 
@@ -68,5 +68,13 @@ export class RiesgosController {
     async findByZona(@Param('zona') zona: string): Promise<Riesgo[]> {
         return this.riesgosService.findByZona(zona as ZonaRiesgo);
     }
+
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        return this.riesgosService.getHistorial(id);
+    }
 }
+
+
+
 

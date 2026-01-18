@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{{nombreInforme}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; padding: 20mm 15mm; }
+    .header { background: linear-gradient(135deg, #003DA5 0%, #0052CC 100%); color: white; padding: 20px 30px; margin-bottom: 30px; border-radius: 5px; }
+    .titulo-informe { text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-left: 5px solid #003DA5; }
+    .seccion { margin-bottom: 30px; }
+    .seccion h3 { font-size: 13pt; color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 8px; margin-bottom: 15px; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 10px; margin-bottom: 10px; background: #f8f9fa; border-left: 4px solid #003DA5; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1><p>Oficina de Control Interno de Gestión</p></div>
+  <div class="titulo-informe"><h2>{{nombreInforme}}</h2><p>Periodo: {{periodo}}</p>{{#if enteControl}}<p>Ente de Control: {{enteControl}}</p>{{/if}}</div>
+  <div class="seccion">
+    <h3>1. Requerimiento</h3>
+    {{#if requerimiento}}<p><strong>Fecha:</strong> {{requerimiento.fecha}}</p><p><strong>Descripción:</strong> {{requerimiento.descripcion}}</p><p><strong>Ente:</strong> {{requerimiento.ente}}</p>{{else}}<p style="color: #999; font-style: italic;">No hay requerimiento registrado.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>2. Respuesta</h3>
+    {{#if respuesta}}<p><strong>Fecha:</strong> {{respuesta.fecha}}</p><p><strong>Descripción:</strong> {{respuesta.descripcion}}</p>{{else}}<p style="color: #999; font-style: italic;">No hay respuesta registrada.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>3. Documentos Anexos</h3>
+    {{#if documentosAnexos}}{{#if documentosAnexos.length}}<ul>{{#each documentosAnexos}}<li>{{this}}</li>{{/each}}</ul>{{else}}<p style="color: #999; font-style: italic;">No hay documentos anexos.</p>{{/if}}{{else}}<p style="color: #999; font-style: italic;">No hay documentos anexos.</p>{{/if}}
+  </div>
+  {{#if baseNormativa}}<div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;"><strong>Base Normativa:</strong> {{baseNormativa}}</div>{{/if}}
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; font-size: 9pt;"><p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p></div>
+</body>
+</html>

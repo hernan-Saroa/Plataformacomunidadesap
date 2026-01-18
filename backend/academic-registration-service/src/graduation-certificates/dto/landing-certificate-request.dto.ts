@@ -7,7 +7,7 @@ export class LandingCertificateRequestDto {
   /**
    * Fecha de expedición del documento de identidad (en formato dd/mm/aaaa o yyyy-mm-dd)
    */
-  idIssueDate: string;
+  idIssueDate?: string;
 
   /**
    * Tipo de solicitante: GRADUATE o COMPANY
@@ -43,4 +43,9 @@ export class LandingCertificateRequestDto {
    * Fecha de graduación en caso de que el solicitante la conozca
    */
   graduationDate?: string;
+  /**
+   * Apellido(s) del graduado para validaci??n adicional
+   */
+  lastName?: string;
+
 }

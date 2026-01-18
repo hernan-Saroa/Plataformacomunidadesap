@@ -4,13 +4,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EsapModule } from './esap/esap.module';
+import { AuthModule } from './auth/auth.module';
 
 // Entidades ESAP
 import { PlanAnual5Roles } from './esap/plan-anual-5-roles/entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './esap/plan-anual-5-roles/entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/actividad-plan-anual-5.entity';
+import { HistorialPlanAnual } from './esap/plan-anual-5-roles/entities/historial-plan-anual.entity';
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
+import { DatosAutomaticosInforme } from './esap/informes-ley/entities/datos-automaticos-informe.entity';
+import { HistorialGeneracionInforme } from './esap/informes-ley/entities/historial-generacion-informe.entity';
+import { PlantillaInformeLey } from './esap/informes-ley/entities/plantilla-informe-ley.entity';
+import { WorkflowAprobacionInforme } from './esap/informes-ley/entities/workflow-aprobacion-informe.entity';
+import { PasoWorkflowInforme } from './esap/informes-ley/entities/paso-workflow-informe.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
 import { ObjetivoAuditoria } from './esap/auditorias/entities/objetivo-auditoria.entity';
 import { EquipoAuditor } from './esap/auditorias/entities/equipo-auditor.entity';
@@ -25,6 +32,7 @@ import { PlanMejoramiento } from './esap/planes-mejoramiento/entities/plan-mejor
 import { AccionCorrectiva } from './esap/planes-mejoramiento/entities/accion-correctiva.entity';
 import { SeguimientoTrimestral } from './esap/planes-mejoramiento/entities/seguimiento-trimestral.entity';
 import { RegistroSeguimiento } from './esap/planes-mejoramiento/entities/registro-seguimiento.entity';
+import { EventoTimeline } from './esap/planes-mejoramiento/entities/evento-timeline.entity';
 import { Aprobacion } from './esap/aprobaciones/entities/aprobacion.entity';
 import { ProcesoAuditable } from './esap/universo-auditorias/entities/proceso-auditable.entity';
 import { Documento } from './esap/documentos/entities/documento.entity';
@@ -33,6 +41,12 @@ import { AuditoriaProgramada } from './esap/programa-anual/entities/auditoria-pr
 import { PlanIndividual } from './esap/plan-individual/entities/plan-individual.entity';
 import { Notificacion } from './esap/notificaciones/entities/notificacion.entity';
 import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
+import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documento.entity';
+import { TipoAuditoria } from './esap/tipos-auditoria/entities/tipo-auditoria.entity';
+import { ListaChequeo } from './esap/listas-chequeo/entities/lista-chequeo.entity';
+import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-chequeo.entity';
+import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.entity';
+import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
 
 @Module({
   imports: [
@@ -72,8 +86,14 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             PlanAnual5Roles,
             RolPlanAnual5,
             ActividadPlanAnual5,
+            HistorialPlanAnual,
             InformeLey,
             EntregaInformeLey,
+            DatosAutomaticosInforme,
+            HistorialGeneracionInforme,
+            PlantillaInformeLey,
+            WorkflowAprobacionInforme,
+            PasoWorkflowInforme,
             Auditoria,
             ObjetivoAuditoria,
             EquipoAuditor,
@@ -88,6 +108,7 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             AccionCorrectiva,
             SeguimientoTrimestral,
             RegistroSeguimiento,
+            EventoTimeline,
             Aprobacion,
             ProcesoAuditable,
             Documento,
@@ -96,10 +117,16 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
             PlanIndividual,
             Notificacion,
             PreferenciaNotificacion,
+            EvidenciaDocumento,
+            TipoAuditoria,
+            ListaChequeo,
+            ItemListaChequeo,
+            TableroKanban,
+            EtapaKanban,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo
-          logging: process.env.NODE_ENV === 'development',
+          logging: false,
           ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
           // Configuración correcta para PostgreSQL
           extra: {
@@ -116,6 +143,9 @@ import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferen
         };
       },
     }),
+    
+    // Módulo de autenticación
+    AuthModule,
     
     // Módulos ESAP
     EsapModule,

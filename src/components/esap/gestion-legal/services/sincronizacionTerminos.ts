@@ -14,8 +14,8 @@ import {
 // ============================================================================
 // IMPORTAR DATOS DESDE TODOS LOS MÓDULOS
 // ============================================================================
-import { expedientesJudicialesMock } from '../data/datosExpedientesJudiciales';
-import { procesosDisciplinariosMock } from '../data/datosProcesoDisciplinariosExpandido';
+import { expedientesJudicialesMock } from '../data/datosExpedientesJudicialesExpandido';
+import { procesoDisciplinariosMock } from '../data/datosProcesoDisciplinarios';
 import { consultasJuridicasMock } from '../data/datosConsultasJuridicas';
 // Nota: Cuando se implementen OrganosControl, ProcesosCoactivos, CentroComunicaciones,
 // importar sus datos mock aquí
@@ -133,12 +133,12 @@ function sincronizarJuzgamiento(): SolicitudInforme[] {
   let contador = 1;
 
   // Guard: Verificar que los datos existan
-  if (!procesosDisciplinariosMock || !Array.isArray(procesosDisciplinariosMock)) {
-    console.warn('⚠️ procesosDisciplinariosMock no está disponible');
+  if (!procesoDisciplinariosMock || !Array.isArray(procesoDisciplinariosMock)) {
+    console.warn('⚠️ procesoDisciplinariosMock no está disponible');
     return terminos;
   }
 
-  procesosDisciplinariosMock.forEach((proceso) => {
+  procesoDisciplinariosMock.forEach((proceso) => {
     // Mapeo de etapas a tipos de término
     const terminosPorEtapa: { [key: string]: string[] } = {
       'E3_FORMULACION_CARGOS': ['Presentación de Descargos'],
@@ -176,9 +176,9 @@ function sincronizarJuzgamiento(): SolicitudInforme[] {
           tipoInforme: tipoTermino,
           enteSolicitante: 'Oficina de Control Disciplinario Interno',
           radicadoExterno: proceso.id, // Usar el ID como radicado
-          asunto: `${tipoTermino} - ${proceso.id}: ${proceso.descripcionHechos?.substring(0, 100)}...`,
+          asunto: `${tipoTermino} - ${proceso.id}: ${proceso.hechos?.substring(0, 100)}...`,
           descripcion: `Término legal auto-generado desde proceso disciplinario ${proceso.id}. Base normativa: ${config.normativa}`,
-          responsable: proceso.investigador, // Campo correcto
+          responsable: proceso.abogadoAsignado,
           fechaSolicitud: fechaInicio,
           fechaVencimiento: fechaVencimiento,
           diasTotales: config.diasPlazo,

@@ -13,18 +13,18 @@ import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, Edit, Send, X, Check, Ban, Forward,
   Upload, Download, CheckCircle, Scale, Archive, Activity,
-  MessageSquare, Trash2, ArrowLeft, Filter, Search, Bell,
+  MessageSquare, Trash2, Filter, Search, Bell,
   ChevronDown, Users, FileCheck, XCircle, PlusCircle, Settings,
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
-  ChevronsDown, ChevronsUp, ChevronUp
+  ChevronsDown, ChevronsUp, ChevronUp, Shuffle, ArrowLeft
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
@@ -38,6 +38,7 @@ import {
 } from './ModalesGestionDocumental';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { SistemaComentarios } from './SistemaComentarios';
+import { ModalCambiarEtapaProcesoDisciplinario } from './ModalCambiarEtapaProcesoDisciplinario';
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { useConfiguration } from '../../../hooks/useConfiguration';
 
@@ -88,7 +89,7 @@ interface Proceso {
   denunciante: Persona;
   denunciado: Persona;
   cedula: string; // Mantener por compatibilidad
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
+  etapaActual: 'RECEPCION' | 'VALORACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO';
   estadoActual: string;
   profesionalAsignado: Persona;
   profesionalAsignadoId?: string; // ID del profesional para filtrado
@@ -292,7 +293,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '52123456'
     },
     cedula: '52123456',
-    etapaActual: 'Valoración',
+    etapaActual: 'VALORACION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Juan Carlos Pérez Rodríguez',
@@ -325,7 +326,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '77385960'
     },
     cedula: '77385960',
-    etapaActual: 'Indagación Previa',
+    etapaActual: 'INDAGACION_PREVIA',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -358,7 +359,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '88776655'
     },
     cedula: '88776655',
-    etapaActual: 'Recepción',
+    etapaActual: 'RECEPCION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -391,7 +392,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79556677'
     },
     cedula: '79556677',
-    etapaActual: 'Investigación',
+    etapaActual: 'INVESTIGACION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -424,7 +425,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '52778899'
     },
     cedula: '52778899',
-    etapaActual: 'Juzgamiento',
+    etapaActual: 'JUZGAMIENTO',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Juan Carlos Pérez Rodríguez',
@@ -457,7 +458,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79223344'
     },
     cedula: '79223344',
-    etapaActual: 'Segunda Instancia',
+    etapaActual: 'FALLO',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -684,7 +685,7 @@ function TarjetaProceso({
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta, 
+  vistaCompacta,
   isMobile,
   colapsada,
   onToggleColapso
@@ -988,6 +989,7 @@ function TarjetaProceso({
               </Button>
             </div>
 
+
             {/* Aprobación si está pendiente */}
             {proceso.pendienteAprobacion && (
               <Button
@@ -1024,6 +1026,7 @@ interface VistaListaProps {
   onArchivarNoticia: (noticia: Noticia) => void;
   onVerDetallesNoticia?: (noticia: Noticia) => void;
   onDevolverNoticia?: (noticia: Noticia) => void;
+  onCambiarEtapa?: (proceso: Proceso) => void;
   isMobile?: boolean;
 }
 
@@ -1041,6 +1044,7 @@ function VistaLista({
   onArchivarNoticia,
   onVerDetallesNoticia,
   onDevolverNoticia,
+  onCambiarEtapa,
   isMobile
 }: VistaListaProps) {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
@@ -1561,6 +1565,17 @@ function VistaLista({
                                 </button>
                               )}
 
+                              {/* Acción: Cambiar Etapa */}
+                              {onCambiarEtapa && (
+                                <button
+                                  onClick={() => onCambiarEtapa(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Cambiar etapa del proceso"
+                                >
+                                  <Shuffle className="w-4 h-4 text-blue-600" />
+                                </button>
+                              )}
+
                               {/* Acción: Aprobar Borrador (condicional) */}
                               {proceso!.pendienteAprobacion && (
                                 <button
@@ -1712,8 +1727,8 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div 
-        ref={drop} 
+      <motion.div
+        ref={drop}
         className={`flex-shrink-0 h-full`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
@@ -1949,7 +1964,7 @@ function ColumnaKanban({
 
 // ==================== COMPONENTE PRINCIPAL ====================
 interface DashboardKanbanProps {
-  onNavigateToExpediente?: () => void;
+  onNavigateToExpediente?: (procesoId: string) => void;
   filtroProfesionalId?: string | null;
   filtroProfesionalNombre?: string | null;
   onLimpiarFiltro?: () => void;
@@ -1964,6 +1979,7 @@ export function DashboardKanbanOperativo({
   const [items, setItems] = useState<Item[]>([]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
+  const [modalCambiarEtapa, setModalCambiarEtapa] = useState<{ abierto: boolean; proceso?: Proceso }>({ abierto: false });
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
@@ -2753,7 +2769,7 @@ export function DashboardKanbanOperativo({
       // if (item.etapaActual !== nuevaEtapa) {
       //   const etapaAnterior = item.etapaActual;
       //   const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-        
+
       //   setItems(prev => prev.map(i => 
       //     i.id === item.id && i.tipo === 'proceso'
       //       ? { 
@@ -2763,7 +2779,7 @@ export function DashboardKanbanOperativo({
       //         }
       //       : i
       //   ));
-        
+
       //   // Registrar en trazabilidad/historial
       //   const eventoTrazabilidad = {
       //     id: `evt-${Date.now()}`,
@@ -2776,10 +2792,10 @@ export function DashboardKanbanOperativo({
       //     etapaAnterior: etapaAnterior,
       //     etapaNueva: nuevaEtapa
       //   };
-        
+
       //   // En producción, esto se guardaría en el backend
       //   console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-        
+
       //   toast.success('Proceso Movido', {
       //     description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
       //   });
@@ -3372,7 +3388,7 @@ export function DashboardKanbanOperativo({
 
   const handleVerExpediente = (proceso: Proceso) => {
     if (onNavigateToExpediente) {
-      onNavigateToExpediente();
+      onNavigateToExpediente(proceso.id);
       toast.success('Navegando a Expediente Electrónico', {
         description: `Abriendo expediente del proceso ${proceso.numeroProceso}`
       });
@@ -3440,7 +3456,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
-  
+
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
     setTarjetasColapsadas(prev => {
@@ -3840,6 +3856,7 @@ export function DashboardKanbanOperativo({
               setModalActivo('ver-detalles');
             }}
             onDevolverNoticia={handleDevolverNoticia}
+            onCambiarEtapa={(proceso) => setModalCambiarEtapa({ abierto: true, proceso })}
             isMobile={isMobile}
           />
         )}
@@ -4938,8 +4955,28 @@ export function DashboardKanbanOperativo({
             />
           )}
         </AnimatePresence>
+
+        {/* Modal Cambiar Etapa */}
+        <AnimatePresence>
+          {modalCambiarEtapa.abierto && modalCambiarEtapa.proceso && (
+            <ModalCambiarEtapaProcesoDisciplinario
+              isOpen={modalCambiarEtapa.abierto}
+              proceso={modalCambiarEtapa.proceso}
+              onClose={() => setModalCambiarEtapa({ abierto: false })}
+              onConfirmarCambio={async (nuevaEtapa: string) => {
+                try {
+                  // Usar la lógica existente de handleDropItem
+                  await handleDropItem(modalCambiarEtapa.proceso!, nuevaEtapa);
+                  setModalCambiarEtapa({ abierto: false });
+                } catch (error) {
+                  console.error('Error cambiando etapa:', error);
+                  toast.error('Error al cambiar etapa');
+                }
+              }}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </DndProvider>
   );
 }
-

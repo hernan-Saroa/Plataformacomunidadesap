@@ -22,9 +22,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList, Layers, Calendar, CheckCircle2, 
-  Info, TrendingUp, Target, Users, FileText,
-  AlertTriangle, Activity, Filter, Search,
-  Download, Plus, BarChart3
+  Info, FileText, AlertTriangle, Filter, Search,
+  Download, Plus, BarChart3, Activity
 } from 'lucide-react';
 
 // Componentes del sistema
@@ -34,7 +33,9 @@ import { ProgramaAnualCIG } from './ProgramaAnualCIG';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { toast } from 'sonner@2.0.3';
-import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi } from './services/api';
+import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi, hallazgosApi } from './services/api';
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -52,6 +53,7 @@ interface FiltrosAvanzados {
 
 interface EstadisticasGlobales {
   totalAuditoriasPlanificadas: number;
+  totalPlanesAnuales: number; // Número de planes anuales
   auditoriasAprobadas: number;
   procesosUniverso: number;
   procesosAuditables: number;
@@ -59,6 +61,7 @@ interface EstadisticasGlobales {
   cumplimientoPrograma: number;
   areasInvolucradas: number;
   auditoresAsignados: number;
+  ultimaActualizacion?: Date; // Fecha de última actualización
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -67,6 +70,7 @@ interface EstadisticasGlobales {
 
 const ESTADISTICAS_MOCK: EstadisticasGlobales = {
   totalAuditoriasPlanificadas: 24,
+  totalPlanesAnuales: 3,
   auditoriasAprobadas: 18,
   procesosUniverso: 45,
   procesosAuditables: 32,
@@ -81,129 +85,427 @@ const ESTADISTICAS_MOCK: EstadisticasGlobales = {
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanificacionModuleRediseno() {
+  // Hooks para notificaciones (las notificaciones de auditoría creada se manejan automáticamente en el backend)
+  const { user } = useAuth();
+  
   const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [modalNuevaAuditoriaOpen, setModalNuevaAuditoriaOpen] = useState(false);
   const [estadisticas, setEstadisticas] = useState<EstadisticasGlobales>(ESTADISTICAS_MOCK);
   const [loadingEstadisticas, setLoadingEstadisticas] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosAvanzados>({
-    año: 2025,
+    año: new Date().getFullYear(), // Siempre inicializar con el año actual
     estado: 'TODOS',
     area: 'TODAS',
     busqueda: ''
   });
 
+  // Generar años disponibles para el selector (año actual ± 2 años)
+  const añosDisponibles = useMemo(() => {
+    const añoActual = new Date().getFullYear();
+    const años = [];
+    for (let i = añoActual - 2; i <= añoActual + 2; i++) {
+      años.push(i);
+    }
+    return años;
+  }, []);
+
+  // Función para cargar estadísticas (extraída para reutilización)
+  const cargarEstadisticas = async () => {
+    try {
+      setLoadingEstadisticas(true);
+      
+      // Cargar datos en paralelo
+      const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
+        universoAuditoriasApi.getAllProcesos(),
+        planAnual5RolesApi.findAll(),
+        auditoriasApi.getAllKanban()
+      ]);
+
+      // Calcular estadísticas
+      const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
+      const planes = planesResponse.success && planesResponse.data ? planesResponse.data : [];
+      const auditorias = auditoriasResponse.success && auditoriasResponse.data ? auditoriasResponse.data : [];
+
+      // Filtrar auditorías del año actual
+      const añoActual = filtros.año;
+      const auditoriasAnoActual = auditorias.filter((aud: any) => {
+        // Primero intentar obtener el año desde fechaInicio
+        if (aud.fechaInicio) {
+          const fechaInicio = new Date(aud.fechaInicio);
+          if (!isNaN(fechaInicio.getTime())) {
+            return fechaInicio.getFullYear() === añoActual;
+          }
+        }
+        // Si no hay fecha válida, intentar obtener el año desde el código (ej: AUD-2025-001)
+        if (aud.codigo) {
+          const codigoMatch = aud.codigo.match(/AUD-(\d{4})-/);
+          if (codigoMatch) {
+            const añoCodigo = parseInt(codigoMatch[1]);
+            return añoCodigo === añoActual;
+          }
+        }
+        // Si no hay fecha ni código válido, excluir
+        return false;
+      });
+
+      // Procesos seleccionados (prioridad = 1)
+      const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
+      
+      // Auditorías aprobadas (estado aprobado o en ejecución)
+      const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
+        aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
+      );
+
+      // Auditorías calendarizadas = auditorías del año filtrado
+      // (filtradas por año y activas desde el backend)
+      const auditoriasCalendarizadas = auditoriasAnoActual.length;
+
+      // Calcular áreas involucradas (procesos únicos)
+      const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
+
+      // Calcular auditores asignados (de todas las auditorías)
+      const auditoresUnicos = new Set();
+      auditoriasAnoActual.forEach((aud: any) => {
+        if (aud.auditorLiderId) auditoresUnicos.add(aud.auditorLiderId);
+        if (aud.auditorAsignadoId) auditoresUnicos.add(aud.auditorAsignadoId);
+        if (aud.equipoAuditores && Array.isArray(aud.equipoAuditores)) {
+          aud.equipoAuditores.forEach((eq: any) => {
+            if (eq.personaId) auditoresUnicos.add(eq.personaId);
+          });
+        }
+      });
+
+      // Calcular cumplimiento (auditorías completadas / total)
+      const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
+        aud.estado === 'cerrada' || aud.fase === 'completada'
+      );
+      const cumplimientoPrograma = auditoriasAnoActual.length > 0
+        ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
+        : 0;
+
+      const nuevasEstadisticas: EstadisticasGlobales = {
+        totalAuditoriasPlanificadas: planes.reduce((sum: number, plan: any) => {
+          // Sumar actividades de todos los roles
+          return sum + (plan.roles?.reduce((rolSum: number, rol: any) => {
+            return rolSum + (rol.actividades?.length || 0);
+          }, 0) || 0);
+        }, 0),
+        totalPlanesAnuales: planes.length, // Número de planes anuales
+        auditoriasAprobadas: auditoriasAprobadas.length,
+        procesosUniverso: procesos.length,
+        procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
+        auditoriasCalendarizadas: auditoriasCalendarizadas, // Ya es un número (auditorias.length)
+        cumplimientoPrograma,
+        areasInvolucradas,
+        auditoresAsignados: auditoresUnicos.size,
+        ultimaActualizacion: new Date() // Guardar fecha de última actualización
+      };
+
+      setEstadisticas(nuevasEstadisticas);
+    } catch (error) {
+      console.error('[Dashboard] Error al cargar estadísticas:', error);
+      // Mantener datos mock en caso de error
+      setEstadisticas(ESTADISTICAS_MOCK);
+    } finally {
+      setLoadingEstadisticas(false);
+    }
+  };
+
   // Cargar estadísticas desde la BD
   useEffect(() => {
-    const cargarEstadisticas = async () => {
-      try {
-        setLoadingEstadisticas(true);
-        console.log('[Dashboard] Cargando estadísticas desde BD...');
-        
-        // Cargar datos en paralelo
-        const [procesosResponse, planesResponse, auditoriasResponse] = await Promise.all([
-          universoAuditoriasApi.getAllProcesos(),
-          planAnual5RolesApi.findAll(),
-          auditoriasApi.getAllKanban()
-        ]);
-
-        console.log('[Dashboard] Respuestas recibidas:', {
-          procesos: procesosResponse,
-          planes: planesResponse,
-          auditorias: auditoriasResponse
-        });
-
-        // Calcular estadísticas
-        const procesos = procesosResponse.success && procesosResponse.data ? procesosResponse.data : [];
-        const planes = planesResponse.success && planesResponse.data ? planesResponse.data : [];
-        const auditorias = auditoriasResponse.success && auditoriasResponse.data ? auditoriasResponse.data : [];
-
-        // Filtrar auditorías del año actual
-        const añoActual = filtros.año;
-        const auditoriasAnoActual = auditorias.filter((aud: any) => {
-          if (!aud.fechaInicio) return false;
-          const fechaInicio = new Date(aud.fechaInicio);
-          return fechaInicio.getFullYear() === añoActual;
-        });
-
-        // Procesos seleccionados (prioridad = 1)
-        const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
-        
-        // Auditorías aprobadas (estado aprobado o en ejecución)
-        const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
-        );
-
-        // Auditorías calendarizadas (con fecha de inicio)
-        const auditoriasCalendarizadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.fechaInicio && aud.fechaFin
-        );
-
-        // Calcular áreas involucradas (procesos únicos)
-        const areasInvolucradas = new Set(procesosSeleccionados.map((p: any) => p.dependencia || p.territorial || 'Sede')).size;
-
-        // Calcular auditores asignados (de todas las auditorías)
-        const auditoresUnicos = new Set();
-        auditoriasAnoActual.forEach((aud: any) => {
-          if (aud.auditorLiderId) auditoresUnicos.add(aud.auditorLiderId);
-          if (aud.auditorAsignadoId) auditoresUnicos.add(aud.auditorAsignadoId);
-          if (aud.equipoAuditores && Array.isArray(aud.equipoAuditores)) {
-            aud.equipoAuditores.forEach((eq: any) => {
-              if (eq.personaId) auditoresUnicos.add(eq.personaId);
-            });
-          }
-        });
-
-        // Calcular cumplimiento (auditorías completadas / total)
-        const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
-          aud.estado === 'cerrada' || aud.fase === 'completada'
-        );
-        const cumplimientoPrograma = auditoriasAnoActual.length > 0
-          ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
-          : 0;
-
-        const nuevasEstadisticas: EstadisticasGlobales = {
-          totalAuditoriasPlanificadas: planes.reduce((sum: number, plan: any) => {
-            // Sumar actividades de todos los roles
-            return sum + (plan.roles?.reduce((rolSum: number, rol: any) => {
-              return rolSum + (rol.actividades?.length || 0);
-            }, 0) || 0);
-          }, 0),
-          auditoriasAprobadas: auditoriasAprobadas.length,
-          procesosUniverso: procesos.length,
-          procesosAuditables: procesosSeleccionados.length, // Solo los seleccionados (prioridad = 1)
-          auditoriasCalendarizadas: auditoriasCalendarizadas.length,
-          cumplimientoPrograma,
-          areasInvolucradas,
-          auditoresAsignados: auditoresUnicos.size
-        };
-
-        console.log('[Dashboard] Estadísticas calculadas:', nuevasEstadisticas);
-        setEstadisticas(nuevasEstadisticas);
-      } catch (error) {
-        console.error('[Dashboard] Error al cargar estadísticas:', error);
-        // Mantener datos mock en caso de error
-        setEstadisticas(ESTADISTICAS_MOCK);
-      } finally {
-        setLoadingEstadisticas(false);
-      }
-    };
-
     cargarEstadisticas();
   }, [filtros.año]);
 
+  // Función auxiliar para mapear tipoAuditoria del formulario al enum del backend
+  const mapTipoAuditoria = (tipoAuditoria: string): string => {
+    const mapping: Record<string, string> = {
+      'regular': 'Regular',
+      'territorial': 'Territorial',
+      'especial': 'Especial',
+      'gestión': 'Regular',
+      'cumplimiento': 'Regular',
+      'desempeño': 'Regular',
+      'sistemas': 'Regular',
+      'financiera': 'Regular',
+      'seguimiento': 'Regular'
+    };
+    return mapping[tipoAuditoria.toLowerCase()] || 'Regular';
+  };
+
   // Handler para crear auditoría
   const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('📝 Nueva auditoría OCIG desde Planeación:', data);
-    
-    // Simulación de delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    toast.success('✅ Auditoría OCIG creada exitosamente', {
-      description: `"${data.titulo}" ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
-    });
-    
-    setModalNuevaAuditoriaOpen(false);
+    try {
+      // Validar fechas antes de enviar
+      if (new Date(data.fechaFin) < new Date(data.fechaInicio)) {
+        toast.error('Error de validación', {
+          description: 'La fecha de finalización debe ser posterior a la fecha de inicio'
+        });
+        return;
+      }
+
+      // Mapear datos del formulario al formato del backend
+      const auditoriaData: any = {
+        nombre: data.titulo, // Mapear titulo -> nombre
+        descripcion: data.descripcion || undefined,
+        tipo: mapTipoAuditoria(data.tipoAuditoria),
+        territorial: data.territorial,
+        sede: data.territorial || 'Sede Principal',
+        responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        fase: 'planeacion' as const,
+        prioridad: 'Media' as const,
+        progreso: 0,
+      };
+
+      // Agregar campos adicionales si tienen valor
+      if (data.areaObjetivo) auditoriaData.areaObjetivo = data.areaObjetivo;
+      if (data.procesoAuditado) auditoriaData.procesoAuditado = data.procesoAuditado;
+      if (data.alcance) auditoriaData.alcance = data.alcance;
+      if (data.metodologia) auditoriaData.metodologia = data.metodologia;
+      if (data.nivelRiesgo) auditoriaData.nivelRiesgo = data.nivelRiesgo;
+      if (data.responsableAreaNombre) auditoriaData.responsableAreaNombre = data.responsableAreaNombre;
+      if (data.responsableAreaCargo) auditoriaData.responsableAreaCargo = data.responsableAreaCargo;
+      if (data.responsableAreaEmail) auditoriaData.responsableAreaEmail = data.responsableAreaEmail;
+      
+      // Mapear IDs de auditores (convertir 'aud-001' a número si es necesario)
+      if (data.auditorLider) {
+        const liderId = data.auditorLider.startsWith('aud-') 
+          ? parseInt(data.auditorLider.replace('aud-', ''), 10) 
+          : data.auditorLider;
+        if (!isNaN(Number(liderId))) auditoriaData.auditorLiderId = Number(liderId);
+      }
+      
+      if (data.auditorAsignado) {
+        const asignadoId = data.auditorAsignado.startsWith('aud-') 
+          ? parseInt(data.auditorAsignado.replace('aud-', ''), 10) 
+          : data.auditorAsignado;
+        if (!isNaN(Number(asignadoId))) auditoriaData.auditorAsignadoId = Number(asignadoId);
+      }
+      
+      if (data.supervisorAsignado) {
+        const supervisorId = data.supervisorAsignado.startsWith('aud-') 
+          ? parseInt(data.supervisorAsignado.replace('aud-', ''), 10) 
+          : data.supervisorAsignado;
+        if (!isNaN(Number(supervisorId))) auditoriaData.supervisorAsignadoId = Number(supervisorId);
+      }
+
+      // Arrays - objetivos, criterios, normatividad, riesgos, controles, equipo
+      if (data.objetivos && data.objetivos.length > 0) {
+        auditoriaData.objetivos = data.objetivos;
+      }
+      
+      if (data.criteriosAuditoria && data.criteriosAuditoria.length > 0) {
+        auditoriaData.criteriosAuditoria = data.criteriosAuditoria;
+      }
+      
+      if (data.normatividadAplicable && data.normatividadAplicable.length > 0) {
+        // Por ahora guardamos normatividad en observaciones, luego podemos crear una tabla específica
+        auditoriaData.observacionesAdicionales = data.observacionesAdicionales 
+          ? `${data.observacionesAdicionales}\n\nNormatividad aplicable:\n${data.normatividadAplicable.join('\n')}`
+          : `Normatividad aplicable:\n${data.normatividadAplicable.join('\n')}`;
+      }
+      
+      if (data.riesgosIdentificados && data.riesgosIdentificados.length > 0) {
+        // Guardar riesgos en calificacionRiesgo o crear campo específico
+        auditoriaData.calificacionRiesgo = data.calificacionRiesgo 
+          ? `${data.calificacionRiesgo}\n\nRiesgos identificados:\n${data.riesgosIdentificados.join('\n')}`
+          : `Riesgos identificados:\n${data.riesgosIdentificados.join('\n')}`;
+      }
+      
+      if (data.controlesAplicar && data.controlesAplicar.length > 0) {
+        // Guardar controles en observaciones
+        const controlesText = `Controles a aplicar:\n${data.controlesAplicar.join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${controlesText}`
+          : controlesText;
+      }
+      
+      if (data.equipoAuditores && data.equipoAuditores.length > 0) {
+        auditoriaData.equipoAuditores = data.equipoAuditores;
+      }
+      
+      // Presupuesto (convertir string a número si es posible)
+      if (data.presupuestoEstimado) {
+        const presupuesto = data.presupuestoEstimado.replace(/[^\d]/g, ''); // Remover puntos y comas
+        if (presupuesto) {
+          auditoriaData.presupuestoEstimado = presupuesto;
+        }
+      }
+
+      // Periodicidad - guardar en programaAnualMetadata
+      if (data.periodicidad) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.periodicidad = data.periodicidad;
+      }
+
+      // Vinculación Plan Anual - guardar en programaAnualMetadata
+      if (data.vinculadaPlanAnual) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.vinculadaPlanAnual = data.vinculadaPlanAnual;
+        if (data.planAnualAño) {
+          auditoriaData.programaAnualMetadata.planAnualAño = data.planAnualAño;
+        }
+        if (data.planAnualId) {
+          auditoriaData.programaAnualMetadata.planAnualId = data.planAnualId;
+        }
+        if (data.rolDecretoAsociado) {
+          auditoriaData.programaAnualMetadata.rolDecretoAsociado = data.rolDecretoAsociado;
+        }
+      }
+
+      // Hitos - guardar en programaAnualMetadata
+      if (data.hitos && data.hitos.length > 0) {
+        if (!auditoriaData.programaAnualMetadata) {
+          auditoriaData.programaAnualMetadata = {};
+        }
+        auditoriaData.programaAnualMetadata.hitos = data.hitos;
+      }
+
+      // Recursos - guardar en observaciones o en un campo JSON
+      if (data.recursos && data.recursos.length > 0) {
+        const recursosText = `Recursos requeridos:\n${data.recursos.map(r => 
+          `- ${r.tipo}: ${r.descripcion} (Cantidad: ${r.cantidad}${r.costo ? `, Costo: ${r.costo}` : ''})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${recursosText}`
+          : recursosText;
+      }
+
+      // Productos Esperados - guardar en observaciones
+      if (data.productosEsperados && data.productosEsperados.length > 0) {
+        const productosText = `Productos esperados:\n${data.productosEsperados.map(p => 
+          `- ${p.nombre}: ${p.descripcion} (Fecha entrega: ${p.fechaEntrega})`
+        ).join('\n')}`;
+        auditoriaData.observacionesAdicionales = auditoriaData.observacionesAdicionales 
+          ? `${auditoriaData.observacionesAdicionales}\n\n${productosText}`
+          : productosText;
+      }
+
+      // Llamar a la API para crear la auditoría
+      const response = await auditoriasApi.create(auditoriaData);
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Error al crear la auditoría');
+      }
+
+      const auditoriaCreada = response.data;
+
+      // ============ NOTIFICACIONES: Auditoría Creada ============
+      // NOTA: Las notificaciones se crean automáticamente en el backend (crearNotificacionesAuditoriaCreada)
+      // para todos los usuarios relacionados: auditor líder, auditor asignado, supervisor y jefes de control interno.
+      // No es necesario crear notificaciones adicionales desde el frontend.
+
+      // Crear los hallazgos si hay alguno
+      if (data.hallazgos && data.hallazgos.length > 0) {
+        // Mapear tipo del formulario al tipo opcional del backend
+        const mapTipoHallazgo = (tipo: string): 'no-conformidad' | 'observacion' | 'oportunidad-mejora' => {
+          const mapping: Record<string, 'no-conformidad' | 'observacion' | 'oportunidad-mejora'> = {
+            'observacion': 'observacion',
+            'hallazgo_administrativo': 'no-conformidad',
+            'hallazgo_disciplinario': 'no-conformidad',
+            'hallazgo_fiscal': 'no-conformidad',
+            'hallazgo_penal': 'no-conformidad'
+          };
+          return mapping[tipo] || 'observacion';
+        };
+
+        // Mapear estado del formulario al estado del backend
+        const mapEstadoHallazgo = (estado: string): 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado' => {
+          const mapping: Record<string, 'borrador' | 'notificado' | 'en-controversia' | 'ratificado' | 'modificado' | 'cerrado'> = {
+            'identificado': 'borrador',
+            'comunicado': 'notificado',
+            'en_mejoramiento': 'notificado',
+            'cerrado': 'cerrado'
+          };
+          return mapping[estado] || 'borrador';
+        };
+
+        // Crear cada hallazgo
+        let hallazgosCreados = 0;
+        for (const hallazgoForm of data.hallazgos) {
+          // Validar que el hallazgo tenga datos mínimos requeridos
+          if (!hallazgoForm.descripcion || hallazgoForm.descripcion.trim().length < 10) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin descripción válida, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          if (!hallazgoForm.criterio || hallazgoForm.criterio.trim().length < 5) {
+            console.warn('[handleCrearAuditoria] Hallazgo sin criterio válido, omitiendo:', hallazgoForm);
+            continue;
+          }
+
+          // Mapear datos al formato que espera el DTO del backend
+          // Construir descripción completa incluyendo causa y efecto si existen
+          let descripcionCompleta = hallazgoForm.descripcion;
+          if (hallazgoForm.causa) {
+            descripcionCompleta += `\n\nCAUSA:\n${hallazgoForm.causa}`;
+          }
+          if (hallazgoForm.efecto) {
+            descripcionCompleta += `\n\nEFECTO:\n${hallazgoForm.efecto}`;
+          }
+
+          const hallazgoData: any = {
+            // Campos requeridos
+            categoria: 'borrador' as const, // HallazgoCategoria: 'critico' | 'controversia' | 'borrador'
+            area: data.areaObjetivo || 'No especificada', // Campo requerido
+            auditoria: auditoriaCreada.codigo || auditoriaCreada.nombre, // Campo requerido - código de la auditoría
+            auditoriaId: auditoriaCreada.id, // Opcional pero recomendado
+            descripcion: descripcionCompleta, // Campo requerido - ahora incluye causa y efecto
+            criterioIncumplido: hallazgoForm.criterio, // Campo requerido
+            fechaDeteccion: hallazgoForm.fechaIdentificacion || new Date().toISOString().split('T')[0], // Campo requerido
+            
+            // Campos opcionales
+            titulo: hallazgoForm.descripcion.substring(0, 100) || 'Hallazgo sin título',
+            tipo: mapTipoHallazgo(hallazgoForm.tipo), // Tipo opcional: 'no-conformidad' | 'observacion' | 'oportunidad-mejora'
+            estado: mapEstadoHallazgo(hallazgoForm.estado), // Estado opcional pero recomendado
+            
+            // Recomendaciones como array
+            recomendaciones: hallazgoForm.recomendacion ? [hallazgoForm.recomendacion] : [],
+            
+            // Guardar causa y efecto en observaciones si existe el campo
+            observacionesControversia: (hallazgoForm.causa || hallazgoForm.efecto) 
+              ? `CAUSA: ${hallazgoForm.causa || 'No especificada'}\n\nEFECTO: ${hallazgoForm.efecto || 'No especificado'}`
+              : undefined,
+          };
+
+          try {
+            const hallazgoResponse = await hallazgosApi.create(hallazgoData);
+            if (hallazgoResponse.success) {
+              hallazgosCreados++;
+            } else {
+              console.error('[handleCrearAuditoria] Error al crear hallazgo:', hallazgoResponse.message);
+              console.error('[handleCrearAuditoria] Respuesta completa:', hallazgoResponse);
+            }
+          } catch (error: any) {
+            console.error('[handleCrearAuditoria] Error al crear hallazgo:', error);
+            console.error('[handleCrearAuditoria] Datos enviados:', hallazgoData);
+            // Continuar con los demás hallazgos aunque falle uno
+          }
+        }
+
+        console.log(`[handleCrearAuditoria] ${hallazgosCreados} de ${data.hallazgos.length} hallazgos creados`);
+      }
+      
+      toast.success('✅ Auditoría OCIG creada exitosamente', {
+        description: `"${data.titulo}"${data.hallazgos && data.hallazgos.length > 0 ? ` con ${data.hallazgos.length} hallazgo(s)` : ''} ha sido agregada al Plan Anual ${data.planAnualAño || 2025}`
+      });
+      
+      setModalNuevaAuditoriaOpen(false);
+      
+      // Recargar datos si es necesario (puedes agregar una función de recarga aquí)
+      // await cargarAuditorias();
+    } catch (error: any) {
+      console.error('Error al crear auditoría:', error);
+      toast.error('Error al crear auditoría', {
+        description: error.message || 'No se pudo guardar la auditoría. Por favor, intente nuevamente.'
+      });
+    }
   };
 
   // Calcular métricas derivadas
@@ -232,7 +534,7 @@ export function PlanificacionModuleRediseno() {
       label: 'Plan Anual',
       icon: <ClipboardList className="w-4 h-4" />,
       descripcion: 'Define QUÉ procesos se auditarán - Selección de auditorías a ejecutar',
-      badge: estadisticas.totalAuditoriasPlanificadas
+      badge: estadisticas.totalPlanesAnuales
     },
     {
       id: 'programa' as TabActiva,
@@ -246,68 +548,16 @@ export function PlanificacionModuleRediseno() {
   const tabActual = tabs.find(t => t.id === tabActiva);
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="flex flex-col bg-gray-50">
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* HEADER PREMIUM CON HEADERMODULOCIG */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
+      <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <HeaderModuloCIG
             titulo="Planificación de Auditorías"
             subtitulo="Gestión del ciclo completo de planificación anual de auditorías"
           />
-        </div>
-
-        {/* Dashboard KPIs - 6 Indicadores Clave */}
-        <div className="px-6 pb-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <KPICard
-              label="Auditorías Planificadas"
-              valor={estadisticas.totalAuditoriasPlanificadas}
-              icono={<Target className="w-5 h-5" />}
-              color="blue"
-              tendencia={{ valor: metricas.porcentajeAprobacion, tipo: 'positivo' }}
-              footer={`${metricas.porcentajeAprobacion}% aprobadas`}
-            />
-            <KPICard
-              label="Universo Auditable"
-              valor={estadisticas.procesosUniverso}
-              icono={<Layers className="w-5 h-5" />}
-              color="purple"
-              tendencia={{ valor: metricas.porcentajeCobertura, tipo: 'neutral' }}
-              footer={`${estadisticas.procesosAuditables} auditables`}
-            />
-            <KPICard
-              label="Auditorías Calendarizadas"
-              valor={estadisticas.auditoriasCalendarizadas}
-              icono={<Calendar className="w-5 h-5" />}
-              color="green"
-              tendencia={{ valor: metricas.porcentajeCalendarizacion, tipo: 'positivo' }}
-              footer={`${metricas.porcentajeCalendarizacion}% programadas`}
-            />
-            <KPICard
-              label="Cumplimiento Programa"
-              valor={`${estadisticas.cumplimientoPrograma}%`}
-              icono={<TrendingUp className="w-5 h-5" />}
-              color="yellow"
-              tendencia={{ valor: 75, tipo: 'positivo' }}
-              footer="En seguimiento"
-            />
-            <KPICard
-              label="Áreas Involucradas"
-              valor={estadisticas.areasInvolucradas}
-              icono={<Activity className="w-5 h-5" />}
-              color="indigo"
-              footer="Dependencias ESAP"
-            />
-            <KPICard
-              label="Auditores Asignados"
-              valor={estadisticas.auditoresAsignados}
-              icono={<Users className="w-5 h-5" />}
-              color="teal"
-              footer="Equipo auditor"
-            />
-          </div>
         </div>
 
         {/* Barra de Filtros y Acciones */}
@@ -320,9 +570,9 @@ export function PlanificacionModuleRediseno() {
                 onChange={(e) => setFiltros({ ...filtros, año: parseInt(e.target.value) })}
                 className="w-full sm:w-auto px-3 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
               >
-                <option value={2024}>2024</option>
-                <option value={2025}>2025</option>
-                <option value={2026}>2026</option>
+                {añosDisponibles.map(año => (
+                  <option key={año} value={año}>{año}</option>
+                ))}
               </select>
 
               <select
@@ -430,14 +680,14 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* TABS NAVEGACIÓN */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
+      <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6">
           <div className="flex gap-1 overflow-x-auto scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'thin' }}>
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setTabActiva(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-medium flex-shrink-0 ${ 
+                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-medium shrink-0 ${ 
                   tabActiva === tab.id
                     ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50'
                     : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -461,9 +711,9 @@ export function PlanificacionModuleRediseno() {
 
       {/* Banner de Ayuda Contextual */}
       {tabActual && (
-        <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-3">
+        <div className="shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-3">
           <div className="flex items-start gap-3">
-            <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <p className="text-sm text-blue-900">
               <span className="font-medium">{tabActual.label}:</span> {tabActual.descripcion}
             </p>
@@ -474,7 +724,7 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* CONTENIDO TABS */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-auto">
+      <div className="p-6">
         <AnimatePresence mode="wait">
           <motion.div
             key={tabActiva}
@@ -482,11 +732,24 @@ export function PlanificacionModuleRediseno() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
-            className="h-full"
+            className="min-h-full"
           >
-            {tabActiva === 'plan-anual' && <PlanAnualModule />}
-            {tabActiva === 'universo' && <UniversoAuditorias />}
-            {tabActiva === 'programa' && <ProgramaAnualCIG />}
+            {tabActiva === 'plan-anual' && (
+              <PlanAnualModule 
+                onPlanChange={cargarEstadisticas}
+                filtros={filtros}
+              />
+            )}
+            {tabActiva === 'universo' && (
+              <UniversoAuditorias 
+                filtros={filtros}
+              />
+            )}
+            {tabActiva === 'programa' && (
+              <ProgramaAnualCIG 
+                filtros={filtros}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -494,7 +757,7 @@ export function PlanificacionModuleRediseno() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER CON INDICADORES */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-3">
+      <div className="shrink-0 bg-white border-t border-gray-200 px-6 py-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-4 text-gray-600">
             <div className="flex items-center gap-2">
@@ -513,7 +776,38 @@ export function PlanificacionModuleRediseno() {
 
           <div className="flex items-center gap-2 text-gray-500">
             <BarChart3 className="w-3 h-3" />
-            <span>Última actualización: Hoy 14:30</span>
+            <span>
+              Última actualización: {
+                estadisticas.ultimaActualizacion
+                  ? (() => {
+                      const ahora = new Date();
+                      const actualizacion = estadisticas.ultimaActualizacion;
+                      const diffMs = ahora.getTime() - actualizacion.getTime();
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const diffHours = Math.floor(diffMs / 3600000);
+                      const diffDays = Math.floor(diffMs / 86400000);
+                      
+                      // Formatear según el tiempo transcurrido
+                      if (diffMins < 1) return 'Hace un momento';
+                      if (diffMins < 60) return `Hace ${diffMins} min`;
+                      if (diffHours < 24) {
+                        const hora = actualizacion.getHours().toString().padStart(2, '0');
+                        const minuto = actualizacion.getMinutes().toString().padStart(2, '0');
+                        return `Hoy ${hora}:${minuto}`;
+                      }
+                      if (diffDays === 1) return 'Ayer';
+                      if (diffDays < 7) return `Hace ${diffDays} días`;
+                      // Si es más de una semana, mostrar fecha completa
+                      return actualizacion.toLocaleDateString('es-CO', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                    })()
+                  : 'Cargando...'
+              }
+            </span>
           </div>
         </div>
       </div>
@@ -531,105 +825,6 @@ export function PlanificacionModuleRediseno() {
           planAnualAño: filtros.año
         }}
       />
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// KPI CARD COMPONENT
-// ════════════════════════════════════════════════════════════════════════════
-
-interface KPICardProps {
-  label: string;
-  valor: string | number;
-  icono: React.ReactNode;
-  color: 'blue' | 'purple' | 'green' | 'yellow' | 'indigo' | 'teal';
-  tendencia?: {
-    valor: number;
-    tipo: 'positivo' | 'negativo' | 'neutral';
-  };
-  footer?: string;
-}
-
-function KPICard({ label, valor, icono, color, tendencia, footer }: KPICardProps) {
-  const colorClasses = {
-    blue: {
-      bg: 'bg-blue-50',
-      border: 'border-blue-200',
-      iconBg: 'bg-blue-100',
-      iconText: 'text-blue-600',
-      text: 'text-blue-700'
-    },
-    purple: {
-      bg: 'bg-purple-50',
-      border: 'border-purple-200',
-      iconBg: 'bg-purple-100',
-      iconText: 'text-purple-600',
-      text: 'text-purple-700'
-    },
-    green: {
-      bg: 'bg-green-50',
-      border: 'border-green-200',
-      iconBg: 'bg-green-100',
-      iconText: 'text-green-600',
-      text: 'text-green-700'
-    },
-    yellow: {
-      bg: 'bg-yellow-50',
-      border: 'border-yellow-200',
-      iconBg: 'bg-yellow-100',
-      iconText: 'text-yellow-600',
-      text: 'text-yellow-700'
-    },
-    indigo: {
-      bg: 'bg-indigo-50',
-      border: 'border-indigo-200',
-      iconBg: 'bg-indigo-100',
-      iconText: 'text-indigo-600',
-      text: 'text-indigo-700'
-    },
-    teal: {
-      bg: 'bg-teal-50',
-      border: 'border-teal-200',
-      iconBg: 'bg-teal-100',
-      iconText: 'text-teal-600',
-      text: 'text-teal-700'
-    }
-  };
-
-  const colors = colorClasses[color];
-
-  return (
-    <div className={`rounded-lg border ${colors.bg} ${colors.border} p-3 transition-all hover:shadow-md`}>
-      <div className="flex items-start justify-between mb-2">
-        <div className={`w-8 h-8 sm:w-9 sm:h-9 ${colors.iconBg} rounded-lg flex items-center justify-center ${colors.iconText}`}>
-          {icono}
-        </div>
-        {tendencia && (
-          <div className={`flex items-center gap-1 text-xs font-medium ${ 
-            tendencia.tipo === 'positivo' ? 'text-green-600' :
-            tendencia.tipo === 'negativo' ? 'text-red-600' :
-            'text-gray-600'
-          }`}>
-            <TrendingUp className={`w-3 h-3 ${
-              tendencia.tipo === 'negativo' ? 'rotate-180' : ''
-            }`} />
-            {tendencia.valor}%
-          </div>
-        )}
-      </div>
-      
-      <div className="mb-1">
-        <div className={`text-xl sm:text-2xl font-semibold ${colors.text}`}>{valor}</div>
-      </div>
-      
-      <div className="text-xs text-gray-600 mb-1">{label}</div>
-      
-      {footer && (
-        <div className={`text-xs ${colors.text} font-medium mt-1`}>
-          {footer}
-        </div>
-      )}
     </div>
   );
 }

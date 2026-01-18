@@ -1,18 +1,76 @@
 ﻿/**
  * MODALES DE GESTIÃ“N DOCUMENTAL - CONTROL INTERNO DISCIPLINARIO
- * Componentes para gestiÃ³n de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
+ * Componentes para Gestión de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
  */
 
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { legalService } from '../../../services/api/legal.service';
+
+// Funciones utilitarias globales - disponibles para todos los componentes
+const isUuidLike = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const formatFileSize = (size?: number) => {
+  if (!size && size !== 0) return '';
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  }
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
+};
+
+const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
+  const suffix = view ? '?view=true' : '';
+  const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
+  if (API_MODE === 'direct') {
+    return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
+  }
+  return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
+};
+
+const descargarArchivo = async (url: string, nombre: string) => {
+  try {
+    const token = localStorage.getItem('esap_access_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers,
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo descargar el archivo');
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = nombre;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
+  } catch (error) {
+    console.error('Error descargando archivo', error);
+    toast.error('No se pudo descargar el archivo');
+  }
+};
 import {
   X, Scale, Archive, Mail, Bell, FileCheck, History, Upload, Download,
   Eye, Edit2, Trash2, Plus, Calendar, User, FileText, CheckCircle,
   AlertCircle, Clock, ExternalLink, Link as LinkIcon, Filter, Search,
   FileSignature, Send, Save, Package, Tag,
-  Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft
+  Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft,
+  Gavel
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -26,7 +84,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../ui/alert-dialog';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { VisorPDFAuto } from './VisorPDFAuto';
 
 interface Persona {
   nombre: string;
@@ -59,7 +118,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     esUUID: proceso?.id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(proceso.id) : false
   });
 
-  const [vistaActual, setVistaActual] = useState<'lista' | 'crear'>('lista');
+  const [vistaActual, setVistaActual] = useState<'lista' | 'editor' | 'crear'>('lista');
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: any | null }>({ show: false, documento: null });
   const [autos, setAutos] = useState<any[]>([]);
   const [processId, setProcessId] = useState('');
@@ -67,6 +126,19 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [autoParaEliminar, setAutoParaEliminar] = useState<any | null>(null);
   const [eliminandoAuto, setEliminandoAuto] = useState(false);
   const [autoEnviandoRevision, setAutoEnviandoRevision] = useState<string | null>(null);
+  const [modalEditarAuto, setModalEditarAuto] = useState<{ show: boolean; auto: any | null }>({ show: false, auto: null });
+  const [editandoAuto, setEditandoAuto] = useState(false);
+  const [visorAuto, setVisorAuto] = useState<{ show: boolean; auto: any | null; modoPlantilla?: boolean; modoEdicion?: boolean }>({ show: false, auto: null });
+  const [cargandoProceso, setCargandoProceso] = useState(false);
+
+  // Estados para editor con plantillas
+  const [plantillas, setPlantillas] = useState<any[]>([]);
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState<any | null>(null);
+  const [contenidoHtml, setContenidoHtml] = useState('');
+  const [datosPlantilla, setDatosPlantilla] = useState<Record<string, any>>({});
+  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
+  const [guardandoAuto, setGuardandoAuto] = useState(false);
+  const [autoEditando, setAutoEditando] = useState<any | null>(null);
 
   // Estados para crear nuevo auto
   const [tipoAutoSeleccionado, setTipoAutoSeleccionado] = useState<any | null>(null);
@@ -76,58 +148,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const [creandoAuto, setCreandoAuto] = useState(false);
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    const suffix = view ? '?view=true' : '';
-    const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
-    if (API_MODE === 'direct') {
-      return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
-    }
-    return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
-  };
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const token = localStorage.getItem('esap_access_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers,
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('No se pudo descargar el archivo');
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
     if (!relativeUrl) return '';
@@ -179,6 +199,116 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       toast.error('No se pudieron cargar los autos');
     } finally {
       setCargandoAutos(false);
+    }
+  };
+
+  const cargarPlantillas = async () => {
+    setCargandoPlantillas(true);
+    try {
+      const response = await fetch(buildApiUrl('legal', '/api/v1/autos/plantillas'));
+      if (response.ok) {
+        const data = await response.json();
+        setPlantillas(data);
+      } else {
+        console.error('Error cargando plantillas');
+      }
+    } catch (error) {
+      console.error('Error cargando plantillas', error);
+    } finally {
+      setCargandoPlantillas(false);
+    }
+  };
+
+  const seleccionarPlantilla = async (plantilla: any) => {
+    setPlantillaSeleccionada(plantilla);
+    setContenidoHtml(plantilla.contenidoHtml);
+
+    // Extraer placeholders y crear campos de formulario
+    const placeholders = plantilla.placeholders || [];
+    const nuevosDatos: Record<string, any> = {};
+    placeholders.forEach((placeholder: string) => {
+      nuevosDatos[placeholder] = '';
+    });
+    setDatosPlantilla(nuevosDatos);
+  };
+
+  const guardarAutoDesdeEditor = async () => {
+    if (!proceso?.numeroProceso) {
+      toast.error('No se puede identificar el expediente');
+      return;
+    }
+
+    if (!plantillaSeleccionada) {
+      toast.error('Debe seleccionar una plantilla');
+      return;
+    }
+
+    setGuardandoAuto(true);
+    try {
+      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${proceso.numeroProceso}/desde-plantilla`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+        },
+        body: JSON.stringify({
+          plantillaId: plantillaSeleccionada.id,
+          datosPlantilla
+        })
+      });
+
+      if (response.ok) {
+        const nuevoAuto = await response.json();
+        toast.success('Auto creado exitosamente desde plantilla');
+
+        // Actualizar contenido HTML si hay cambios
+        if (contenidoHtml !== plantillaSeleccionada.contenidoHtml) {
+          await fetch(buildApiUrl('legal', `/api/v1/autos/${nuevoAuto.id}/contenido-html`), {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+            },
+            body: JSON.stringify({ contenidoHtml })
+          });
+        }
+
+        // Recargar lista de autos
+        if (processId) {
+          await cargarAutos(processId);
+        }
+
+        // Limpiar formulario
+        setPlantillaSeleccionada(null);
+        setContenidoHtml('');
+        setDatosPlantilla({});
+        setVistaActual('lista');
+      } else {
+        const error = await response.json();
+        toast.error(error.message || 'Error al crear el auto');
+      }
+    } catch (error) {
+      console.error('Error guardando auto', error);
+      toast.error('Error al guardar el auto');
+    } finally {
+      setGuardandoAuto(false);
+    }
+  };
+
+  const editarAutoEnEditor = async (auto: any) => {
+    setAutoEditando(auto);
+    try {
+      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${auto.id}/contenido-html`));
+      if (response.ok) {
+        const data = await response.json();
+        setContenidoHtml(data.contenidoHtml || '');
+        setPlantillaSeleccionada(data.plantillaUsada ? { nombre: data.plantillaUsada } : null);
+        setDatosPlantilla(data.datosPlantilla || {});
+        setVistaActual('editor');
+      }
+    } catch (error) {
+      console.error('Error cargando contenido del auto', error);
+      toast.error('Error al cargar el contenido del auto');
     }
   };
 
@@ -237,6 +367,12 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     cargarAutos(processId);
   }, [processId]);
 
+  useEffect(() => {
+    if (vistaActual === 'editor') {
+      cargarPlantillas();
+    }
+  }, [vistaActual]);
+
   const handleEliminarAuto = async (e?: React.MouseEvent) => {
     if (e) {
       e.preventDefault();
@@ -271,6 +407,72 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       toast.error('No se pudo enviar a revisiÃ³n');
     } finally {
       setAutoEnviandoRevision(null);
+    }
+  };
+
+  const handleEditarAuto = (auto: any) => {
+    setModalEditarAuto({ show: true, auto });
+  };
+
+  const handleAbrirVisorAuto = async (auto: any, modoPlantilla: boolean = false) => {
+     if (!processId) {
+       toast.error('No se puede identificar el proceso');
+       return;
+     }
+
+     setCargandoProceso(true);
+     try {
+       // Obtener el proceso completo usando el endpoint específico por radicado
+       const procesoCompleto = await disciplinaryService.getProcesoByRadicado(proceso.numeroProceso);
+
+       // Construir el objeto auto con la información completa del proceso
+       const autoCompleto = {
+         ...auto,
+         process: {
+           radicadoProceso: procesoCompleto.radicadoProceso,
+           news: procesoCompleto.news ? {
+             hechos: procesoCompleto.news.hechos || '',
+             fechaQueja: procesoCompleto.news.fechaQueja,
+             denunciante: procesoCompleto.news.denunciante,
+             disciplinable: procesoCompleto.news.disciplinable
+           } : undefined
+         }
+       };
+
+       console.log('Auto completo para visor:', autoCompleto);
+       console.log('Proceso encontrado:', procesoCompleto);
+       console.log('News del proceso:', procesoCompleto.news);
+       setVisorAuto({ show: true, auto: autoCompleto, modoPlantilla });
+     } catch (error) {
+       console.error('Error obteniendo información del proceso:', error);
+       toast.error('No se pudo cargar la información del proceso');
+       // Abrir el visor con la información básica disponible
+       setVisorAuto({ show: true, auto, modoPlantilla });
+     } finally {
+       setCargandoProceso(false);
+     }
+   };
+
+  const handleGuardarEdicionAuto = async () => {
+    if (!modalEditarAuto.auto) return;
+    setEditandoAuto(true);
+    try {
+      // Solo enviar los campos que se pueden editar (metadatos básicos)
+      const updateData = {
+        numero: modalEditarAuto.auto.numero,
+        tipo: modalEditarAuto.auto.tipo,
+        comentarios: modalEditarAuto.auto.comentarios || ''
+      };
+
+      await disciplinaryService.updateAuto(modalEditarAuto.auto.id, updateData);
+      await cargarAutos(processId);
+      toast.success('Auto actualizado', { description: modalEditarAuto.auto.numero });
+      setModalEditarAuto({ show: false, auto: null });
+    } catch (error) {
+      console.error('Error actualizando auto', error);
+      toast.error('No se pudo actualizar el auto');
+    } finally {
+      setEditandoAuto(false);
     }
   };
 
@@ -369,7 +571,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
   const tiposAuto = [
     { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
-    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de IndagaciÃ³n Preliminar', icon: Search, color: '#06B6D4' },
+    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
     { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de InvestigaciÃ³n', icon: FileText, color: '#10B981' },
     { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de FormulaciÃ³n de Pliego', icon: FileCheck, color: '#F59E0B' },
     { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
@@ -406,7 +608,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Autos y Providencias
+                  Gestión de Autos y Providencias
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - {proceso.denunciado.nombre}
@@ -421,19 +623,148 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
         {/* Tabs */}
         <div className="px-6 pt-4 border-b">
-          <div className="flex gap-2">
-            <button
-              className="px-4 py-2 rounded-t-lg font-bold text-sm bg-purple-100 text-purple-700 border-b-2 border-purple-600"
-            >
-              <FileText className="w-4 h-4 inline mr-2" />
-              Lista de Autos
-            </button>
-          </div>
-        </div>
+           <div className="flex gap-2">
+             <button
+               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'lista' ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600' : 'text-gray-600 hover:bg-gray-100'}`}
+               onClick={() => setVistaActual('lista')}
+             >
+               <FileText className="w-4 h-4 inline mr-2" />
+               Lista de Autos
+             </button>
+             <button
+               className={`px-4 py-2 rounded-t-lg font-bold text-sm text-gray-600 hover:bg-gray-100`}
+               onClick={(e) => {
+                 e.stopPropagation();
+                 window.open('/editor-plantillas', '_blank');
+               }}
+             >
+               <Edit2 className="w-4 h-4 inline mr-2" />
+               Editor de Plantillas
+             </button>
+           </div>
+         </div>
 
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 220px)' }}>
-          {vistaActual === 'lista' ? (
+          {vistaActual === 'editor' ? (
+            // Editor con Plantillas
+            <div className="space-y-6">
+              {/* Selección de Plantilla */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Seleccionar Plantilla</h3>
+                {cargandoPlantillas ? (
+                  <div className="text-center py-8">
+                    <Clock className="w-8 h-8 mx-auto mb-2 text-gray-400 animate-pulse" />
+                    <p className="text-sm text-gray-600">Cargando plantillas...</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {plantillas.map((plantilla) => (
+                      <button
+                        key={plantilla.id}
+                        onClick={() => seleccionarPlantilla(plantilla)}
+                        className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${
+                          plantillaSeleccionada?.id === plantilla.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-6 h-6 text-blue-600" />
+                          <div>
+                            <p className="font-bold text-gray-900">{plantilla.nombre}</p>
+                            <p className="text-sm text-gray-600">{plantilla.descripcion}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Formulario de Datos de Plantilla */}
+              {plantillaSeleccionada && (
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Completar Datos</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.keys(datosPlantilla).map((key) => (
+                      <div key={key}>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </label>
+                        <input
+                          type="text"
+                          value={datosPlantilla[key]}
+                          onChange={(e) => setDatosPlantilla(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={`Ingrese ${key}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Editor Quill */}
+              {plantillaSeleccionada && (
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">Contenido del Auto</h3>
+                  <div className="border border-gray-300 rounded-lg">
+                    <ReactQuill
+                      value={contenidoHtml}
+                      onChange={setContenidoHtml}
+                      theme="snow"
+                      modules={{
+                        toolbar: [
+                          [{ 'header': [1, 2, 3, false] }],
+                          ['bold', 'italic', 'underline', 'strike'],
+                          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                          [{ 'indent': '-1'}, { 'indent': '+1' }],
+                          ['link'],
+                          [{ 'align': [] }],
+                          ['clean']
+                        ],
+                      }}
+                      style={{ minHeight: '300px' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              {plantillaSeleccionada && (
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPlantillaSeleccionada(null);
+                      setContenidoHtml('');
+                      setDatosPlantilla({});
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={guardarAutoDesdeEditor}
+                    disabled={guardandoAuto}
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  >
+                    {guardandoAuto ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Crear Auto
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : vistaActual === 'lista' ? (
             // Lista de Autos Existentes
             <div className="space-y-3">
               {cargandoAutos ? (
@@ -544,6 +875,37 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
+                            handleEditarAuto(auto);
+                          }}
+                          title="Editar auto"
+                          style={{ borderColor: '#059669', color: '#059669' }}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAbrirVisorAuto(auto, true);
+                          }}
+                          title="Ver plantilla BD"
+                          disabled={cargandoProceso}
+                          style={{ borderColor: '#10B981', color: '#10B981' }}
+                        >
+                          {cargandoProceso ? (
+                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
+                          ) : (
+                            <FileText className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setAutoParaEliminar(auto);
                           }}
                           title="Eliminar auto"
@@ -621,7 +983,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">
-                    DescripciÃ³n (opcional)
+                    Descripción (opcional)
                   </label>
                   <textarea
                     value={descripcion}
@@ -814,6 +1176,126 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         )}
       </AnimatePresence>
 
+      {/* Modal Editar Auto */}
+      <AnimatePresence>
+        {modalEditarAuto.show && modalEditarAuto.auto && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+            onClick={() => setModalEditarAuto({ show: false, auto: null })}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="p-6 border-b bg-gradient-to-r from-purple-50 to-blue-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-purple-100">
+                      <Edit2 className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-gray-900">Editar Auto</h3>
+                      <p className="text-sm text-gray-600">{modalEditarAuto.auto.numero}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setModalEditarAuto({ show: false, auto: null })}
+                    className="p-2 hover:bg-white/50 rounded-lg"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Número del Auto
+                  </label>
+                  <input
+                    type="text"
+                    value={modalEditarAuto.auto.numero}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, numero: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Tipo de Auto
+                  </label>
+                  <select
+                    value={modalEditarAuto.auto.tipo}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, tipo: e.target.value }
+                    }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  >
+                    {tiposAuto.map((tipo) => (
+                      <option key={tipo.id} value={tipo.nombre}>
+                        {tipo.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Comentarios
+                  </label>
+                  <textarea
+                    value={modalEditarAuto.auto.comentarios || ''}
+                    onChange={(e) => setModalEditarAuto(prev => ({
+                      ...prev,
+                      auto: { ...prev.auto!, comentarios: e.target.value }
+                    }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    placeholder="Comentarios adicionales..."
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 border-t bg-gray-50 flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setModalEditarAuto({ show: false, auto: null })}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleGuardarEdicionAuto}
+                  disabled={editandoAuto}
+                  style={{ background: '#8B5CF6', color: '#FFFFFF' }}
+                >
+                  {editandoAuto ? (
+                    <>
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Guardar Cambios
+                    </>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AlertDialog
         open={Boolean(autoParaEliminar)}
         onOpenChange={(open) => {
@@ -846,6 +1328,16 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal Visor de Auto */}
+      {(visorAuto.auto || visorAuto.modoPlantilla) && (
+        <VisorPDFAuto
+          isOpen={visorAuto.show}
+          onClose={() => setVisorAuto({ show: false, auto: null })}
+          auto={visorAuto.auto}
+          modoPlantilla={visorAuto.modoPlantilla}
+        />
+      )}
     </motion.div>
   );
 }
@@ -877,46 +1369,6 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState(false);
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB para evidencias
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    // Backend returns full URL if possible, otherwise construct it
-    // For now assume our service returns full URL or relative to gateway
-    // Just return empty here, rely on what backend sends or existing logic
-    // But we are using the new service which returns Evidencia object with archivoUrl
-    return '';
-  };
-
-  // Helper to get real download URL
-  const getUrl = (doc: any) => {
-    return doc.archivoUrl || '';
-  }
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Error descarga');
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      link.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const cargarEvidencias = async (procId: string) => {
     if (!procId) return;
@@ -1075,7 +1527,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
         initial={{ scale: 0.9, y: 20 }}
@@ -1093,7 +1545,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Evidencias
+                  Gestión de Evidencias
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - Material Probatorio
@@ -1247,13 +1699,13 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-600">DescripciÃ³n (opcional)</label>
+                <label className="text-xs font-semibold text-gray-600">Descripción (opcional)</label>
                 <input
                   type="text"
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="DescripciÃ³n breve"
+                  placeholder="Descripción breve"
                 />
               </div>
             </div>
@@ -1275,7 +1727,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       {cargando ? 'Subiendo archivo...' : 'Adjuntar evidencia'}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {archivo ? archivo.name : 'Click para seleccionar archivo (mÃ¡x 50 MB)'}
+                      {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
                     </p>
                     {archivoError && (
                       <p className="text-xs text-red-600 mt-2">{archivoError}</p>
@@ -1330,6 +1782,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </motion.div>
   );
 }
@@ -1357,44 +1810,6 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
   const [eliminandoOficio, setEliminandoOficio] = useState(false);
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-  const isUuidLike = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
-
-  const formatFileSize = (size?: number) => {
-    if (!size && size !== 0) return '';
-    if (size >= 1024 * 1024) {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${Math.max(1, Math.round(size / 1024))} KB`;
-  };
-
-  const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
-    const suffix = view ? '?view=true' : '';
-    const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
-    if (API_MODE === 'direct') {
-      return `${MICROSERVICE_URLS['control-disciplinario']}${basePath}`;
-    }
-    return buildApiUrl('control-disciplinario', `/api/v1${basePath}`);
-  };
-
-  const descargarArchivo = async (url: string, nombre: string) => {
-    try {
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('No se pudo descargar el archivo');
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = nombre;
-      link.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      console.error('Error descargando archivo', error);
-      toast.error('No se pudo descargar el archivo');
-    }
-  };
 
   const mapOficio = (doc: any, procId: string) => {
     const fileSizeLabel = doc['tamano'] || doc['tamano'] || formatFileSize(doc.fileSize);
@@ -1585,7 +2000,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  GestiÃ³n de Oficios
+                  Gestión de Oficios
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - Comunicaciones Oficiales

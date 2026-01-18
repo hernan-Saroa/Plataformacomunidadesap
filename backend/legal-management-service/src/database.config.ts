@@ -18,6 +18,7 @@ import { TerminoProcesal } from './entities/termino-procesal.entity';
 // Órganos de Control - Nuevo módulo
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { PeiIndicador } from './entities/pei-indicador.entity';
@@ -33,6 +34,7 @@ import { DocumentoOC } from './entities/documento-oc.entity';
 
 // Módulo de Riesgos
 import { Riesgo } from './entities/riesgo.entity';
+import { RiesgoHistorial } from './entities/riesgo-historial.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 
 // Planes de Mejoramiento
@@ -41,6 +43,21 @@ import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from
 // Documentos de Consultas Jurídicas
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { ComentarioConsulta } from './entities/comentario-consulta.entity';
+import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
+
+// Correos Jurídicos (Microsoft Graph)
+import { CorreoJuridico } from './entities/correo-juridico.entity';
+import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
+
+// Excepciones Procesales
+import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
+
+// Procesos Coactivos
+import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
+import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
+
+// System Configurations
+import { SystemConfiguration } from './entities/system-configuration.entity';
 
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
@@ -57,7 +74,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, SolicitudInsumo, Hallazgo,
+        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo,
         // PEI
         PeiIndicador, PeiRegistroAvance,
         // Tareas y Notas
@@ -65,14 +82,23 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Comentarios y Documentos OC
         ComentarioOC, DocumentoOC,
         // Riesgos
-        Riesgo,
+        Riesgo, RiesgoHistorial,
         // Decisiones
         DecisionDisciplinaria,
         // Planes de Mejoramiento
         PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario,
         // Documentos de Consultas Jurídicas
-        DocumentoConsulta, ComentarioConsulta
+        DocumentoConsulta, ComentarioConsulta, ConsultaJuridicaHistorial,
+        // Correos Jurídicos
+        CorreoJuridico, AdjuntoCorreo,
+        // Excepciones Procesales
+        ExcepcionProcesal,
+        // Procesos Coactivos
+        ProcesoCoactivo, ProcesoCoactivoAdjunto,
+        // System Configurations
+        SystemConfiguration
     ],
-    synchronize: false, // ⚠️ Cambiado a false para usar migraciones en producción
+    synchronize: false, // ⚠️ Reverted to false to avoid conflicts
     logging: ['error'], // Solo mostrar errores, no queries
 };
+

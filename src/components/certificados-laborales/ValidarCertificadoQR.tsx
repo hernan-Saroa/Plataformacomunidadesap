@@ -13,7 +13,8 @@ import {
   Building,
   Shield,
   ExternalLink,
-  Camera
+  Camera,
+  ArrowLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -22,6 +23,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
+import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -42,7 +44,11 @@ interface ValidacionResult {
   error?: string;
 }
 
-export function ValidarCertificadoQR() {
+interface ValidarCertificadoQRProps {
+  onBack?: () => void;
+}
+
+export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {}) {
   const [codigoQR, setCodigoQR] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidacionResult | null>(null);
@@ -77,6 +83,21 @@ export function ValidarCertificadoQR() {
       const response = await certificadosService.validacion.verificarCertificadoLaboral(codigoNormalizado);
       console.log('Respuesta verificación certificado:', response);
 
+      if (
+        response?.statusCode >= 400 ||
+        response?.error ||
+        (typeof response?.message === 'string' &&
+          response.message.toLowerCase().includes('no encontrado'))
+      ) {
+        const message =
+          response?.message || 'Codigo QR invalido o certificado no encontrado';
+        setValidationResult({ isValid: false, error: message });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const expiracion = response?.expiration_date ? new Date(response.expiration_date) : null;
       const ahora = new Date();
       const estadoCalculado = response?.status
@@ -100,11 +121,21 @@ export function ValidarCertificadoQR() {
         || response?.createdAt
       );
 
+      const consecutivo = getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo);
+      const nombreEmpleado = getVal(response?.full_name, response?.nombreCompleto, response?.fullName);
+      if (consecutivo === 'No disponible' && nombreEmpleado === 'No disponible') {
+        setValidationResult({ isValid: false, error: 'Certificado no encontrado' });
+        toast.error('Certificado no valido', {
+          description: 'El codigo ingresado no existe o no es valido'
+        });
+        return;
+      }
+
       const certificado = {
-        consecutivo: getVal(response?.certificate_number, response?.certificateNumber, response?.consecutivo),
+        consecutivo,
         codigoQR: response?.verification_code || codigoNormalizado,
         empleado: {
-          nombre: getVal(response?.full_name, response?.nombreCompleto, response?.fullName),
+          nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
           cargo: getVal(response?.position_category, response?.cargo, response?.positionCategory),
           dependencia: getVal(response?.department, response?.dependencia, response?.departmentName, response?.position_location, response?.positionLocation)
@@ -145,7 +176,48 @@ export function ValidarCertificadoQR() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF] py-12 px-4">
-      <div className="max-w-4xl mx-auto">
+      {/* Navbar Superior Flotante - Solo si tiene onBack */}
+      {onBack && (
+        <motion.nav 
+          initial={{ y: -100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[95%] max-w-6xl"
+        >
+          <div className="bg-[#1e5da8] rounded-2xl shadow-2xl px-4 sm:px-6 py-3 border border-blue-400/30 backdrop-blur-xl"
+            style={{
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+            }}
+          >
+            <div className="flex items-center justify-between">
+              {/* Logo */}
+              <div className="flex items-center gap-3">
+                <img 
+                  src={esapLogoWhite} 
+                  alt="ESAP Logo" 
+                  className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+                />
+                <div className="hidden sm:block">
+                  <p className="text-xs font-semibold text-white">Validador de Certificados</p>
+                  <p className="text-[9px] font-medium text-white/70 -mt-0.5">Certificados Laborales</p>
+                </div>
+              </div>
+
+              {/* Botón Volver */}
+              <button
+                onClick={onBack}
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Volver</span>
+                <span className="sm:hidden">Atrás</span>
+              </button>
+            </div>
+          </div>
+        </motion.nav>
+      )}
+      
+      <div className={`max-w-4xl mx-auto ${onBack ? 'pt-20' : ''}`}>
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -183,7 +255,7 @@ export function ValidarCertificadoQR() {
               color: '#6B7280'
             }}
           >
-            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el código QR
+            Verifica la autenticidad de un certificado laboral emitido por la ESAP ingresando el codigo QR o el consecutivo
           </p>
         </motion.div>
 
@@ -207,7 +279,7 @@ export function ValidarCertificadoQR() {
                       color: '#1F2937'
                     }}
                   >
-                    Código QR del Certificado
+                    Codigo QR o consecutivo del certificado
                   </label>
                   <div className="relative">
                     <QrCode 
@@ -217,7 +289,7 @@ export function ValidarCertificadoQR() {
                     <Input
                       id="codigoQR"
                       type="text"
-                      placeholder="Ej: ESAP-CERT-2025-ABC123XYZ"
+                      placeholder="Ej: QR-CERT-2025-ABC123XYZ o 12_620_700_20_CD 010"
                       value={codigoQR}
                       onChange={(e) => setCodigoQR(e.target.value.toUpperCase())}
                       className="pl-12 pr-14 py-6 text-base border-2"
@@ -237,7 +309,7 @@ export function ValidarCertificadoQR() {
                     className="mt-2 text-sm"
                     style={{ color: '#6B7280' }}
                   >
-                    El código QR se encuentra impreso en la parte inferior del certificado
+                    Puedes usar el codigo QR o el consecutivo que aparece en el certificado
                   </p>
                 </div>
 
@@ -253,13 +325,13 @@ export function ValidarCertificadoQR() {
                           color: '#1F2937'
                         }}
                       >
-                        Sistema de Verificación Seguro
+                        Sistema de verificacion seguro
                       </h4>
                       <p 
                         className="text-sm"
                         style={{ color: '#6B7280' }}
                       >
-                        Todos los certificados laborales emitidos por la ESAP incluyen un código QR único que permite verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
+                        Todos los certificados laborales emitidos por la ESAP incluyen un codigo QR unico y un consecutivo que permiten verificar su autenticidad en tiempo real. Este sistema garantiza la integridad y validez del documento.
                       </p>
                     </div>
                   </div>

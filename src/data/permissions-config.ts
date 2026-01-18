@@ -2,9 +2,19 @@
  * CONFIGURACIÓN COMPLETA DE PERMISOS - BACKOFFICE ESAP
  * 
  * Este archivo centraliza TODOS los permisos del sistema
- * Actualizado: 30 de Noviembre, 2025
+ * Actualizado: 4 de Enero, 2026
  * 
  * IMPORTANTE: Mantener sincronizado con módulos activos en SidebarPremium.tsx
+ * 
+ * MÓDULO CONTROL INTERNO: Actualizado con 80 permisos granulares
+ * - Auditorías: 15 permisos
+ * - Plan de Mejoramiento: 12 permisos
+ * - Informes de Ley: 10 permisos
+ * - Expedientes: 10 permisos
+ * - Mapa de Riesgos: 12 permisos
+ * - Roles y Permisos CIG: 8 permisos
+ * - Configuraciones: 8 permisos
+ * - Dashboard y Reportes: 5 permisos
  */
 
 import {
@@ -721,81 +731,110 @@ export const PERMISSION_MODULES: PermissionModule[] = [
   },
 
   // ==========================================================================
-  // 10. CONTROL INTERNO (11 permisos)
+  // 10. CONTROL INTERNO DE GESTIÓN (80 permisos granulares)
   // ==========================================================================
   {
     id: 'control',
-    name: 'Control Interno',
+    name: 'Control Interno de Gestión',
     icon: ClipboardList,
     color: 'text-amber-600',
     bgColor: 'bg-amber-50',
     permissions: [
-      { 
-        id: 'control.view_audits', 
-        name: 'Ver Auditorías', 
-        description: 'Consultar auditorías registradas', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.create_audit', 
-        name: 'Crear Auditoría', 
-        description: 'Registrar nueva auditoría', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.edit_audit', 
-        name: 'Editar Auditoría', 
-        description: 'Modificar auditoría existente', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.view_findings', 
-        name: 'Ver Hallazgos', 
-        description: 'Consultar hallazgos de auditoría', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.create_finding', 
-        name: 'Crear Hallazgo', 
-        description: 'Registrar nuevo hallazgo', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.assign_finding', 
-        name: 'Asignar Hallazgo', 
-        description: 'Asignar responsable de hallazgo', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.close_finding', 
-        name: 'Cerrar Hallazgo', 
-        description: 'Cerrar hallazgo corregido', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.view_action_plans', 
-        name: 'Ver Planes de Acción', 
-        description: 'Consultar planes de mejora', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.create_action_plan', 
-        name: 'Crear Plan de Acción', 
-        description: 'Generar nuevo plan de mejora', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.export', 
-        name: 'Exportar Datos', 
-        description: 'Descargar reportes de control', 
-        module: 'control' 
-      },
-      { 
-        id: 'control.view_dashboard', 
-        name: 'Ver Dashboard', 
-        description: 'Consultar métricas de control interno', 
-        module: 'control' 
-      },
+      // ========== AUDITORÍAS (15 permisos) ==========
+      { id: 'control.auditorias.view', name: '👁️ Ver Auditorías', description: 'Consultar lista de auditorías registradas', module: 'control' },
+      { id: 'control.auditorias.create', name: '➕ Crear Auditoría', description: 'Registrar nueva auditoría en el sistema', module: 'control' },
+      { id: 'control.auditorias.edit', name: '✏️ Editar Auditoría', description: 'Modificar datos de auditoría existente', module: 'control' },
+      { id: 'control.auditorias.delete', name: '🗑️ Eliminar Auditoría', description: 'Eliminar auditoría del sistema', module: 'control' },
+      { id: 'control.auditorias.approve', name: '✅ Aprobar Auditoría', description: 'Aprobar auditoría finalizada', module: 'control' },
+      { id: 'control.auditorias.export', name: '📥 Exportar Auditorías', description: 'Descargar reportes de auditorías', module: 'control' },
+      { id: 'control.auditorias.assign', name: '👥 Asignar Auditor', description: 'Asignar responsable a auditoría', module: 'control' },
+      { id: 'control.auditorias.view_evidencias', name: '📎 Ver Evidencias', description: 'Consultar evidencias de auditoría', module: 'control' },
+      { id: 'control.auditorias.upload_evidencias', name: '📤 Cargar Evidencias', description: 'Subir documentos y evidencias', module: 'control' },
+      { id: 'control.auditorias.view_hallazgos', name: '🔍 Ver Hallazgos', description: 'Consultar hallazgos detectados', module: 'control' },
+      { id: 'control.auditorias.create_hallazgo', name: '📝 Crear Hallazgo', description: 'Registrar nuevo hallazgo de auditoría', module: 'control' },
+      { id: 'control.auditorias.close', name: '🔒 Cerrar Auditoría', description: 'Cerrar auditoría finalizada', module: 'control' },
+      { id: 'control.auditorias.reopen', name: '🔓 Reabrir Auditoría', description: 'Reabrir auditoría cerrada', module: 'control' },
+      { id: 'control.auditorias.view_stats', name: '📊 Ver Estadísticas', description: 'Consultar métricas de auditorías', module: 'control' },
+      { id: 'control.auditorias.programar', name: '📅 Programar Auditoría', description: 'Planificar auditoría futura', module: 'control' },
+
+      // ========== PLAN DE MEJORAMIENTO (12 permisos) ==========
+      { id: 'control.plan_mejoramiento.view', name: '👁️ Ver Planes', description: 'Consultar planes de mejoramiento', module: 'control' },
+      { id: 'control.plan_mejoramiento.create', name: '➕ Crear Plan', description: 'Generar nuevo plan de mejoramiento', module: 'control' },
+      { id: 'control.plan_mejoramiento.edit', name: '✏️ Editar Plan', description: 'Modificar plan existente', module: 'control' },
+      { id: 'control.plan_mejoramiento.delete', name: '🗑️ Eliminar Plan', description: 'Eliminar plan de mejoramiento', module: 'control' },
+      { id: 'control.plan_mejoramiento.approve', name: '✅ Aprobar Plan', description: 'Aprobar plan de mejoramiento', module: 'control' },
+      { id: 'control.plan_mejoramiento.assign', name: '👥 Asignar Responsable', description: 'Asignar persona responsable del plan', module: 'control' },
+      { id: 'control.plan_mejoramiento.track', name: '📈 Hacer Seguimiento', description: 'Realizar seguimiento y actualizar avances', module: 'control' },
+      { id: 'control.plan_mejoramiento.close', name: '🔒 Cerrar Plan', description: 'Cerrar plan completado', module: 'control' },
+      { id: 'control.plan_mejoramiento.export', name: '📥 Exportar Planes', description: 'Descargar reportes de planes', module: 'control' },
+      { id: 'control.plan_mejoramiento.view_cronograma', name: '📅 Ver Cronograma', description: 'Consultar cronograma de actividades', module: 'control' },
+      { id: 'control.plan_mejoramiento.upload_evidencias', name: '📤 Cargar Evidencias', description: 'Subir evidencias de cumplimiento', module: 'control' },
+      { id: 'control.plan_mejoramiento.view_stats', name: '📊 Ver Estadísticas', description: 'Consultar métricas de planes', module: 'control' },
+
+      // ========== INFORMES DE LEY (10 permisos) ==========
+      { id: 'control.informes_ley.view', name: '👁️ Ver Informes', description: 'Consultar informes de ley', module: 'control' },
+      { id: 'control.informes_ley.create', name: '➕ Crear Informe', description: 'Generar nuevo informe de ley', module: 'control' },
+      { id: 'control.informes_ley.edit', name: '✏️ Editar Informe', description: 'Modificar informe existente', module: 'control' },
+      { id: 'control.informes_ley.delete', name: '🗑️ Eliminar Informe', description: 'Eliminar informe del sistema', module: 'control' },
+      { id: 'control.informes_ley.approve', name: '✅ Aprobar Informe', description: 'Aprobar informe para publicación', module: 'control' },
+      { id: 'control.informes_ley.publish', name: '📢 Publicar Informe', description: 'Publicar informe en portal web', module: 'control' },
+      { id: 'control.informes_ley.export', name: '📥 Exportar Informes', description: 'Descargar informes en PDF/Excel', module: 'control' },
+      { id: 'control.informes_ley.upload_anexos', name: '📎 Cargar Anexos', description: 'Subir documentos anexos al informe', module: 'control' },
+      { id: 'control.informes_ley.send_authorities', name: '📧 Enviar a Entidades', description: 'Enviar informe a entes de control', module: 'control' },
+      { id: 'control.informes_ley.view_historico', name: '📚 Ver Histórico', description: 'Consultar histórico de informes', module: 'control' },
+
+      // ========== EXPEDIENTES (10 permisos) ==========
+      { id: 'control.expedientes.view', name: '👁️ Ver Expedientes', description: 'Consultar expedientes documentales', module: 'control' },
+      { id: 'control.expedientes.create', name: '➕ Crear Expediente', description: 'Abrir nuevo expediente', module: 'control' },
+      { id: 'control.expedientes.edit', name: '✏️ Editar Expediente', description: 'Modificar datos del expediente', module: 'control' },
+      { id: 'control.expedientes.delete', name: '🗑️ Eliminar Expediente', description: 'Eliminar expediente del sistema', module: 'control' },
+      { id: 'control.expedientes.upload_documents', name: '📤 Cargar Documentos', description: 'Subir archivos al expediente', module: 'control' },
+      { id: 'control.expedientes.download_documents', name: '📥 Descargar Documentos', description: 'Descargar archivos del expediente', module: 'control' },
+      { id: 'control.expedientes.close', name: '🔒 Cerrar Expediente', description: 'Cerrar expediente finalizado', module: 'control' },
+      { id: 'control.expedientes.archive', name: '📦 Archivar Expediente', description: 'Enviar expediente a archivo', module: 'control' },
+      { id: 'control.expedientes.search', name: '🔍 Buscar Expedientes', description: 'Búsqueda avanzada de expedientes', module: 'control' },
+      { id: 'control.expedientes.export', name: '📥 Exportar Expedientes', description: 'Descargar listado de expedientes', module: 'control' },
+
+      // ========== MAPA DE RIESGOS (12 permisos) ==========
+      { id: 'control.mapa_riesgos.view', name: '👁️ Ver Mapa de Riesgos', description: 'Consultar matriz de riesgos', module: 'control' },
+      { id: 'control.mapa_riesgos.create', name: '➕ Crear Riesgo', description: 'Registrar nuevo riesgo identificado', module: 'control' },
+      { id: 'control.mapa_riesgos.edit', name: '✏️ Editar Riesgo', description: 'Modificar riesgo existente', module: 'control' },
+      { id: 'control.mapa_riesgos.delete', name: '🗑️ Eliminar Riesgo', description: 'Eliminar riesgo del mapa', module: 'control' },
+      { id: 'control.mapa_riesgos.evaluate', name: '📊 Evaluar Riesgo', description: 'Calificar probabilidad e impacto', module: 'control' },
+      { id: 'control.mapa_riesgos.assign_controls', name: '🛡️ Asignar Controles', description: 'Asignar controles de mitigación', module: 'control' },
+      { id: 'control.mapa_riesgos.monitor', name: '📈 Monitorear Riesgos', description: 'Hacer seguimiento a riesgos', module: 'control' },
+      { id: 'control.mapa_riesgos.export', name: '📥 Exportar Mapa', description: 'Descargar matriz de riesgos', module: 'control' },
+      { id: 'control.mapa_riesgos.view_matriz', name: '🎯 Ver Matriz 3x3', description: 'Visualizar matriz de calor', module: 'control' },
+      { id: 'control.mapa_riesgos.approve', name: '✅ Aprobar Riesgo', description: 'Aprobar clasificación de riesgo', module: 'control' },
+      { id: 'control.mapa_riesgos.assign_responsable', name: '👥 Asignar Responsable', description: 'Asignar dueño del riesgo', module: 'control' },
+      { id: 'control.mapa_riesgos.view_historico', name: '📚 Ver Histórico', description: 'Consultar evolución de riesgos', module: 'control' },
+
+      // ========== ROLES Y PERMISOS (Control Interno) (8 permisos) ==========
+      { id: 'control.roles.view_equipo', name: '👁️ Ver Equipo', description: 'Consultar equipo de Control Interno', module: 'control' },
+      { id: 'control.roles.assign_persona', name: '👥 Asignar Persona', description: 'Asignar persona al equipo de Control Interno', module: 'control' },
+      { id: 'control.roles.remove_persona', name: '🗑️ Remover Persona', description: 'Remover persona del equipo', module: 'control' },
+      { id: 'control.roles.edit_permisos', name: '✏️ Editar Permisos', description: 'Modificar permisos de persona', module: 'control' },
+      { id: 'control.roles.view_matriz', name: '📋 Ver Matriz Permisos', description: 'Consultar matriz de permisos por rol', module: 'control' },
+      { id: 'control.roles.export', name: '📥 Exportar Equipo', description: 'Descargar listado del equipo', module: 'control' },
+      { id: 'control.roles.view_detalle', name: '🔍 Ver Detalle Persona', description: 'Consultar información completa de persona', module: 'control' },
+      { id: 'control.roles.change_rol', name: '🔄 Cambiar Rol', description: 'Modificar rol asignado a persona', module: 'control' },
+
+      // ========== CONFIGURACIONES (8 permisos) ==========
+      { id: 'control.config.view', name: '👁️ Ver Configuraciones', description: 'Consultar configuración del módulo', module: 'control' },
+      { id: 'control.config.edit_general', name: '⚙️ Editar General', description: 'Modificar configuración general', module: 'control' },
+      { id: 'control.config.manage_tipos_auditoria', name: '📝 Gestionar Tipos Auditoría', description: 'Administrar tipos de auditoría', module: 'control' },
+      { id: 'control.config.manage_estados', name: '🏷️ Gestionar Estados', description: 'Administrar estados de procesos', module: 'control' },
+      { id: 'control.config.manage_templates', name: '📄 Gestionar Plantillas', description: 'Administrar plantillas de documentos', module: 'control' },
+      { id: 'control.config.manage_notificaciones', name: '🔔 Gestionar Notificaciones', description: 'Configurar alertas y notificaciones', module: 'control' },
+      { id: 'control.config.backup', name: '💾 Hacer Respaldo', description: 'Generar backup de configuración', module: 'control' },
+      { id: 'control.config.restore', name: '♻️ Restaurar Config', description: 'Restaurar configuración anterior', module: 'control' },
+
+      // ========== DASHBOARD Y REPORTES (5 permisos) ==========
+      { id: 'control.dashboard.view', name: '📊 Ver Dashboard', description: 'Consultar dashboard de Control Interno', module: 'control' },
+      { id: 'control.dashboard.view_kpis', name: '📈 Ver Indicadores', description: 'Consultar KPIs del módulo', module: 'control' },
+      { id: 'control.dashboard.export_reports', name: '📥 Exportar Reportes', description: 'Descargar reportes consolidados', module: 'control' },
+      { id: 'control.dashboard.view_analytics', name: '🔍 Ver Analítica', description: 'Consultar análisis avanzado', module: 'control' },
+      { id: 'control.dashboard.customize', name: '🎨 Personalizar Dashboard', description: 'Configurar widgets del dashboard', module: 'control' },
     ]
   },
 

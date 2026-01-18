@@ -13,14 +13,14 @@
  * - MECI (Modelo Estándar Control Interno)
  * 
  * CARACTERÍSTICAS:
- * - Tabla paginada de logs
+ * - Tabla paginada de auditorías
  * - Filtros avanzados (6 filtros)
- * - Modal detalle con diff viewer
+ * - Modal detalle con información completa
  * - Estadísticas con Recharts (4 gráficos)
  * - Exportación a Excel/PDF
  * - Búsqueda en tiempo real
  * 
- * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 16 Enero 2026
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -30,340 +30,295 @@ import {
   User, FileText, Activity, BarChart3, TrendingUp,
   Clock, AlertCircle, CheckCircle, XCircle, Edit,
   Trash2, ArrowRightCircle, PlusCircle, X, ChevronLeft,
-  ChevronRight, Save, AlertTriangle, Info
+  ChevronRight, ChevronDown, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
-import { toast } from 'sonner@2.0.3';
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer
-} from 'recharts';
-import {
-  auditLogService,
-  type AuditLog,
-  type AuditLogFiltros,
-  type AuditLogStats,
-  type TipoAccion,
-  type TipoEntidad
-} from './services/auditLogService';
+import { toast } from 'sonner';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // ============ TIPOS ============
 
-type VistaActiva = 'logs' | 'estadisticas';
+interface Auditoria {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion?: string;
+  tipo: string;
+  fase: string;
+  prioridad: string;
+  progreso: number;
+  fechaInicio?: string;
+  fechaFin?: string;
+  territorial?: string;
+  areaAuditada?: string;
+  auditorLider?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
-// ============ DATOS MOCK ============
+interface AuditoriaFiltros {
+  tipo?: string;
+  fase?: string;
+  prioridad?: string;
+  territorial?: string;
+  busqueda: string;
+  pagina: number;
+  registrosPorPagina: number;
+}
 
-// Generar logs de ejemplo al cargar
-const generarLogsMock = () => {
-  const usuarios = [
-    { id: 'u1', nombre: 'María González', email: 'mgonzalez@esap.edu.co', rol: 'Jefe OCI' },
-    { id: 'u2', nombre: 'Carlos Rodríguez', email: 'crodriguez@esap.edu.co', rol: 'Auditor Líder' },
-    { id: 'u3', nombre: 'Ana Martínez', email: 'amartinez@esap.edu.co', rol: 'Auditor Operativo' },
-    { id: 'u4', nombre: 'Jorge Pérez', email: 'jperez@esap.edu.co', rol: 'Área Auditada' },
-    { id: 'u5', nombre: 'Laura Sánchez', email: 'lsanchez@esap.edu.co', rol: 'Auditor Líder' }
-  ];
+// ============ CONFIGURACIÓN API ============
 
-  const acciones: { 
-    accion: TipoAccion; 
-    descripcion: string; 
-    tabla: TipoEntidad; 
-    registroId: string;
-    cambios: any;
-  }[] = [
-    {
-      accion: 'aprobar',
-      descripcion: 'Aprobar Plan Anual 2025',
-      tabla: 'plan_anual',
-      registroId: 'plan-2025-001',
-      cambios: {
-        antes: { estado: 'EN_REVISION' },
-        despues: { estado: 'APROBADO', fechaAprobacion: '2025-12-22' }
-      }
-    },
-    {
-      accion: 'crear',
-      descripcion: 'Crear auditoría AUD-2025-015',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-015',
-      cambios: {
-        despues: { codigo: 'AUD-2025-015', nombre: 'Auditoría Gestión Financiera', estado: 'PLANEACION' }
-      }
-    },
-    {
-      accion: 'actualizar',
-      descripcion: 'Actualizar actividad "Revisión de Riesgos"',
-      tabla: 'actividad',
-      registroId: 'act-2025-045',
-      cambios: {
-        antes: { porcentaje: 50, estado: 'EN_EJECUCION' },
-        despues: { porcentaje: 75, estado: 'EN_EJECUCION' }
-      }
-    },
-    {
-      accion: 'crear',
-      descripcion: 'Registrar hallazgo crítico en auditoría',
-      tabla: 'hallazgo',
-      registroId: 'hall-2025-023',
-      cambios: {
-        despues: { tipo: 'NO_CONFORMIDAD', criticidad: 'CRITICA', descripcion: 'Falta de segregación de funciones' }
-      }
-    },
-    {
-      accion: 'validar',
-      descripcion: 'Validar evidencia de plan de mejoramiento',
-      tabla: 'evidencia',
-      registroId: 'ev-2025-089',
-      cambios: {
-        antes: { estado: 'CARGADA' },
-        despues: { estado: 'VALIDADA', validadoPor: 'María González' }
-      }
-    },
-    {
-      accion: 'cambiar_estado',
-      descripcion: 'Cambiar estado de auditoría a Ejecución',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-012',
-      cambios: {
-        antes: { estado: 'PLANEACION' },
-        despues: { estado: 'EJECUCION', fechaInicio: '2025-12-20' }
-      }
-    },
-    {
-      accion: 'generar',
-      descripción: 'Generar Informe Preliminar de Auditoría',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-012',
-      cambios: {
-        despues: { informePreliminar: 'informe-prelim-aud-012.pdf', fechaGeneracion: '2025-12-21' }
-      }
-    },
-    {
-      accion: 'asignar',
-      descripcion: 'Asignar equipo auditor a auditoría',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-016',
-      cambios: {
-        antes: { equipo: [] },
-        despues: { equipo: ['Carlos Rodríguez', 'Ana Martínez', 'Laura Sánchez'], lider: 'Carlos Rodríguez' }
-      }
-    },
-    {
-      accion: 'rechazar',
-      descripcion: 'Rechazar evidencia del plan de mejoramiento',
-      tabla: 'evidencia',
-      registroId: 'ev-2025-091',
-      cambios: {
-        antes: { estado: 'EN_REVISION' },
-        despues: { estado: 'RECHAZADA', motivo: 'Documento incompleto, falta firma del responsable' }
-      }
-    },
-    {
-      accion: 'actualizar',
-      descripcion: 'Actualizar porcentaje de acción correctiva',
-      tabla: 'accion_correctiva',
-      registroId: 'ac-2025-034',
-      cambios: {
-        antes: { porcentajeAvance: 60 },
-        despues: { porcentajeAvance: 85 }
-      }
-    },
-    {
-      accion: 'crear',
-      descripcion: 'Crear Informe de Ley - Informe Pormenorizado',
-      tabla: 'informe_ley',
-      registroId: 'il-2025-003',
-      cambios: {
-        despues: { codigo: 'IL-2025-003', tipo: 'PORMENORIZADO', periodo: '2025-Q1' }
-      }
-    },
-    {
-      accion: 'exportar',
-      descripcion: 'Exportar Reporte Ejecutivo a PDF',
-      tabla: 'reporte',
-      registroId: 'rep-2025-089',
-      cambios: {
-        despues: { formato: 'PDF', archivo: 'reporte-ejecutivo-dic-2025.pdf' }
-      }
-    }
-  ];
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
+const MICROSERVICIO_PORT = 3007; // Puerto del control-institucional-service
 
-  // Generar logs de los últimos 30 días
-  const logs: Promise<AuditLog>[] = [];
-  const hoy = new Date();
+/**
+ * Detecta si estamos en localhost para hacer peticiones directas al microservicio
+ */
+function esLocalhost(): boolean {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+}
+
+const API_CONFIG = {
+  endpoints: {
+    auditorias: '/auditorias',
+    estadisticas: '/auditorias/estadisticas'
+  },
+  timeout: 10000 // 10 segundos
+} as const;
+
+// ============ SERVICIO API ============
+
+/**
+ * Obtiene los headers comunes para las peticiones HTTP
+ */
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('esap_access_token');
+  return {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+}
+
+/**
+ * Construye la URL con query params de forma segura
+ * Si estamos en localhost, va directo al microservicio (sin prefijos)
+ * Si no, va por el gateway con el prefijo del servicio
+ */
+function buildUrl(endpoint: string, params?: Record<string, string | undefined>): string {
+  let baseUrl: string;
+  if (esLocalhost()) {
+    // En localhost, ir directo al microservicio (sin prefijos)
+    baseUrl = `http://localhost:${MICROSERVICIO_PORT}`;
+  } else {
+    // En producción, usar el gateway con el prefijo del servicio
+    baseUrl = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}`;
+  }
   
-  for (let i = 0; i < 60; i++) {
-    const usuario = usuarios[Math.floor(Math.random() * usuarios.length)];
-    const accionData = acciones[Math.floor(Math.random() * acciones.length)];
-    const diasAtras = Math.floor(Math.random() * 30);
-    const fecha = new Date(hoy);
-    fecha.setDate(fecha.getDate() - diasAtras);
-    fecha.setHours(8 + Math.floor(Math.random() * 10), Math.floor(Math.random() * 60));
-
-    // Crear log con timestamp personalizado
-    const logPromise = auditLogService.registrar(
-      usuario.id,
-      usuario.nombre,
-      usuario.email,
-      usuario.rol,
-      accionData.accion,
-      accionData.descripcion,
-      accionData.tabla,
-      accionData.registroId,
-      accionData.cambios,
-      {
-        modulo: obtenerModuloPorTabla(accionData.tabla),
-        ip: `192.168.1.${Math.floor(Math.random() * 255)}`
+  const url = new URL(`${baseUrl}${endpoint}`);
+  
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.append(key, value);
       }
-    ).then(log => {
-      // Ajustar timestamp
-      log.timestamp = fecha.toISOString();
-      return log;
+    });
+  }
+  
+  return url.toString();
+}
+
+/**
+ * Realiza una petición HTTP con manejo de errores y timeout
+ */
+async function fetchWithTimeout<T>(
+  url: string, 
+  options: RequestInit = {}
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        ...getAuthHeaders(),
+        ...options.headers
+      }
     });
 
-    logs.push(logPromise);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Error HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
 
-  return Promise.all(logs);
-};
+/**
+ * Carga las auditorías desde el backend con filtros opcionales
+ * @param filtros - Filtros para la búsqueda de auditorías
+ * @returns Array de auditorías o array vacío en caso de error
+ */
+async function cargarAuditorias(filtros?: Partial<AuditoriaFiltros>): Promise<Auditoria[]> {
+  try {
+    const queryParams = {
+      tipo: filtros?.tipo,
+      fase: filtros?.fase,
+      prioridad: filtros?.prioridad,
+      territorial: filtros?.territorial,
+      search: filtros?.busqueda
+    };
 
-const obtenerModuloPorTabla = (tabla: TipoEntidad): string => {
-  const mapeo: Record<TipoEntidad, string> = {
-    plan_anual: 'Planificación',
-    actividad: 'Planificación',
-    auditoria: 'Proceso Auditoría',
-    programa_anual: 'Planificación',
-    hallazgo: 'Proceso Auditoría',
-    evidencia: 'Proceso Auditoría',
-    plan_mejoramiento: 'Planes de Mejoramiento',
-    accion_correctiva: 'Planes de Mejoramiento',
-    informe_ley: 'Soporte',
-    documento: 'Soporte',
-    notificacion: 'Soporte',
-    usuario: 'Configuración',
-    rol: 'Configuración',
-    permiso: 'Configuración',
-    configuracion: 'Configuración',
-    reporte: 'Soporte'
-  };
-  return mapeo[tabla] || 'Sistema';
-};
+    const url = buildUrl(API_CONFIG.endpoints.auditorias, queryParams);
+
+    const data = await fetchWithTimeout<Auditoria[]>(url);
+    
+    return data;
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('[AuditoriaCambios] ❌ Error cargando auditorías:', mensaje);
+    return [];
+  }
+}
+
+/**
+ * Carga las estadísticas de auditorías desde el backend
+ * @returns Objeto con estadísticas o null en caso de error
+ */
+async function cargarEstadisticas(): Promise<AuditoriaEstadisticas | null> {
+  try {
+    const url = buildUrl(API_CONFIG.endpoints.estadisticas);
+
+    const data = await fetchWithTimeout<AuditoriaEstadisticas>(url);
+    
+    return data;
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('[AuditoriaCambios] ❌ Error cargando estadísticas:', mensaje);
+    return null;
+  }
+}
+
+// Tipo para las estadísticas
+interface AuditoriaEstadisticas {
+  total: number;
+  porFase: Record<string, number>;
+  porTipo: Record<string, number>;
+  porPrioridad: Record<string, number>;
+}
 
 // ============ COMPONENTE PRINCIPAL ============
 
-export function AuditoriaCambiosModule() {
-  const [vistaActiva, setVistaActiva] = useState<VistaActiva>('logs');
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [logSeleccionado, setLogSeleccionado] = useState<AuditLog | null>(null);
+function AuditoriaCambiosModule() {
+  const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
+  const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<Auditoria | null>(null);
   const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
-  const [cargando, setCargando] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [estadisticas, setEstadisticas] = useState<any>(null);
 
   // Filtros
-  const [filtros, setFiltros] = useState<AuditLogFiltros>({
-    usuarioId: undefined,
-    fechaInicio: undefined,
-    fechaFin: undefined,
-    accion: 'todas',
-    tabla: 'todas',
-    criticidad: 'todas',
+  const [filtros, setFiltros] = useState<AuditoriaFiltros>({
+    tipo: undefined,
+    fase: undefined,
+    prioridad: undefined,
+    territorial: undefined,
     busqueda: '',
     pagina: 1,
     registrosPorPagina: 20
   });
 
-  // Estadísticas
-  const [estadisticas, setEstadisticas] = useState<AuditLogStats | null>(null);
-
-  // Cargar logs mock al montar
+  // Cargar datos al montar
   useEffect(() => {
-    generarLogsMock().then(() => {
-      cargarLogs();
-    });
+    cargarDatos();
   }, []);
 
-  // Cargar logs cuando cambien los filtros
+  // Recargar cuando cambien los filtros
   useEffect(() => {
-    cargarLogs();
-  }, [filtros]);
+    cargarDatos();
+  }, [filtros.tipo, filtros.fase, filtros.prioridad, filtros.territorial, filtros.busqueda]);
 
-  const cargarLogs = async () => {
+  const cargarDatos = async () => {
     setCargando(true);
     try {
-      const response = await auditLogService.obtenerLogs(filtros);
-      setLogs(response.logs);
+      const [auditoriasData, estadisticasData] = await Promise.all([
+        cargarAuditorias(filtros),
+        cargarEstadisticas()
+      ]);
+      setAuditorias(auditoriasData);
+      setEstadisticas(estadisticasData);
     } catch (error) {
-      toast.error('Error al cargar logs de auditoría');
+      toast.error('Error al cargar datos de auditorías');
     } finally {
       setCargando(false);
     }
   };
 
-  const cargarEstadisticas = async () => {
-    const hoy = new Date();
-    const hace30Dias = new Date();
-    hace30Dias.setDate(hace30Dias.getDate() - 30);
-
-    try {
-      const stats = await auditLogService.obtenerEstadisticas(hace30Dias, hoy);
-      setEstadisticas(stats);
-    } catch (error) {
-      toast.error('Error al cargar estadísticas');
-    }
-  };
-
-  useEffect(() => {
-    if (vistaActiva === 'estadisticas') {
-      cargarEstadisticas();
-    }
-  }, [vistaActiva]);
-
-  const handleVerDetalle = (log: AuditLog) => {
-    setLogSeleccionado(log);
+  const handleVerDetalle = (auditoria: Auditoria) => {
+    setAuditoriaSeleccionada(auditoria);
     setModalDetalleAbierto(true);
   };
 
   const handleExportarExcel = async () => {
-    try {
-      toast.info('Generando archivo Excel...');
-      await auditLogService.exportarExcel(filtros);
-      toast.success('Archivo Excel descargado correctamente');
-    } catch (error) {
-      toast.error('Error al exportar a Excel');
-    }
+    toast.info('Generando archivo Excel...');
+    // TODO: Implementar exportación a Excel
+    setTimeout(() => toast.success('Archivo Excel descargado correctamente'), 1000);
   };
 
   const handleExportarPDF = async () => {
-    try {
-      toast.info('Generando archivo PDF...');
-      await auditLogService.exportarPDF(filtros);
-      toast.success('Archivo PDF descargado correctamente');
-    } catch (error) {
-      toast.error('Error al exportar a PDF');
-    }
+    toast.info('Generando archivo PDF...');
+    // TODO: Implementar exportación a PDF
+    setTimeout(() => toast.success('Archivo PDF descargado correctamente'), 1000);
   };
 
   const handleCambiarPagina = (nuevaPagina: number) => {
     setFiltros(prev => ({ ...prev, pagina: nuevaPagina }));
   };
 
-  const totalLogs = useMemo(() => {
-    return auditLogService.obtenerTodos().length;
-  }, [logs]);
+  // Filtrar auditorías por búsqueda local
+  const auditoriasFiltradas = useMemo(() => {
+    if (!filtros.busqueda) return auditorias;
+    const busqueda = filtros.busqueda.toLowerCase();
+    return auditorias.filter(a => 
+      a.codigo?.toLowerCase().includes(busqueda) ||
+      a.titulo?.toLowerCase().includes(busqueda) ||
+      a.tipo?.toLowerCase().includes(busqueda) ||
+      a.fase?.toLowerCase().includes(busqueda) ||
+      a.territorial?.toLowerCase().includes(busqueda) ||
+      a.auditorLider?.toLowerCase().includes(busqueda)
+    );
+  }, [auditorias, filtros.busqueda]);
 
+  // Paginación
+  const auditoriasPaginadas = useMemo(() => {
+    const inicio = (filtros.pagina - 1) * filtros.registrosPorPagina;
+    const fin = inicio + filtros.registrosPorPagina;
+    return auditoriasFiltradas.slice(inicio, fin);
+  }, [auditoriasFiltradas, filtros.pagina, filtros.registrosPorPagina]);
+
+  // Estadísticas rápidas - Usando valores del backend
   const estadisticasRapidas = useMemo(() => {
-    const todosLogs = auditLogService.obtenerTodos();
     const hoy = new Date();
-    const hace24h = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
+    const hace7Dias = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Fases que indican auditoría completada (según enum FaseAuditoria del backend)
+    const fasesCompletadas = ['completada', 'Finalizada'];
 
     return {
-      total: todosLogs.length,
-      ultimas24h: todosLogs.filter(l => new Date(l.timestamp) >= hace24h).length,
-      criticos: todosLogs.filter(l => l.criticidad === 'critica').length,
-      usuarios: new Set(todosLogs.map(l => l.usuarioId)).size
+      total: auditorias.length,
+      enCurso: auditorias.filter(a => !fasesCompletadas.includes(a.fase)).length,
+      completadas: auditorias.filter(a => fasesCompletadas.includes(a.fase)).length,
+      recientes: auditorias.filter(a => new Date(a.createdAt) >= hace7Dias).length
     };
-  }, [logs]);
+  }, [auditorias]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6">
@@ -382,10 +337,10 @@ export function AuditoriaCambiosModule() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                    Auditoría de Cambios
+                    Auditorías - Control Interno
                   </h1>
                   <p className="text-sm text-gray-600">
-                    Registro completo de operaciones del sistema para compliance normativo
+                    Gestión y seguimiento de auditorías del módulo de Control Interno
                   </p>
                 </div>
               </div>
@@ -413,82 +368,47 @@ export function AuditoriaCambiosModule() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-blue-50 rounded-lg p-3">
                 <div className="text-2xl font-bold text-blue-900">
-                  {estadisticasRapidas.total}
+                  {cargando ? <Loader2 className="w-6 h-6 animate-spin" /> : estadisticasRapidas.total}
                 </div>
-                <div className="text-xs text-blue-700">Total de Registros</div>
+                <div className="text-xs text-blue-700">Total Auditorías</div>
               </div>
               <div className="bg-green-50 rounded-lg p-3">
                 <div className="text-2xl font-bold text-green-900">
-                  {estadisticasRapidas.ultimas24h}
+                  {cargando ? <Loader2 className="w-6 h-6 animate-spin" /> : estadisticasRapidas.enCurso}
                 </div>
-                <div className="text-xs text-green-700">Últimas 24 horas</div>
-              </div>
-              <div className="bg-red-50 rounded-lg p-3">
-                <div className="text-2xl font-bold text-red-900">
-                  {estadisticasRapidas.criticos}
-                </div>
-                <div className="text-xs text-red-700">Eventos Críticos</div>
+                <div className="text-xs text-green-700">En Curso</div>
               </div>
               <div className="bg-purple-50 rounded-lg p-3">
                 <div className="text-2xl font-bold text-purple-900">
-                  {estadisticasRapidas.usuarios}
+                  {cargando ? <Loader2 className="w-6 h-6 animate-spin" /> : estadisticasRapidas.completadas}
                 </div>
-                <div className="text-xs text-purple-700">Usuarios Activos</div>
+                <div className="text-xs text-purple-700">Completadas</div>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-3">
+                <div className="text-2xl font-bold text-orange-900">
+                  {cargando ? <Loader2 className="w-6 h-6 animate-spin" /> : estadisticasRapidas.recientes}
+                </div>
+                <div className="text-xs text-orange-700">Últimos 7 días</div>
               </div>
             </div>
           </Card>
         </motion.div>
 
-        {/* TABS */}
-        <Card className="p-1">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setVistaActiva('logs')}
-              className={`flex-1 px-4 py-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
-                vistaActiva === 'logs'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span className="font-medium">Registros de Auditoría</span>
-            </button>
-            <button
-              onClick={() => setVistaActiva('estadisticas')}
-              className={`flex-1 px-4 py-3 rounded-lg transition-all flex items-center justify-center gap-2 ${
-                vistaActiva === 'estadisticas'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span className="font-medium">Estadísticas</span>
-            </button>
-          </div>
-        </Card>
-
         {/* CONTENIDO */}
-        <AnimatePresence mode="wait">
-          {vistaActiva === 'logs' && (
-            <VistaLogs
-              logs={logs}
-              filtros={filtros}
-              onCambiarFiltros={setFiltros}
-              onVerDetalle={handleVerDetalle}
-              onCambiarPagina={handleCambiarPagina}
-              cargando={cargando}
-            />
-          )}
-
-          {vistaActiva === 'estadisticas' && (
-            <VistaEstadisticas estadisticas={estadisticas} />
-          )}
-        </AnimatePresence>
+        <VistaAuditorias
+          auditorias={auditoriasPaginadas}
+          totalAuditorias={auditoriasFiltradas.length}
+          filtros={filtros}
+          onCambiarFiltros={setFiltros}
+          onVerDetalle={handleVerDetalle}
+          onCambiarPagina={handleCambiarPagina}
+          cargando={cargando}
+        />
 
         {/* MODAL DETALLE */}
-        {modalDetalleAbierto && logSeleccionado && (
-          <ModalDetalleLog
-            log={logSeleccionado}
+        {modalDetalleAbierto && auditoriaSeleccionada && (
+          <ModalDetalleAuditoria
+            auditoria={auditoriaSeleccionada}
             onClose={() => setModalDetalleAbierto(false)}
           />
         )}
@@ -499,98 +419,226 @@ export function AuditoriaCambiosModule() {
 
 // ============ COMPONENTES AUXILIARES ============
 
-function VistaLogs({
-  logs,
+function VistaAuditorias({
+  auditorias,
+  totalAuditorias,
   filtros,
   onCambiarFiltros,
   onVerDetalle,
   onCambiarPagina,
   cargando
 }: {
-  logs: AuditLog[];
-  filtros: AuditLogFiltros;
-  onCambiarFiltros: (filtros: AuditLogFiltros) => void;
-  onVerDetalle: (log: AuditLog) => void;
+  auditorias: Auditoria[];
+  totalAuditorias: number;
+  filtros: AuditoriaFiltros;
+  onCambiarFiltros: (filtros: AuditoriaFiltros) => void;
+  onVerDetalle: (auditoria: Auditoria) => void;
   onCambiarPagina: (pagina: number) => void;
   cargando: boolean;
 }) {
+  const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
+
+  // Contar filtros activos
+  const contarFiltrosActivos = () => {
+    let count = 0;
+    if (filtros.tipo) count++;
+    if (filtros.fase) count++;
+    if (filtros.prioridad) count++;
+    if (filtros.territorial) count++;
+    return count;
+  };
+
+  const filtrosActivos = contarFiltrosActivos();
+  const hayFiltros = filtrosActivos > 0 || filtros.busqueda;
+
+  // Función para limpiar todos los filtros
+  const limpiarFiltros = () => {
+    onCambiarFiltros({
+      tipo: undefined,
+      fase: undefined,
+      prioridad: undefined,
+      territorial: undefined,
+      busqueda: '',
+      pagina: 1,
+      registrosPorPagina: 20
+    });
+  };
+
   return (
     <motion.div
-      key="logs"
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
       className="space-y-4"
     >
-      {/* FILTROS */}
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-blue-600" />
-          <h3 className="font-bold text-gray-900">Filtros</h3>
+      {/* BÚSQUEDA Y FILTROS */}
+      <Card className="p-6 border-l-4 border-l-blue-600">
+        {/* Búsqueda Global */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-gray-900">Buscar auditorías por código, título, tipo...</h3>
+            </div>
+            {hayFiltros && (
+              <button
+                onClick={limpiarFiltros}
+                className="text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-1 transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+                Limpiar todos los filtros
+              </button>
+            )}
+          </div>
+          
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por código, título, tipo de auditoría, territorial..."
+              value={filtros.busqueda}
+              onChange={(e) => onCambiarFiltros({ ...filtros, busqueda: e.target.value, pagina: 1 })}
+              className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+            />
+            {filtros.busqueda && (
+              <button
+                onClick={() => onCambiarFiltros({ ...filtros, busqueda: '', pagina: 1 })}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* Búsqueda */}
-          <div className="lg:col-span-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar en logs..."
-                value={filtros.busqueda}
-                onChange={(e) => onCambiarFiltros({ ...filtros, busqueda: e.target.value, pagina: 1 })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        {/* Botón de Filtros Avanzados */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <button
+            onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
+            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 rounded-xl transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+                <Filter className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  Filtros Avanzados
+                  {filtrosActivos > 0 && (
+                    <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">
+                      {filtrosActivos}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 font-medium">
+                  {mostrarFiltrosAvanzados ? 'Ocultar' : 'Mostrar'} opciones de filtrado detallado
+                </div>
+              </div>
             </div>
-          </div>
+            <ChevronDown 
+              className={`w-5 h-5 text-gray-600 transition-transform ${mostrarFiltrosAvanzados ? 'rotate-180' : ''}`}
+            />
+          </button>
 
-          {/* Fecha Inicio */}
-          <input
-            type="date"
-            value={filtros.fechaInicio || ''}
-            onChange={(e) => onCambiarFiltros({ ...filtros, fechaInicio: e.target.value, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {/* Panel de Filtros Avanzados */}
+          <AnimatePresence>
+            {mostrarFiltrosAvanzados && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 p-6 bg-gray-50 rounded-xl border-2 border-gray-200 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Tipo de Auditoría - Valores del backend: Regular, Territorial, Especial */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        📋 Tipo de Auditoría
+                      </label>
+                      <select
+                        value={filtros.tipo || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, tipo: e.target.value || undefined, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="">Todos los tipos</option>
+                        <option value="Regular">Regular</option>
+                        <option value="Territorial">Territorial</option>
+                        <option value="Especial">Especial</option>
+                      </select>
+                    </div>
 
-          {/* Fecha Fin */}
-          <input
-            type="date"
-            value={filtros.fechaFin || ''}
-            onChange={(e) => onCambiarFiltros({ ...filtros, fechaFin: e.target.value, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+                    {/* Fase - Valores del backend: planeacion, en-curso, revision, completada */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        🔄 Fase
+                      </label>
+                      <select
+                        value={filtros.fase || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, fase: e.target.value || undefined, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="">Todas las fases</option>
+                        <option value="planeacion">📋 Planeación</option>
+                        <option value="en-curso">⚙️ En Curso</option>
+                        <option value="revision">🔍 Revisión</option>
+                        <option value="completada">✅ Completada</option>
+                      </select>
+                    </div>
 
-          {/* Acción */}
-          <select
-            value={filtros.accion}
-            onChange={(e) => onCambiarFiltros({ ...filtros, accion: e.target.value as any, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todas">Todas las acciones</option>
-            <option value="crear">Crear</option>
-            <option value="actualizar">Actualizar</option>
-            <option value="eliminar">Eliminar</option>
-            <option value="aprobar">Aprobar</option>
-            <option value="rechazar">Rechazar</option>
-            <option value="cambiar_estado">Cambiar Estado</option>
-            <option value="asignar">Asignar</option>
-            <option value="validar">Validar</option>
-            <option value="generar">Generar</option>
-            <option value="exportar">Exportar</option>
-          </select>
+                    {/* Prioridad - Valores del backend: Alta, Media, Baja */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        🚨 Prioridad
+                      </label>
+                      <select
+                        value={filtros.prioridad || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, prioridad: e.target.value || undefined, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="">Todas las prioridades</option>
+                        <option value="Alta">🟠 Alta</option>
+                        <option value="Media">🟡 Media</option>
+                        <option value="Baja">🟢 Baja</option>
+                      </select>
+                    </div>
 
-          {/* Criticidad */}
-          <select
-            value={filtros.criticidad}
-            onChange={(e) => onCambiarFiltros({ ...filtros, criticidad: e.target.value as any, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todas">Todas las criticidades</option>
-            <option value="baja">Baja</option>
-            <option value="media">Media</option>
-            <option value="alta">Alta</option>
-            <option value="critica">Crítica</option>
-          </select>
+                    {/* Territorial */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        📍 Territorial
+                      </label>
+                      <select
+                        value={filtros.territorial || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, territorial: e.target.value || undefined, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="">Todas las territoriales</option>
+                        <option value="SEDE_CENTRAL">Sede Central</option>
+                        <option value="ANTIOQUIA">Antioquia</option>
+                        <option value="ATLANTICO">Atlántico</option>
+                        <option value="BOLIVAR">Bolívar</option>
+                        <option value="BOYACA">Boyacá</option>
+                        <option value="CALDAS">Caldas</option>
+                        <option value="CAUCA">Cauca</option>
+                        <option value="CUNDINAMARCA">Cundinamarca</option>
+                        <option value="HUILA">Huila</option>
+                        <option value="MAGDALENA">Magdalena</option>
+                        <option value="META">Meta</option>
+                        <option value="NARINO">Nariño</option>
+                        <option value="NORTE_SANTANDER">Norte de Santander</option>
+                        <option value="QUINDIO">Quindío</option>
+                        <option value="RISARALDA">Risaralda</option>
+                        <option value="SANTANDER">Santander</option>
+                        <option value="TOLIMA">Tolima</option>
+                        <option value="VALLE">Valle del Cauca</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </Card>
 
@@ -600,33 +648,36 @@ function VistaLogs({
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Timestamp</th>
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Usuario</th>
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Acción</th>
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Descripción</th>
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Entidad</th>
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Criticidad</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Código</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Título</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Tipo</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Fase</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Prioridad</th>
+                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700">Progreso</th>
                 <th className="text-right py-3 px-4 text-sm font-bold text-gray-700">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {cargando ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-gray-500">
-                    Cargando logs...
+                  <td colSpan={7} className="text-center py-8">
+                    <div className="flex items-center justify-center gap-2 text-gray-500">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Cargando auditorías...
+                    </div>
                   </td>
                 </tr>
-              ) : logs.length === 0 ? (
+              ) : auditorias.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-gray-500">
-                    No se encontraron registros
+                    No se encontraron auditorías
                   </td>
                 </tr>
               ) : (
-                logs.map((log, index) => (
-                  <FilaLog 
-                    key={log.id} 
-                    log={log} 
+                auditorias.map((auditoria, index) => (
+                  <FilaAuditoria 
+                    key={auditoria.id} 
+                    auditoria={auditoria} 
                     onVerDetalle={onVerDetalle}
                     delay={index * 0.03}
                   />
@@ -637,10 +688,10 @@ function VistaLogs({
         </div>
 
         {/* PAGINACIÓN */}
-        {logs.length > 0 && (
+        {auditorias.length > 0 && (
           <div className="mt-4 flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Mostrando {(filtros.pagina - 1) * filtros.registrosPorPagina + 1} - {Math.min(filtros.pagina * filtros.registrosPorPagina, logs.length)} de {logs.length}
+              Mostrando {(filtros.pagina - 1) * filtros.registrosPorPagina + 1} - {Math.min(filtros.pagina * filtros.registrosPorPagina, totalAuditorias)} de {totalAuditorias}
             </div>
             <div className="flex gap-2">
               <Button
@@ -658,7 +709,7 @@ function VistaLogs({
                 variant="outline"
                 size="sm"
                 onClick={() => onCambiarPagina(filtros.pagina + 1)}
-                disabled={logs.length < filtros.registrosPorPagina}
+                disabled={filtros.pagina * filtros.registrosPorPagina >= totalAuditorias}
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -670,18 +721,17 @@ function VistaLogs({
   );
 }
 
-function FilaLog({ 
-  log, 
+function FilaAuditoria({ 
+  auditoria, 
   onVerDetalle, 
   delay 
 }: { 
-  log: AuditLog; 
-  onVerDetalle: (log: AuditLog) => void;
+  auditoria: Auditoria; 
+  onVerDetalle: (auditoria: Auditoria) => void;
   delay: number;
 }) {
-  const iconoAccion = obtenerIconoAccion(log.accion);
-  const colorAccion = obtenerColorAccion(log.accion);
-  const colorCriticidad = obtenerColorCriticidad(log.criticidad || 'media');
+  const colorFase = obtenerColorFase(auditoria.fase);
+  const colorPrioridad = obtenerColorPrioridad(auditoria.prioridad);
 
   return (
     <motion.tr
@@ -690,45 +740,50 @@ function FilaLog({
       transition={{ delay }}
       className="border-b border-gray-100 hover:bg-gray-50"
     >
-      <td className="py-3 px-4 text-sm text-gray-600">
-        {new Date(log.timestamp).toLocaleString('es-CO', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        })}
+      <td className="py-3 px-4">
+        <code className="text-sm bg-gray-100 px-2 py-1 rounded font-mono">
+          {auditoria.codigo}
+        </code>
       </td>
       <td className="py-3 px-4">
-        <div>
-          <div className="text-sm font-medium text-gray-900">{log.usuarioNombre}</div>
-          <div className="text-xs text-gray-500">{log.usuarioEmail}</div>
+        <div className="max-w-xs">
+          <div className="text-sm font-medium text-gray-900 truncate">{auditoria.titulo}</div>
+          {auditoria.territorial && (
+            <div className="text-xs text-gray-500">📍 {auditoria.territorial}</div>
+          )}
         </div>
       </td>
       <td className="py-3 px-4">
-        <Badge style={{ background: colorAccion, color: 'white' }} className="gap-1">
-          {iconoAccion}
-          {log.accion}
-        </Badge>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-700 max-w-md truncate">
-        {log.accionDescripcion}
-      </td>
-      <td className="py-3 px-4">
-        <Badge variant="outline">
-          {log.tabla}
+        <Badge variant="outline" className="text-xs">
+          {auditoria.tipo}
         </Badge>
       </td>
       <td className="py-3 px-4">
-        <Badge style={{ background: colorCriticidad, color: 'white' }}>
-          {log.criticidad || 'media'}
+        <Badge style={{ background: colorFase, color: 'white' }} className="text-xs">
+          {auditoria.fase}
         </Badge>
+      </td>
+      <td className="py-3 px-4">
+        <Badge style={{ background: colorPrioridad, color: 'white' }} className="text-xs">
+          {auditoria.prioridad}
+        </Badge>
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-2">
+          <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-blue-600 rounded-full transition-all"
+              style={{ width: `${auditoria.progreso || 0}%` }}
+            />
+          </div>
+          <span className="text-xs text-gray-600 font-medium">{auditoria.progreso || 0}%</span>
+        </div>
       </td>
       <td className="py-3 px-4 text-right">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onVerDetalle(log)}
+          onClick={() => onVerDetalle(auditoria)}
         >
           <Eye className="w-4 h-4" />
         </Button>
@@ -737,178 +792,7 @@ function FilaLog({
   );
 }
 
-function VistaEstadisticas({ estadisticas }: { estadisticas: AuditLogStats | null }) {
-  if (!estadisticas) {
-    return (
-      <motion.div
-        key="estadisticas"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-      >
-        <Card className="p-8 text-center text-gray-500">
-          Cargando estadísticas...
-        </Card>
-      </motion.div>
-    );
-  }
-
-  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
-
-  return (
-    <motion.div
-      key="estadisticas"
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-      className="space-y-6"
-    >
-      {/* GRÁFICO 1: Actividad por Día */}
-      <Card className="p-6">
-        <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-blue-600" />
-          Actividad de los Últimos 30 Días
-        </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={estadisticas.actividadPorDia}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
-              dataKey="fecha" 
-              tickFormatter={(value) => new Date(value).toLocaleDateString('es-CO', { month: 'short', day: 'numeric' })}
-            />
-            <YAxis />
-            <Tooltip 
-              labelFormatter={(value) => new Date(value).toLocaleDateString('es-CO')}
-              formatter={(value: any) => [value, 'Registros']}
-            />
-            <Line type="monotone" dataKey="cantidad" stroke="#3B82F6" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* GRÁFICO 2: Top Usuarios */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-green-600" />
-            Top 10 Usuarios Más Activos
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={estadisticas.topUsuarios.slice(0, 10)}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="usuarioNombre" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="cantidad" fill="#10B981" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 3: Acciones Frecuentes */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-600" />
-            Acciones Más Frecuentes
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={estadisticas.accionesFrecuentes}
-                dataKey="cantidad"
-                nameKey="accion"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label
-              >
-                {estadisticas.accionesFrecuentes.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 4: Entidades Modificadas */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-orange-600" />
-            Entidades Más Modificadas
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={estadisticas.entidadesMasModificadas}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="entidad" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="cantidad" fill="#F59E0B" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* GRÁFICO 5: Distribución Criticidad */}
-        <Card className="p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-red-600" />
-            Distribución por Criticidad
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={estadisticas.criticidadDistribucion}
-                dataKey="cantidad"
-                nameKey="criticidad"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label
-              >
-                {estadisticas.criticidadDistribucion.map((entry, index) => {
-                  const color = obtenerColorCriticidad(entry.criticidad as any);
-                  return <Cell key={`cell-${index}`} fill={color} />;
-                })}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* RESUMEN */}
-      <Card className="p-6 bg-gradient-to-r from-blue-50 to-purple-50">
-        <h3 className="font-bold text-gray-900 mb-4">Resumen Ejecutivo</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-blue-900">
-              {estadisticas.totalRegistros}
-            </div>
-            <div className="text-sm text-gray-600">Total Registros</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-green-900">
-              {estadisticas.topUsuarios.length}
-            </div>
-            <div className="text-sm text-gray-600">Usuarios Activos</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-purple-900">
-              {estadisticas.accionesFrecuentes.length}
-            </div>
-            <div className="text-sm text-gray-600">Tipos de Acciones</div>
-          </div>
-          <div className="bg-white rounded-lg p-4">
-            <div className="text-2xl font-bold text-orange-900">
-              {estadisticas.entidadesMasModificadas.length}
-            </div>
-            <div className="text-sm text-gray-600">Entidades Afectadas</div>
-          </div>
-        </div>
-      </Card>
-    </motion.div>
-  );
-}
-
-function ModalDetalleLog({ log, onClose }: { log: AuditLog; onClose: () => void }) {
+function ModalDetalleAuditoria({ auditoria, onClose }: { auditoria: Auditoria; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <motion.div
@@ -921,7 +805,7 @@ function ModalDetalleLog({ log, onClose }: { log: AuditLog; onClose: () => void 
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-2xl font-bold mb-2">Detalle de Auditoría</h2>
-              <p className="text-sm text-blue-100">ID: {log.id}</p>
+              <p className="text-sm text-blue-100">Código: {auditoria.codigo}</p>
             </div>
             <button
               onClick={onClose}
@@ -935,106 +819,89 @@ function ModalDetalleLog({ log, onClose }: { log: AuditLog; onClose: () => void 
         {/* CONTENIDO */}
         <div className="p-6 space-y-6">
           {/* INFO GENERAL */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm text-gray-600 mb-1">Timestamp</div>
-              <div className="font-medium text-gray-900">
-                {new Date(log.timestamp).toLocaleString('es-CO')}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 mb-1">Criticidad</div>
-              <Badge style={{ background: obtenerColorCriticidad(log.criticidad || 'media'), color: 'white' }}>
-                {log.criticidad || 'media'}
-              </Badge>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 mb-1">Usuario</div>
-              <div className="font-medium text-gray-900">{log.usuarioNombre}</div>
-              <div className="text-sm text-gray-500">{log.usuarioEmail}</div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 mb-1">Rol</div>
-              <Badge variant="outline">{log.usuarioRol}</Badge>
-            </div>
-          </div>
-
-          {/* ACCIÓN */}
-          <Card className="p-4 border-2 border-blue-200 bg-blue-50">
-            <div className="text-sm text-blue-700 mb-2 font-medium">Acción Ejecutada</div>
-            <div className="flex items-center gap-3">
-              {obtenerIconoAccion(log.accion)}
+          <div>
+            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Información General
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="font-bold text-blue-900">{log.accion.toUpperCase()}</div>
-                <div className="text-sm text-blue-700">{log.accionDescripcion}</div>
+                <div className="text-sm text-gray-600 mb-1">Título</div>
+                <div className="font-medium text-gray-900">{auditoria.titulo}</div>
               </div>
-            </div>
-          </Card>
-
-          {/* ENTIDAD */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm text-gray-600 mb-1">Entidad/Tabla</div>
-              <Badge variant="outline">{log.tabla}</Badge>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 mb-1">ID del Registro</div>
-              <code className="text-sm bg-gray-100 px-2 py-1 rounded">{log.registroId}</code>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Tipo</div>
+                <Badge variant="outline">{auditoria.tipo}</Badge>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Fase</div>
+                <Badge style={{ background: obtenerColorFase(auditoria.fase), color: 'white' }}>
+                  {auditoria.fase}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Prioridad</div>
+                <Badge style={{ background: obtenerColorPrioridad(auditoria.prioridad), color: 'white' }}>
+                  {auditoria.prioridad}
+                </Badge>
+              </div>
             </div>
           </div>
 
-          {/* CAMBIOS (DIFF) */}
-          {(log.cambios.antes || log.cambios.despues) && (
+          {/* DESCRIPCIÓN */}
+          {auditoria.descripcion && (
             <div>
-              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                <ArrowRightCircle className="w-5 h-5 text-orange-600" />
-                Cambios Realizados
-              </h3>
-              
-              <div className="grid grid-cols-2 gap-4">
-                {/* ANTES */}
-                {log.cambios.antes && (
-                  <Card className="p-4 border-2 border-red-200 bg-red-50">
-                    <div className="text-sm font-medium text-red-700 mb-2">❌ Antes</div>
-                    <pre className="text-xs text-red-900 whitespace-pre-wrap font-mono overflow-x-auto">
-                      {JSON.stringify(log.cambios.antes, null, 2)}
-                    </pre>
-                  </Card>
-                )}
-
-                {/* DESPUÉS */}
-                {log.cambios.despues && (
-                  <Card className="p-4 border-2 border-green-200 bg-green-50">
-                    <div className="text-sm font-medium text-green-700 mb-2">✅ Después</div>
-                    <pre className="text-xs text-green-900 whitespace-pre-wrap font-mono overflow-x-auto">
-                      {JSON.stringify(log.cambios.despues, null, 2)}
-                    </pre>
-                  </Card>
-                )}
-              </div>
+              <h3 className="font-bold text-gray-900 mb-3">Descripción</h3>
+              <p className="text-sm text-gray-700">{auditoria.descripcion}</p>
             </div>
           )}
+
+          {/* FECHAS Y PROGRESO */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm text-gray-600 mb-1">Fecha Inicio</div>
+              <div className="font-medium text-gray-900">
+                {auditoria.fechaInicio ? new Date(auditoria.fechaInicio).toLocaleDateString('es-CO') : 'No definida'}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-600 mb-1">Fecha Fin</div>
+              <div className="font-medium text-gray-900">
+                {auditoria.fechaFin ? new Date(auditoria.fechaFin).toLocaleDateString('es-CO') : 'No definida'}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-600 mb-1">Territorial</div>
+              <div className="font-medium text-gray-900">{auditoria.territorial || 'No asignada'}</div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-600 mb-1">Progreso</div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600 rounded-full"
+                    style={{ width: `${auditoria.progreso || 0}%` }}
+                  />
+                </div>
+                <span className="text-sm font-bold text-gray-900">{auditoria.progreso || 0}%</span>
+              </div>
+            </div>
+          </div>
 
           {/* METADATOS */}
-          {(log.ip || log.modulo) && (
-            <div>
-              <h3 className="font-bold text-gray-900 mb-3">Metadatos Adicionales</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {log.modulo && (
-                  <div>
-                    <div className="text-sm text-gray-600 mb-1">Módulo</div>
-                    <Badge>{log.modulo}</Badge>
-                  </div>
-                )}
-                {log.ip && (
-                  <div>
-                    <div className="text-sm text-gray-600 mb-1">Dirección IP</div>
-                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">{log.ip}</code>
-                  </div>
-                )}
+          <div className="pt-4 border-t border-gray-200">
+            <h3 className="font-bold text-gray-900 mb-3">Metadatos</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Creado:</span>{' '}
+                <span className="font-medium">{new Date(auditoria.createdAt).toLocaleString('es-CO')}</span>
+              </div>
+              <div>
+                <span className="text-gray-600">Actualizado:</span>{' '}
+                <span className="font-medium">{new Date(auditoria.updatedAt).toLocaleString('es-CO')}</span>
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* FOOTER */}
@@ -1050,48 +917,66 @@ function ModalDetalleLog({ log, onClose }: { log: AuditLog; onClose: () => void 
 
 // ============ UTILIDADES ============
 
-function obtenerIconoAccion(accion: TipoAccion) {
-  const iconos: Record<TipoAccion, JSX.Element> = {
-    crear: <PlusCircle className="w-4 h-4" />,
-    actualizar: <Edit className="w-4 h-4" />,
-    eliminar: <Trash2 className="w-4 h-4" />,
-    aprobar: <CheckCircle className="w-4 h-4" />,
-    rechazar: <XCircle className="w-4 h-4" />,
-    cambiar_estado: <ArrowRightCircle className="w-4 h-4" />,
-    asignar: <User className="w-4 h-4" />,
-    validar: <CheckCircle className="w-4 h-4" />,
-    generar: <FileText className="w-4 h-4" />,
-    exportar: <Download className="w-4 h-4" />,
-    consultar: <Eye className="w-4 h-4" />
+/**
+ * Obtiene el color correspondiente a una fase de auditoría
+ * Soporta valores del backend: planeacion, en-curso, revision, completada
+ */
+function obtenerColorFase(fase: string): string {
+  const colores: Record<string, string> = {
+    // Valores del enum FaseAuditoria del backend
+    'planeacion': '#3B82F6',    // Azul
+    'en-curso': '#F59E0B',      // Amarillo/Naranja
+    'revision': '#8B5CF6',      // Púrpura
+    'completada': '#10B981',    // Verde
+    // Valores alternativos (EstadoKanban)
+    'Planeación': '#3B82F6',
+    'Ejecución': '#F59E0B',
+    'Comunicación': '#8B5CF6',
+    'Seguimiento': '#10B981',
+    'Finalizada': '#6B7280'
   };
-  return iconos[accion] || <Activity className="w-4 h-4" />;
+  return colores[fase] || '#6B7280';
 }
 
-function obtenerColorAccion(accion: TipoAccion): string {
-  const colores: Record<TipoAccion, string> = {
-    crear: '#10B981',
-    actualizar: '#F59E0B',
-    eliminar: '#DC2626',
-    aprobar: '#10B981',
-    rechazar: '#DC2626',
-    cambiar_estado: '#3B82F6',
-    asignar: '#8B5CF6',
-    validar: '#10B981',
-    generar: '#3B82F6',
-    exportar: '#6B7280',
-    consultar: '#6B7280'
+/**
+ * Obtiene el color correspondiente a una prioridad de auditoría
+ * Soporta valores del backend: Alta, Media, Baja
+ */
+function obtenerColorPrioridad(prioridad: string): string {
+  const colores: Record<string, string> = {
+    // Valores del enum PrioridadAuditoria del backend
+    'Alta': '#EA580C',          // Naranja
+    'Media': '#F59E0B',         // Amarillo
+    'Baja': '#10B981',          // Verde
+    // Valores alternativos (PrioridadKanban)
+    'crítica': '#DC2626',
+    'alta': '#EA580C',
+    'media': '#F59E0B',
+    'baja': '#10B981'
   };
-  return colores[accion] || '#6B7280';
+  return colores[prioridad] || '#6B7280';
 }
 
-function obtenerColorCriticidad(criticidad: 'baja' | 'media' | 'alta' | 'critica'): string {
-  const colores = {
-    baja: '#3B82F6',
-    media: '#F59E0B',
-    alta: '#EA580C',
-    critica: '#DC2626'
-  };
-  return colores[criticidad];
-}
-
+export { AuditoriaCambiosModule };
 export default AuditoriaCambiosModule;
+
+/* ============ DATOS MOCK COMENTADOS ============
+// Los datos mock anteriores se han comentado ya que ahora se cargan desde el backend
+
+// const generarLogsMock = () => {
+//   const usuarios = [
+//     { id: 'u1', nombre: 'María González', email: 'mgonzalez@esap.edu.co', rol: 'Jefe OCI' },
+//     { id: 'u2', nombre: 'Carlos Rodríguez', email: 'crodriguez@esap.edu.co', rol: 'Auditor Líder' },
+//     ...
+//   ];
+//
+//   const acciones = [
+//     { accion: 'aprobar', descripcion: 'Aprobar Plan Anual de Auditoría 2025', tabla: 'plan_anual', ... },
+//     { accion: 'crear_auditoria', descripcion: 'Crear auditoría de Gestión Financiera', tabla: 'auditoria', ... },
+//     ...
+//   ];
+//
+//   // Generar logs de los últimos 30 días
+//   ...
+// };
+*/

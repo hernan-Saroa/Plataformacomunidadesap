@@ -55,6 +55,9 @@ export function ModuloTerminosInformesV3() {
 
   const [loading, setLoading] = useState(true);
 
+  // NOTA: Las notificaciones de términos urgentes/críticos se manejan
+  // ahora centralmente en GestionLegalFull para mayor consistencia
+
   const handleOpenDetalle = (solicitud: SolicitudInforme) => {
     setSelectedSolicitud(solicitud);
     setModalDetalleOpen(true);
@@ -78,6 +81,7 @@ export function ModuloTerminosInformesV3() {
         id: t.numeroRadicado || t.id.substring(0, 8), // Show Radicado
         etapa: t.estado as any,
         tipoInforme: t.origenModulo,
+        moduloOrigen: t.origenModulo, // Add this for filter compatibility
         enteSolicitante: t.origenModulo === 'MANUAL' ? 'Usuario' : 'Sistema',
         radicadoExterno: t.numeroRadicado || 'N/A',
         asunto: t.nombreActuacion,
@@ -103,7 +107,35 @@ export function ModuloTerminosInformesV3() {
     fetchData();
   }, []);
 
+  // NOTA: La generación de notificaciones para términos urgentes/críticos
+  // ahora se maneja en GestionLegalFull para que se generen al entrar al módulo
 
+  // Verificar si hay una redirección desde notificaciones para resaltar un término
+  useEffect(() => {
+    if (!loading && solicitudes.length > 0) {
+      const highlightId = sessionStorage.getItem('highlightTerminoId');
+
+      if (highlightId) {
+        // Buscar el término
+        const termino = solicitudes.find(t => t.id === highlightId || t.metadata?.uuid === highlightId);
+
+        if (termino) {
+          // Filtrar visualmente para mostrar solo este término o resaltar
+          setBusqueda(termino.id);
+
+          // Abrir detalle automáticamente
+          handleVerDetalle(termino);
+
+          // Limpiar storage
+          sessionStorage.removeItem('highlightTerminoId');
+
+          toast.info('Término localizado', {
+            description: `Mostrando detalles del término ${termino.id}`
+          });
+        }
+      }
+    }
+  }, [loading, solicitudes]);
 
   // Estados para modales
 
@@ -643,3 +675,4 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
     </CardSIGL>
   );
 }
+

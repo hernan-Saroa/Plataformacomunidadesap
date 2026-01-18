@@ -176,6 +176,9 @@ export function ReviewRequestsModule() {
     });
   };
 
+  const normalizePhone = (value?: string) =>
+    (value || '').replace(/\D+/g, '').slice(0, 10);
+
   const handleCopyToClipboard = async (text: string, label: string) => {
     const { copyToClipboard } = await import('@/utils/browser');
     const success = await copyToClipboard(text);
@@ -450,10 +453,10 @@ export function ReviewRequestsModule() {
         : '';
 
       let nextForm: ApprovalForm = {
-        fullName: detail.fullName || '',
+        fullName: '',
         idNumber: detail.idNumber || request.graduateDocumentNumber,
-        email: detail.requesterEmail || request.requester.email || '',
-        phone: detail.requesterPhone || '',
+        email: '',
+        phone: '',
         programName: detail.programName || '',
         programType: '',
         degreeTitle: '',
@@ -470,7 +473,7 @@ export function ReviewRequestsModule() {
             fullName: graduate.fullName || nextForm.fullName,
             idNumber: graduate.idNumber || nextForm.idNumber,
             email: graduate.email || nextForm.email,
-            phone: graduate.phone || nextForm.phone,
+            phone: normalizePhone(graduate.phone || nextForm.phone),
             programName: graduate.programName || nextForm.programName,
             programType: graduate.programType || nextForm.programType,
             degreeTitle: graduate.degreeTitle || nextForm.degreeTitle,
@@ -499,9 +502,32 @@ export function ReviewRequestsModule() {
       toast.error('Por favor ingresa notas de revision');
       return;
     }
+    let approvalDetails: ApprovalForm | undefined;
     if (reviewAction === 'approve') {
-      if (!approvalForm.fullName.trim()) {
+      const trimmedFullName = approvalForm.fullName.trim();
+      const trimmedEmail = approvalForm.email.trim();
+      const rawPhoneDigits = approvalForm.phone.replace(/\D+/g, '');
+      const phoneDigits = normalizePhone(approvalForm.phone);
+
+      if (!trimmedFullName) {
         toast.error('El nombre del graduado es obligatorio');
+        return;
+      }
+      if (!trimmedEmail) {
+        toast.error('El email es obligatorio');
+        return;
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        toast.error('El email no tiene un formato valido');
+        return;
+      }
+      if (!rawPhoneDigits) {
+        toast.error('El telefono es obligatorio');
+        return;
+      }
+      if (rawPhoneDigits.length > 10) {
+        toast.error('El telefono no puede superar 10 digitos');
         return;
       }
       if (!approvalForm.programName) {
@@ -528,6 +554,13 @@ export function ReviewRequestsModule() {
         toast.error('Selecciona la seccional');
         return;
       }
+
+      approvalDetails = {
+        ...approvalForm,
+        fullName: trimmedFullName,
+        email: trimmedEmail,
+        phone: phoneDigits,
+      };
     }
 
     setShowReviewModal(false);
@@ -536,7 +569,7 @@ export function ReviewRequestsModule() {
         type: reviewAction,
         request: selectedRequest,
         notes: reviewNotes.trim(),
-        approvalDetails: reviewAction === 'approve' ? approvalForm : undefined,
+        approvalDetails,
       });
       setShowConfirmModal(true);
     }
@@ -603,9 +636,9 @@ export function ReviewRequestsModule() {
 
   return (
     <div className="space-y-6">
-      {/* Cards de Estadísticas */}
+      {/* Banner informativo de solicitudes */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
@@ -1143,11 +1176,13 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Solicitud</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(request.graduateDocumentIssueDate).toLocaleDateString('es-CO', {
-                                      year: 'numeric',
-                                      month: 'long',
-                                      day: 'numeric'
-                                    })}
+                                    {request.createdAt
+                                      ? new Date(request.createdAt).toLocaleDateString('es-CO', {
+                                          year: 'numeric',
+                                          month: 'long',
+                                          day: 'numeric',
+                                        })
+                                      : 'Sin fecha'}
                                   </p>
                                 </div>
                               </div>
@@ -1274,8 +1309,10 @@ export function ReviewRequestsModule() {
 
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
-        <DialogContent className="max-w-3xl w-[92vw] my-8 max-h-[90vh] overflow-y-auto p-0">
-          <DialogHeader className="px-6 pt-6">
+        <DialogContent
+          className={`w-[92vw] my-10 max-h-[88vh] overflow-y-auto p-0 pb-8 ${reviewAction === 'reject' ? 'max-w-3xl' : 'max-w-3xl'}`}
+        >
+          <DialogHeader className="px-6 pt-4 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
               {reviewActionLabel} Solicitud
@@ -1285,7 +1322,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 py-4 space-y-4">
+          <div className="px-6 pt-2 pb-8 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
@@ -1305,7 +1342,7 @@ export function ReviewRequestsModule() {
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Notas de Revisión *
+                Notas de Revisión<span className="text-red-500"> *</span>
               </label>
               <textarea
                 value={reviewNotes}
@@ -1324,7 +1361,9 @@ export function ReviewRequestsModule() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Nombre completo *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Nombre completo<span className="text-red-500"> *</span>
+                    </label>
                     <input
                       value={approvalForm.fullName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, fullName: e.target.value })}
@@ -1334,7 +1373,9 @@ export function ReviewRequestsModule() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Documento *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Documento<span className="text-red-500"> *</span>
+                    </label>
                     <input
                       value={approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || ''}
                       onChange={(e) => setApprovalForm({ ...approvalForm, idNumber: e.target.value })}
@@ -1343,7 +1384,9 @@ export function ReviewRequestsModule() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Email</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Email<span className="text-red-500"> *</span>
+                    </label>
                     <input
                       type="email"
                       value={approvalForm.email}
@@ -1351,20 +1394,35 @@ export function ReviewRequestsModule() {
                       className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      required
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Telefono</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Telefono<span className="text-red-500"> *</span>
+                    </label>
                     <input
+                      type="tel"
                       value={approvalForm.phone}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, phone: e.target.value })}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          phone: normalizePhone(e.target.value),
+                        })
+                      }
                       className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="3001234567"
                       disabled={isLoadingApprovalData}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      required
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Programa *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Programa<span className="text-red-500"> *</span>
+                    </label>
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
@@ -1380,7 +1438,9 @@ export function ReviewRequestsModule() {
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Tipo de programa *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Tipo de programa<span className="text-red-500"> *</span>
+                    </label>
                     <select
                       value={approvalForm.programType}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programType: e.target.value })}
@@ -1396,7 +1456,9 @@ export function ReviewRequestsModule() {
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Titulo *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Titulo<span className="text-red-500"> *</span>
+                    </label>
                     <select
                       value={approvalForm.degreeTitle}
                       onChange={(e) => setApprovalForm({ ...approvalForm, degreeTitle: e.target.value })}
@@ -1412,7 +1474,9 @@ export function ReviewRequestsModule() {
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Fecha de graduacion *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Fecha de graduacion<span className="text-red-500"> *</span>
+                    </label>
                     <input
                       type="date"
                       value={approvalForm.graduationDate}
@@ -1422,7 +1486,9 @@ export function ReviewRequestsModule() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Sede *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Sede<span className="text-red-500"> *</span>
+                    </label>
                     <select
                       value={approvalForm.campus}
                       onChange={(e) => setApprovalForm({ ...approvalForm, campus: e.target.value })}
@@ -1438,7 +1504,9 @@ export function ReviewRequestsModule() {
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">Seccional *</label>
+                    <label className="text-xs font-medium text-gray-700">
+                      Seccional<span className="text-red-500"> *</span>
+                    </label>
                     <select
                       value={approvalForm.seccionalName}
                       onChange={(e) =>
@@ -1474,7 +1542,7 @@ export function ReviewRequestsModule() {
             </div>
           </div>
 
-          <DialogFooter className="px-6 pb-6 pt-4">
+          <DialogFooter className="px-6 pb-10 pt-4">
             <button
               onClick={() => setShowReviewModal(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
@@ -1505,7 +1573,7 @@ export function ReviewRequestsModule() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-amber-600" />

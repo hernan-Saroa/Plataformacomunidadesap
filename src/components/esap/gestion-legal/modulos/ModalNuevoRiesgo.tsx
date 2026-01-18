@@ -1,507 +1,587 @@
 /**
- * Modal para crear un nuevo riesgo
- * Basado en metodología DAFP - Matriz de Riesgos
+ * ModalNuevoRiesgo - ESAP 2025 Standard
+ * Modal para crear nuevos riesgos institucionales en la Matriz de Riesgos
  */
 
-import React, { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../ui/dialog';
+import React, { useState } from 'react';
+import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
-import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import {
-    AlertTriangle,
-    Shield,
-    Save,
-    X,
-    Plus,
-    Trash2,
-    Activity,
-    Target,
-    FileText,
-    Users
-} from 'lucide-react';
+import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner';
-import type { TipoRiesgo, ZonaRiesgo, EtapaRiesgo, Riesgo } from '../core/types';
-import { riesgosService } from '../../../../services/api/legal.service';
+import { ModalHeaderClean } from './ModalHeaderClean';
+
+interface ControlItem {
+  id: string;
+  descripcion: string;
+  efectividad: number;
+}
 
 interface ModalNuevoRiesgoProps {
-    open: boolean;
-    onClose: () => void;
-    onRiesgoCreado: (riesgo: Riesgo) => void;
+  open: boolean;
+  onClose: () => void;
+  onRiesgoCreado?: (data: any) => void;
+  riesgoEditar?: any; // Riesgo a editar (null para crear nuevo)
 }
 
-// Configuración de zonas
-const ZONA_CONFIG = {
-    EXTREMO: { color: '#DC2626', bg: '#FEE2E2', label: '🔴 Extremo' },
-    ALTO: { color: '#EA580C', bg: '#FFEDD5', label: '🟠 Alto' },
-    MODERADO: { color: '#F59E0B', bg: '#FEF3C7', label: '🟡 Moderado' },
-    BAJO: { color: '#10B981', bg: '#D1FAE5', label: '🟢 Bajo' }
+const initialFormState = {
+  nombre: '',
+  descripcion: '',
+  proceso: '',
+  tipoRiesgo: 'GESTION',
+  causas: '',
+  consecuencias: '',
+  responsable: '',
+  probabilidadInherente: '3',
+  impactoInherente: '3',
+  probabilidadResidual: '2',
+  impactoResidual: '2',
+  etapa: 'IDENTIFICADO'
 };
 
-// Procesos disponibles (pueden venir de un catálogo)
-const PROCESOS = [
-    'Defensa Judicial',
-    'Juzgamiento Disciplinario',
-    'Asesoría Jurídica',
-    'Órganos de Control',
-    'Procesos Coactivos',
-    'Planes de Mejoramiento',
-    'Gestión Documental',
-    'Gestión Contractual',
-    'Gestión Financiera',
-    'Talento Humano'
-];
+export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
+  const [formData, setFormData] = useState(initialFormState);
+  const [controlesLista, setControlesLista] = useState<ControlItem[]>([]);
 
-export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado }: ModalNuevoRiesgoProps) {
-    const [formData, setFormData] = useState({
-        proceso: '',
-        tipoRiesgo: 'GESTION' as TipoRiesgo,
-        nombre: '',
-        descripcion: '',
-        causas: [''],
-        consecuencias: [''],
-        probabilidadInherente: 3,
-        impactoInherente: 3,
-        responsable: ''
-    });
+  const isEditing = !!riesgoEditar;
 
-    const [guardando, setGuardando] = useState(false);
+  // Prellenar formulario cuando se edita
+  React.useEffect(() => {
+    if (riesgoEditar) {
+      setFormData({
+        nombre: riesgoEditar.nombre || '',
+        descripcion: riesgoEditar.descripcion || '',
+        proceso: riesgoEditar.proceso || '',
+        tipoRiesgo: riesgoEditar.tipoRiesgo || riesgoEditar.tipo || 'GESTION',
+        causas: Array.isArray(riesgoEditar.causas) ? riesgoEditar.causas.join('\n') : '',
+        consecuencias: Array.isArray(riesgoEditar.consecuencias) ? riesgoEditar.consecuencias.join('\n') : '',
+        responsable: riesgoEditar.responsable || '',
+        probabilidadInherente: String(riesgoEditar.probabilidadInherente || 3),
+        impactoInherente: String(riesgoEditar.impactoInherente || 3),
+        probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
+        impactoResidual: String(riesgoEditar.impactoResidual || 2),
+        etapa: riesgoEditar.etapa || 'IDENTIFICADO'
+      });
+      // Cargar controles existentes
+      if (Array.isArray(riesgoEditar.controlesExistentes)) {
+        setControlesLista(riesgoEditar.controlesExistentes.map((c: any) => ({
+          id: c.id || `ctrl-${Date.now()}-${Math.random()}`,
+          descripcion: c.descripcion || '',
+          efectividad: c.efectividad || 0
+        })));
+      } else {
+        setControlesLista([]);
+      }
+    } else {
+      setFormData(initialFormState);
+      setControlesLista([]);
+    }
+  }, [riesgoEditar, open]);
 
-    // Calcular zona de riesgo automáticamente
-    const zonaCalculada = useMemo((): ZonaRiesgo => {
-        const valor = formData.probabilidadInherente * formData.impactoInherente;
-        if (valor >= 20) return 'EXTREMO';
-        if (valor >= 12) return 'ALTO';
-        if (valor >= 5) return 'MODERADO';
-        return 'BAJO';
-    }, [formData.probabilidadInherente, formData.impactoInherente]);
+  // Calcular zona de riesgo
+  const calcularZonaRiesgo = (probabilidad: string, impacto: string): string => {
+    const prob = parseInt(probabilidad);
+    const imp = parseInt(impacto);
+    const nivel = prob * imp;
 
-    const handleAddCausa = () => {
-        setFormData(prev => ({ ...prev, causas: [...prev.causas, ''] }));
+    if (nivel >= 20) return 'EXTREMO';
+    if (nivel >= 12) return 'ALTO';
+    if (nivel >= 5) return 'MODERADO';
+    return 'BAJO';
+  };
+
+  const zonaInherente = calcularZonaRiesgo(formData.probabilidadInherente, formData.impactoInherente);
+  const zonaResidual = calcularZonaRiesgo(formData.probabilidadResidual, formData.impactoResidual);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validaciones
+    if (!formData.nombre.trim()) {
+      toast.error('El nombre del riesgo es obligatorio');
+      return;
+    }
+    if (!formData.descripcion.trim()) {
+      toast.error('La descripción del riesgo es obligatoria');
+      return;
+    }
+    if (!formData.proceso.trim()) {
+      toast.error('Debe especificar el proceso asociado');
+      return;
+    }
+    if (!formData.responsable.trim()) {
+      toast.error('Debe asignar un responsable');
+      return;
+    }
+
+    const nuevoRiesgo = {
+      ...formData,
+      // Convertir strings a números/arrays para el backend
+      probabilidadInherente: parseInt(formData.probabilidadInherente),
+      impactoInherente: parseInt(formData.impactoInherente),
+      causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
+      consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
+      controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
+
+      // Campos calculados para frontend optimista (aunque backend los generará)
+      zonaInherente,
+      zonaResidual,
+      fechaIdentificacion: new Date(),
+      fechaUltimaRevision: new Date()
     };
 
-    const handleRemoveCausa = (index: number) => {
-        setFormData(prev => ({
-            ...prev,
-            causas: prev.causas.filter((_, i) => i !== index)
-        }));
-    };
+    // El padre (Riesgos.tsx) maneja el envío al API, toast y cierre del modal
+    if (onRiesgoCreado) {
+      onRiesgoCreado(nuevoRiesgo);
+    }
+  };
 
-    const handleCausaChange = (index: number, value: string) => {
-        setFormData(prev => ({
-            ...prev,
-            causas: prev.causas.map((c, i) => i === index ? value : c)
-        }));
-    };
+  const handleChange = (field: string, value: any) => {
+    // ✅ Filtro de solo letras y espacios para responsable
+    if (field === 'responsable') {
+      value = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+    }
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
 
-    const handleAddConsecuencia = () => {
-        setFormData(prev => ({ ...prev, consecuencias: [...prev.consecuencias, ''] }));
-    };
+  // Funciones para manejar controles
+  const agregarControl = () => {
+    setControlesLista(prev => [...prev, {
+      id: `ctrl-${Date.now()}`,
+      descripcion: '',
+      efectividad: 50
+    }]);
+  };
 
-    const handleRemoveConsecuencia = (index: number) => {
-        setFormData(prev => ({
-            ...prev,
-            consecuencias: prev.consecuencias.filter((_, i) => i !== index)
-        }));
-    };
+  const eliminarControl = (id: string) => {
+    setControlesLista(prev => prev.filter(c => c.id !== id));
+  };
 
-    const handleConsecuenciaChange = (index: number, value: string) => {
-        setFormData(prev => ({
-            ...prev,
-            consecuencias: prev.consecuencias.map((c, i) => i === index ? value : c)
-        }));
-    };
+  const actualizarControl = (id: string, campo: 'descripcion' | 'efectividad', valor: string | number) => {
+    setControlesLista(prev => prev.map(c =>
+      c.id === id ? { ...c, [campo]: valor } : c
+    ));
+  };
 
-    const handleGuardar = async () => {
-        // Validaciones
-        if (!formData.proceso) {
-            toast.error('Seleccione un proceso');
-            return;
-        }
-        if (!formData.nombre.trim()) {
-            toast.error('Ingrese el nombre del riesgo');
-            return;
-        }
-        if (!formData.descripcion.trim()) {
-            toast.error('Ingrese la descripción del riesgo');
-            return;
-        }
-        if (!formData.responsable.trim()) {
-            toast.error('Ingrese el responsable');
-            return;
-        }
+  if (!open) return null;
 
-        setGuardando(true);
+  const getColorZona = (zona: string) => {
+    switch (zona) {
+      case 'EXTREMO': return { bg: '#FEE2E2', text: '#DC2626', label: '🔴 Extremo' };
+      case 'ALTO': return { bg: '#FFEDD5', text: '#EA580C', label: '🟠 Alto' };
+      case 'MODERADO': return { bg: '#FEF3C7', text: '#F59E0B', label: '🟡 Moderado' };
+      default: return { bg: '#D1FAE5', text: '#10B981', label: '🟢 Bajo' };
+    }
+  };
 
-        try {
-            // Llamar al API para crear el riesgo
-            const riesgoCreado = await riesgosService.create({
-                nombre: formData.nombre,
-                descripcion: formData.descripcion,
-                proceso: formData.proceso,
-                tipoRiesgo: formData.tipoRiesgo,
-                probabilidadInherente: formData.probabilidadInherente,
-                impactoInherente: formData.impactoInherente,
-                causas: formData.causas.filter(c => c.trim() !== ''),
-                consecuencias: formData.consecuencias.filter(c => c.trim() !== ''),
-                responsable: formData.responsable
-            });
+  const colorInherente = getColorZona(zonaInherente);
+  const colorResidual = getColorZona(zonaResidual);
 
-            // Convertir respuesta del API a tipo local
-            const nuevoRiesgo: Riesgo = {
-                id: riesgoCreado.codigo || riesgoCreado.id,
-                codigo: riesgoCreado.codigo,
-                etapa: riesgoCreado.etapa as EtapaRiesgo,
-                proceso: riesgoCreado.proceso,
-                tipo: riesgoCreado.tipoRiesgo,
-                tipoRiesgo: riesgoCreado.tipoRiesgo,
-                nombre: riesgoCreado.nombre,
-                descripcion: riesgoCreado.descripcion,
-                causas: riesgoCreado.causas || [],
-                consecuencias: riesgoCreado.consecuencias || [],
-                probabilidadInherente: riesgoCreado.probabilidadInherente,
-                impactoInherente: riesgoCreado.impactoInherente,
-                zonaInherente: riesgoCreado.zonaInherente,
-                probabilidadResidual: riesgoCreado.probabilidadResidual,
-                impactoResidual: riesgoCreado.impactoResidual,
-                zonaResidual: riesgoCreado.zonaResidual,
-                controlesExistentes: riesgoCreado.controlesExistentes || [],
-                planTratamiento: [],
-                responsable: riesgoCreado.responsable,
-                documentos: [],
-                timeline: [],
-                fechaCreacion: new Date(riesgoCreado.createdAt),
-                fechaActualizacion: new Date(riesgoCreado.updatedAt),
-                estado: riesgoCreado.estado
-            };
+  return (
+    <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="min-h-screen md:min-h-0 flex items-start md:items-center justify-center p-0 md:p-4 md:py-8">
+        <div className="bg-white rounded-none md:rounded-2xl shadow-2xl w-full md:max-w-4xl md:max-h-[90vh] overflow-hidden flex flex-col my-0 md:my-4">
+          {/* Header con ModalHeaderClean */}
+          <ModalHeaderClean
+            titulo={isEditing ? 'Editar Riesgo' : 'Nuevo Riesgo Institucional'}
+            subtitulo={isEditing ? `Modificando: ${riesgoEditar?.nombre || riesgoEditar?.codigo}` : 'Registrar riesgo en la Matriz de Gestión de Riesgos'}
+            icono={AlertTriangle}
+            colorIcono="red"
+            badgePrincipal={isEditing ? 'EDITAR RIESGO' : 'CREAR RIESGO'}
+            onClose={onClose}
+          />
 
-            onRiesgoCreado(nuevoRiesgo);
-            toast.success('Riesgo identificado y guardado correctamente', {
-                description: `${riesgoCreado.codigo} - Zona: ${ZONA_CONFIG[zonaCalculada].label}`
-            });
+          {/* Contenido del Modal */}
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+            {/* Sección 1: Identificación del Riesgo */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-red-100">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+                <h3 className="font-bold text-gray-900">Identificación del Riesgo</h3>
+              </div>
 
-            // Resetear formulario
-            setFormData({
-                proceso: '',
-                tipoRiesgo: 'GESTION',
-                nombre: '',
-                descripcion: '',
-                causas: [''],
-                consecuencias: [''],
-                probabilidadInherente: 3,
-                impactoInherente: 3,
-                responsable: ''
-            });
-            onClose();
-        } catch (error) {
-            console.error('Error al guardar riesgo:', error);
-            toast.error('⚠️ Error al guardar el riesgo', {
-                description: 'Verifique que el servicio esté disponible y la migración se haya ejecutado'
-            });
-        } finally {
-            setGuardando(false);
-        }
-    };
+              <div className="space-y-2">
+                <Label htmlFor="nombre" className="text-sm font-semibold text-gray-700">
+                  Nombre del Riesgo <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  id="nombre"
+                  placeholder="Ej: Vencimiento de términos"
+                  value={formData.nombre}
+                  onChange={(e) => handleChange('nombre', e.target.value)}
+                  className="border-2 border-gray-300 focus:border-red-500"
+                  required
+                />
+              </div>
 
-    const zonaConfig = ZONA_CONFIG[zonaCalculada];
+              <div className="space-y-2">
+                <Label htmlFor="descripcion" className="text-sm font-semibold text-gray-700">
+                  Descripción Detallada <span className="text-red-600">*</span>
+                </Label>
+                <Textarea
+                  id="descripcion"
+                  placeholder="Ej: Posibilidad de que se venzan términos legales en procesos judiciales..."
+                  value={formData.descripcion}
+                  onChange={(e) => handleChange('descripcion', e.target.value)}
+                  className="border-2 border-gray-300 focus:border-red-500 min-h-[80px]"
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Describa claramente el evento de riesgo que podría ocurrir
+                </p>
+              </div>
 
-    return (
-        <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-xl" style={{ color: '#003DA5' }}>
-                        <Shield className="w-6 h-6" />
-                        Identificar Nuevo Riesgo
-                    </DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-6 py-4">
-                    {/* Sección 1: Información Básica */}
-                    <Card className="p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
-                        <h3 className="font-bold text-sm mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                            <FileText className="w-4 h-4" />
-                            Información Básica
-                        </h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700">Proceso Asociado *</Label>
-                                <Select
-                                    value={formData.proceso}
-                                    onValueChange={(v: string) => setFormData(prev => ({ ...prev, proceso: v }))}
-                                >
-                                    <SelectTrigger className="mt-1">
-                                        <SelectValue placeholder="Seleccione proceso..." />
-                                    </SelectTrigger>
-                                    <SelectContent position="popper" className="z-[9999]">
-                                        {PROCESOS.map(p => (
-                                            <SelectItem key={p} value={p}>{p}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700">Tipo de Riesgo *</Label>
-                                <Select
-                                    value={formData.tipoRiesgo}
-                                    onValueChange={(v: string) => setFormData(prev => ({ ...prev, tipoRiesgo: v as TipoRiesgo }))}
-                                >
-                                    <SelectTrigger className="mt-1">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent position="popper" className="z-[9999]">
-                                        <SelectItem value="GESTION">📊 Gestión</SelectItem>
-                                        <SelectItem value="CORRUPCION">⚠️ Corrupción</SelectItem>
-                                        <SelectItem value="SEGURIDAD_DIGITAL">🔒 Seguridad Digital</SelectItem>
-                                        <SelectItem value="FISCAL">💰 Fiscal</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <Label className="text-xs font-semibold text-gray-700">Nombre del Riesgo *</Label>
-                                <Input
-                                    className="mt-1"
-                                    placeholder="Ej: Vencimiento de términos procesales"
-                                    value={formData.nombre}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
-                                />
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <Label className="text-xs font-semibold text-gray-700">Descripción *</Label>
-                                <Textarea
-                                    className="mt-1"
-                                    rows={3}
-                                    placeholder="Describa el riesgo identificado..."
-                                    value={formData.descripcion}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
-                                />
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <Label className="text-xs font-semibold text-gray-700 flex items-center gap-2">
-                                    <Users className="w-3 h-3" />
-                                    Responsable *
-                                </Label>
-                                <Input
-                                    className="mt-1"
-                                    placeholder="Cargo o nombre del responsable"
-                                    value={formData.responsable}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, responsable: e.target.value }))}
-                                />
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/* Sección 2: Causas y Consecuencias */}
-                    <Card className="p-4 border-l-4" style={{ borderLeftColor: '#F59E0B' }}>
-                        <h3 className="font-bold text-sm mb-4 flex items-center gap-2" style={{ color: '#F59E0B' }}>
-                            <AlertTriangle className="w-4 h-4" />
-                            Análisis de Causas y Consecuencias
-                        </h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Causas */}
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700 mb-2 block">
-                                    Causas del Riesgo
-                                </Label>
-                                <div className="space-y-2">
-                                    {formData.causas.map((causa, idx) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <Input
-                                                className="flex-1"
-                                                placeholder={`Causa ${idx + 1}...`}
-                                                value={causa}
-                                                onChange={(e) => handleCausaChange(idx, e.target.value)}
-                                            />
-                                            {formData.causas.length > 1 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleRemoveCausa(idx)}
-                                                    className="text-red-500 hover:text-red-700"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleAddCausa}
-                                        className="w-full mt-2"
-                                    >
-                                        <Plus className="w-3 h-3 mr-1" />
-                                        Agregar Causa
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* Consecuencias */}
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700 mb-2 block">
-                                    Consecuencias
-                                </Label>
-                                <div className="space-y-2">
-                                    {formData.consecuencias.map((consecuencia, idx) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <Input
-                                                className="flex-1"
-                                                placeholder={`Consecuencia ${idx + 1}...`}
-                                                value={consecuencia}
-                                                onChange={(e) => handleConsecuenciaChange(idx, e.target.value)}
-                                            />
-                                            {formData.consecuencias.length > 1 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => handleRemoveConsecuencia(idx)}
-                                                    className="text-red-500 hover:text-red-700"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleAddConsecuencia}
-                                        className="w-full mt-2"
-                                    >
-                                        <Plus className="w-3 h-3 mr-1" />
-                                        Agregar Consecuencia
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
-
-                    {/* Sección 3: Valoración (Probabilidad e Impacto) */}
-                    <Card className="p-4 border-l-4" style={{ borderLeftColor: zonaConfig.color }}>
-                        <h3 className="font-bold text-sm mb-4 flex items-center gap-2" style={{ color: '#003DA5' }}>
-                            <Target className="w-4 h-4" />
-                            Valoración del Riesgo (Matriz 5×5)
-                        </h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {/* Probabilidad */}
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700 mb-2 block">
-                                    Probabilidad (1-5)
-                                </Label>
-                                <Select
-                                    value={String(formData.probabilidadInherente)}
-                                    onValueChange={(v: string) => setFormData(prev => ({ ...prev, probabilidadInherente: parseInt(v) }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent position="popper" className="z-[9999]">
-                                        <SelectItem value="1">1 - Raro</SelectItem>
-                                        <SelectItem value="2">2 - Improbable</SelectItem>
-                                        <SelectItem value="3">3 - Posible</SelectItem>
-                                        <SelectItem value="4">4 - Probable</SelectItem>
-                                        <SelectItem value="5">5 - Casi Seguro</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* Impacto */}
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700 mb-2 block">
-                                    Impacto (1-5)
-                                </Label>
-                                <Select
-                                    value={String(formData.impactoInherente)}
-                                    onValueChange={(v: string) => setFormData(prev => ({ ...prev, impactoInherente: parseInt(v) }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent position="popper" className="z-[9999]">
-                                        <SelectItem value="1">1 - Insignificante</SelectItem>
-                                        <SelectItem value="2">2 - Menor</SelectItem>
-                                        <SelectItem value="3">3 - Moderado</SelectItem>
-                                        <SelectItem value="4">4 - Mayor</SelectItem>
-                                        <SelectItem value="5">5 - Catastrófico</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* Zona Calculada */}
-                            <div>
-                                <Label className="text-xs font-semibold text-gray-700 mb-2 block">
-                                    Zona de Riesgo (Automático)
-                                </Label>
-                                <div
-                                    className="p-3 rounded-lg flex items-center justify-center gap-2 font-bold"
-                                    style={{ backgroundColor: zonaConfig.bg, color: zonaConfig.color }}
-                                >
-                                    <Activity className="w-5 h-5" />
-                                    <span>{zonaConfig.label}</span>
-                                    <span className="text-sm">
-                                        ({formData.probabilidadInherente} × {formData.impactoInherente} = {formData.probabilidadInherente * formData.impactoInherente})
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Advertencia si es extremo o alto */}
-                        {(zonaCalculada === 'EXTREMO' || zonaCalculada === 'ALTO') && (
-                            <div className="mt-4 p-3 rounded-lg border-2" style={{ borderColor: zonaConfig.color, backgroundColor: zonaConfig.bg }}>
-                                <div className="flex items-start gap-2">
-                                    <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: zonaConfig.color }} />
-                                    <div>
-                                        <p className="font-bold text-sm" style={{ color: zonaConfig.color }}>
-                                            {zonaCalculada === 'EXTREMO'
-                                                ? '⚠️ Riesgo Extremo - Requiere Acción Inmediata'
-                                                : '⚠️ Riesgo Alto - Requiere Plan de Tratamiento Prioritario'}
-                                        </p>
-                                        <p className="text-xs text-gray-600 mt-1">
-                                            Este riesgo será escalado automáticamente al Jefe de Oficina Jurídica para revisión.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </Card>
-
-                    {/* Botones de acción */}
-                    <div className="flex justify-end gap-3 pt-4 border-t">
-                        <Button variant="outline" onClick={onClose} disabled={guardando}>
-                            <X className="w-4 h-4 mr-1" />
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleGuardar}
-                            disabled={guardando}
-                            style={{ backgroundColor: '#003DA5' }}
-                            className="text-white"
-                        >
-                            {guardando ? (
-                                <>
-                                    <Activity className="w-4 h-4 mr-1 animate-spin" />
-                                    Guardando...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-4 h-4 mr-1" />
-                                    Identificar Riesgo
-                                </>
-                            )}
-                        </Button>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="proceso" className="text-sm font-semibold text-gray-700">
+                    Proceso Asociado <span className="text-red-600">*</span>
+                  </Label>
+                  <select
+                    id="proceso"
+                    value={formData.proceso}
+                    onChange={(e) => handleChange('proceso', e.target.value)}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                    required
+                  >
+                    <option value="">Seleccione proceso...</option>
+                    <option value="Defensa Judicial">Defensa Judicial</option>
+                    <option value="Órganos de Control">Órganos de Control</option>
+                    <option value="Procesos Coactivos">Procesos Coactivos</option>
+                    <option value="Juzgamiento Disciplinario">Juzgamiento Disciplinario</option>
+                    <option value="Asesoría Jurídica">Asesoría Jurídica</option>
+                    <option value="Gestión Contractual">Gestión Contractual</option>
+                    <option value="Recursos Humanos">Recursos Humanos</option>
+                    <option value="Gestión Financiera">Gestión Financiera</option>
+                  </select>
                 </div>
-            </DialogContent>
-        </Dialog>
-    );
+
+                <div className="space-y-2">
+                  <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
+                    Tipo de Riesgo <span className="text-red-600">*</span>
+                  </Label>
+                  <select
+                    id="tipoRiesgo"
+                    value={formData.tipoRiesgo}
+                    onChange={(e) => handleChange('tipoRiesgo', e.target.value)}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                    required
+                  >
+                    <option value="GESTION">📊 Gestión</option>
+                    <option value="CORRUPCION">⚠️ Corrupción</option>
+                    <option value="SEGURIDAD_DIGITAL">🔒 Seguridad Digital</option>
+                    <option value="FISCAL">💰 Fiscal</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 2: Análisis del Riesgo */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-orange-100">
+                <Target className="w-5 h-5 text-orange-600" />
+                <h3 className="font-bold text-gray-900">Análisis del Riesgo</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="causas" className="text-sm font-semibold text-gray-700">
+                    Causas del Riesgo
+                  </Label>
+                  <Textarea
+                    id="causas"
+                    placeholder="Describa las causas o factores que originan el riesgo..."
+                    value={formData.causas}
+                    onChange={(e) => handleChange('causas', e.target.value)}
+                    className="border-2 border-gray-300 focus:border-orange-500 min-h-[80px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="consecuencias" className="text-sm font-semibold text-gray-700">
+                    Consecuencias del Riesgo
+                  </Label>
+                  <Textarea
+                    id="consecuencias"
+                    placeholder="Describa el impacto o consecuencias si se materializa..."
+                    value={formData.consecuencias}
+                    onChange={(e) => handleChange('consecuencias', e.target.value)}
+                    className="border-2 border-gray-300 focus:border-orange-500 min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 3: Evaluación del Riesgo */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-purple-100">
+                <Activity className="w-5 h-5 text-purple-600" />
+                <h3 className="font-bold text-gray-900">Evaluación del Riesgo (Matriz 5x5)</h3>
+              </div>
+
+              {/* Riesgo Inherente */}
+              <div className="bg-gradient-to-br from-red-50 to-orange-50 border-2 border-red-200 rounded-xl p-4">
+                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-red-600" />
+                  Riesgo Inherente (Sin controles)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="probabilidadInherente" className="text-sm font-semibold text-gray-700">
+                      Probabilidad (1-5)
+                    </Label>
+                    <select
+                      id="probabilidadInherente"
+                      value={formData.probabilidadInherente}
+                      onChange={(e) => handleChange('probabilidadInherente', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Raro (Ocurre cada 5+ años)</option>
+                      <option value="2">2 - Improbable (Ocurre cada 2-5 años)</option>
+                      <option value="3">3 - Posible (Ocurre anualmente)</option>
+                      <option value="4">4 - Probable (Ocurre semestralmente)</option>
+                      <option value="5">5 - Casi Seguro (Ocurre mensualmente)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="impactoInherente" className="text-sm font-semibold text-gray-700">
+                      Impacto (1-5)
+                    </Label>
+                    <select
+                      id="impactoInherente"
+                      value={formData.impactoInherente}
+                      onChange={(e) => handleChange('impactoInherente', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Insignificante</option>
+                      <option value="2">2 - Menor</option>
+                      <option value="3">3 - Moderado</option>
+                      <option value="4">4 - Mayor</option>
+                      <option value="5">5 - Catastrófico</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border-2" style={{ borderColor: colorInherente.text }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Zona de Riesgo Inherente:</span>
+                    <span
+                      className="px-4 py-2 rounded-full font-bold text-sm"
+                      style={{
+                        backgroundColor: colorInherente.bg,
+                        color: colorInherente.text
+                      }}
+                    >
+                      {colorInherente.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Nivel: {parseInt(formData.probabilidadInherente) * parseInt(formData.impactoInherente)} / 25
+                  </p>
+                </div>
+              </div>
+
+              {/* Riesgo Residual */}
+              <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-xl p-4">
+                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  Riesgo Residual (Con controles aplicados)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="probabilidadResidual" className="text-sm font-semibold text-gray-700">
+                      Probabilidad (1-5)
+                    </Label>
+                    <select
+                      id="probabilidadResidual"
+                      value={formData.probabilidadResidual}
+                      onChange={(e) => handleChange('probabilidadResidual', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Raro</option>
+                      <option value="2">2 - Improbable</option>
+                      <option value="3">3 - Posible</option>
+                      <option value="4">4 - Probable</option>
+                      <option value="5">5 - Casi Seguro</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="impactoResidual" className="text-sm font-semibold text-gray-700">
+                      Impacto (1-5)
+                    </Label>
+                    <select
+                      id="impactoResidual"
+                      value={formData.impactoResidual}
+                      onChange={(e) => handleChange('impactoResidual', e.target.value)}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none"
+                    >
+                      <option value="1">1 - Insignificante</option>
+                      <option value="2">2 - Menor</option>
+                      <option value="3">3 - Moderado</option>
+                      <option value="4">4 - Mayor</option>
+                      <option value="5">5 - Catastrófico</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border-2" style={{ borderColor: colorResidual.text }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Zona de Riesgo Residual:</span>
+                    <span
+                      className="px-4 py-2 rounded-full font-bold text-sm"
+                      style={{
+                        backgroundColor: colorResidual.bg,
+                        color: colorResidual.text
+                      }}
+                    >
+                      {colorResidual.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Nivel: {parseInt(formData.probabilidadResidual) * parseInt(formData.impactoResidual)} / 25
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 4: Controles y Responsabilidades */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-blue-100">
+                <Shield className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-gray-900">Controles y Responsabilidades</h3>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-gray-700">
+                    Controles Existentes
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={agregarControl}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar Control
+                  </Button>
+                </div>
+
+                {controlesLista.length === 0 ? (
+                  <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+                    <Shield className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No hay controles definidos</p>
+                    <p className="text-xs text-gray-400">Haz clic en "Agregar Control" para añadir uno</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {controlesLista.map((control, idx) => (
+                      <div key={control.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start gap-2 mb-2">
+                          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                          <Input
+                            placeholder="Descripción del control..."
+                            value={control.descripcion}
+                            onChange={(e) => actualizarControl(control.id, 'descripcion', e.target.value)}
+                            className="flex-1 text-sm border-blue-200"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => eliminarControl(control.id)}
+                            className="text-red-500 hover:bg-red-50 p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 w-20">Efectividad:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={control.efectividad}
+                            onChange={(e) => actualizarControl(control.id, 'efectividad', parseInt(e.target.value))}
+                            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          />
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${control.efectividad >= 70 ? 'bg-green-100 text-green-700' :
+                            control.efectividad >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                            {control.efectividad}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="responsable" className="text-sm font-semibold text-gray-700">
+                    Responsable del Riesgo <span className="text-red-600">*</span>
+                  </Label>
+                  <Input
+                    id="responsable"
+                    placeholder="Nombre del responsable"
+                    value={formData.responsable}
+                    onChange={(e) => handleChange('responsable', e.target.value)}
+                    className="border-2 border-gray-300 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="etapa" className="text-sm font-semibold text-gray-700">
+                    Etapa del Riesgo
+                  </Label>
+                  <select
+                    id="etapa"
+                    value={formData.etapa}
+                    onChange={(e) => handleChange('etapa', e.target.value)}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="IDENTIFICADO">1️⃣ Identificado</option>
+                    <option value="ANALIZADO">2️⃣ Analizado</option>
+                    <option value="VALORADO">3️⃣ Valorado</option>
+                    <option value="TRATAMIENTO">4️⃣ En Tratamiento</option>
+                    <option value="MONITOREO">5️⃣ Monitoreado</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Botones de acción */}
+            <div className="flex items-center gap-3 pt-4 border-t-2 border-gray-200">
+              <Button
+                type="button"
+                onClick={onClose}
+                variant="outline"
+                className="flex-1 border-2 border-gray-300 hover:bg-gray-50"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                {isEditing ? 'Actualizar Riesgo' : 'Crear Riesgo'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 }
+

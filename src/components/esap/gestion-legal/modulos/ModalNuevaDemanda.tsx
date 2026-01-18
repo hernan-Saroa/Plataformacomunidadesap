@@ -11,8 +11,9 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
 import { Button } from '../../../ui/button';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalNuevaDemandaProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ interface ModalNuevaDemandaProps {
 export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
+  tipoProceso: string;
   demandante: string;
   tipoPersona: 'natural' | 'juridica';
   identificacionDemandante: string;
@@ -66,6 +68,9 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
+// Tipos de Procesos Judiciales ahora vienen de ConfiguracionesSIGLContext
+// (se obtienen con useConfiguracionModulo en el componente)
+
 const DEPARTAMENTOS = [
   'Cundinamarca',
   'Antioquia',
@@ -78,46 +83,71 @@ const DEPARTAMENTOS = [
   'Otro'
 ];
 
+const INITIAL_FORM_DATA: NuevaDemandaData = {
+  numeroRadicado: '',
+  medioControl: '',
+  demandante: '',
+  tipoProceso: '',
+  tipoPersona: 'natural',
+  identificacionDemandante: '',
+  // Campos de contacto del demandante
+  demandanteDireccion: '',
+  demandanteTelefono: '',
+  demandanteEmail: '',
+  demandanteApoderado: '',
+  // Datos del demandado (ESAP por defecto)
+  demandado: 'ESAP - Escuela Superior de Administración Pública',
+  tipoIdDemandado: 'NIT',
+  numeroIdDemandado: '899.999.061-4',
+  demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
+  demandadoTelefono: '+57 601 220 2790',
+  demandadoEmail: 'juridica@esap.edu.co',
+  cuantia: '',
+  juzgado: '',
+  ciudad: '',
+  departamento: '',
+  fechaNotificacion: '',
+  fechaVencimiento: '',
+  abogadoAsignado: '',
+  etapa: 'NOTIFICADA',
+  pretensiones: '',
+  hechos: '',
+  observaciones: ''
+};
+
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
-  const [formData, setFormData] = useState<NuevaDemandaData>({
-    numeroRadicado: '',
-    medioControl: '',
-    demandante: '',
-    tipoPersona: 'natural',
-    identificacionDemandante: '',
-    // Campos de contacto del demandante
-    demandanteDireccion: '',
-    demandanteTelefono: '',
-    demandanteEmail: '',
-    demandanteApoderado: '',
-    // Datos del demandado (ESAP por defecto)
-    demandado: 'ESAP - Escuela Superior de Administración Pública',
-    tipoIdDemandado: 'NIT',
-    numeroIdDemandado: '899.999.061-4',
-    demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
-    demandadoTelefono: '+57 601 220 2790',
-    demandadoEmail: 'juridica@esap.edu.co',
-    cuantia: '',
-    juzgado: '',
-    ciudad: '',
-    departamento: '',
-    fechaNotificacion: '',
-    fechaVencimiento: '',
-    abogadoAsignado: '',
-    etapa: 'NOTIFICADA',
-    pretensiones: '',
-    hechos: '',
-    observaciones: ''
-  });
+  const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
 
-  // Cargar abogados desde la API
+  // ✅ Obtener tipos de procesos desde configuración centralizada
+  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+
+  // ✅ Auto-calcular fecha de vencimiento cuando cambia tipoProceso o fechaNotificacion
+  useEffect(() => {
+    if (formData.tipoProceso && formData.fechaNotificacion) {
+      const tipoSeleccionado = tiposProcesosActivos.find(t => t.id === formData.tipoProceso);
+      if (tipoSeleccionado && tipoSeleccionado.plazo) {
+        const fechaNotif = new Date(formData.fechaNotificacion);
+        const fechaVenc = new Date(fechaNotif);
+        fechaVenc.setDate(fechaVenc.getDate() + tipoSeleccionado.plazo);
+        const fechaVencStr = fechaVenc.toISOString().split('T')[0];
+
+        if (formData.fechaVencimiento !== fechaVencStr) {
+          setFormData(prev => ({ ...prev, fechaVencimiento: fechaVencStr }));
+        }
+      }
+    }
+  }, [formData.tipoProceso, formData.fechaNotificacion, tiposProcesosActivos]);
+
+  // Cargar abogados desde la API y resetear formulario al abrir
   useEffect(() => {
     if (isOpen) {
       loadAbogados();
+      setFormData(INITIAL_FORM_DATA);
+      setErrors({});
     }
   }, [isOpen]);
 
@@ -138,8 +168,42 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
   };
 
+  // ✅ Helpers de validación de formato
+  const onlyNumbers = (value: string): string => value.replace(/[^0-9]/g, '');
+  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+  const phoneFormat = (value: string): string => value.replace(/[^0-9+\s-]/g, '');
+  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
   const handleInputChange = (field: keyof NuevaDemandaData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    let filteredValue = value;
+
+    // Aplicar filtros según el campo
+    switch (field) {
+      case 'cuantia':
+        // Solo números para cuantía
+        filteredValue = onlyNumbers(value);
+        break;
+      case 'identificacionDemandante':
+        // Solo números si es persona natural
+        if (formData.tipoPersona === 'natural') {
+          filteredValue = onlyNumbers(value);
+        }
+        break;
+      case 'demandante':
+      case 'demandanteApoderado':
+        // Solo letras y espacios para nombres
+        filteredValue = onlyLetters(value);
+        break;
+      case 'demandanteTelefono':
+      case 'demandadoTelefono':
+        // Formato teléfono internacional
+        filteredValue = phoneFormat(value);
+        break;
+      default:
+        filteredValue = value;
+    }
+
+    setFormData(prev => ({ ...prev, [field]: filteredValue }));
     // Limpiar error del campo
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -177,6 +241,14 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       newErrors.pretensiones = 'Las pretensiones son obligatorias';
     }
 
+    // ✅ Validación de formato de correo electrónico
+    if (formData.demandanteEmail && !isValidEmail(formData.demandanteEmail)) {
+      newErrors.demandanteEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
+    }
+    if (formData.demandadoEmail && !isValidEmail(formData.demandadoEmail)) {
+      newErrors.demandadoEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -202,9 +274,20 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setFormData({
       numeroRadicado: '',
       medioControl: '',
+      tipoProceso: '',
       demandante: '',
       tipoPersona: 'natural',
       identificacionDemandante: '',
+      demandanteDireccion: '',
+      demandanteTelefono: '',
+      demandanteEmail: '',
+      demandanteApoderado: '',
+      demandado: 'ESAP - Escuela Superior de Administración Pública',
+      tipoIdDemandado: 'NIT',
+      numeroIdDemandado: '899.999.061-4',
+      demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
+      demandadoTelefono: '+57 601 220 2790',
+      demandadoEmail: 'juridica@esap.edu.co',
       cuantia: '',
       juzgado: '',
       ciudad: '',
@@ -323,6 +406,39 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle className="w-3 h-3" />
                   {errors.medioControl}
+                </p>
+              )}
+            </div>
+
+            {/* Tipo de Proceso (Dinámico desde Configuraciones) */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Tipo de Proceso <span className="text-red-600">*</span>
+              </label>
+              <select
+                value={formData.tipoProceso}
+                onChange={(e) => handleInputChange('tipoProceso', e.target.value)}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 font-semibold ${errors.tipoProceso
+                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
+              >
+                <option value="">Seleccione tipo de proceso...</option>
+                {tiposProcesosActivos.map(tipo => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre} ({tipo.plazo} días)
+                  </option>
+                ))}
+              </select>
+              {formData.tipoProceso && (
+                <p className="text-xs text-gray-500 mt-1 italic">
+                  {tiposProcesosActivos.find(t => t.id === formData.tipoProceso)?.descripcion}
+                </p>
+              )}
+              {errors.tipoProceso && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.tipoProceso}
                 </p>
               )}
             </div>
@@ -480,9 +596,18 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 type="email"
                 value={formData.demandanteEmail || ''}
                 onChange={(e) => handleInputChange('demandanteEmail', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandanteEmail
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="Ej: demandante@email.com"
               />
+              {errors.demandanteEmail && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.demandanteEmail}
+                </p>
+              )}
             </div>
 
             {/* Apoderado del demandante */}
@@ -517,7 +642,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandado || 'ESAP - Escuela Superior de Administración Pública'}
+                value={formData.demandado}
                 onChange={(e) => handleInputChange('demandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="ESAP - Escuela Superior de Administración Pública"
@@ -530,7 +655,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 Tipo de Identificación
               </label>
               <select
-                value={formData.tipoIdDemandado || 'NIT'}
+                value={formData.tipoIdDemandado}
                 onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -547,7 +672,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.numeroIdDemandado || '899.999.061-4'}
+                value={formData.numeroIdDemandado}
                 onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="899.999.061-4"
@@ -561,7 +686,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandadoDireccion || 'Calle 44 #53-37, Bogotá D.C.'}
+                value={formData.demandadoDireccion}
                 onChange={(e) => handleInputChange('demandadoDireccion', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Calle 44 #53-37, Bogotá D.C."
@@ -575,7 +700,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="text"
-                value={formData.demandadoTelefono || '+57 601 220 2790'}
+                value={formData.demandadoTelefono}
                 onChange={(e) => handleInputChange('demandadoTelefono', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="+57 601 220 2790"
@@ -589,11 +714,20 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </label>
               <input
                 type="email"
-                value={formData.demandadoEmail || 'juridica@esap.edu.co'}
+                value={formData.demandadoEmail}
                 onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandadoEmail
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:ring-blue-500'
+                  }`}
                 placeholder="juridica@esap.edu.co"
               />
+              {errors.demandadoEmail && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.demandadoEmail}
+                </p>
+              )}
             </div>
           </div>
 
@@ -708,14 +842,26 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               )}
             </div>
 
+            {/* Fecha de Vencimiento - Auto-calculada */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">Fecha de Vencimiento</label>
-              <input
-                type="date"
-                value={formData.fechaVencimiento}
-                onChange={(e) => handleInputChange('fechaVencimiento', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-              />
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Fecha de Vencimiento
+                <span className="ml-2 text-xs font-normal text-gray-500">(auto-calculada)</span>
+              </label>
+              <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-semibold">
+                {formData.fechaVencimiento ? (
+                  <>
+                    📅 {new Date(formData.fechaVencimiento + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {formData.tipoProceso && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({tiposProcesosActivos.find(t => t.id === formData.tipoProceso)?.plazo} días desde notificación)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-gray-400 italic">Seleccione tipo de proceso y fecha de notificación</span>
+                )}
+              </div>
             </div>
 
             <div className="md:col-span-2">

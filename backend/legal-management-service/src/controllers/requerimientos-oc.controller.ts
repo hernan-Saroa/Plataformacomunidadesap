@@ -4,8 +4,9 @@ import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
+import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 
-@Controller('legal/requerimientos-oc')
+@Controller('requerimientos-oc')
 export class RequerimientosOCController {
     constructor(private readonly service: RequerimientosOCService) { }
 
@@ -54,6 +55,14 @@ export class RequerimientosOCController {
         return this.service.delete(id);
     }
 
+    @Patch(':id/reasignar')
+    async reasignar(
+        @Param('id') id: string,
+        @Body('nuevoAbogadoId') nuevoAbogadoId: string
+    ): Promise<RequerimientoOC> {
+        return this.service.reasignar(id, nuevoAbogadoId);
+    }
+
     // ============================================
     // SOLICITUDES DE INSUMOS (Delegación)
     // ============================================
@@ -77,4 +86,40 @@ export class RequerimientosOCController {
     ): Promise<SolicitudInsumo> {
         return this.service.responderInsumo(insumoId, data);
     }
+
+    // ============================================
+    // ENVIAR RESPUESTA FORMAL
+    // ============================================
+    @Post(':id/response')
+    async enviarRespuesta(
+        @Param('id') id: string,
+        @Body() data: {
+            destinatarioEmail: string;
+            asunto: string;
+            cuerpoMensaje: string;
+            tipoRespuesta: string;
+            destinatarioNombre?: string;
+            destinatarioCargo?: string;
+        }
+    ): Promise<{ success: boolean; message: string }> {
+        return this.service.enviarRespuesta(id, data);
+    }
+
+    // ============================================
+    // BORRADORES DE RESPUESTA
+    // ============================================
+    @Get(':id/borrador')
+    async getBorrador(@Param('id') id: string): Promise<RespuestaBorradorOC | null> {
+        return this.service.getBorrador(id);
+    }
+
+    @Post(':id/borrador')
+    async upsertBorrador(
+        @Param('id') id: string,
+        @Body() data: Partial<RespuestaBorradorOC>
+    ): Promise<RespuestaBorradorOC> {
+        return this.service.upsertBorrador(id, data);
+    }
 }
+
+

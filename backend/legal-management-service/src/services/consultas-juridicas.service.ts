@@ -2,15 +2,41 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
+import { ConsultaJuridicaHistorial } from '../entities/consulta-juridica-historial.entity';
 import { TerminosService } from './terminos.service';
 
+import { OnModuleInit } from '@nestjs/common';
+
 @Injectable()
-export class ConsultasJuridicasService {
+export class ConsultasJuridicasService implements OnModuleInit {
     constructor(
         @InjectRepository(ConsultaJuridica)
         private readonly consultaRepository: Repository<ConsultaJuridica>,
+        @InjectRepository(ConsultaJuridicaHistorial)
+        private readonly historialRepository: Repository<ConsultaJuridicaHistorial>,
         private readonly terminosService: TerminosService
     ) { }
+
+    async onModuleInit() {
+        try {
+            await this.historialRepository.query(`
+                CREATE TABLE IF NOT EXISTS "legal_management"."consulta_juridica_historial" (
+                    "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+                    "consulta_id" uuid NOT NULL,
+                    "tipo_evento" character varying NOT NULL,
+                    "descripcion" text NOT NULL,
+                    "detalle" text,
+                    "usuario" character varying,
+                    "fecha" TIMESTAMP NOT NULL DEFAULT now(),
+                    CONSTRAINT "PK_consulta_juridica_historial" PRIMARY KEY ("id"),
+                    CONSTRAINT "FK_consulta_juridica_historial_consulta" FOREIGN KEY ("consulta_id") REFERENCES "legal_management"."consultas_juridicas"("id") ON DELETE CASCADE
+                );
+            `);
+            console.log('Tabla legal_management.consulta_juridica_historial verificada/creada');
+        } catch (error) {
+            console.error('Error creando tabla historial:', error);
+        }
+    }
 
     async findAll(): Promise<any[]> {
         const consultas = await this.consultaRepository.find({
@@ -40,20 +66,23 @@ export class ConsultasJuridicasService {
     }
 
     async create(data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {
-        // Generate radicado number - Find last radicado for current year
+        // Generate radicado number - Find max radicado for current year robustly
         const year = new Date().getFullYear();
         const prefix = `CJ-${year}-`;
 
-        const lastRecord = await this.consultaRepository.findOne({
+        // Get all radicados for this year to find the real max, avoiding string sort issues with mixed padding
+        const yearConsultas = await this.consultaRepository.find({
             where: { numeroRadicado: Like(`${prefix}%`) },
-            order: { numeroRadicado: 'DESC' }
+            select: ['numeroRadicado']
         });
 
         let nextNumber = 1;
-        if (lastRecord) {
-            const parts = lastRecord.numeroRadicado.split('-');
-            const lastNumber = parseInt(parts[parts.length - 1], 10);
-            nextNumber = lastNumber + 1;
+        if (yearConsultas.length > 0) {
+            const numbers = yearConsultas.map(c => {
+                const parts = c.numeroRadicado.split('-');
+                return parseInt(parts[parts.length - 1], 10) || 0;
+            });
+            nextNumber = Math.max(...numbers) + 1;
         }
 
         const numeroRadicado = `${prefix}${String(nextNumber).padStart(4, '0')}`;
@@ -83,6 +112,15 @@ export class ConsultasJuridicasService {
             data.abogadoAsignadoId // If assigned on creation
         );
 
+        // Registro Historial Creación
+        await this.registrarEvento(
+            savedConsulta.id,
+            'CREACIÓN',
+            'Consulta radicada en el sistema',
+            `Radicado: ${numeroRadicado}`,
+            data.nombreSolicitante || 'Sistema'
+        );
+
         return savedConsulta;
     }
 
@@ -96,6 +134,23 @@ export class ConsultasJuridicasService {
             if (consulta.estado === 'en_radicacion') {
                 updateData.estado = 'asignado';
             }
+            // Log Assignment
+            await this.registrarEvento(
+                id,
+                'ASIGNACIÓN',
+                'Abogado asignado a la consulta',
+                `Abogado ID: ${data.abogadoAsignadoId}`,
+                'Sistema'
+            );
+        } else if (data.abogadoAsignadoId && data.abogadoAsignadoId !== consulta.abogadoAsignadoId) {
+            // Reassignment
+            await this.registrarEvento(
+                id,
+                'REASIGNACIÓN',
+                'Cambio de abogado asignado',
+                `Nuevo Abogado ID: ${data.abogadoAsignadoId}`,
+                'Sistema'
+            );
         }
 
         // Use update() instead of save() to avoid TypeORM relation issues
@@ -103,9 +158,19 @@ export class ConsultasJuridicasService {
         return this.findOne(id);
     }
 
-    async updateEstado(id: string, estado: string): Promise<ConsultaJuridica> {
+    async updateEstado(id: string, estado: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
+        const estadoAnterior = consulta.estado;
         consulta.estado = estado;
+
+        await this.registrarEvento(
+            id,
+            'CAMBIO_ETAPA',
+            `Cambio de etapa: ${estadoAnterior} -> ${estado}`,
+            `Nueva etapa: ${estado}`,
+            usuario
+        );
+
         return this.consultaRepository.save(consulta);
     }
 
@@ -114,21 +179,43 @@ export class ConsultasJuridicasService {
         tipoRespuesta: string;
         documentoRespuestaUrl?: string | null;
         observaciones?: string;
-    }): Promise<ConsultaJuridica> {
+    }, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
 
+        const estadoAnterior = consulta.estado;
         consulta.tipoRespuesta = respuestaData.tipoRespuesta;
         consulta.numeroOficioRespuesta = respuestaData.numeroOficioRespuesta ?? consulta.numeroOficioRespuesta;
         consulta.documentoRespuestaUrl = respuestaData.documentoRespuestaUrl ?? consulta.documentoRespuestaUrl;
         consulta.observaciones = respuestaData.observaciones ?? consulta.observaciones;
         consulta.fechaRespuesta = new Date();
-        consulta.estado = 'respondido';
+        consulta.estado = 'respondido'; // 'respondido' is often mapped to 'ENVIADA' or similar in frontend logic, verify if consistency needed
+
+        // Log Respuesta event
+        await this.registrarEvento(
+            id,
+            'RESPUESTA',
+            'Respuesta oficial emitida',
+            `Oficio: ${respuestaData.numeroOficioRespuesta || 'N/A'}, Tipo: ${respuestaData.tipoRespuesta}`,
+            usuario
+        );
+
+        // Log Stage Change event if it changed
+        if (estadoAnterior !== consulta.estado) {
+            await this.registrarEvento(
+                id,
+                'CAMBIO_ETAPA',
+                `Cambio de etapa: ${estadoAnterior} -> ${consulta.estado}`,
+                'Cierre automático por envío de respuesta',
+                usuario
+            );
+        }
 
         return this.consultaRepository.save(consulta);
     }
 
-    async updateRespuesta(id: string, respuesta: string, enviar: boolean): Promise<ConsultaJuridica> {
+    async updateRespuesta(id: string, respuesta: string, enviar: boolean, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
+        const estadoAnterior = consulta.estado;
 
         consulta.respuesta = respuesta;
 
@@ -136,6 +223,25 @@ export class ConsultasJuridicasService {
             consulta.fechaRespuesta = new Date();
             consulta.estado = 'respondido';
             consulta.tipoRespuesta = consulta.tipoRespuesta || 'favorable'; // Default si no se especifica
+
+            // Log events for send action
+            await this.registrarEvento(
+                id,
+                'RESPUESTA',
+                'Respuesta enviada (desde editor)',
+                'Respuesta enviada directamente desde el editor de texto',
+                'Sistema' // TODO: Pass user here if possible
+            );
+
+            if (estadoAnterior !== consulta.estado) {
+                await this.registrarEvento(
+                    id,
+                    'CAMBIO_ETAPA',
+                    `Cambio de etapa: ${estadoAnterior} -> ${consulta.estado}`,
+                    'Cierre automático por envío de respuesta',
+                    'Sistema'
+                );
+            }
         }
 
         return this.consultaRepository.save(consulta);
@@ -159,5 +265,26 @@ export class ConsultasJuridicasService {
         if (diasRestantes <= 3) return 'alta';      // Crítico
         if (diasRestantes <= 7) return 'media';     // Urgente
         return 'baja';                               // Normal
+    }
+
+    // --- Historial Methods ---
+
+    async registrarEvento(consultaId: string, tipo: string, descripcion: string, detalle: string = '', usuario: string = 'Sistema'): Promise<void> {
+        const evento = this.historialRepository.create({
+            consultaId,
+            tipoEvento: tipo,
+            descripcion,
+            detalle,
+            usuario,
+            fecha: new Date()
+        });
+        await this.historialRepository.save(evento);
+    }
+
+    async getHistorial(consultaId: string): Promise<ConsultaJuridicaHistorial[]> {
+        return this.historialRepository.find({
+            where: { consultaId },
+            order: { fecha: 'DESC' }
+        });
     }
 }

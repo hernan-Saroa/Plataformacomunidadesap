@@ -89,11 +89,14 @@ export const certificadosService = {
      * Listar certificados laborales
      */
     async listar(params?: {
-      estado?: 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Generado';
+      estado?: string;
+      search?: string;
+      cargo?: string;
+      tipoVinculacion?: string;
       page?: number;
       limit?: number;
-    }): Promise<CertificadoLaboral[]> {
-      return apiClient.get<CertificadoLaboral[]>(`${SERVICE_PREFIX}/certificates/certificados`, { params, requiresAuth: false });
+    }): Promise<any> {
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, { params, requiresAuth: false });
     },
 
     /**
@@ -122,6 +125,24 @@ export const certificadosService = {
      */
     async generarPDF(id: string): Promise<{ pdfUrl: string }> {
       return apiClient.post<{ pdfUrl: string }>(`${SERVICE_PREFIX}/certificates/certificados/generate/${id}`, {}, { requiresAuth: false });
+    },
+
+    /**
+     * Reenviar certificado laboral por email
+     */
+    async reenviar(
+      id: string,
+      options?: {
+        includeSalary?: boolean;
+        includeTechnicalBonus?: boolean;
+        templateType?: 'docente' | 'administrador';
+      },
+    ): Promise<{ mensaje: string; email: string }> {
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/certificados/${id}/reenviar`,
+        options || {},
+        { requiresAuth: false },
+      );
     },
   },
 

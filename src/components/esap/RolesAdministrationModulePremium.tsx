@@ -9,6 +9,9 @@ import {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Plus,
   Search,
   Users,
@@ -38,6 +41,7 @@ import { useConfirmation } from './ConfirmationModal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
+import { useAuth } from '../../hooks';
 
 // ============================================================================
 // TIPOS
@@ -165,13 +169,70 @@ const MOCK_ROLES: SystemRole[] = [
     creado_por: 'Super Admin',
     ultima_modificacion: '2024-11-05',
     modificado_por: 'Coordinador TI'
+  },
+  // ========== ROLES DE CONTROL INTERNO ==========
+  {
+    id: '9',
+    nombre: 'Jefe de Control Interno',
+    descripcion: 'Control total sobre todos los módulos de Control Interno de Gestión',
+    icono: 'Shield',
+    color: '#dc2626',
+    tipo: 'sistema',
+    usuarios_count: 1,
+    permisos_count: 80,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '10',
+    nombre: 'Profesional Auditor',
+    descripcion: 'Gestión completa de auditorías y seguimiento de planes de mejoramiento',
+    icono: 'FileText',
+    color: '#2563eb',
+    tipo: 'sistema',
+    usuarios_count: 3,
+    permisos_count: 52,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '11',
+    nombre: 'Auxiliar de Auditoría',
+    descripcion: 'Soporte en procesos de auditoría y gestión documental',
+    icono: 'FileText',
+    color: '#16a34a',
+    tipo: 'sistema',
+    usuarios_count: 2,
+    permisos_count: 23,
+    esta_activo: true,
+    requiere_2fa: false,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
+  },
+  {
+    id: '12',
+    nombre: 'Consulta (Control Interno)',
+    descripcion: 'Solo lectura de información pública del módulo de Control Interno',
+    icono: 'Eye',
+    color: '#64748b',
+    tipo: 'sistema',
+    usuarios_count: 5,
+    permisos_count: 15,
+    esta_activo: true,
+    requiere_2fa: false,
+    fecha_creacion: '2024-01-01',
+    creado_por: 'Sistema'
   }
 ];
 
 const MOCK_STATS: RoleStats = {
-  total_roles: 8,
-  roles_sistema: 6,
-  usuarios_asignados: 5056,
+  total_roles: 12,
+  roles_sistema: 10,
+  usuarios_asignados: 5067,
   permisos_disponibles: 45
 };
 
@@ -188,6 +249,9 @@ const ICON_MAP: Record<string, any> = {
   UserCircle,
   Building2,
   FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
   Cog
 };
 
@@ -221,6 +285,20 @@ export function RolesAdministrationModulePremium() {
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
   const { confirm, ConfirmationDialog } = useConfirmation();
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
+
+  // Normaliza el rol seleccionado para el modal de edición
+  const selectedRoleForModal = selectedRole
+    ? {
+        id: selectedRole.id,
+        nombre: (selectedRole as any).nombre || selectedRole.name || '',
+        descripcion: (selectedRole as any).descripcion || selectedRole.description || '',
+        icono: (selectedRole as any).icono || selectedRole.icon || 'Shield',
+        color: selectedRole.color || '#003DA5',
+        tipo: ((selectedRole as any).tipo || selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+      }
+    : null;
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -278,6 +356,7 @@ export function RolesAdministrationModulePremium() {
       const newRole = await rolesService.createRole({
         name: roleData.nombre,
         description: roleData.descripcion,
+        code: roleData.codigo,
         icon: roleData.icono,
         color: roleData.color,
         type: 'personalizado',
@@ -309,7 +388,7 @@ export function RolesAdministrationModulePremium() {
     if (!selectedRole) return;
 
     try {
-      await rolesService.updateRole(selectedRole.id, {
+      const updatedRole = await rolesService.updateRole(selectedRole.id, {
         name: roleData.nombre,
         description: roleData.descripcion,
         icon: roleData.icono,
@@ -320,6 +399,7 @@ export function RolesAdministrationModulePremium() {
 
       // Recargar datos
       await loadRoles();
+      setSelectedRole(updatedRole);
 
       toast.success('Rol Actualizado', {
         description: `Los cambios en "${roleData.nombre}" se han guardado`
@@ -550,13 +630,15 @@ export function RolesAdministrationModulePremium() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Rol</span>
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Crear Rol</span>
+          </button>
+        )}
       </motion.div>
 
       {/* Búsqueda y Filtros Premium */}
@@ -785,7 +867,7 @@ export function RolesAdministrationModulePremium() {
                               <div className="flex items-center gap-2">
                                 <Shield className="w-4 h-4 text-gray-400" />
                                 <span className="text-sm font-bold text-gray-900">
-                                  {role.permisos_count}
+                                  { role.code === 'SUPER_ADMIN' ? 'Todos' : role.permisos_count }
                                 </span>
                               </div>
                             </td>
@@ -1138,13 +1220,13 @@ export function RolesAdministrationModulePremium() {
         onCreateRole={handleCreateRole}
       />
 
-      {selectedRole && (
+      {selectedRoleForModal && (
         <>
           <EditRoleModal
             open={isEditModalOpen}
             onOpenChange={setIsEditModalOpen}
             onEditRole={handleEditRole}
-            role={selectedRole}
+            role={selectedRoleForModal}
           />
 
           <RolePermissionsEditor

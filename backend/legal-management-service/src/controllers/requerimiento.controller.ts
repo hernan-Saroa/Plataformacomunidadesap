@@ -3,7 +3,7 @@ import { RequerimientoService } from '../services/requerimiento.service';
 import { CreateRequerimientoDto } from '../dtos/create-requerimiento.dto';
 import { UpdateEstadoRequerimientoDto, FiltrosRequerimientoDto } from '../dtos/stats-requerimiento.dto';
 
-@Controller('legal/oc')
+@Controller('oc')
 export class RequerimientoController {
     constructor(private readonly reqService: RequerimientoService) { }
 
@@ -81,3 +81,5 @@ export class RequerimientoController {
         return this.reqService.getAllOrganismos();
     }
 }
+
+

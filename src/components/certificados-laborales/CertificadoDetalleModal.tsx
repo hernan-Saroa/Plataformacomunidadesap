@@ -22,6 +22,7 @@ import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CertificadoDetalleModalProps {
   certificado: any;
@@ -77,19 +78,62 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
     });
   };
 
-  const handleCompartir = () => {
-    navigator.clipboard.writeText(`https://esap.edu.co/certificados/${certificado.consecutivo}`);
-    toast.success('Enlace copiado', {
-      description: 'El enlace del certificado se copió al portapapeles',
-      duration: 3000
-    });
+  const handleCompartir = async () => {
+    const enlace = `https://esap.edu.co/certificados/${certificado.consecutivo}`;
+    const copiado = await copyToClipboard(enlace);
+    
+    if (copiado) {
+      toast.success('Enlace copiado', {
+        description: 'El enlace del certificado se copió al portapapeles',
+        duration: 3000
+      });
+    } else {
+      toast.info('Enlace del certificado', {
+        description: enlace,
+        duration: 5000
+      });
+    }
   };
 
-  const handleCopiarID = () => {
-    navigator.clipboard.writeText(certificado.consecutivo);
-    toast.success('ID copiado', {
-      description: 'El consecutivo se copió al portapapeles',
-      duration: 2000
+  const handleCopiarID = async () => {
+    const copiado = await copyToClipboard(certificado.consecutivo);
+    
+    if (copiado) {
+      toast.success('ID copiado', {
+        description: 'El consecutivo se copió al portapapeles',
+        duration: 2000
+      });
+    } else {
+      toast.info('ID del certificado', {
+        description: certificado.consecutivo,
+        duration: 5000
+      });
+    }
+  };
+
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr) return null;
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) {
+      return 'Fecha no disponible';
+    }
+    return fecha.toLocaleDateString('es-CO', opciones || {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
 
@@ -243,11 +287,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Calendar className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
+                            {formatearFecha(certificado.empleado.fechaVinculacion)}
                           </p>
                         </div>
                         <div>
@@ -264,13 +304,26 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Dependencia
+                            Dependencia Padre
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            {certificado.empleado.dependenciaPadre || 'Registro padre'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Dependencia Hijo
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
                             {certificado.empleado.dependencia}
                           </p>
                         </div>
+                      </div>
+
+                      {/* Fila 5 */}
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                             Salario
@@ -278,6 +331,15 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           <p className="text-gray-900 mt-1.5 font-bold flex items-center gap-1.5">
                             <DollarSign className="w-4 h-4 text-green-600" />
                             ${certificado.empleado.salario.toLocaleString('es-CO')} COP
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Correo Electrónico
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            {certificado.empleado.email}
                           </p>
                         </div>
                       </div>
@@ -336,7 +398,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Clock className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
+                            {formatearFecha(certificado.fechaSolicitud, {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric',
@@ -352,7 +414,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                             </label>
                             <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              {new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO', {
+                              {formatearFecha(certificado.fechaGeneracion, {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',

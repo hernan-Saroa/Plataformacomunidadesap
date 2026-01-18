@@ -324,22 +324,53 @@ export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }
   };
 
   /**
-   * Generar número automático
+   * Generar número de oficio automático
+   * Formato: OF-ESAP-AAAA-XXX
+   * Ejemplo: OF-ESAP-2025-001
    */
   const generarNumeroAutomatico = () => {
-    const año = new Date().getFullYear();
-    const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-    const numeroGenerado = `OF-ESAP-${año}-${consecutivo}`;
-    setNumero(numeroGenerado);
-    toast.success('🔢 Número generado', {
-      description: numeroGenerado,
-      duration: 2000
+    toast.loading('⏳ Generando número de oficio...', {
+      id: 'generar-numero',
+      duration: 1000
     });
+
+    setTimeout(() => {
+      const fecha = new Date();
+      const año = fecha.getFullYear();
+      
+      // Generar consecutivo basado en timestamp para evitar duplicados
+      // En producción, este número vendría del backend
+      const timestamp = fecha.getTime();
+      const consecutivo = String(timestamp % 1000).padStart(3, '0');
+      
+      // Formato oficial ESAP
+      const numeroGenerado = `OF-ESAP-${año}-${consecutivo}`;
+      
+      setNumero(numeroGenerado);
+      
+      // Limpiar error si existe
+      if (errores.numero) {
+        setErrores({ ...errores, numero: '' });
+      }
+      
+      toast.success('✅ Número de oficio generado', {
+        id: 'generar-numero',
+        description: `${numeroGenerado} asignado correctamente`,
+        duration: 3000
+      });
+      
+      // Log para analytics
+      console.log('📊 Número de oficio generado:', {
+        expediente: expedienteId,
+        numeroOficio: numeroGenerado,
+        timestamp: fecha.toISOString()
+      });
+    }, 1000);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-4xl max-h-[95vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">Redactar Oficio Judicial</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para redactar y enviar oficios judiciales oficiales

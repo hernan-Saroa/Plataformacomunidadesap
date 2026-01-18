@@ -2,7 +2,7 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ComentariosConsultaService } from '../services/comentarios-consulta.service';
 
-@Controller('legal/consultas-juridicas')
+@Controller('consultas-juridicas')
 export class ComentariosConsultaController {
     constructor(private readonly comentariosService: ComentariosConsultaService) { }
 
@@ -24,3 +24,5 @@ export class ComentariosConsultaController {
         });
     }
 }
+
+

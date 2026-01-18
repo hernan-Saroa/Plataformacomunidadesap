@@ -7,12 +7,29 @@ import { Signer } from './signer.entity';
 import { CertificateTemplate } from './certificate-template.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
-import * as nodemailer from 'nodemailer';
+import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+
+type SendLaborCertificateOptions = {
+  includeSalary?: boolean;
+  includeTechnicalBonus?: boolean;
+  templateType?: 'docente' | 'administrador';
+  to?: string;
+};
 
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
-  private mailTransporter: nodemailer.Transporter | null = null;
+
+  private resolveNotificationsBaseUrl() {
+    const direct =
+      process.env.NOTIFICATIONS_SERVICE_URL || process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) {
+      return direct.replace(/\/$/, '');
+    }
+    // Acceso directo dentro de la red Docker; si corres local sin Docker puedes
+    // sobreescribir con NOTIFICATION(S)_SERVICE_URL
+    return 'http://notifications-service:3009';
+  }
 
   constructor(
     @InjectRepository(CertificateRequest)
@@ -26,6 +43,7 @@ export class CertificatesService {
     @InjectRepository(CertificateValidation)
     private validationRepo: Repository<CertificateValidation>,
     private certificateGenerator: CertificateGeneratorService,
+    private laborPdfService: LaborCertificatePdfService,
   ) {}
 
   // ============================================
@@ -39,74 +57,131 @@ export class CertificatesService {
   }
 
   /**
-   * Enviar código por email si hay configuración SMTP.
+   * Solicita al notifications-service que envíe el código por email.
    */
   private async enviarCodigoPorEmail(destinatario: string, codigo: string) {
-    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
-    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
-      this.logger.warn('SMTP no configurado, no se envía email. Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM');
+    if (!destinatario) {
+      this.logger.warn('No se pudo enviar el código: destinatario vacío');
       return;
     }
 
-    if (!this.mailTransporter) {
-      this.mailTransporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: Number(SMTP_PORT),
-        secure: Number(SMTP_PORT) === 465,
-        auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
-        },
-      });
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/validation-code`;
+    this.logger.debug(`Llamando al servicio: ${url}`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: destinatario, code: codigo }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
     }
 
-    const mailOptions = {
-      from: SMTP_FROM,
+    this.logger.log(`Solicitud de envío de código enviada a notifications-service para ${destinatario}`);
+  }
+
+  private buildLaborEmailHtml(certificate: Certificate, recipientName?: string): string {
+    const nombre = recipientName || certificate.full_name || 'usuario';
+    const consecutivo = certificate.certificate_number || 'ESAP';
+    return `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Certificados ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Certificado laboral
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Hola ${nombre}, adjuntamos tu certificado laboral solicitado.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
+              Certificado: <strong>${consecutivo}</strong>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+              ESAP - Escuela Superior de Administracion Publica
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  private async enviarCertificadoLaboralPorEmail(
+    certificate: Certificate,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ to: string }> {
+    const destinatario = (options.to || certificate.request?.email || '').trim();
+    if (!destinatario) {
+      throw new BadRequestException('No hay un email registrado para enviar el certificado');
+    }
+
+    const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
+      includeSalary: options.includeSalary,
+      includeTechnicalBonus: options.includeTechnicalBonus,
+      templateType: options.templateType,
+    });
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
+    const subject = `Certificado Laboral ESAP - ${certificate.certificate_number}`;
+    const text = `Adjuntamos tu certificado laboral ${certificate.certificate_number}.`;
+
+    const payload = {
       to: destinatario,
-      subject: 'Código de validación - Certificado Laboral ESAP',
-      text: `Tu código de validación es: ${codigo}\n\nEste código es válido por un tiempo limitado.`,
-      html: `
-        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                Certificados ESAP
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Código de validación
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Usa este código para validar tu solicitud de certificado. Es válido por tiempo limitado.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; text-align: center;">
-                <div style="display: inline-block; background: #f0f7ff; color: #0b68d1; font-weight: 800; font-size: 24px; letter-spacing: 2px; padding: 12px 40px; border-radius: 10px; border: 2px solid #d7e9ff;">
-                  ${codigo}
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-                Si no solicitaste este código, puedes ignorar este mensaje.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                ESAP - Escuela Superior de Administración Pública
-              </td>
-            </tr>
-          </table>
-        </div>
-      `,
+      subject,
+      text,
+      html: this.buildLaborEmailHtml(certificate, certificate.full_name),
+      attachmentName: attachment.filename,
+      attachmentBase64: attachment.buffer.toString('base64'),
+      attachmentContentType: 'application/pdf',
     };
 
-    await this.mailTransporter.sendMail(mailOptions);
-    this.logger.log(`Código de validación enviado a ${destinatario}`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
+    }
+
+    this.logger.log(`Certificado laboral enviado a ${destinatario}`);
+    return { to: destinatario };
+  }
+
+  async reenviarCertificadoLaboral(
+    id: string,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ mensaje: string; email: string }> {
+    const certificate = await this.certificateRepo.findOne({
+      where: { id },
+      relations: ['request'],
+    });
+
+    if (!certificate) {
+      throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
+    }
+
+    const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
+
+    return {
+      mensaje: `Certificado reenviado a ${result.to}`,
+      email: result.to,
+    };
   }
 
   async findSolicitudById(id: string) {
@@ -142,6 +217,7 @@ export class CertificatesService {
 
   async findAllCertificados() {
     const certificates = await this.certificateRepo.find({
+      relations: ['request'],
       order: { issue_date: 'DESC' },
     });
 
@@ -153,12 +229,100 @@ export class CertificatesService {
         });
         return {
           ...cert,
+          email: cert.request?.email,
           validation_count: validationCount,
         };
       }),
     );
 
     return certificatesWithCount;
+  }
+
+  async findCertificadosPaginados(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    status?: string;
+    cargo?: string;
+    tipoVinculacion?: string;
+  }) {
+    const safePage = Math.max(params.page || 1, 1);
+    const safeLimit = Math.min(Math.max(params.limit || 10, 1), 10);
+    const skip = (safePage - 1) * safeLimit;
+
+    const qb = this.certificateRepo.createQueryBuilder('cert');
+    qb.leftJoinAndSelect('cert.request', 'request');
+
+    if (params.search) {
+      const term = `%${params.search.toLowerCase()}%`;
+      qb.andWhere(
+        `(LOWER(cert.full_name) LIKE :term OR LOWER(cert.id_number) LIKE :term OR LOWER(cert.certificate_number) LIKE :term OR LOWER(cert.position_category) LIKE :term OR LOWER(cert.career_category) LIKE :term)`,
+        { term },
+      );
+    }
+
+    if (params.status) {
+      const statusMap: Record<string, string> = {
+        activo: 'VALID',
+        revocado: 'REVOKED',
+        expirado: 'EXPIRED',
+        valid: 'VALID',
+        revoked: 'REVOKED',
+        expired: 'EXPIRED',
+      };
+      const normalized = params.status.toLowerCase();
+      const mappedStatus = statusMap[normalized];
+      if (mappedStatus) {
+        qb.andWhere('cert.status = :status', { status: mappedStatus });
+      }
+    }
+
+    if (params.cargo) {
+      qb.andWhere('cert.position_category = :cargo', { cargo: params.cargo });
+    }
+
+    if (params.tipoVinculacion) {
+      qb.andWhere('cert.career_category = :tipo', { tipo: params.tipoVinculacion });
+    }
+
+    qb.orderBy('cert.issue_date', 'DESC');
+
+    const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
+
+    const certificatesWithCount = await Promise.all(
+      certificates.map(async (cert) => {
+        const validationCount = await this.validationRepo.count({
+          where: { certificate_id: cert.id },
+        });
+        return {
+          ...cert,
+          email: cert.request?.email,
+          validation_count: validationCount,
+        };
+      }),
+    );
+
+    const [totalEmitidos, activos, revocados, expirados, escaneosQR] = await Promise.all([
+      this.certificateRepo.count(),
+      this.certificateRepo.count({ where: { status: 'VALID' } }),
+      this.certificateRepo.count({ where: { status: 'REVOKED' } }),
+      this.certificateRepo.count({ where: { status: 'EXPIRED' } }),
+      this.validationRepo.count(),
+    ]);
+
+    return {
+      items: certificatesWithCount,
+      total,
+      limit: safeLimit,
+      page: safePage,
+      stats: {
+        totalEmitidos,
+        certificadosActivos: activos,
+        certificadosRevocados: revocados,
+        certificadosExpirados: expirados,
+        escaneosQR,
+      },
+    };
   }
 
   async findCertificadoById(id: string) {
@@ -172,14 +336,18 @@ export class CertificatesService {
   }
 
   async findCertificadoByCodigoVerificacion(codigo: string) {
-    // Buscar sin importar mayúsculas/minúsculas
+    const codigoTrim = (codigo || '').trim();
+    const codigoSinEspacios = codigoTrim.replace(/\s+/g, '');
+    // Buscar sin importar mayusculas/minusculas
     const certificate = await this.certificateRepo
       .createQueryBuilder('certificate')
-      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', { codigo })
+      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', { codigo: codigoTrim })
+      .orWhere('UPPER(certificate.certificate_number) = UPPER(:codigo)', { codigo: codigoTrim })
+      .orWhere("UPPER(REPLACE(certificate.certificate_number, ' ', '')) = UPPER(:codigoSinEspacios)", { codigoSinEspacios })
       .getOne();
 
     if (!certificate) {
-      throw new NotFoundException(`Certificado con código ${codigo} no encontrado`);
+      throw new NotFoundException(`Certificado con codigo ${codigoTrim} no encontrado`);
     }
     return certificate;
   }
@@ -191,7 +359,7 @@ export class CertificatesService {
     });
 
     if (!signer) {
-      throw new NotFoundException('No se encontró un firmante principal activo');
+      throw new NotFoundException('No se encontrИ un firmante principal activo');
     }
 
     // Generate unique verification code
@@ -214,8 +382,10 @@ export class CertificatesService {
       position_category: request.position_category,
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
+      technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
+      department_son: request.department_son || undefined,
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
@@ -299,7 +469,7 @@ export class CertificatesService {
 
     normalized = normalized.replace(/^::ffff:/i, '');
 
-    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+    if (/^\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+$/.test(normalized)) {
       normalized = normalized.split(':')[0];
     }
 
@@ -369,7 +539,29 @@ export class CertificatesService {
       order: { validation_date: 'DESC' },
     });
 
-    return validaciones.map((v) => this.mapValidationToDTO(v));
+    const mapped = await Promise.all(
+      validaciones.map(async (validation) => {
+        if (!validation.city && !validation.country && validation.ip_address) {
+          const geo = await this.resolveGeoFromIp(validation.ip_address);
+          if (geo) {
+            validation.city = geo.city || validation.city;
+            validation.country = geo.country || validation.country;
+            validation.region = geo.region || validation.region;
+            validation.latitude = geo.latitude ?? validation.latitude;
+            validation.longitude = geo.longitude ?? validation.longitude;
+            validation.isp = geo.isp || validation.isp;
+            validation.location =
+              geo.city && geo.country
+                ? `${geo.city}, ${geo.country}`
+                : validation.location;
+            await this.validationRepo.save(validation);
+          }
+        }
+        return this.mapValidationToDTO(validation);
+      }),
+    );
+
+    return mapped;
   }
 
   async registrarValidacion(codigoVerificacion: string, ip?: string, userAgent?: string) {
@@ -470,14 +662,39 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${certificadoId} no encontrado`);
     }
 
-    // Formatear fecha de vinculación
+    const normalizarFecha = (valor: Date | string) => {
+      if (!valor) return null;
+      if (valor instanceof Date) {
+        return new Date(
+          valor.getUTCFullYear(),
+          valor.getUTCMonth(),
+          valor.getUTCDate(),
+          12,
+          0,
+          0,
+        );
+      }
+      const match = valor.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        return new Date(year, month, day, 12, 0, 0);
+      }
+      const parsed = new Date(valor);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    // Formatear fecha de vinculacion
+    const fechaVinculacionDate = normalizarFecha(certificado.hiring_date);
     const fechaVinculacion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.hiring_date),
+      fechaVinculacionDate || new Date(),
     );
 
-    // Formatear fecha de expedición
+    // Formatear fecha de expedicion
+    const fechaExpedicionDate = normalizarFecha(certificado.issue_date);
     const fechaExpedicion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.issue_date),
+      fechaExpedicionDate || new Date(),
     );
 
     // Formatear salario
@@ -492,11 +709,11 @@ export class CertificatesService {
       tipoVinculacion: certificado.career_category,
       fechaVinculacion: fechaVinculacion,
       categoria: certificado.position_category,
-      ubicacion: certificado.department || 'Bogotá D.C.',
+      ubicacion: certificado.department || 'Bogota D.C.',
       salarioNumero: salarioNumero,
       salarioTexto: salarioTexto,
       fechaExpedicion: fechaExpedicion,
-      firmante: certificado.signer_name || 'ALBA LUCÍA MARÍN ZULUAGA',
+      firmante: certificado.signer_name || 'ALBA LUCIA MARIN ZULUAGA',
     });
 
     return buffer;
@@ -511,15 +728,20 @@ export class CertificatesService {
    * y si ya tiene un certificado generado
    */
   async verificarDocumentoPorSolicitud(documento: string) {
-    // Buscar la solicitud por número de documento
-    const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documento },
-    });
+    // Buscar la solicitud por numero de documento
+    const documentoTrim = (documento || '').trim();
+    const solicitud = await this.requestRepo
+      .createQueryBuilder('request')
+      .where('request.id_number = :documento', { documento: documentoTrim })
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getOne();
 
     if (!solicitud) {
       return {
         existe: false,
-        mensaje: 'No se encontró ningún registro con este documento',
+        mensaje: 'No se encontro ningun registro con este documento',
       };
     }
 
@@ -547,9 +769,9 @@ export class CertificatesService {
   }
 
   /**
-   * Generar código de validación
-   * En producción: enviar email
-   * En local: devolver código fijo
+   * Generar codigo de validacion
+   * En produccion: enviar email
+   * En local: devolver codigo fijo
    */
   async generarCodigoValidacion(documento: string) {
     const verificacion = await this.verificarDocumentoPorSolicitud(documento);
@@ -558,37 +780,31 @@ export class CertificatesService {
       throw new NotFoundException('Documento no encontrado en el sistema');
     }
 
-    if (verificacion.tieneCertificado) {
-      throw new BadRequestException('Ya tienes un certificado laboral generado. No es posible solicitar otro certificado.');
-    }
-
     // Verificar que solicitud existe
     if (!verificacion.solicitud) {
-      throw new BadRequestException('Error al recuperar información de la solicitud');
+      throw new BadRequestException('Error al recuperar informacion de la solicitud');
     }
 
-    // Generar código de 6 dígitos
+    // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
-    // Guardar el código y expiración en la solicitud
+    // Guardar el codigo y expiracion en la solicitud
     await this.requestRepo.update(verificacion.solicitud.id, {
       validation_code: codigoValidacion,
       validation_expires_at: expiresAt,
     });
 
-    // Enviar email si hay configuración SMTP
+    // Enviar email si hay configuracion SMTP
     try {
       await this.enviarCodigoPorEmail(verificacion.solicitud.email, codigoValidacion);
     } catch (err) {
-      this.logger.warn(`No se pudo enviar el código por email: ${err?.message || err}`);
+      this.logger.warn(`No se pudo enviar el codigo por email: ${err?.message || err}`);
     }
 
     return {
-      mensaje: 'Código de validación generado',
+      mensaje: 'Codigo de validacion generado',
       email: verificacion.solicitud.email,
-      // En desarrollo mostramos el código, en producción no
-      // codigoTest: process.env.NODE_ENV !== 'production' ? codigoValidacion : undefined,
       // Devolver datos del empleado para mostrar en el frontend
       solicitud: {
         full_name: verificacion.solicitud.full_name,
@@ -606,47 +822,34 @@ export class CertificatesService {
   }
 
   /**
-   * Validar código y generar certificado
+   * Validar codigo y generar certificado
    */
   async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
-    // Buscar la solicitud
+    const documentoTrim = (documento || '').trim();
+    const codigoTrim = (codigo || '').trim();
+    // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
     const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documento },
+      where: { id_number: documentoTrim, validation_code: codigoTrim },
+      order: { validation_expires_at: 'DESC', updated_at: 'DESC' },
     });
 
     if (!solicitud) {
-      throw new NotFoundException('Solicitud no encontrada');
+      throw new BadRequestException('Codigo de validacion incorrecto');
     }
 
-    // Validar código y vigencia
-    if (!solicitud.validation_code || !solicitud.validation_expires_at) {
-      throw new BadRequestException('No se ha generado un código de validación para esta solicitud');
-    }
-
-    if (solicitud.validation_code !== codigo) {
-      throw new BadRequestException('Código de validación incorrecto');
+    // Validar vigencia
+    if (!solicitud.validation_expires_at) {
+      throw new BadRequestException('No se ha generado un codigo de validacion para esta solicitud');
     }
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
-      throw new BadRequestException('El código de validación ha expirado. Solicita uno nuevo.');
-    }
-
-    // Verificar si ya tiene certificado
-    const certificadoExistente = await this.certificateRepo.findOne({
-      where: { request_id: solicitud.id },
-    });
-
-    if (certificadoExistente) {
-      return {
-        mensaje: 'Ya tienes un certificado generado',
-        certificado: certificadoExistente,
-      };
+      throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
     }
 
     // Generar el certificado
     const nuevoCertificado = await this.createCertificado(solicitud.id);
 
-    // Lipia el codifico y expiración en la solicitud
+    // Limpia el codigo y expiracion en la solicitud
     await this.requestRepo.update(solicitud.id, {
       validation_code: null,
       validation_expires_at: null,

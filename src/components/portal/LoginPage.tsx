@@ -4,6 +4,7 @@ import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkle
 import { toast } from 'sonner@2.0.3';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
+import { authService } from '../../services/api/authService';
 
 interface Usuario {
   id: string;
@@ -14,11 +15,11 @@ interface Usuario {
 }
 
 interface LoginPageProps {
-  onLoginExitoso: (usuario: Usuario) => void;
-  onVolver: () => void;
+  onLogin: (user: any, accessToken: string, rememberMe?: boolean) => void;
+  onBackToHome?: () => void;
 }
 
-export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
+export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -40,6 +41,8 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
       newErrors.email = 'El correo electrónico es requerido';
     } else if (!email.includes('@')) {
       newErrors.email = 'Ingrese un correo válido';
+    } else if (!email.toLowerCase().endsWith('@esap.edu.co')) {
+      newErrors.email = 'Solo se permiten correos institucionales @esap.edu.co';
     }
     
     if (!password) {
@@ -67,133 +70,113 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
     console.log('🗑️ LocalStorage limpiado');
 
     try {
-      // Simular autenticación con delay realista
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      console.log('📡 Llamando a authService.login');
       
-      // Validar credenciales específicas
+      // Llamar a la API de autenticación real
+      const response = await authService.login({
+        email: email.toLowerCase(),
+        password,
+        rememberMe,
+      });
+
+      console.log('✅ [6] Auth service response received:', response);
+
+      // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
-      
-      // Usuarios externos (Portal Transaccional)
-      const usuariosExternos = [
-        'estudiantes@esap.edu.co', 
-        'egresados@esap.edu.co', 
-        'docentes@esap.edu.co',
-        'funcionario@esap.edu.co',  // ✅ Diego Trujillo - Funcionario de Planeación
-        'planta@esap.edu.co',
-      ];
-      
-      // Usuarios internos (Backoffice Administrativo)
-      const usuariosInternos = [
-        'superuser@esap.edu.co',
-        'rector@esap.edu.co',
-        'director@esap.edu.co',
-        'admin@esap.edu.co',
-        'cerlaboral@esap.edu.co',
-        'ar.empresarial@esap.edu.co',
-        'arqempresarial@esap.edu.co',
-        'gestion.legal@esap.edu.co',
-        'ocig@esap.edu.co',
-        'c.disciplinario@esap.edu.co',
-        'registro.academico@esap.edu.co',
-        'gestion.profesoral@esap.edu.co', // Usuario específico para Gestión Profesoral
-      ];
 
-      const todosLosUsuarios = [...usuariosExternos, ...usuariosInternos];
-
-      // Verificar si el email existe
-      if (!todosLosUsuarios.includes(emailLower)) {
-        toast.error('Usuario no encontrado', {
-          description: '❌ El correo electrónico ingresado no está registrado.',
-          duration: 5000,
-        });
-        setErrors({ ...errors, email: 'Este usuario no está registrado' });
-        setIsLoading(false);
-        return;
-      }
-
-      // Verificar contraseña (debe ser exactamente "Esap2026*")
-      if (password !== 'Esap2026*') {
-        toast.error('Contraseña incorrecta', {
-          description: '🔑 La contraseña ingresada no es válida. Por favor verifica tu contraseña.',
-          duration: 5000,
-        });
-        setErrors({ ...errors, password: 'La contraseña es incorrecta' });
-        setIsLoading(false);
-        return;
-      }
-
-      // Determinar tipo de usuario y redirigir
-      let usuario: Usuario;
-      
-      if (emailLower === 'estudiantes@esap.edu.co' || 
-          emailLower === 'estudiante@esap.edu.co' || 
-          emailLower === 'funcionario@esap.edu.co') {
-        // Usuarios específicos del Portal Transaccional
-        const nombres: Record<string, string> = {
-          'estudiantes@esap.edu.co': 'Estudiante Demo',
-          'estudiante@esap.edu.co': 'Estudiante Demo',
-          'funcionario@esap.edu.co': 'Diego Trujillo', // ✅ Usuario administrativo de Planeación
-        };
-
-        usuario = {
-          id: emailLower === 'funcionario@esap.edu.co' ? 'func-001' : 'user-ext-001',
-          nombre: nombres[emailLower] || 'Usuario Portal',
-          tipo: 'externo', // ✅ Tipo externo para ir al Portal Transaccional
-          email: emailLower,
-          rol: emailLower === 'funcionario@esap.edu.co' ? 'Administrativo' : 'Estudiante',
-        };
-
-        console.log('✅ Usuario creado para Portal Transaccional:', usuario);
-
-        toast.success(`✅ ¡Bienvenido ${nombres[emailLower]}!`, {
-          description: 'Acceso al Portal Transaccional concedido',
-          duration: 3500,
-        });
-      } else {
-        // Usuario interno → Backoffice
-        const roles: Record<string, string> = {
-          'docentes@esap.edu.co': 'Docente',
-          'director@esap.edu.co': 'Director',
-          'admin@esap.edu.co': 'Administrador',
-          'superuser@esap.edu.co': 'Super Usuario',
-          'rector@esap.edu.co': 'Rector',
-          'gestion.legal@esap.edu.co': 'Gestión Legal',
-          'ocig@esap.edu.co': 'OCIG',
-          'c.disciplinario@esap.edu.co': 'Control Disciplinario',
-          'cerlaboral@esap.edu.co': 'Certificados Laborales',
-          'arqempresarial@esap.edu.co': 'Arquitectura Empresarial',
-          'ar.empresarial@esap.edu.co': 'Arquitectura Empresarial',
-          'gestion.profesoral@esap.edu.co': 'Gestión Profesoral',
-          'registro.academico@esap.edu.co': 'Registro Académico',
-        };
-
-        usuario = {
-          id: 'user-int-001',
-          nombre: roles[emailLower] || 'Administrador',
-          tipo: 'interno',
-          email: emailLower,
-          rol: roles[emailLower] || 'Administrador',
-        };
-
-        console.log('✅ Usuario creado para Backoffice Administrativo:', usuario);
-
-        toast.success(`⚡ ¡Bienvenido ${roles[emailLower] || 'Administrador'}!`, {
+      // Mostrar mensajes personalizados (opcional, igual que el LoginPage de esap)
+      if (emailLower === 'superuser@esap.edu.co') {
+        toast.success('⭐ ¡Bienvenido Super User!', {
           description: 'Acceso al Backoffice Administrativo concedido',
           duration: 3500,
         });
+      } else if (emailLower === 'admin@esap.edu.co') {
+        toast.success('🎯 ¡Bienvenido Administrador!', {
+          description: 'Acceso al Backoffice Administrativo concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'estudiantes@esap.edu.co') {
+        toast.success('🎓 ¡Bienvenido Estudiante!', {
+          description: 'Acceso al Portal Transaccional concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'cerlaboral@esap.edu.co') {
+        toast.success('📋 ¡Bienvenido Gestor de Certificados!', {
+          description: 'Acceso al Módulo de Certificados Laborales concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'funcionario@esap.edu.co') {
+        toast.success('⚖️ ¡Bienvenido Funcionario!', {
+          description: 'Acceso al Portal Transaccional - Procesos Legales disponibles',
+          duration: 3500,
+        });
+      } else if (emailLower === 'ar.empresarial@esap.edu.co' || emailLower === 'arqempresarial@esap.edu.co') {
+        toast.success('🏛️ ¡Bienvenido Coordinador de Arquitectura Empresarial!', {
+          description: 'Acceso al Módulo de Arquitectura Empresarial MRAE concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'planta@esap.edu.co') {
+        toast.success('💼 ¡Bienvenido Docente Planta!', {
+          description: 'Acceso a la Gestión Profesoral concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'gestion.legal@esap.edu.co') {
+        toast.success('⚖️ ¡Bienvenido Gestión Legal!', {
+          description: 'Acceso a la Gestión Legal concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'ocig@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido OCIG!', {
+          description: 'Acceso al Módulo de Control Interno de Gestión concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'c.disciplinario@esap.edu.co') {
+        toast.success('🔍 ¡Bienvenido Control Disciplinario!', {
+          description: 'Acceso al Módulo de Control Disciplinario concedido',
+          duration: 3500,
+        });
+      } else if (emailLower === 'registro.academico@esap.edu.co') {
+        toast.success('📚 ¡Bienvenido Registro Académico!', {
+          description: 'Acceso al Módulo de Registro Académico concedido',
+          duration: 3500,
+        });
       }
 
-      // Guardar sesión si "Recordarme" está activado
-      if (rememberMe) {
-        localStorage.setItem('esap-remember-session', JSON.stringify({ email: emailLower }));
-      }
+      console.log('🔄 [7] Calling onLogin handler with user data');
+      // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
+      onLogin(response.user, response.accessToken, rememberMe);
+      console.log('✅ [8] onLogin handler completed');
+    } catch (error: any) {
+      console.error('❌ Error de autenticación:', error);
 
-      // Llamar al callback con el usuario autenticado
-      onLoginExitoso(usuario);
-    } catch (error) {
-      toast.error('Error al iniciar sesión', {
-        description: 'Ocurrió un error inesperado. Intenta nuevamente.',
-      });
+      // Manejar diferentes tipos de errores
+      if (error.response?.data.statusCode === 401) {
+        if (error.response?.data.message === 'El usuario no tiene roles asignados') {
+          toast.error('Acceso denegado', {
+            description: 'El usuario no tiene roles asignados. Por favor, solicita que te asignen un rol e intenta nuevamente.',
+            duration: 10000,
+          });
+        } else {
+          toast.error('Credenciales incorrectas', {
+            description: 'El correo electrónico o contraseña son incorrectos.',
+            duration: 5000,
+          });
+          setErrors({
+            email: 'Verifica tu correo electrónico',
+            password: 'Verifica tu contraseña'
+          });
+        }
+      } else if (error.response?.status === 400) {
+        toast.error('Datos inválidos', {
+          description: 'Por favor verifica la información ingresada.',
+          duration: 5000,
+        });
+      } else {
+        toast.error('Error de conexión', {
+          description: error.message || 'Ocurrió un error inesperado. Intenta nuevamente.',
+          duration: 5000,
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -236,7 +219,7 @@ export function LoginPage({ onLoginExitoso, onVolver }: LoginPageProps) {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
-              onClick={onVolver}
+              onClick={onBackToHome}
               className="flex items-center gap-2 text-gray-600 hover:text-[#003DA5] transition-colors mb-6 group"
             >
               <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
