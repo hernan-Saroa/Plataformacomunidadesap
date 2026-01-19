@@ -43,9 +43,12 @@ export class FilesController {
                     'application/pdf',
                     'image/jpeg',
                     'image/png',
-                    'image/jpg'
+                    'image/jpg',
+                    // Word document types
+                    'application/msword',  // .doc
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // .docx
                 ];
-                const allowedExts = /\.(pdf|jpg|jpeg|png)$/i;
+                const allowedExts = /\.(pdf|jpg|jpeg|png|doc|docx)$/i;
                 if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
                     cb(null, true);
                     return;

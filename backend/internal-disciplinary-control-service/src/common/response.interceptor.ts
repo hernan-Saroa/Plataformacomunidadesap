@@ -11,13 +11,21 @@ export interface Response<T> {
 
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, Response<T>> {
-    intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T>> {
+    intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T> | any> {
         return next.handle().pipe(
-            map(data => ({
-                success: true,
-                data,
-                timestamp: new Date().toISOString(),
-            })),
+            map(data => {
+                // Si la respuesta tiene el formato de OnlyOffice callback (con 'error' definido),
+                // devolverla sin envolver para compatibilidad con OnlyOffice Document Server
+                if (data && typeof data === 'object' && 'error' in data) {
+                    return data;
+                }
+
+                return {
+                    success: true,
+                    data,
+                    timestamp: new Date().toISOString(),
+                };
+            }),
         );
     }
 }
