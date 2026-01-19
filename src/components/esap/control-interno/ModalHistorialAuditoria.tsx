@@ -27,6 +27,8 @@ import {
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
+import { getBaseURL } from '../../../services/api/config';
+import { toast } from 'sonner';
 
 // ============ TIPOS ============
 
@@ -46,7 +48,10 @@ type TipoEvento =
   | 'hallazgo'
   | 'nota'
   | 'aprobacion'
-  | 'finalizacion';
+  | 'finalizacion'
+  | 'eliminacion'
+  | 'archivo'
+  | 'ampliacion_plazo';
 
 interface CambioDetalle {
   campo: string;
@@ -395,7 +400,10 @@ const getTipoEventoColor = (tipo: TipoEvento) => {
     'hallazgo': 'bg-red-100 text-red-700 border-red-200',
     'nota': 'bg-gray-100 text-gray-700 border-gray-200',
     'aprobacion': 'bg-green-100 text-green-700 border-green-200',
-    'finalizacion': 'bg-purple-100 text-purple-700 border-purple-200'
+    'finalizacion': 'bg-purple-100 text-purple-700 border-purple-200',
+    'eliminacion': 'bg-red-100 text-red-700 border-red-200',
+    'archivo': 'bg-slate-100 text-slate-700 border-slate-200',
+    'ampliacion_plazo': 'bg-orange-100 text-orange-700 border-orange-200'
   };
   return colores[tipo];
 };
@@ -410,7 +418,10 @@ const getTipoEventoIcon = (tipo: TipoEvento) => {
     'hallazgo': <AlertCircle className="w-4 h-4" />,
     'nota': <MessageSquare className="w-4 h-4" />,
     'aprobacion': <CheckCircle className="w-4 h-4" />,
-    'finalizacion': <Target className="w-4 h-4" />
+    'finalizacion': <Target className="w-4 h-4" />,
+    'eliminacion': <Trash2 className="w-4 h-4" />,
+    'archivo': <FileText className="w-4 h-4" />,
+    'ampliacion_plazo': <Clock className="w-4 h-4" />
   };
   return iconos[tipo];
 };
@@ -425,7 +436,10 @@ const getTipoEventoLabel = (tipo: TipoEvento) => {
     'hallazgo': 'Hallazgo',
     'nota': 'Nota',
     'aprobacion': 'Aprobación',
-    'finalizacion': 'Finalización'
+    'finalizacion': 'Finalización',
+    'eliminacion': 'Eliminación',
+    'archivo': 'Archivo',
+    'ampliacion_plazo': 'Ampliación de Plazo'
   };
   return labels[tipo];
 };
@@ -440,7 +454,10 @@ const getTipoEventoBgColor = (tipo: TipoEvento) => {
     'hallazgo': 'bg-red-500',
     'nota': 'bg-gray-500',
     'aprobacion': 'bg-green-500',
-    'finalizacion': 'bg-purple-500'
+    'finalizacion': 'bg-purple-500',
+    'eliminacion': 'bg-red-500',
+    'archivo': 'bg-slate-500',
+    'ampliacion_plazo': 'bg-orange-500'
   };
   return colores[tipo];
 };
@@ -452,18 +469,50 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
   const [eventoExpandido, setEventoExpandido] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<TipoEvento | 'Todos'>('Todos');
+  const [cargando, setCargando] = useState(false);
 
   // Cargar historial cuando se abre el modal
   useEffect(() => {
     if (auditoria && open) {
-      const eventos = HISTORIAL_MOCK[auditoria.id] || [];
-      setHistorial(eventos.sort((a, b) => {
-        const fechaA = new Date(`${a.fecha} ${a.hora}`);
-        const fechaB = new Date(`${b.fecha} ${b.hora}`);
-        return fechaB.getTime() - fechaA.getTime(); // Más reciente primero
-      }));
+      cargarHistorial();
     }
   }, [auditoria, open]);
+
+  const cargarHistorial = async () => {
+    if (!auditoria) return;
+
+    setCargando(true);
+    try {
+      const token = localStorage.getItem('token');
+      // Usar directamente el servicio de control interno
+      const baseURL = import.meta.env.MODE === 'production' 
+        ? `${getBaseURL()}/internal-institutional-control`
+        : 'http://localhost:3007';
+      
+      const response = await fetch(
+        `${baseURL}/auditorias/${auditoria.id}/historial`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Error al cargar el historial');
+      }
+
+      const data = await response.json();
+      setHistorial(data);
+    } catch (error) {
+      console.error('Error al cargar historial:', error);
+      toast.error('Error al cargar el historial');
+      setHistorial([]);
+    } finally {
+      setCargando(false);
+    }
+  };
 
   if (!auditoria) return null;
 
@@ -572,6 +621,9 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
                     <option value="nota">Nota</option>
                     <option value="aprobacion">Aprobación</option>
                     <option value="finalizacion">Finalización</option>
+                    <option value="eliminacion">Eliminación</option>
+                    <option value="archivo">Archivo</option>
+                    <option value="ampliacion_plazo">Ampliación de Plazo</option>
                   </select>
 
                   {/* Botón exportar */}
@@ -600,7 +652,12 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
 
               {/* TIMELINE DE EVENTOS */}
               <div className="flex-1 overflow-y-auto p-6">
-                {eventosFiltrados.length === 0 ? (
+                {cargando ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+                    <p className="text-gray-600">Cargando historial...</p>
+                  </div>
+                ) : eventosFiltrados.length === 0 ? (
                   <div className="text-center py-12">
                     <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 mb-2">

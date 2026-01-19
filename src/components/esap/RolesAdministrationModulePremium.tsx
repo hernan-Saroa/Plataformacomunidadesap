@@ -867,7 +867,7 @@ export function RolesAdministrationModulePremium() {
                               <div className="flex items-center gap-2">
                                 <Shield className="w-4 h-4 text-gray-400" />
                                 <span className="text-sm font-bold text-gray-900">
-                                  {role.permisos_count}
+                                  { role.code === 'SUPER_ADMIN' ? 'Todos' : role.permisos_count }
                                 </span>
                               </div>
                             </td>

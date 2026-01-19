@@ -4,6 +4,7 @@ import { UsersService } from './users/users.service';
 import { Repository } from 'typeorm';
 import { Role } from './users/role.entity';
 import { Permission } from './users/permission.entity';
+import { Module } from './users/module.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 async function seed() {
@@ -12,22 +13,57 @@ async function seed() {
   const usersService = app.get(UsersService);
   const roleRepo = app.get<Repository<Role>>(getRepositoryToken(Role));
   const permissionRepo = app.get<Repository<Permission>>(getRepositoryToken(Permission));
+  const moduleRepo = app.get<Repository<Module>>(getRepositoryToken(Module));
 
-  // Crear permisos básicos
+  // Obtener o crear módulo "users" para los permisos
+  let usersModule = await moduleRepo.findOne({ where: { code: 'users' } });
+  if (!usersModule) {
+    usersModule = moduleRepo.create({
+      code: 'users',
+      name: 'Usuarios y Personas',
+      description: 'Gestión de usuarios, personas y vinculaciones del sistema',
+      icon: 'Users',
+      color: '#3b82f6',
+      display_order: 1,
+      category: 'backoffice',
+    });
+    usersModule = await moduleRepo.save(usersModule);
+    console.log('Módulo "users" creado');
+  }
+
+  // Obtener o crear módulo "roles" para permisos de roles
+  let rolesModule = await moduleRepo.findOne({ where: { code: 'roles' } });
+  if (!rolesModule) {
+    rolesModule = moduleRepo.create({
+      code: 'roles',
+      name: 'Roles y Permisos',
+      description: 'Gestión de roles, permisos y control de acceso',
+      icon: 'Lock',
+      color: '#7c2d12',
+      display_order: 18,
+      category: 'backoffice',
+    });
+    rolesModule = await moduleRepo.save(rolesModule);
+    console.log('Módulo "roles" creado');
+  }
+
+  // Crear permisos básicos con code e id_module
   const permissions = [
-    { name: 'users.create', description: 'Crear usuarios' },
-    { name: 'users.read', description: 'Ver usuarios' },
-    { name: 'users.update', description: 'Actualizar usuarios' },
-    { name: 'users.delete', description: 'Eliminar usuarios' },
-    { name: 'roles.manage', description: 'Gestionar roles' },
-    { name: 'permissions.manage', description: 'Gestionar permisos' },
+    { code: 'users.create', name: 'Crear usuarios', description: 'Permite crear nuevos usuarios', id_module: usersModule.id_module },
+    { code: 'users.read', name: 'Ver usuarios', description: 'Permite ver la lista de usuarios', id_module: usersModule.id_module },
+    { code: 'users.update', name: 'Actualizar usuarios', description: 'Permite actualizar información de usuarios', id_module: usersModule.id_module },
+    { code: 'users.delete', name: 'Eliminar usuarios', description: 'Permite eliminar usuarios', id_module: usersModule.id_module },
+    { code: 'roles.manage', name: 'Gestionar roles', description: 'Permite gestionar roles del sistema', id_module: rolesModule.id_module },
+    { code: 'permissions.manage', name: 'Gestionar permisos', description: 'Permite gestionar permisos del sistema', id_module: rolesModule.id_module },
   ];
 
   for (const perm of permissions) {
-    const existing = await permissionRepo.findOne({ where: { name: perm.name } });
+    const existing = await permissionRepo.findOne({ where: { code: perm.code } });
     if (!existing) {
       await permissionRepo.save(permissionRepo.create(perm));
-      console.log(`Permiso creado: ${perm.name}`);
+      console.log(`Permiso creado: ${perm.code} (${perm.name})`);
+    } else {
+      console.log(`Permiso ya existe: ${perm.code}`);
     }
   }
 

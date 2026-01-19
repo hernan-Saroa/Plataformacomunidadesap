@@ -19,6 +19,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ============ TIPOS ============
 
@@ -32,13 +34,17 @@ interface DocumentoExpediente {
 
 interface ModalCargarDocumentoProps {
   onClose: () => void;
-  onGuardar: (documento: Partial<DocumentoExpediente>) => void;
+  onGuardar: (documento: Partial<DocumentoExpediente>, documentoCompleto?: any) => void;
   auditoriaId?: string;
+  codigoAuditoria?: string;
 }
 
 // ============ COMPONENTE ============
 
-export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalCargarDocumentoProps) {
+export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAuditoria }: ModalCargarDocumentoProps) {
+  const { notificarDocumentoSubidoAuditoria } = useCrearNotificacion();
+  const { user } = useAuth();
+  
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [tipoDocumento, setTipoDocumento] = useState<DocumentoExpediente['tipo']>('Oficio');
   const [faseDocumento, setFaseDocumento] = useState<DocumentoExpediente['fase']>('planeacion');
@@ -103,8 +109,10 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
     }
   };
 
-  const handleClickSeleccionar = () => {
-    if (fileInputRef.current) {
+  const handleClickSeleccionar = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (fileInputRef.current && !cargando) {
       fileInputRef.current.click();
     }
   };
@@ -239,7 +247,23 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
         description: `${nombreDocumento} agregado al expediente`,
       });
 
-      onGuardar(nuevoDocumento);
+      // ============ NOTIFICACIONES: Documento Subido ============
+      if (auditoriaId && codigoAuditoria && documentoSubido?.id && user?.id) {
+        try {
+          await notificarDocumentoSubidoAuditoria(
+            documentoSubido.id,
+            nombreDocumento,
+            auditoriaId,
+            codigoAuditoria,
+            user.id
+          );
+        } catch (notifError) {
+          // No fallar la carga si las notificaciones fallan
+          console.error('Error al enviar notificaciones:', notifError);
+        }
+      }
+
+      onGuardar(nuevoDocumento, documentoSubido);
       setCargando(false);
     } catch (error) {
       console.error('Error al cargar documento:', error);
@@ -267,10 +291,6 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
@@ -306,13 +326,23 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
               accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               className="hidden"
               disabled={cargando}
+              id="file-input-documento"
             />
             <div
-              onClick={handleClickSeleccionar}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragEnter={handleDragEnter}
               onDragLeave={handleDragLeave}
+              onClick={(e) => {
+                // Si no hay archivo seleccionado y no está cargando, activar el input
+                if (!archivoSeleccionado && !cargando) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }
+              }}
               className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
                 cargando
                   ? 'opacity-50 cursor-not-allowed border-gray-300 bg-gray-50'
@@ -334,14 +364,16 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId }: ModalC
                   </p>
                   {!cargando && (
                     <button
+                      type="button"
                       onClick={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         setArchivoSeleccionado(null);
                         if (fileInputRef.current) {
                           fileInputRef.current.value = '';
                         }
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-700"
+                      className="text-xs text-blue-600 hover:text-blue-700 mt-2"
                     >
                       Cambiar archivo
                     </button>

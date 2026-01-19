@@ -46,6 +46,9 @@ export class EvidenciasService {
             throw new NotFoundException('Expediente no encontrado');
         }
 
+        // Verificar que el expediente existe, o crearlo si es un proceso disciplinario
+        const expediente = await this.expedienteService.findOneOrCreateFromDisciplinaryProcess(expedienteId);
+
         const nuevaEvidencia = this.evidenciaRepository.create({
             ...data,
             expedienteId: expedienteId,

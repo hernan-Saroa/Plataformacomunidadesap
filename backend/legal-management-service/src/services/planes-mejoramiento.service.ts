@@ -90,13 +90,32 @@ export class PlanesMejoramientoService {
         });
         if (!plan) throw new NotFoundException(`Plan ${id} no encontrado`);
 
-        // Attach Risk Info
-        if (plan.origen === 'RIESGO' && plan.origenId) {
-            const risk = await this.dataSource.getRepository(Riesgo).findOneBy({ id: plan.origenId });
-            return { ...plan, riesgo: risk };
+        // Lookup responsable name - first try abogado, then entity field
+        let responsableNombre = plan.responsableNombre || 'Sin Asignar';
+        if (plan.responsableId) {
+            const abogado = await this.dataSource.getRepository(Abogado).findOneBy({ id: plan.responsableId });
+            if (abogado) responsableNombre = abogado.nombreCompleto;
         }
 
-        return plan;
+        // Attach Risk Info
+        let riesgoTitulo: string | null = null;
+        if (plan.origen === 'RIESGO' && plan.origenId) {
+            const risk = await this.dataSource.getRepository(Riesgo).findOneBy({ id: plan.origenId });
+            if (risk) riesgoTitulo = risk.nombre;
+        }
+
+        // Map seguimientos to include createdAt as fechaReporte
+        const seguimientosConFecha = plan.seguimientos?.map(s => ({
+            ...s,
+            createdAt: s.fechaReporte
+        })) || [];
+
+        return {
+            ...plan,
+            responsableNombre,
+            riesgoTitulo,
+            seguimientos: seguimientosConFecha
+        };
     }
 
     async addEvidencia(planId: string, data: Partial<PlanEvidencia>) {

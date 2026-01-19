@@ -12,6 +12,10 @@ import { AccionCorrectivaTipo, AccionCorrectivaEstado } from '../entities/accion
 
 export class CreateAccionDto {
   @IsString()
+  @IsOptional()
+  hallazgoId?: string;
+
+  @IsString()
   @IsNotEmpty()
   descripcion: string;
 

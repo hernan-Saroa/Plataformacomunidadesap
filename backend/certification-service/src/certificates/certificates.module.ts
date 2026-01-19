@@ -13,6 +13,7 @@ import { TemplateConfigChange } from './template-config-change.entity';
 import { Firmante } from './firmante.entity';
 import { TemplateConfigController } from './template-config.controller';
 import { TemplateConfigService } from './template-config.service';
+import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 
 @Module({
   imports: [
@@ -28,7 +29,12 @@ import { TemplateConfigService } from './template-config.service';
     ]),
   ],
   controllers: [CertificatesController, TemplateConfigController],
-  providers: [CertificatesService, CertificateGeneratorService, TemplateConfigService],
+  providers: [
+    CertificatesService,
+    CertificateGeneratorService,
+    TemplateConfigService,
+    LaborCertificatePdfService,
+  ],
   exports: [CertificatesService, TemplateConfigService],
 })
 export class CertificatesModule {}

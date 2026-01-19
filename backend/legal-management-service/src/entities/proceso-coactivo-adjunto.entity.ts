@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { ProcesoCoactivo } from './proceso-coactivo.entity';
 
-@Entity('procesos_coactivos_adjuntos')
+@Entity({ name: 'procesos_coactivos_adjuntos', schema: 'legal_management' })
 export class ProcesoCoactivoAdjunto {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -24,6 +24,12 @@ export class ProcesoCoactivoAdjunto {
 
     @Column({ type: 'int' })
     tamano: number;
+
+    @Column({ nullable: true })
+    tipo: string;
+
+    @Column({ name: 'archivo_url', nullable: true })
+    archivoUrl: string;
 
     @CreateDateColumn({ name: 'fecha_creacion' })
     fechaCreacion: Date;

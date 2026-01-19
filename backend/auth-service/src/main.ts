@@ -42,7 +42,7 @@ async function bootstrap() {
   // y reenvía solo el {path} al microservicio.
   // Ejemplo: /auth/api/v1/users -> auth-service:3001/users
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`Auth service corriendo en puerto ${port} con CORS habilitado`);
 }

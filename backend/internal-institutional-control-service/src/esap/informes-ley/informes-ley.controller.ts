@@ -9,16 +9,54 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
+  Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { InformesLeyService } from './informes-ley.service';
+import { InformeGeneratorService } from './services/informe-generator.service';
+import { PlantillasService } from './services/plantillas.service';
+import { WorkflowAprobacionService } from './services/workflow-aprobacion.service';
+import { DafValidatorService } from './services/daf-validator.service';
 import { CreateInformeLeyDto } from './dto/create-informe-ley.dto';
 import { UpdateInformeLeyDto } from './dto/update-informe-ley.dto';
 import { CreateEntregaDto } from './dto/create-entrega.dto';
 import { UpdateEntregaDto } from './dto/update-entrega.dto';
+import { GenerarInformeDto } from './dto/generar-informe.dto';
+import { EnviarRevisionDto } from './dto/enviar-revision.dto';
+import { AprobarInformeDto } from './dto/aprobar-informe.dto';
+import { RechazarInformeDto } from './dto/rechazar-informe.dto';
+
+// Tipo para el archivo subido
+interface MulterFile {
+  fieldname: string;
+  originalname: string;
+  encoding: string;
+  mimetype: string;
+  size: number;
+  destination: string;
+  filename: string;
+  path: string;
+  buffer: Buffer;
+}
 
 @Controller('informes-ley')
 export class InformesLeyController {
-  constructor(private readonly informesLeyService: InformesLeyService) {}
+  constructor(
+    private readonly informesLeyService: InformesLeyService,
+    private readonly informeGeneratorService: InformeGeneratorService,
+    private readonly plantillasService: PlantillasService,
+    private readonly workflowAprobacionService: WorkflowAprobacionService,
+    private readonly dafValidatorService: DafValidatorService,
+  ) {}
 
   // ==================== CRUD INFORMES ====================
 
@@ -143,6 +181,287 @@ export class InformesLeyController {
   @Post('actualizar-estados-vencidos')
   actualizarEstadosVencidos() {
     return this.informesLeyService.actualizarEstadosVencidos();
+  }
+
+  // ==================== GENERACIÓN AUTOMÁTICA (US-022) ====================
+
+  /**
+   * POST /informes-ley/:id/generar
+   * Generar informe automático con datos del sistema
+   */
+  @Post(':id/generar')
+  async generarInforme(
+    @Param('id') id: string,
+    @Body() body: GenerarInformeDto,
+    @Req() req: any,
+  ) {
+    const usuarioId = req.user?.id || req.user?.sub;
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    return this.informeGeneratorService.generarInformeAutomatico(
+      id,
+      body.periodo,
+      body.datosAdicionales,
+      usuarioId,
+      usuarioNombre,
+    );
+  }
+
+  // ==================== PLANTILLAS ====================
+
+  @Get('plantillas/all')
+  async obtenerPlantillas() {
+    return this.plantillasService.findAll();
+  }
+
+  @Get('plantillas/:codigo')
+  async obtenerPlantillaPorCodigo(@Param('codigo') codigo: string) {
+    return this.plantillasService.findByCodigo(codigo);
+  }
+
+  // ==================== WORKFLOW DE APROBACIÓN (US-033) ====================
+
+  /**
+   * POST /informes-ley/:informeId/entregas/:entregaId/enviar
+   * Enviar informe a revisión (Auditor → Jefe OCI)
+   */
+  @Post(':informeId/entregas/:entregaId/enviar')
+  async enviarRevision(
+    @Param('informeId') informeId: string,
+    @Param('entregaId') entregaId: string,
+    @Body() dto: EnviarRevisionDto,
+    @Req() req: any,
+  ) {
+    const usuarioId = req.user?.id || req.user?.sub || 'system';
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    return this.workflowAprobacionService.enviarRevision(
+      entregaId,
+      dto,
+      usuarioId,
+      usuarioNombre,
+      req,
+    );
+  }
+
+  /**
+   * POST /informes-ley/:informeId/entregas/:entregaId/aprobar
+   * Aprobar informe (Jefe OCI)
+   */
+  @Post(':informeId/entregas/:entregaId/aprobar')
+  async aprobarInforme(
+    @Param('informeId') informeId: string,
+    @Param('entregaId') entregaId: string,
+    @Body() dto: AprobarInformeDto,
+    @Req() req: any,
+  ) {
+    const usuarioId = req.user?.id || req.user?.sub || 'system';
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    return this.workflowAprobacionService.aprobarInforme(
+      entregaId,
+      dto,
+      usuarioId,
+      usuarioNombre,
+      req,
+    );
+  }
+
+  /**
+   * POST /informes-ley/:informeId/entregas/:entregaId/rechazar
+   * Rechazar informe (Jefe OCI)
+   */
+  @Post(':informeId/entregas/:entregaId/rechazar')
+  async rechazarInforme(
+    @Param('informeId') informeId: string,
+    @Param('entregaId') entregaId: string,
+    @Body() dto: RechazarInformeDto,
+    @Req() req: any,
+  ) {
+    const usuarioId = req.user?.id || req.user?.sub || 'system';
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    return this.workflowAprobacionService.rechazarInforme(
+      entregaId,
+      dto,
+      usuarioId,
+      usuarioNombre,
+      req,
+    );
+  }
+
+  /**
+   * GET /informes-ley/entregas/:entregaId/workflow
+   * Obtener workflow de una entrega
+   */
+  @Get('entregas/:entregaId/workflow')
+  async obtenerWorkflow(@Param('entregaId') entregaId: string) {
+    return this.workflowAprobacionService.obtenerWorkflow(entregaId);
+  }
+
+  /**
+   * GET /informes-ley/entregas/:entregaId/historial
+   * Obtener historial de una entrega
+   */
+  @Get('entregas/:entregaId/historial')
+  async obtenerHistorial(@Param('entregaId') entregaId: string) {
+    return this.workflowAprobacionService.obtenerHistorial(entregaId);
+  }
+
+  // ==================== CARGA DE ARCHIVOS ====================
+
+  /**
+   * POST /informes-ley/entregas/:entregaId/upload
+   * Subir archivo para una entrega de informe
+   */
+  @Post('entregas/:entregaId/upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = process.env.UPLOAD_PATH || './uploads/informes-ley';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          const ext = extname(file.originalname);
+          cb(null, `informe_${Date.now()}_${randomName}${ext}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+          'application/msword', // .doc
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+          'application/vnd.ms-excel', // .xls
+        ];
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Tipo de archivo no permitido. Solo se permiten PDF, Word y Excel.'), false);
+        }
+      },
+    }),
+  )
+  async uploadArchivo(
+    @Param('entregaId') entregaId: string,
+    @UploadedFile() file: MulterFile,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    const usuarioId = req.user?.id || req.user?.sub || 'system';
+    const usuarioNombre = req.user?.name || req.user?.nombre || 'Sistema';
+
+    // Obtener información de la entrega para validación específica
+    const entrega = await this.informesLeyService.findOneEntrega(entregaId);
+    if (!entrega) {
+      throw new NotFoundException(`Entrega con ID ${entregaId} no encontrada`);
+    }
+
+    // Obtener el informe asociado para conocer el tipo
+    const informe = await this.informesLeyService.findOne(entrega.informeId);
+    const tipoInforme = informe?.codigo;
+
+    // Validar formato DAF si es un archivo Excel
+    const formatoArchivo = this.getFormatoArchivo(file.mimetype);
+    if (formatoArchivo === 'Excel') {
+      try {
+        const resultadoValidacion = await this.dafValidatorService.validarFormatoDaf(
+          file.buffer,
+          file.originalname,
+          tipoInforme,
+        );
+
+        // Si hay errores críticos, rechazar el archivo
+        if (!resultadoValidacion.valido && resultadoValidacion.errores.length > 0) {
+          const mensajeErrores = resultadoValidacion.errores.join('; ');
+          const mensajeAdvertencias = resultadoValidacion.advertencias.length > 0
+            ? ` Advertencias: ${resultadoValidacion.advertencias.join('; ')}`
+            : '';
+          
+          throw new BadRequestException(
+            `El archivo Excel no cumple con el formato DAF requerido. Errores: ${mensajeErrores}${mensajeAdvertencias}`,
+          );
+        }
+
+        // Si solo hay advertencias, registrarlas pero permitir la carga
+        if (resultadoValidacion.advertencias.length > 0) {
+          // Log de advertencias (podría guardarse en historial)
+          console.warn(
+            `Advertencias al validar archivo Excel ${file.originalname}:`,
+            resultadoValidacion.advertencias,
+          );
+        }
+      } catch (error) {
+        // Si es un BadRequestException, re-lanzarlo
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        // Otros errores de validación
+        throw new BadRequestException(
+          `Error al validar el formato DAF del archivo: ${error.message}`,
+        );
+      }
+    }
+
+    return this.informesLeyService.uploadArchivoEntrega(
+      entregaId,
+      {
+        nombre: file.originalname,
+        url: `/uploads/informes-ley/${file.filename}`,
+        tamano: file.size,
+        formato: formatoArchivo,
+      },
+      usuarioId,
+      usuarioNombre,
+    );
+  }
+
+  /**
+   * GET /informes-ley/archivos/:nombreArchivo
+   * Servir archivos de informes generados
+   */
+  @Get('archivos/:nombreArchivo')
+  async servirArchivo(
+    @Param('nombreArchivo') nombreArchivo: string,
+    @Res() res: Response,
+  ) {
+    const uploadPath = process.env.UPLOAD_PATH || './uploads/informes-ley';
+    const rutaArchivo = join(process.cwd(), uploadPath, nombreArchivo);
+
+    if (!existsSync(rutaArchivo)) {
+      throw new NotFoundException(`Archivo ${nombreArchivo} no encontrado`);
+    }
+
+    // Determinar content-type según extensión
+    const ext = extname(nombreArchivo).toLowerCase();
+    let contentType = 'application/octet-stream';
+    if (ext === '.pdf') contentType = 'application/pdf';
+    else if (ext === '.docx' || ext === '.doc') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (ext === '.xlsx' || ext === '.xls') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    const archivo = readFileSync(rutaArchivo);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
+    res.send(archivo);
+  }
+
+  private getFormatoArchivo(mimetype: string): 'PDF' | 'Word' | 'Excel' {
+    if (mimetype === 'application/pdf') return 'PDF';
+    if (mimetype.includes('wordprocessingml') || mimetype.includes('msword')) return 'Word';
+    if (mimetype.includes('spreadsheetml') || mimetype.includes('ms-excel')) return 'Excel';
+    return 'PDF'; // Por defecto
   }
 }
 

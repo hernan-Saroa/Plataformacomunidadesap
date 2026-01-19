@@ -10,17 +10,29 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { AuditoriasService } from './auditorias.service';
+import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { CreateAuditoriaDto } from './dto/create-auditoria.dto';
 import { UpdateAuditoriaDto } from './dto/update-auditoria.dto';
 import { CreateNotaDto } from './dto/create-nota.dto';
 import { UpdateNotaDto } from './dto/update-nota.dto';
+import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
+import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
+import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { FaseAuditoria } from './entities/auditoria.entity';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @Controller('auditorias')
 export class AuditoriasController {
-  constructor(private readonly auditoriasService: AuditoriasService) {}
+  constructor(
+    private readonly auditoriasService: AuditoriasService,
+    private readonly hallazgosService: HallazgosService,
+  ) {}
 
   /**
    * GET /esap/auditorias
@@ -65,14 +77,6 @@ export class AuditoriasController {
     return this.auditoriasService.findByFase(fase);
   }
 
-  /**
-   * GET /esap/auditorias/:id/notas
-   * Obtiene todas las notas de una auditoría
-   */
-  @Get(':id/notas')
-  getNotasByAuditoria(@Param('id') id: string) {
-    return this.auditoriasService.getNotasByAuditoria(id);
-  }
 
   /**
    * POST /esap/auditorias/:id/notas
@@ -171,12 +175,59 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/personas/buscar
+   * Busca una persona por número de identificación
+   * Retorna el ID_TERCERO que se usa como FK
+   */
+  @Get('personas/buscar')
+  async buscarPersona(@Query('numeroIdentificacion') numeroIdentificacion: string) {
+    if (!numeroIdentificacion) {
+      throw new BadRequestException('El número de identificación es requerido');
+    }
+    
+    const persona = await this.auditoriasService.buscarPersonaPorNumeroIdentificacion(numeroIdentificacion);
+    
+    if (!persona) {
+      throw new BadRequestException(`No se encontró una persona con el número de identificación: ${numeroIdentificacion}`);
+    }
+    
+    return persona;
+  }
+
+  /**
+   * GET /esap/auditorias/personas/disponibles
+   * Obtiene todas las personas disponibles para ser auditores
+   */
+  @Get('personas/disponibles')
+  async obtenerPersonasDisponibles() {
+    return this.auditoriasService.obtenerPersonasDisponibles();
+  }
+
+  /**
    * GET /esap/auditorias/codigo/:codigo
    * Busca una auditoría por código
    */
   @Get('codigo/:codigo')
   findByCodigo(@Param('codigo') codigo: string) {
     return this.auditoriasService.findByCodigo(codigo);
+  }
+
+  /**
+   * GET /esap/auditorias/:id/hallazgos
+   * Obtiene todos los hallazgos de una auditoría
+   */
+  @Get(':id/hallazgos')
+  getHallazgosByAuditoria(@Param('id') id: string) {
+    return this.hallazgosService.findByAuditoria(id);
+  }
+
+  /**
+   * GET /esap/auditorias/:id/notas
+   * Obtiene todas las notas de una auditoría
+   */
+  @Get(':id/notas')
+  getNotasByAuditoria(@Param('id') id: string) {
+    return this.auditoriasService.getNotasByAuditoria(id);
   }
 
   /**
@@ -256,6 +307,98 @@ export class AuditoriasController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string) {
     return this.auditoriasService.delete(id);
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/solicitar
+   * Solicita ampliación de plazo de una auditoría en curso
+   * RN-031.2: Solo Auditor Líder asignado a la auditoría puede solicitar
+   */
+  @Post(':id/ampliar-plazo/solicitar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('AUDITOR_LIDER', 'SUPER_ADMIN', 'ADMIN')
+  @HttpCode(HttpStatus.OK)
+  solicitarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() solicitarDto: SolicitarAmpliacionPlazoDto,
+    @Req() req: any,
+  ) {
+    console.log('📝 [Controller] Solicitar ampliación plazo - ID:', id);
+    console.log('📝 [Controller] Request user:', JSON.stringify(req.user, null, 2));
+    console.log('📝 [Controller] Request body:', JSON.stringify(solicitarDto, null, 2));
+    
+    const user = req.user;
+    return this.auditoriasService.solicitarAmpliacionPlazo(
+      id, 
+      solicitarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/aprobar
+   * Aprueba una solicitud de ampliación de plazo
+   * RN-031.3: Solo Jefe de Control Interno o Administrador pueden aprobar
+   */
+  @Post(':id/ampliar-plazo/aprobar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('JEFE_CONTROL_INTERNO', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  aprobarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() aprobarDto: AprobarAmpliacionPlazoDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+    return this.auditoriasService.aprobarAmpliacionPlazo(
+      id, 
+      aprobarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
+  }
+
+  /**
+   * POST /esap/auditorias/:id/ampliar-plazo/rechazar
+   * Rechaza una solicitud de ampliación de plazo
+   * RN-031.3: Solo Jefe de Control Interno o Administrador pueden rechazar
+   */
+  @Post(':id/ampliar-plazo/rechazar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('JEFE_CONTROL_INTERNO', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  rechazarAmpliacionPlazo(
+    @Param('id') id: string,
+    @Body() rechazarDto: RechazarAmpliacionPlazoDto,
+    @Req() req: any,
+  ) {
+    const user = req.user;
+    return this.auditoriasService.rechazarAmpliacionPlazo(
+      id, 
+      rechazarDto, 
+      user.userId,
+      user.roles || [user.role]
+    );
+  }
+
+  /**
+   * GET /esap/auditorias/ampliar-plazo/pendientes
+   * Obtiene todas las solicitudes de ampliación de plazo pendientes
+   * Útil para que el Jefe OCI vea todas las solicitudes que requieren aprobación
+   */
+  @Get('ampliar-plazo/pendientes')
+  getSolicitudesAmpliacionPendientes() {
+    return this.auditoriasService.getSolicitudesAmpliacionPendientes();
+  }
+
+  /**
+   * GET /esap/auditorias/:id/historial
+   * Obtiene el historial completo de cambios de una auditoría
+   */
+  @Get(':id/historial')
+  getHistorialAuditoria(@Param('id') id: string) {
+    return this.auditoriasService.getHistorialAuditoria(id);
   }
 }
 

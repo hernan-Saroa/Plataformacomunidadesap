@@ -88,7 +88,8 @@ type ModuleView =
   | 'arquitectura-empresarial'
   | 'gestion-passwords'
   | 'demo-pta-motor'
-  | 'gestion-profesoral';
+  | 'gestion-profesoral'
+  | 'none';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -101,13 +102,14 @@ interface BackofficeAppProps {
     module?: string;
     hasBothSystemsAccess?: boolean;
     roles?: string[];
+    modules?: string[];
   };
   userRoles?: string[];
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, userData, userRoles }: BackofficeAppProps = {}) {
   // Si el usuario tiene acceso restringido, abrir directamente su módulo específico
-  console.log('🚀 BackofficeApp: userData:', userData);
+  // console.log('🚀 BackofficeApp: userData:', userData);
   // const initialModule = userData?.module === 'control-interno'
   //   ? 'control-interno'
   //   : userData?.module === 'control-disciplinario'
@@ -123,21 +125,25 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   //   : userData?.module === 'gestion-profesoral'
   //   ? 'gestion-profesoral'
   //   : 'dashboard';
-  const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
-    ? 'control-interno'
-    : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
-    ? 'control-disciplinario'
-    : userData?.roles?.includes('REGISTRO_ACADEMICO')
-    ? 'graduates'
-    : userData?.roles?.includes('COORDINADOR_CERT_LABORAL')
-    ? 'certificados-laborales'
-    : userData?.roles?.includes('GESTION_LEGAL')
-    ? 'gestion-legal'
-    : userData?.module === 'procesos'
-    ? 'control-interno'
-    : 'users-persons';
+  // const initialModule = userData?.roles?.includes('CONTROL_INTERNO') 
+  //   ? 'control-interno'
+  //   : userData?.roles?.includes('CONTROL_DISCIPLINARIO')
+  //   ? 'control-disciplinario'
+  //   : userData?.roles?.includes('REGISTRO_ACADEMICO')
+  //   ? 'graduates'
+  //   : userData?.roles?.includes('COORDINADOR_CERT_LABORAL')
+  //   ? 'certificados-laborales'
+  //   : userData?.roles?.includes('GESTION_LEGAL')
+  //   ? 'gestion-legal'
+  //   : userData?.module === 'procesos'
+  //   ? 'control-interno'
+  //   : 'users-persons';
+  
+  let initialModule =  userData && userData.modules && userData.modules.length > 0 ? userData.modules[0] : 'none';
+  initialModule = initialModule === 'all' ? 'users-persons' : initialModule;
+  console.log('🚀 BackofficeApp: initialModule:', initialModule);
     
-  const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
+  const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule as ModuleView);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -208,7 +214,34 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   };
 
   const renderModule = () => {
+    console.log('Current module:', currentModule);
+    // setCurrentModule(undefined);
     switch (currentModule) {
+      case 'none':
+        return (
+          <div className="min-h-[60vh] flex items-center justify-center">
+            <div className="max-w-lg w-full bg-white shadow-xl rounded-2xl border border-gray-200 p-8 text-center space-y-4">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full text-4xl font-bold badge-esap-warning">
+                !
+              </div>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Sin módulos asignados</h1>
+              <p className="text-gray-600 text-base">
+                Tu cuenta no tiene módulos habilitados todavía.
+              </p>
+              <p className="text-gray-600 text-base">
+                Solicita a un administrador que te asigne un rol con los accesos necesarios.
+              </p>
+              <div className="flex flex-wrap gap-3 justify-center pt-2">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1.5 text-[9px] md:text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 border-2 border-transparent hover:border-red-200 rounded-lg transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        );
       case 'dashboard':
         // Redirigir a Estructura Organizacional como vista principal
         return <EstructuraOrganizacionalModule />;
@@ -261,7 +294,12 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
         }
         // Si es usuario de Control Interno (auditor), mostrar dashboard completo
-        return <ControlInternoFull />;
+        return (
+          <ControlInternoFull 
+            userData={userData}
+            userRoles={userRoles}
+          />
+        );
       
       case 'control-disciplinario':
         return <ControlDisciplinarioFull />;
@@ -303,6 +341,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     }
   };
 
+  console.log('---> currentSidebarModule:', currentSidebarModule);
+
   return (
     <NotificationsProvider>
       <TourProvider>
@@ -317,15 +357,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               currentModule={currentModule}
               currentSidebarModule={currentSidebarModule}
               onModuleChange={(sidebarModule) => {
-                console.log('🔍 Sidebar module clicked:', sidebarModule);
                 const mappedModule = mapSidebarToModule(sidebarModule);
-                console.log('📍 Mapped to:', mappedModule);
                 setCurrentSidebarModule(sidebarModule);
                 setCurrentModule(mappedModule);
                 setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
               }}
               userEmail={currentUser.email}
               certificatesPendingCount={certificatesPendingCount}
+              assignedModules={userData?.modules}
               restrictedMode={
                 userData?.module === 'control-interno'
                   ? 'control-interno'

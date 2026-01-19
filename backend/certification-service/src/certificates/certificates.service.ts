@@ -7,6 +7,14 @@ import { Signer } from './signer.entity';
 import { CertificateTemplate } from './certificate-template.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
+import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+
+type SendLaborCertificateOptions = {
+  includeSalary?: boolean;
+  includeTechnicalBonus?: boolean;
+  templateType?: 'docente' | 'administrador';
+  to?: string;
+};
 
 @Injectable()
 export class CertificatesService {
@@ -35,6 +43,7 @@ export class CertificatesService {
     @InjectRepository(CertificateValidation)
     private validationRepo: Repository<CertificateValidation>,
     private certificateGenerator: CertificateGeneratorService,
+    private laborPdfService: LaborCertificatePdfService,
   ) {}
 
   // ============================================
@@ -71,6 +80,108 @@ export class CertificatesService {
     }
 
     this.logger.log(`Solicitud de envío de código enviada a notifications-service para ${destinatario}`);
+  }
+
+  private buildLaborEmailHtml(certificate: Certificate, recipientName?: string): string {
+    const nombre = recipientName || certificate.full_name || 'usuario';
+    const consecutivo = certificate.certificate_number || 'ESAP';
+    return `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Certificados ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Certificado laboral
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Hola ${nombre}, adjuntamos tu certificado laboral solicitado.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
+              Certificado: <strong>${consecutivo}</strong>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+              ESAP - Escuela Superior de Administracion Publica
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  private async enviarCertificadoLaboralPorEmail(
+    certificate: Certificate,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ to: string }> {
+    const destinatario = (options.to || certificate.request?.email || '').trim();
+    if (!destinatario) {
+      throw new BadRequestException('No hay un email registrado para enviar el certificado');
+    }
+
+    const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
+      includeSalary: options.includeSalary,
+      includeTechnicalBonus: options.includeTechnicalBonus,
+      templateType: options.templateType,
+    });
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
+    const subject = `Certificado Laboral ESAP - ${certificate.certificate_number}`;
+    const text = `Adjuntamos tu certificado laboral ${certificate.certificate_number}.`;
+
+    const payload = {
+      to: destinatario,
+      subject,
+      text,
+      html: this.buildLaborEmailHtml(certificate, certificate.full_name),
+      attachmentName: attachment.filename,
+      attachmentBase64: attachment.buffer.toString('base64'),
+      attachmentContentType: 'application/pdf',
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
+    }
+
+    this.logger.log(`Certificado laboral enviado a ${destinatario}`);
+    return { to: destinatario };
+  }
+
+  async reenviarCertificadoLaboral(
+    id: string,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ mensaje: string; email: string }> {
+    const certificate = await this.certificateRepo.findOne({
+      where: { id },
+      relations: ['request'],
+    });
+
+    if (!certificate) {
+      throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
+    }
+
+    const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
+
+    return {
+      mensaje: `Certificado reenviado a ${result.to}`,
+      email: result.to,
+    };
   }
 
   async findSolicitudById(id: string) {
@@ -274,6 +385,7 @@ export class CertificatesService {
       technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
+      department_son: request.department_son || undefined,
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
