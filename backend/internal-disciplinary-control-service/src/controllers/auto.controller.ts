@@ -19,6 +19,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { AutoService } from '../services/auto.service';
+import { OnlyOfficeService } from '../services/onlyoffice.service';
 import {
   CreateLegalAutoDto,
 } from '../dtos/create-legal-auto.dto';
@@ -29,7 +30,10 @@ import { LegalAuto } from '../entities/legal-auto.entity';
 @ApiTags('Autos Legales')
 @Controller('disciplinary-autos')
 export class AutoController {
-  constructor(private autoService: AutoService) { }
+  constructor(
+    private autoService: AutoService,
+    private onlyOfficeService: OnlyOfficeService,
+  ) { }
 
   /**
    * H9: Crear borrador de auto
@@ -108,7 +112,6 @@ export class AutoController {
 
     return {
       ...auto,
-      documentUrl: undefined,
       versiones,
       metadatos: {
         firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
@@ -321,5 +324,106 @@ export class AutoController {
     `;
 
     res.send(htmlContent);
+  }
+
+  /**
+   * Obtener configuración de OnlyOffice para editar documento Word
+   */
+  @Get(':id/onlyoffice-config')
+  @ApiOperation({
+    summary: 'Configuración OnlyOffice',
+    description: 'Obtiene la configuración necesaria para abrir el editor OnlyOffice',
+  })
+  async getOnlyOfficeConfig(
+    @Param('id') id: string,
+    @Query('userId') userId?: string,
+  ) {
+    const auto = await this.autoService.findById(id);
+
+    if (!auto.documentUrl) {
+      throw new Error('Este auto no tiene un documento adjunto');
+    }
+
+    // Construir URL completa del documento
+    // OnlyOffice corre en Docker y necesita acceder al backend usando el nombre del servicio Docker
+    // auto.documentUrl ya es '/files/filename.docx'
+    const backendUrl = process.env.BACKEND_URL || 'http://internal-disciplinary-control-service:3005';
+    const documentUrl = `${backendUrl}${auto.documentUrl}`;
+
+    // Generar clave única para el documento (ID + versión)
+    const documentKey = `${auto.id}_v${auto.currentVersion || 1}`;
+
+    const config = this.onlyOfficeService.generateConfig(
+      documentUrl,
+      documentKey,
+      auto.documentName || 'documento.docx',
+      userId || 'anonymous',
+    );
+
+    return config;
+  }
+
+  /**
+   * Callback de OnlyOffice cuando se guarda el documento
+   */
+  @Post('onlyoffice/callback')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Callback OnlyOffice',
+    description: 'Recibe notificaciones de OnlyOffice cuando el documento es guardado',
+  })
+  async onlyOfficeCallback(@Body() body: any) {
+    console.log('OnlyOffice callback recibido:', JSON.stringify(body, null, 2));
+
+    // Status 2 = documento listo para guardar (todos los usuarios cerraron)
+    // Status 3 = error al guardar
+    // Status 6 = documento siendo editado
+    if (body.status === 2) {
+      try {
+        let downloadUrl = body.url;
+        const documentKey = body.key;
+
+        // Extraer el autoId de la key (formato: autoId_vX_timestamp)
+        const autoId = documentKey.split('_')[0];
+
+        // OnlyOffice devuelve localhost:8080, pero desde Docker necesitamos usar el nombre del servicio
+        downloadUrl = downloadUrl.replace('http://localhost:8080', 'http://onlyoffice:80');
+        downloadUrl = downloadUrl.replace('https://localhost:8080', 'http://onlyoffice:80');
+
+        console.log(`📥 Descargando documento actualizado para auto ${autoId} desde: ${downloadUrl}`);
+
+        // Descargar el documento desde OnlyOffice
+        const axios = require('axios');
+        const fs = require('fs');
+        const path = require('path');
+
+        const response = await axios({
+          method: 'GET',
+          url: downloadUrl,
+          responseType: 'arraybuffer',
+        });
+
+        // Obtener el auto actual para conocer el nombre del archivo
+        const auto = await this.autoService.findById(autoId);
+
+        if (auto && auto.documentUrl) {
+          // Extraer el nombre del archivo de la URL existente
+          const filename = auto.documentUrl.split('/').pop();
+          const filePath = path.join(process.cwd(), 'uploads', filename);
+
+          // Guardar el archivo actualizado
+          fs.writeFileSync(filePath, response.data);
+
+          console.log(`✅ Documento guardado exitosamente en: ${filePath}`);
+        } else {
+          console.log('⚠️ Auto no tiene documentUrl, no se puede actualizar');
+        }
+      } catch (error) {
+        console.error('❌ Error guardando documento desde OnlyOffice:', error.message);
+      }
+    }
+
+    // OnlyOffice espera una respuesta con { error: 0 } para indicar éxito
+    return { error: 0 };
   }
 }

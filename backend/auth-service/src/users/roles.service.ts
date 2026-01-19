@@ -94,7 +94,7 @@ export class RolesService {
 
     // Paginación
     const page = filters.page || 1;
-    const limit = filters.limit || 20;
+    const limit = filters.limit || 100;
     const offset = (page - 1) * limit;
 
     const countQuery = query.clone(); // importante: clonar antes de skip/take

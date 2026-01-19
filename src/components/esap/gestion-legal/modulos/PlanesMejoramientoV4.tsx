@@ -29,6 +29,9 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Textarea } from '../../../ui/textarea';
 import { legalService } from '../../../../services/api/legal.service';
+import { ModalDetallePlanV4 } from './ModalDetallePlanV4';
+import jsPDF from 'jspdf';
+import JSZip from 'jszip';
 
 import {
   DropdownMenu,
@@ -221,6 +224,8 @@ export function ModuloPlanesMejoramientoV4() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
   const [modalNuevoPlanAbierto, setModalNuevoPlanAbierto] = useState(false);
+  const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
+  const [planSeleccionadoId, setPlanSeleccionadoId] = useState<string | null>(null);
 
   // State for real data
   const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
@@ -292,7 +297,7 @@ export function ModuloPlanesMejoramientoV4() {
         origen: formData.enteControl,
         documentoOrigen: formData.documentoOrigen,
         areaResponsable: formData.areaResponsable,
-        responsableId: null, // Pending logic for user selection
+        responsableNombre: formData.responsablePlan, // Save text name directly
         fechaInicio: formData.fechaInicio,
         fechaFinEstimada: formData.fechaFin,
         fechaRecepcion: formData.fechaRecepcion,
@@ -358,6 +363,94 @@ export function ModuloPlanesMejoramientoV4() {
     setExpandedPlans(newExpanded);
   };
 
+  // Open detail modal
+  const handleVerDetalle = (planId: string) => {
+    setPlanSeleccionadoId(planId);
+    setModalDetalleAbierto(true);
+  };
+
+  // Export all plans to PDF ZIP
+  const handleExportarPlanes = async () => {
+    if (planes.length === 0) {
+      toast.error('No hay planes para exportar');
+      return;
+    }
+
+    toast.loading('Generando PDFs...', { id: 'export-zip' });
+
+    try {
+      const zip = new JSZip();
+
+      for (const plan of planes) {
+        const doc = new jsPDF();
+
+        // Header
+        doc.setFontSize(18);
+        doc.setTextColor(0, 61, 165);
+        doc.text('PLAN DE MEJORAMIENTO', 105, 20, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        doc.text('ESAP - Gestión Legal', 105, 28, { align: 'center' });
+
+        // Line separator
+        doc.setDrawColor(0, 61, 165);
+        doc.setLineWidth(0.5);
+        doc.line(20, 35, 190, 35);
+
+        // Plan details
+        let y = 50;
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+
+        const addField = (label: string, value: string) => {
+          doc.setFont('helvetica', 'bold');
+          doc.text(label + ':', 20, y);
+          doc.setFont('helvetica', 'normal');
+          doc.text(value || 'N/A', 70, y);
+          y += 8;
+        };
+
+        addField('Código', plan.codigo);
+        addField('Nombre', plan.nombre);
+        addField('Origen', getEnteConfig(plan.enteControl).nombre);
+        addField('Área', plan.area);
+        addField('Responsable', plan.responsablePlan);
+        addField('Estado', getEstadoConfig(plan.estado).nombre);
+        addField('Avance', `${plan.avanceGeneral}%`);
+        addField('Fecha Inicio', formatearFecha(plan.fechaInicio));
+        addField('Fecha Fin', formatearFecha(plan.fechaFin));
+        addField('Días Restantes', `${plan.diasRestantes} días`);
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 105, 280, { align: 'center' });
+
+        // Add to ZIP
+        const pdfBlob = doc.output('blob');
+        zip.file(`${plan.codigo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`, pdfBlob);
+      }
+
+      // Generate and download ZIP
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `planes_mejoramiento_${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast.success('Exportación completada', {
+        id: 'export-zip',
+        description: `${planes.length} planes exportados a ZIP`
+      });
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar planes', { id: 'export-zip' });
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -385,7 +478,7 @@ export function ModuloPlanesMejoramientoV4() {
             label: 'Exportar',
             labelMobile: 'Exportar',
             icon: <Download className="w-4 h-4" />,
-            onClick: () => toast.info('Exportar Planes de Mejoramiento'),
+            onClick: () => handleExportarPlanes(),
             variant: 'outline'
           }
         ]}
@@ -512,17 +605,18 @@ export function ModuloPlanesMejoramientoV4() {
         ) : (
           <>
             {tipoVista === 'dashboard' && (
-              <VistaDashboard planes={planesFiltrados} />
+              <VistaDashboard planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
             {tipoVista === 'lista' && (
               <VistaLista
                 planes={planesFiltrados}
                 expandedPlans={expandedPlans}
                 onTogglePlan={togglePlan}
+                onVerDetalle={handleVerDetalle}
               />
             )}
             {tipoVista === 'timeline' && (
-              <VistaTimeline planes={planesFiltrados} />
+              <VistaTimeline planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
           </>
         )}
@@ -774,12 +868,25 @@ export function ModuloPlanesMejoramientoV4() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Detalle Plan */}
+      {planSeleccionadoId && (
+        <ModalDetallePlanV4
+          isOpen={modalDetalleAbierto}
+          onClose={() => {
+            setModalDetalleAbierto(false);
+            setPlanSeleccionadoId(null);
+          }}
+          planId={planSeleccionadoId}
+          onPlanUpdated={fetchPlanes}
+        />
+      )}
     </div>
   );
 }
 
 // ==================== VISTA: DASHBOARD ====================
-function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
+function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
     const grupos = {
@@ -929,7 +1036,7 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
                       <p className="text-2xl font-black text-amber-600">{plan.diasRestantes}</p>
                       <p className="text-xs text-gray-500">días</p>
                     </div>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => onVerDetalle?.(plan.id)}>
                       <Eye className="w-3 h-3" />
                     </Button>
                   </div>
@@ -949,11 +1056,13 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
 function VistaLista({
   planes,
   expandedPlans,
-  onTogglePlan
+  onTogglePlan,
+  onVerDetalle
 }: {
   planes: PlanMejoramiento[];
   expandedPlans: Set<string>;
   onTogglePlan: (id: string) => void;
+  onVerDetalle?: (id: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1024,7 +1133,7 @@ function VistaLista({
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
                       <Eye className="w-3 h-3" />
                     </Button>
                     {isExpanded ? (
@@ -1068,7 +1177,7 @@ function VistaLista({
 }
 
 // ==================== VISTA: TIMELINE ====================
-function VistaTimeline({ planes }: { planes: PlanMejoramiento[] }) {
+function VistaTimeline({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
   // Ordenar planes por fecha de vencimiento
   const planesOrdenados = useMemo(() => {
     return [...planes].sort((a, b) => a.fechaFin.getTime() - b.fechaFin.getTime());
@@ -1139,7 +1248,7 @@ function VistaTimeline({ planes }: { planes: PlanMejoramiento[] }) {
                   </div>
 
                   {/* Acciones */}
-                  <Button variant="outline" size="sm" className="flex-shrink-0">
+                  <Button variant="outline" size="sm" className="flex-shrink-0" onClick={() => onVerDetalle?.(plan.id)}>
                     <Eye className="w-3 h-3" />
                   </Button>
                 </div>

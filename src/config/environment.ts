@@ -34,6 +34,10 @@ const isLocalhost = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
 
+// URL de OnlyOffice Document Server
+const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
+export const ONLYOFFICE_URL = VITE_ONLYOFFICE_URL || (isLocalhost ? 'http://localhost:8080' : 'http://onlyoffice:80');
+
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
   development: 'http://localhost:3000', // API Gateway local

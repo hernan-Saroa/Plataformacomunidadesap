@@ -158,6 +158,28 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
     }
 
+    // ==================== PROCESOS COACTIVOS ====================
+    async getProcesosCoactivos(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/procesos-coactivos`);
+    }
+
+    async getProcesoCoactivo(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    async getCoactivoAdjuntos(procesoId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`);
+    }
+
+    async uploadCoactivoAdjunto(procesoId: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', tipo);
+        if (descripcion) formData.append('descripcion', descripcion);
+
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
+    }
+
     // ==================== ABOGADOS ====================
 
     // Actuaciones
@@ -485,6 +507,31 @@ export class LegalService {
 
     async saveConfiguration(key: string, value: any): Promise<any> {
         return apiClient.put<any>(`${SERVICE_PREFIX}/configurations/${key}`, { value });
+    }
+
+    // ==================== PLANES DE MEJORAMIENTO ====================
+    async getPlanesMejoramiento(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
+    }
+
+    async getPlanMejoramiento(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
+    }
+
+    async createPlanMejoramiento(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
+    }
+
+    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
+    }
+
+    async addSeguimientoPlan(id: string, data: { descripcionAvance: string; porcentajeReportado: number }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/seguimiento`, data);
+    }
+
+    async addEvidenciaPlan(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/evidencias`, data);
     }
 }
 
