@@ -48,7 +48,27 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
-
+
+  const formatInputDate = (value: string) => {
+    if (!value) {
+      return '';
+    }
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]) - 1;
+      const day = Number(match[3]);
+      // Use local date parts to avoid timezone shifts on YYYY-MM-DD inputs.
+      const localDate = new Date(year, month, day, 12, 0, 0);
+      return localDate.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    const parsed = new Date(value);
+    if (isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
   const mapCertificado = (
     certificado: CertificadoGraduado,
     requester: { name: string; email: string; type: 'empresa' | 'graduado' }
@@ -263,7 +283,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Fecha de Grado</p>
-                      <p className="font-bold text-lg text-gray-900">{new Date(graduateDocumentIssueDate).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                      <p className="font-bold text-lg text-gray-900">{formatInputDate(graduateDocumentIssueDate)}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Apellido</p>
