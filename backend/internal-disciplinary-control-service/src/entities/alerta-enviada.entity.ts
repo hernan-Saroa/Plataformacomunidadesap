@@ -10,6 +10,7 @@ import {
 import { TerminoProcesal } from './termino-procesal.entity';
 import { ReglaAlerta } from './regla-alerta.entity';
 import { LegalAuto } from './legal-auto.entity';
+import { DisciplinaryNews } from './disciplinary-news.entity';
 
 export enum TipoAlerta {
   EMAIL = 'email',
@@ -54,6 +55,14 @@ export class AlertaEnviada {
   @ManyToOne(() => LegalAuto, { nullable: true })
   @JoinColumn({ name: 'auto_id' })
   auto: LegalAuto | null;
+
+  // -- NOTICIAS DISCIPLINARIAS (Opcional) --
+  @Column('uuid', { name: 'news_id', nullable: true })
+  newsId: string | null;
+
+  @ManyToOne(() => DisciplinaryNews, { nullable: true })
+  @JoinColumn({ name: 'news_id' })
+  news: DisciplinaryNews | null;
 
   @Column({
     type: 'enum',

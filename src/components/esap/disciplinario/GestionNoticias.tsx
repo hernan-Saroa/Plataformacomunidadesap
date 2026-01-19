@@ -1216,10 +1216,23 @@ export function GestionNoticias() {
 
     try {
       setLoading(true);
-      await disciplinaryService.returnNews(noticiaSeleccionada.id, observaciones);
+
+      // Obtener el ID del radicador del historial de auditoría si está disponible
+      const radicacionEntry = noticiaSeleccionada.historialAuditoria?.find(
+        (h: any) => h.tipo === 'radicacion' || h.tipo === 'creacion'
+      );
+      const radicadorId = radicacionEntry?.usuarioId || radicacionEntry?.usuario || 'Sistema';
+      const radicadorNombre = noticiaSeleccionada.radicador || 'Radicador';
+
+      await disciplinaryService.returnNews(
+        noticiaSeleccionada.id,
+        observaciones,
+        radicadorId,
+        radicadorNombre
+      );
 
       toast.success('Noticia Devuelta', {
-        description: `Se ha notificado a ${noticiaSeleccionada.radicador} sobre las correcciones requeridas.`
+        description: `Se ha notificado a ${radicadorNombre} sobre las correcciones requeridas.`
       });
 
       await loadNoticias();

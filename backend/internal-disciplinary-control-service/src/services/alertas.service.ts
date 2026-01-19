@@ -167,6 +167,37 @@ export class AlertasService {
   }
 
   /**
+   * Crear nueva alerta/notificación para una Noticia Disciplinaria
+   */
+  async crearNotificacionNoticia(
+    newsId: string,
+    tipo: TipoAlerta,
+    destinatario: string,
+    asunto: string,
+    mensaje: string,
+    creadoPorId?: string,
+  ): Promise<AlertaEnviada> {
+    // Validar si creadoPorId es un UUID válido, sino usar null
+    const isValidUuid = creadoPorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creadoPorId);
+
+    const alerta = this.alertasRepository.create({
+      newsId,
+      tipo,
+      destinatario,
+      asunto,
+      mensaje,
+      estado: EstadoAlerta.ENVIADA, // Se marca como enviada inmediatamente (notificación visual)
+      creadoPorId: isValidUuid ? creadoPorId : null,
+      // Campos opcionales explícitamente null
+      terminoId: null,
+      reglaAlertaId: null,
+      autoId: null,
+    });
+
+    return await this.alertasRepository.save(alerta);
+  }
+
+  /**
    * Marcar alerta como enviada
    */
   async marcarEnviada(id: string): Promise<AlertaEnviada> {

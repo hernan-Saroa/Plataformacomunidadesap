@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +12,8 @@ import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto'
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
 
 interface FileData {
   buffer: Buffer;
@@ -19,11 +22,14 @@ interface FileData {
 
 @Injectable()
 export class NewsService {
+  private readonly logger = new Logger(NewsService.name);
+
   constructor(
     @InjectRepository(DisciplinaryNews)
     private newsRepository: Repository<DisciplinaryNews>,
     private sequenceService: SequenceService,
     private storageService: StorageService,
+    private alertasService: AlertasService,
   ) { }
 
   /**
@@ -140,7 +146,7 @@ export class NewsService {
   }
 
   /**
-   * Devuelve una noticia con observaciones
+   * Devuelve una noticia con observaciones y notifica al radicador
    */
   async returnNews(id: string, returnNewsDto: ReturnNewsDto): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
@@ -157,7 +163,35 @@ export class NewsService {
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
-    return await this.newsRepository.save(noticia);
+    // Guardar la noticia
+    const savedNoticia = await this.newsRepository.save(noticia);
+
+    // Crear notificación para el radicador
+    try {
+      // Obtener el nombre del radicador del DTO o del historial
+      const radicadorNombre = returnNewsDto.radicadorNombre ||
+        noticia.historialAuditoria?.find((h: any) => h.tipo === 'radicacion')?.usuario ||
+        'Radicador';
+
+      const radicadorId = returnNewsDto.radicadorId || 'Sistema';
+
+      // Crear notificación visual para el radicador
+      await this.alertasService.crearNotificacionNoticia(
+        noticia.id,
+        TipoAlerta.VISUAL,
+        radicadorId, // destinatario (ID del radicador)
+        `Noticia ${noticia.radicado} devuelta para correcciones`,
+        `La noticia disciplinaria ${noticia.radicado} ha sido devuelta y requiere correcciones.\n\nObservaciones: ${returnNewsDto.observaciones}`,
+        'Sistema',
+      );
+
+      this.logger.log(`Notificación de devolución creada para radicador ${radicadorNombre} (${radicadorId})`);
+    } catch (error) {
+      // No fallar si la notificación no se puede crear
+      this.logger.error(`Error al crear notificación de devolución: ${error.message}`);
+    }
+
+    return savedNoticia;
   }
 
   /**

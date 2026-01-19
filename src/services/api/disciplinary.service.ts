@@ -189,8 +189,12 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news`);
     }
 
-    async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
-        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    async returnNews(id: string, observaciones: string, radicadorId?: string, radicadorNombre?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, {
+            observaciones,
+            radicadorId,
+            radicadorNombre
+        });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
