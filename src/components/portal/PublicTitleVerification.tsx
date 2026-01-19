@@ -53,20 +53,44 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     if (!value) {
       return '';
     }
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match) {
-      const year = Number(match[1]);
-      const month = Number(match[2]) - 1;
-      const day = Number(match[3]);
-      // Use local date parts to avoid timezone shifts on YYYY-MM-DD inputs.
+
+    const trimmed = value.trim();
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
       const localDate = new Date(year, month, day, 12, 0, 0);
-      return localDate.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+      return localDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
     }
-    const parsed = new Date(value);
-    if (isNaN(parsed.getTime())) {
-      return value;
+
+    const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (slashMatch) {
+      const day = Number(slashMatch[1]);
+      const month = Number(slashMatch[2]) - 1;
+      const year = Number(slashMatch[3]);
+      const localDate = new Date(year, month, day, 12, 0, 0);
+      return localDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
     }
-    return parsed.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return trimmed;
+    }
+
+    return parsed.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
   };
 
   const mapCertificado = (

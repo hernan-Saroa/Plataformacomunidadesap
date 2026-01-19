@@ -64,6 +64,7 @@ import graduadosService, {
   CertificadoGraduado,
   DescargaCertificado,
   SolicitudCertificadoGraduado,
+  UpdateCertificadoPayload,
   ValidacionCertificado,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
@@ -340,6 +341,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             requester: {
               name: mainRequest?.requesterName || certificate.fullName,
               email: mainRequest?.requesterEmail || '',
+              phone: mainRequest?.requesterPhone || '',
               type: mapRequesterType(mainRequest?.requesterType),
             },
             status: mapStatus(certificate.status),
@@ -409,8 +411,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setEditCertificateForm({
       fullName: cert.graduate.fullName || '',
       idNumber: cert.graduate.document || '',
-      email: '',
-      phone: '',
+      email: cert.requester.email || '',
+      phone: normalizePhone(cert.requester.phone || ''),
       programName: cert.graduate.program || '',
       programType: cert.programType || '',
       degreeTitle: cert.degreeTitle || '',
@@ -443,10 +445,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         ...prev,
         fullName: graduate.fullName || prev.fullName,
         idNumber: graduate.idNumber || prev.idNumber,
-        email: graduate.email || '',
-        phone: normalizePhone(graduate.phone || ''),
+        email: graduate.email || prev.email,
+        phone: graduate.phone ? normalizePhone(graduate.phone) : prev.phone,
         campus: graduate.campus || prev.campus,
-        seccionalName: graduate.seccionalName || '',
+        seccionalName: graduate.seccionalName || prev.seccionalName,
         programName: graduate.programName || prev.programName,
         programType: graduate.programType || prev.programType,
         degreeTitle: graduate.degreeTitle || prev.degreeTitle,
@@ -555,7 +557,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       };
       setEditCertificateForm(nextForm);
 
-      const certificatePayload: Partial<CertificadoGraduado> = isExistingGraduate
+      const requesterName = (
+        selectedCertificate.requester.type === 'graduado'
+          ? nextForm.fullName
+          : selectedCertificate.requester.name
+      ).trim();
+      const certificatePayload: UpdateCertificadoPayload = isExistingGraduate
         ? {
             fullName: nextForm.fullName,
             programName: nextForm.programName,
@@ -565,6 +572,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             seccionalName: nextForm.seccionalName,
             diplomaNumber,
             actaNumber,
+            requesterName,
+            requesterEmail: nextForm.email,
+            requesterPhone: nextForm.phone,
           }
         : {
             fullName: nextForm.fullName,
@@ -577,6 +587,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             actaNumber,
             campus: nextForm.campus,
             seccionalName: nextForm.seccionalName,
+            requesterName,
+            requesterEmail: nextForm.email,
+            requesterPhone: nextForm.phone,
           };
 
       await graduadosService.certificados.actualizar(
@@ -646,6 +659,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 diplomaNumber,
                 actaNumber,
                 campus: nextForm.campus,
+                requester: {
+                  ...cert.requester,
+                  name: requesterName,
+                  email: nextForm.email,
+                  phone: nextForm.phone,
+                },
               }
             : cert
         )
@@ -834,6 +853,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Sin fecha';
     return date.toLocaleString('es-CO', options);
+  };
+
+  const formatDateOnly = (
+    value?: string,
+    options?: Intl.DateTimeFormatOptions
+  ) => {
+    if (!value) return '';
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('es-CO', options);
+      }
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('es-CO', options);
   };
 
   const handleViewDetails = (cert: CertificateRecord) => {
@@ -1632,7 +1671,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Graduación</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(cert.graduate.graduationDate).toLocaleDateString('es-CO', {
+                                    {formatDateOnly(cert.graduate.graduationDate, {
                                       year: 'numeric',
                                       month: 'long',
                                       day: 'numeric'
@@ -2415,7 +2454,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div>
                   <span className="text-gray-600">Fecha de graduación:</span>
                   <span className="ml-2 font-semibold text-gray-900">
-                    {qrPreviewCertificate && new Date(qrPreviewCertificate.graduate.graduationDate).toLocaleDateString('es-CO')}
+                    {qrPreviewCertificate && formatDateOnly(qrPreviewCertificate?.graduate.graduationDate)}
                   </span>
                 </div>
                 <div>

@@ -40,10 +40,35 @@ export function VerificarCertificado() {
       console.log('🔍 Verificando certificado con código:', codigo);
       setIsValidating(true);
       setError(null);
+      const codigoNormalizado = codigo.trim().toUpperCase();
 
       try {
         // Llamar al endpoint que registra la verificación
-        const response = await certificadosService.validacion.verificarCertificadoLaboral(codigo);
+        const response = await certificadosService.validacion.verificarCertificadoLaboral(codigoNormalizado);
+        const responseMessage = typeof response?.message === 'string' ? response.message : '';
+        const isNotFoundMessage = responseMessage.toLowerCase().includes('no encontrado');
+        const hasCertificateData = Boolean(
+          response?.verification_code ||
+            response?.certificate_number ||
+            response?.full_name,
+        );
+        const hasErrorResponse =
+          response?.statusCode >= 400 ||
+          response?.error ||
+          isNotFoundMessage ||
+          !hasCertificateData;
+
+        if (hasErrorResponse) {
+          const message =
+            responseMessage ||
+            'No se pudo verificar el certificado';
+          setError(message);
+          setCertificado(null);
+          toast.error('Error de verificacion', {
+            description: 'El certificado no existe o el codigo es invalido'
+          });
+          return;
+        }
 
         console.log('✅ Certificado verificado - Response completo:', response);
         console.log('📊 Datos del certificado:', {
