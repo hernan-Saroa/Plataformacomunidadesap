@@ -42,6 +42,7 @@ import { AlertasService } from './services/alertas.service';
 import { AlertasAutomaticasService } from './services/alertas-automaticas.service';
 import { SchedulerService } from './services/scheduler.service';
 import { SeedService } from './seed.service';
+import { OnlyOfficeService } from './services/onlyoffice.service';
 import { databaseConfig } from './database.config';
 
 import { AppController } from './app.controller';
@@ -110,6 +111,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     SchedulerService,
     SeedService,
     DisciplinaryExportService,
+    OnlyOfficeService,
   ],
 })
 export class AppModule { }

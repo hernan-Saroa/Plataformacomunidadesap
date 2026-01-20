@@ -48,7 +48,51 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
-
+
+  const formatInputDate = (value: string) => {
+    if (!value) {
+      return '';
+    }
+
+    const trimmed = value.trim();
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const localDate = new Date(year, month, day, 12, 0, 0);
+      return localDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    const slashMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (slashMatch) {
+      const day = Number(slashMatch[1]);
+      const month = Number(slashMatch[2]) - 1;
+      const year = Number(slashMatch[3]);
+      const localDate = new Date(year, month, day, 12, 0, 0);
+      return localDate.toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return trimmed;
+    }
+
+    return parsed.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
   const mapCertificado = (
     certificado: CertificadoGraduado,
     requester: { name: string; email: string; type: 'empresa' | 'graduado' }
@@ -263,7 +307,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Fecha de Grado</p>
-                      <p className="font-bold text-lg text-gray-900">{new Date(graduateDocumentIssueDate).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                      <p className="font-bold text-lg text-gray-900">{formatInputDate(graduateDocumentIssueDate)}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Apellido</p>
