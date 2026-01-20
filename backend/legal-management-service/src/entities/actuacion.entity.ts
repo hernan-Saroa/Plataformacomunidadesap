@@ -31,6 +31,15 @@ export class Actuacion {
     @Column({ name: 'usuario_responsable', default: 'Sistema' })
     usuarioResponsable: string;
 
+    @Column({ default: 'MANUAL' })
+    origen: string; // 'MANUAL', 'AUDIENCIA', 'AUTO', 'ACTA', 'EVIDENCIA', 'OFICIO'
+
+    @Column({ name: 'referencia_id', type: 'uuid', nullable: true })
+    referenciaId: string;
+
+    @Column({ type: 'jsonb', default: {} })
+    metadata: Record<string, any>;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 }
