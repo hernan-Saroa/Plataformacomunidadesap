@@ -743,6 +743,11 @@ export interface RiesgoAPI {
     estado: 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
+    // Provisión Contable
+    cuantiaEstimada?: number;
+    provisionContable?: number;
+    porcentajeProvision?: number;
+    fechaCalculoProvision?: string;
 }
 
 export interface CreateRiesgoData {
@@ -759,6 +764,7 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    cuantiaEstimada?: number;
 }
 
 export interface RiesgoHistorialAPI {
@@ -809,6 +815,12 @@ class RiesgosService {
         porEtapa: Record<string, number>;
     }> {
         return apiClient.get(`${SERVICE_PREFIX}/riesgos/estadisticas`);
+    }
+
+    getReporteContabilidadUrl(): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/riesgos/export/contabilidad`;
     }
 
     async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
