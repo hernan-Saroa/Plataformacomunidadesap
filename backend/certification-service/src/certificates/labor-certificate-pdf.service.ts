@@ -61,8 +61,19 @@ export class LaborCertificatePdfService {
   }
 
   private resolveTemplateType(certificate: Certificate): TemplateType {
-    const text = `${certificate.position_category || ''} ${certificate.career_category || ''}`.toLowerCase();
-    return text.includes('docent') ? 'docente' : 'administrador';
+    const rawText = `${certificate.position_category || ''} ${certificate.career_category || ''}`;
+    const text = rawText
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) {
+      return 'administrador';
+    }
+    const isDocente = /\bdocen\w*\b|\bdoc\b/.test(text);
+    return isDocente ? 'docente' : 'administrador';
   }
 
   private async resolveAssetDataUrl(assetUrl?: string | null): Promise<string | null> {

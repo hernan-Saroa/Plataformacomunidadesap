@@ -10,6 +10,7 @@ import 'react-quill/dist/quill.snow.css';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { legalService } from '../../../services/api/legal.service';
+import { OnlyOfficeEditor } from './OnlyOfficeEditor';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
 const isUuidLike = (value: string) =>
@@ -148,6 +149,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const [creandoAuto, setCreandoAuto] = useState(false);
 
+  // Estado para editor OnlyOffice
+  const [modoEditorOnlyOffice, setModoEditorOnlyOffice] = useState(false);
+  const [autoSeleccionado, setAutoSeleccionado] = useState<any | null>(null);
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
     if (!relativeUrl) return '';
@@ -173,6 +177,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       id: auto.id,
       numero: auto.numero || 'Auto Sin NÃºmero',
       documentName: documentName,
+      documentUrl: documentUrl,
       fileExtension: fileExtension,
       tipo: nombreTipo,
       fecha: (auto.createdAt || '').split('T')[0],
@@ -310,6 +315,11 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       console.error('Error cargando contenido del auto', error);
       toast.error('Error al cargar el contenido del auto');
     }
+  };
+
+  const editarAutoEnOnlyOffice = (auto: any) => {
+    setAutoSeleccionado(auto);
+    setModoEditorOnlyOffice(true);
   };
 
   useEffect(() => {
@@ -500,8 +510,14 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       return;
     }
 
-    if (file.type !== 'application/pdf') {
-      setArchivoError('Solo se permiten archivos PDF');
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',  // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // .docx
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setArchivoError('Solo se permiten archivos PDF y Word (.doc, .docx)');
       setArchivo(null);
       return;
     }
@@ -859,9 +875,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            descargarArchivo(auto.downloadUrl, `${auto.numero}.pdf`);
+                            const extension = auto.documentName?.split('.').pop() || 'pdf';
+                            descargarArchivo(auto.downloadUrl, `${auto.numero}.${extension}`);
                             toast.success('Descarga iniciada', {
-                              description: `${auto.numero}.pdf`
+                              description: `${auto.numero}.${extension}`
                             });
                           }}
                           title="Descargar documento"
@@ -900,6 +917,24 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                             <FileText className="w-3.5 h-3.5" />
                           )}
                         </Button>
+                        {/* Botón para editar archivos Word en OnlyOffice */}
+                        {auto.documentUrl &&
+                         (auto.documentName?.endsWith('.doc') ||
+                          auto.documentName?.endsWith('.docx')) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              editarAutoEnOnlyOffice(auto);
+                            }}
+                            title="Editar documento Word"
+                            style={{ borderColor: '#2563EB', color: '#2563EB' }}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -1002,7 +1037,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     <input
                       type="file"
                       onChange={handleArchivoChange}
-                      accept=".pdf"
+                      accept=".pdf,.doc,.docx"
                       className="hidden"
                       id="archivo-auto-input"
                     />
@@ -1015,8 +1050,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       ) : (
                         <div className="text-sm">
-                          <p className="font-bold text-gray-900">Seleccionar archivo PDF</p>
-                          <p className="text-xs text-gray-500">Solo PDF (mÃ¡x. 10MB)</p>
+                          <p className="font-bold text-gray-900">Seleccionar archivo PDF o Word</p>
+                          <p className="text-xs text-gray-500">PDF, .doc, .docx (máx. 10MB)</p>
                         </div>
                       )}
                     </label>
@@ -1134,20 +1169,35 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                 </Card>
 
                 {visorDocumento.documento.viewUrl ? (
-                  <Card className="p-4 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex flex-col">
-                    <iframe
-                      src={visorDocumento.documento.viewUrl}
-                      title={visorDocumento.documento.numero}
-                      className="w-full flex-1 min-h-[560px] rounded-lg bg-white"
-                    />
-                  </Card>
+                  visorDocumento.documento.documentName?.endsWith('.doc') || visorDocumento.documento.documentName?.endsWith('.docx') ? (
+                    <Card className="p-8 bg-blue-50 border-2 border-blue-300 flex-1 flex items-center justify-center">
+                      <div className="text-center">
+                        <FileText className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                        <p className="font-bold text-blue-900 mb-2">Documento Word detectado</p>
+                        <p className="text-sm text-blue-700 mb-4">
+                          Los archivos Word no se pueden previsualizar aquí.
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          💡 Usa el botón azul "Editar documento Word" en la lista de autos para abrir el editor OnlyOffice
+                        </p>
+                      </div>
+                    </Card>
+                  ) : (
+                    <Card className="p-4 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex flex-col">
+                      <iframe
+                        src={visorDocumento.documento.viewUrl}
+                        title={visorDocumento.documento.numero}
+                        className="w-full flex-1 min-h-[560px] rounded-lg bg-white"
+                      />
+                    </Card>
+                  )
                 ) : (
                   <Card className="p-8 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex items-center justify-center">
                     <div className="text-center">
                       <Scale className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                       <p className="font-bold text-gray-900 mb-2">Sin documento adjunto</p>
                       <p className="text-sm text-gray-600">
-                        Este auto no tiene un documento PDF asociado
+                        Este auto no tiene un documento asociado (PDF o Word)
                       </p>
                     </div>
                   </Card>
@@ -1162,8 +1212,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                 <Button
                   onClick={() => {
                     if (!visorDocumento.documento?.downloadUrl) return;
-                    descargarArchivo(visorDocumento.documento.downloadUrl, `${visorDocumento.documento.numero}.pdf`);
-                    toast.success('Descarga iniciada', { description: `${visorDocumento.documento.numero}.pdf` });
+                    const extension = visorDocumento.documento.documentName?.split('.').pop() || 'pdf';
+                    descargarArchivo(visorDocumento.documento.downloadUrl, `${visorDocumento.documento.numero}.${extension}`);
+                    toast.success('Descarga iniciada', { description: `${visorDocumento.documento.numero}.${extension}` });
                   }}
                   style={{ background: '#8B5CF6', color: '#FFFFFF' }}
                 >
@@ -1329,6 +1380,19 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Editor OnlyOffice para documentos Word */}
+      {modoEditorOnlyOffice && autoSeleccionado && (
+        <OnlyOfficeEditor
+          autoId={autoSeleccionado.id}
+          onClose={() => {
+            setModoEditorOnlyOffice(false);
+            setAutoSeleccionado(null);
+            // Recargar la lista de autos para ver los cambios
+            cargarAutos();
+          }}
+        />
+      )}
+
       {/* Modal Visor de Auto */}
       {(visorAuto.auto || visorAuto.modoPlantilla) && (
         <VisorPDFAuto
@@ -1342,7 +1406,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   );
 }
 
-// ==================== MODAL GESTIÃ“N DE EVIDENCIAS ====================
+// ==================== MODAL GESTIÃ"N DE EVIDENCIAS ====================
 // ==================== MODAL GESTIÃ“N DE EVIDENCIAS ====================
 interface ModalEvidenciasProps {
   proceso: Proceso;

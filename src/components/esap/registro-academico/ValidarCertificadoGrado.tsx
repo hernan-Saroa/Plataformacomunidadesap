@@ -98,6 +98,31 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
     estado: mapEstadoCertificado(certificado.status)
   });
 
+  const formatDateOnly = (value?: string) => {
+    if (!value) return '';
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('es-CO', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        });
+      }
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
   const handleValidar = async () => {
     const codigoIngresado = codigoQR.trim();
     if (!codigoIngresado) {
@@ -553,11 +578,7 @@ export function ValidarCertificadoGrado({ onBack }: ValidarCertificadoGradoProps
                               color: '#1F2937'
                             }}
                           >
-                            {new Date(validationResult.certificado.fechaGrado).toLocaleDateString('es-CO', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
+                            {formatDateOnly(validationResult.certificado.fechaGrado)}
                           </p>
                         </div>
 

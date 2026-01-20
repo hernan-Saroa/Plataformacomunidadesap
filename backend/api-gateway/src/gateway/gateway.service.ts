@@ -58,6 +58,17 @@ export class GatewayService {
     
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const forwardedIp = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : typeof forwardedFor === 'string'
+        ? forwardedFor.split(',')[0]
+        : '';
+    const clientIp =
+      forwardedIp?.trim() ||
+      (typeof req.ip === 'string' ? req.ip : '') ||
+      req.socket?.remoteAddress ||
+      '';
     
     // Reenviar headers existentes sin modificarlos
     // NO modificar x-forwarded-for ni x-real-ip (eliminado módulo de cambio de IP)
@@ -65,6 +76,7 @@ export class GatewayService {
       ...req.headers,
       host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
+      ...(clientIp ? { 'x-client-ip': clientIp } : {}),
     };
 
     try {

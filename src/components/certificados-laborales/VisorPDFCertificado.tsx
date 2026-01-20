@@ -81,12 +81,23 @@ export function VisorPDFCertificado({
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
 
+  const normalizarTexto = (value: string) =>
+    (value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
+
   const resolverTipoPlantilla = (): 'docente' | 'administrador' => {
     const fromCert = (certificado as any)?.templateType;
     if (fromCert === 'docente' || fromCert === 'administrador') return fromCert;
 
-    const cargoTexto = `${certificado.empleado.cargo || ''} ${certificado.empleado.tipoVinculacion || ''}`.toLowerCase();
-    return cargoTexto.includes('docent') ? 'docente' : 'administrador';
+    const cargoTexto = `${certificado.empleado.cargo || ''} ${certificado.empleado.tipoVinculacion || ''}`;
+    return esDocente(cargoTexto) ? 'docente' : 'administrador';
   };
 
   // Cargar configuración de plantilla
