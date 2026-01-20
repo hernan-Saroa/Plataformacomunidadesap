@@ -37,7 +37,8 @@ const initialFormState = {
   impactoInherente: '3',
   probabilidadResidual: '2',
   impactoResidual: '2',
-  etapa: 'IDENTIFICADO'
+  etapa: 'IDENTIFICADO',
+  cuantiaEstimada: ''
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
@@ -61,7 +62,8 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         impactoInherente: String(riesgoEditar.impactoInherente || 3),
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
-        etapa: riesgoEditar.etapa || 'IDENTIFICADO'
+        etapa: riesgoEditar.etapa || 'IDENTIFICADO',
+        cuantiaEstimada: riesgoEditar.cuantiaEstimada ? String(riesgoEditar.cuantiaEstimada) : ''
       });
       // Cargar controles existentes
       if (Array.isArray(riesgoEditar.controlesExistentes)) {
@@ -120,6 +122,9 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       // Convertir strings a números/arrays para el backend
       probabilidadInherente: parseInt(formData.probabilidadInherente),
       impactoInherente: parseInt(formData.impactoInherente),
+      probabilidadResidual: parseInt(formData.probabilidadResidual),
+      impactoResidual: parseInt(formData.impactoResidual),
+      cuantiaEstimada: formData.cuantiaEstimada ? Number(formData.cuantiaEstimada) : 0,
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
       controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
@@ -273,6 +278,39 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                     <option value="FISCAL">💰 Fiscal</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Campo Cuantía Estimada para Provisión Contable */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cuantiaEstimada" className="text-sm font-semibold text-gray-700">
+                    💰 Cuantía Estimada (Provisión Contable)
+                  </Label>
+                  <Input
+                    id="cuantiaEstimada"
+                    type="number"
+                    placeholder="Ej: 50000000"
+                    value={formData.cuantiaEstimada}
+                    onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
+                    className="border-2 border-gray-300 focus:border-green-500"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Valor monetario estimado del riesgo (para cálculo de provisión)
+                  </p>
+                </div>
+                {formData.cuantiaEstimada && (
+                  <div className="space-y-2 bg-green-50 p-3 rounded-lg border border-green-200">
+                    <Label className="text-sm font-semibold text-green-700">
+                      📊 Provisión Calculada ({zonaResidual === 'EXTREMO' ? '100%' : zonaResidual === 'ALTO' ? '75%' : zonaResidual === 'MODERADO' ? '50%' : '25%'})
+                    </Label>
+                    <p className="text-xl font-bold text-green-600">
+                      ${(Number(formData.cuantiaEstimada) * (zonaResidual === 'EXTREMO' ? 1 : zonaResidual === 'ALTO' ? 0.75 : zonaResidual === 'MODERADO' ? 0.5 : 0.25)).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      Basado en zona de riesgo residual: {zonaResidual}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

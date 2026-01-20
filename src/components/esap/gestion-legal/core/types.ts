@@ -809,6 +809,11 @@ export interface Riesgo {
   fechaCreacion: Date;
   fechaActualizacion: Date;
   estado: EstadoGeneral;
+  // Provisión Contable
+  cuantiaEstimada?: number;
+  provisionContable?: number;
+  porcentajeProvision?: number;
+  fechaCalculoProvision?: Date;
 }
 
 // ============================================================================
