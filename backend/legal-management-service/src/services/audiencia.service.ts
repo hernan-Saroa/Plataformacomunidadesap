@@ -6,6 +6,8 @@ import { CreateAudienciaDto, AudienciaDTO } from '../dtos/audiencia.dto';
 import { Abogado } from '../entities/abogado.entity';
 import { Expediente } from '../entities/expediente.entity';
 
+import { ActuacionService } from './actuacion.service';
+
 @Injectable()
 export class AudienciaService {
     constructor(
@@ -15,6 +17,7 @@ export class AudienciaService {
         private abogadoRepo: Repository<Abogado>,
         @InjectRepository(Expediente)
         private expedienteRepo: Repository<Expediente>,
+        private actuacionService: ActuacionService,
     ) { }
 
     async create(dto: CreateAudienciaDto): Promise<Audiencia> {
@@ -39,7 +42,25 @@ export class AudienciaService {
         }
 
         const audiencia = this.audienciaRepo.create(dto);
-        return this.audienciaRepo.save(audiencia);
+        const saved = await this.audienciaRepo.save(audiencia);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        await this.actuacionService.registrarEventoAutomatico(
+            dto.expedienteId,
+            'AUDIENCIA PROGRAMADA',
+            `Audiencia: ${dto.titulo} (${dto.modalidad}). Fecha: ${new Date(dto.fechaHoraInicio).toLocaleString()}`,
+            'AUDIENCIA',
+            saved.id,
+            {
+                modalidad: dto.modalidad,
+                ubicacion: dto.ubicacion,
+                linkReunion: dto.linkReunion,
+                duracionMinutos: dto.duracionMinutos
+            },
+            abogado.nombreCompleto
+        );
+
+        return saved;
     }
 
     async findAll(start?: Date, end?: Date): Promise<AudienciaDTO[]> {
