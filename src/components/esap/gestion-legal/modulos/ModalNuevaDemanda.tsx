@@ -199,6 +199,23 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
         // Formato teléfono internacional
         filteredValue = phoneFormat(value);
         break;
+      case 'demandado':
+        // Solo letras y espacios para nombre del demandado
+        filteredValue = onlyLetters(value);
+        break;
+      case 'numeroIdDemandado':
+        // Validación según tipo de identificación
+        if (formData.tipoIdDemandado === 'CC') {
+          // Cédula de Ciudadanía: solo números
+          filteredValue = value.replace(/[^0-9]/g, '');
+        } else if (formData.tipoIdDemandado === 'NIT') {
+          // NIT: números, puntos y guiones (ej: 899.999.061-4)
+          filteredValue = value.replace(/[^0-9.\-]/g, '');
+        } else if (formData.tipoIdDemandado === 'CE') {
+          // Cédula Extranjería: números y letras (ej: E-123456 o 123456)
+          filteredValue = value.replace(/[^0-9a-zA-Z\-]/g, '');
+        }
+        break;
       default:
         filteredValue = value;
     }
@@ -218,6 +235,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
     if (!formData.medioControl) {
       newErrors.medioControl = 'Seleccione el medio de control';
+    }
+    if (!formData.tipoProceso) {
+      newErrors.tipoProceso = 'Seleccione el tipo de proceso';
     }
     if (!formData.demandante.trim()) {
       newErrors.demandante = 'El nombre del demandante es obligatorio';
