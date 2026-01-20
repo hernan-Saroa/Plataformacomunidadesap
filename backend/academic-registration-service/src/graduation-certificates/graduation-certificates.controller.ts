@@ -19,24 +19,27 @@ import type { Request, Response } from 'express';
 
 const getClientIp = (req: Request): string | undefined => {
   const forwarded = req.headers['x-forwarded-for'];
-  let ip: string | undefined;
+  const clientIpHeader = req.headers['x-client-ip'];
+  const cfConnectingIp = req.headers['cf-connecting-ip'];
+  const realIpHeader = req.headers['x-real-ip'];
 
-  if (Array.isArray(forwarded)) {
-    ip = forwarded[0]?.trim();
-  } else if (typeof forwarded === 'string') {
-    ip = forwarded.split(',')[0]?.trim();
-  }
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : typeof forwarded === 'string'
+      ? forwarded.split(',')[0]
+      : '';
+  const clientIp = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
+  const cfIp = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+  const realIp = Array.isArray(realIpHeader) ? realIpHeader[0] : realIpHeader;
 
-  if (!ip) {
-    const realIp = req.headers['x-real-ip'];
-    if (typeof realIp === 'string') {
-      ip = realIp.trim();
-    }
-  }
-
-  if (!ip) {
-    ip = req.ip || req.socket.remoteAddress || undefined;
-  }
+  let ip: string | undefined =
+    forwardedIp?.trim() ||
+    (typeof clientIp === 'string' ? clientIp.trim() : '') ||
+    (typeof cfIp === 'string' ? cfIp.trim() : '') ||
+    (typeof realIp === 'string' ? realIp.trim() : '') ||
+    (typeof req.ip === 'string' ? req.ip : '') ||
+    req.socket?.remoteAddress ||
+    undefined;
 
   if (ip && ip.startsWith('::ffff:')) {
     ip = ip.slice(7);
