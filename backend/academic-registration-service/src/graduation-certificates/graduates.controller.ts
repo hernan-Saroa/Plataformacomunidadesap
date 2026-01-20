@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Put } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import type { UpdateGraduateDto } from './dto/update-graduate.dto';
 
-@Controller('academic-registration/api/v1/graduates')
+@Controller(['graduates', 'academic-registration/api/v1/graduates'])
 export class GraduatesController {
   constructor(private readonly service: GraduationCertificatesService) {}
 
