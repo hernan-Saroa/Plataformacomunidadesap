@@ -34,6 +34,10 @@ interface CertificadoLaboralListado {
   consecutivo: string;
   certificateHash?: string;
   qrCode?: string;
+  position_location?: string;
+  department?: string;
+  department_parent?: string;
+  campus?: string;
   empleado: {
     nombre: string;
     documento: string;
@@ -44,6 +48,7 @@ interface CertificadoLaboralListado {
     tipoVinculacion: string;
     fechaVinculacion: string;
     grado: string;
+    ubicacion?: string;
     salario: number;
   };
   estado: 'activo' | 'revocado' | 'expirado';
@@ -59,13 +64,20 @@ interface CertificadoLaboralListado {
 }
 
 export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificados: _certificados }: GenerarCertificadoModalProps) {
+  const normalizarTexto = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+
   const [step, setStep] = useState<'buscar' | 'validar'>('buscar');
   const [searchTerm, setSearchTerm] = useState('');
   const [certificadoSeleccionado, setCertificadoSeleccionado] = useState<CertificadoLaboralListado | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [configuracion, setConfiguracion] = useState({
-    incluyeSalario: true,
-    incluyePrimaTecnica: false
+    incluyeSalario: true
   });
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
@@ -143,34 +155,53 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       const items = Array.isArray(response) ? response : (response.items || []);
       const total = Array.isArray(response) ? items.length : (response.total || 0);
 
-      const transformados: CertificadoLaboralListado[] = items.map((cert: any) => ({
-        id: cert.id,
-        consecutivo: cert.certificate_number,
-        certificateHash: cert.verification_code,
-        qrCode: cert.verification_code,
-        empleado: {
-          nombre: cert.full_name,
-          documento: cert.id_number,
-          cargo: cert.position_category,
-          dependencia: cert.department_son || cert.departmentSon || 'Registro hijo',
-          dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
-          tipoVinculacion: cert.career_category,
-          fechaVinculacion: cert.hiring_date,
-          grado: cert.department || '',
-          salario: Number(cert.monthly_salary),
-          email: cert.email || cert.request?.email || 'No disponible'
-        },
-        estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
-        fechaSolicitud: cert.created_at,
-        fechaGeneracion: cert.issuance_timestamp,
-        cantidadEscaneos: cert.validation_count || 0,
-        pdfUrl: cert.pdf_url,
-        firmante: {
-          nombre: cert.signer_name,
-          cargo: cert.signer_position,
-          dependencia: cert.signer_department
-        }
-      }));
+      const transformados: CertificadoLaboralListado[] = items.map((cert: any) => {
+        const dependenciaPadreRaw =
+          cert.request?.department_parent ||
+          cert.request?.departmentParent ||
+          cert.department_parent ||
+          cert.departmentParent ||
+          '';
+        const ubicacionRaw =
+          cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '';
+        return {
+          id: cert.id,
+          consecutivo: cert.certificate_number,
+          certificateHash: cert.verification_code,
+          qrCode: cert.verification_code,
+          position_location: ubicacionRaw,
+          department: cert.department,
+          department_parent: dependenciaPadreRaw,
+          campus: cert.campus,
+          empleado: {
+            nombre: cert.full_name,
+            documento: cert.id_number,
+            cargo: cert.career_category,
+            dependencia: normalizarTexto(cert.department_son || cert.departmentSon),
+            dependenciaPadre: normalizarTexto(dependenciaPadreRaw),
+            tipoVinculacion: cert.position_category,
+            fechaVinculacion: cert.hiring_date,
+            grado: cert.department || '',
+            ubicacion: normalizarTexto(ubicacionRaw),
+            salario: Number(cert.monthly_salary),
+            email: cert.email || cert.request?.email || 'No disponible'
+          },
+          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
+          fechaSolicitud: cert.created_at,
+          fechaGeneracion: cert.issuance_timestamp,
+          cantidadEscaneos: cert.validation_count || 0,
+          pdfUrl: cert.pdf_url,
+          firmante: {
+            nombre: cert.signer_name,
+            cargo: cert.signer_position,
+            dependencia: cert.signer_department
+          }
+        };
+      });
 
       setModalItems(transformados);
       setModalTotal(total);
@@ -329,10 +360,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                               <h4 className="text-gray-900">{cert.empleado.nombre}</h4>
                               <div className="flex items-center gap-4 mt-1">
                                 <span className="text-sm text-gray-600">CC {cert.empleado.documento}</span>
-                                <span className="text-sm text-gray-500">{cert.empleado.cargo}</span>
                               </div>
                               <p className="text-sm text-gray-500 mt-1">
-                                {cert.empleado.dependenciaPadre || cert.empleado.dependencia || 'Registro padre'}
+                                {cert.empleado.ubicacion || ''}
                               </p>
                               <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
                                 <div className="flex items-center gap-1">
@@ -421,14 +451,12 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       </p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Grado</label>
-                      <p className="text-gray-900">{certificadoSeleccionado.empleado.grado}</p>
+                      <label className="text-sm text-gray-600">Ubicacion</label>
+                      <p className="text-gray-900">{certificadoSeleccionado.empleado.ubicacion || ''}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Dependencia</label>
-                      <p className="text-gray-900">
-                        {certificadoSeleccionado.empleado.dependenciaPadre || certificadoSeleccionado.empleado.dependencia || 'Registro padre'}
-                      </p>
+                      <label className="text-sm text-gray-600">Correo Electronico</label>
+                      <p className="text-gray-900">{certificadoSeleccionado.empleado.email}</p>
                     </div>
                     <div>
                       <label className="text-sm text-gray-600">Salario</label>
@@ -486,21 +514,6 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                             className="text-sm text-gray-700 cursor-pointer"
                           >
                             Incluir informacion salarial
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="prima-tecnica"
-                            checked={configuracion.incluyePrimaTecnica}
-                            onCheckedChange={(checked) =>
-                              setConfiguracion({ ...configuracion, incluyePrimaTecnica: checked as boolean })
-                            }
-                          />
-                          <label
-                            htmlFor="prima-tecnica"
-                            className="text-sm text-gray-700 cursor-pointer"
-                          >
-                            Incluir prima tecnica (20%)
                           </label>
                         </div>
                       </div>
@@ -580,7 +593,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificado={{
             ...certificadoSeleccionado,
             incluyeSalario: configuracion.incluyeSalario,
-            incluyePrimaTecnica: configuracion.incluyePrimaTecnica
+            incluyePrimaTecnica: false
           }}
         />
       )}
