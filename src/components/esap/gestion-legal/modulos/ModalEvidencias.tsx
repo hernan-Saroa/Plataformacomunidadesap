@@ -169,7 +169,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -183,9 +183,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo: localhost:3008/files/
-    // En modo gateway: localhost:3000/legal/api/v1/files/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 

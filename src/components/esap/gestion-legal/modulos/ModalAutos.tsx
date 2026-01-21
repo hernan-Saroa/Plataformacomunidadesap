@@ -102,7 +102,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -121,8 +121,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 

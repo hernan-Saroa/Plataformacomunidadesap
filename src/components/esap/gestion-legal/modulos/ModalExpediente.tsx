@@ -318,8 +318,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       filename = url.split('/').pop() || url;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -1123,15 +1123,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         Descargar Todos
                       </Button>
                       {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingDoc}
-                      >
-                        <Upload className="w-3 h-3 mr-1" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir'}
-                      </Button>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingDoc}
+                        >
+                          <Upload className="w-3 h-3 mr-1" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir'}
+                        </Button>
                       )}
                       <input
                         type="file"
@@ -1252,18 +1252,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
                             </p>
                             {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
-                            <Button
-                              style={{ background: '#003DA5', color: '#FFFFFF' }}
-                              className="font-bold"
-                              onClick={() => {
-                                toast.info('📎 Función de carga de documentos', {
-                                  description: 'Esta función permitirá subir documentos al expediente'
-                                });
-                              }}
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Cargar Primer Documento
-                            </Button>
+                              <Button
+                                style={{ background: '#003DA5', color: '#FFFFFF' }}
+                                className="font-bold"
+                                onClick={() => {
+                                  toast.info('📎 Función de carga de documentos', {
+                                    description: 'Esta función permitirá subir documentos al expediente'
+                                  });
+                                }}
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                Cargar Primer Documento
+                              </Button>
                             )}
                           </>
                         ) : (
@@ -1486,14 +1486,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       Tareas y Pendientes del Expediente
                     </h4>
                     {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
-                    <Button
-                      size="sm"
-                      className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                      onClick={() => setShowNuevaTarea(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Nueva Tarea
-                    </Button>
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                        onClick={() => setShowNuevaTarea(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Nueva Tarea
+                      </Button>
                     )}
                   </div>
                 </Card>
@@ -1651,14 +1651,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               </Button>
                             )}
                             {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs font-bold text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarTarea(tarea.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs font-bold text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarTarea(tarea.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
                             )}
                           </div>
                         </Card>
@@ -1677,14 +1677,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       Notas Internas del Expediente
                     </h4>
                     {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
-                    <Button
-                      size="sm"
-                      className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                      onClick={() => setShowNuevaNota(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Agregar Nota
-                    </Button>
+                      <Button
+                        size="sm"
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                        onClick={() => setShowNuevaNota(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Agregar Nota
+                      </Button>
                     )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
@@ -1787,14 +1787,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
                             </span>
                             {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_DELETE) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarNota(nota.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarNota(nota.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
                             )}
                           </div>
                         </div>
