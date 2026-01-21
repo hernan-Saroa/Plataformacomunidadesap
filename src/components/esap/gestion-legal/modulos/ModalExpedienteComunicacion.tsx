@@ -20,7 +20,8 @@ import { Card } from '../../../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Textarea } from '../../../ui/textarea';
-
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
@@ -599,7 +600,7 @@ export function ModalExpedienteComunicacion({
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {!comunicacion.leida && (
+                {!comunicacion.leida && authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_LEIDO) && (
                   <Button variant="outline" size="sm" onClick={handleMarcarLeidaLocal}>
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Marcar como Leída
@@ -611,10 +612,12 @@ export function ModalExpedienteComunicacion({
                 </Button>
               </div>
               <div className="flex items-center gap-2">
+                {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
                 <Button variant="outline" size="sm" onClick={handleArchivarLocal}>
                   <Archive className="w-4 h-4 mr-2" />
                   Archivar
                 </Button>
+                )}
                 <Button onClick={onClose}>
                   Cerrar
                 </Button>
