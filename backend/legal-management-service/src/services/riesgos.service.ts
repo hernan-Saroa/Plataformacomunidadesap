@@ -85,9 +85,22 @@ export class RiesgosService {
         data.zonaInherente = this.calcularZona(data.probabilidadInherente || 3, data.impactoInherente || 3);
         data.zonaResidual = this.calcularZona(data.probabilidadResidual || data.probabilidadInherente || 3, data.impactoResidual || data.impactoInherente || 3);
 
-        // Calcular provisión contable si hay cuantía
+        // Recalcular provisión contable
         if (data.cuantiaEstimada && Number(data.cuantiaEstimada) > 0) {
-            const { provision, porcentaje } = this.calcularProvision(Number(data.cuantiaEstimada), data.zonaResidual);
+            let provision = 0;
+            let porcentaje = 0;
+
+            if (data.porcentajeProvision !== undefined) {
+                // Prioridad: Porcentaje Manual
+                porcentaje = Number(data.porcentajeProvision);
+                provision = (Number(data.cuantiaEstimada) * porcentaje) / 100;
+            } else {
+                // Fallback: Automático por zona
+                const calculo = this.calcularProvision(Number(data.cuantiaEstimada), data.zonaResidual);
+                provision = calculo.provision;
+                porcentaje = calculo.porcentaje;
+            }
+
             data.provisionContable = provision;
             data.porcentajeProvision = porcentaje;
             data.fechaCalculoProvision = new Date();
@@ -143,11 +156,22 @@ export class RiesgosService {
             );
         }
 
-        // Recalcular provisión contable si cambia cuantía o zona
+        // Recalcular provisión contable (Lógica Híbrida Manual/Automática)
         const zonaFinal = data.zonaResidual ?? riesgo.zonaResidual;
         const cuantiaFinal = data.cuantiaEstimada !== undefined ? Number(data.cuantiaEstimada) : Number(riesgo.cuantiaEstimada || 0);
 
-        if (data.cuantiaEstimada !== undefined || data.zonaResidual !== undefined) {
+        // Si viene un porcentaje manual explícito (incluso 0), lo respetamos
+        if (data.porcentajeProvision !== undefined) {
+            const porcentaje = Number(data.porcentajeProvision);
+            const provision = (cuantiaFinal * porcentaje) / 100;
+
+            data.provisionContable = provision;
+            data.porcentajeProvision = porcentaje;
+            data.fechaCalculoProvision = new Date();
+        }
+        // Si no viene porcentaje pero cambia cuantía/zona, recalculamos automático solo si no había manual antes?
+        // Simplificación: Si el usuario no mandó porcentaje, asumimos recálculo automático
+        else if (data.cuantiaEstimada !== undefined || data.zonaResidual !== undefined) {
             const { provision, porcentaje } = this.calcularProvision(cuantiaFinal, zonaFinal);
             data.provisionContable = provision;
             data.porcentajeProvision = porcentaje;
@@ -360,7 +384,7 @@ export class RiesgosService {
         const reporte = riesgos.map(r => ({
             codigo: r.codigo,
             nombre: r.nombre,
-            proceso: r.proceso,
+            proceso: r.procesoRadicado ? `${r.procesoRadicado} (${r.moduloOrigen || 'General'})` : r.proceso,
             zona: r.zonaResidual,
             cuantiaEstimada: Number(r.cuantiaEstimada) || 0,
             porcentajeProvision: r.porcentajeProvision || 0,
@@ -431,8 +455,8 @@ export class RiesgosService {
             doc.fill('white');
             doc.fontSize(9).font('Helvetica-Bold');
             doc.text('Código', 60, y + 5);
-            doc.text('Proceso', 110, y + 5);
-            doc.text('Zona', 210, y + 5);
+            doc.text('Proceso / Radicado', 110, y + 5);
+            doc.text('Zona', 230, y + 5);
             doc.text('Cuantía', 280, y + 5, { width: 80, align: 'right' });
             doc.text('%', 370, y + 5, { width: 30, align: 'right' });
             doc.text('Provisión', 410, y + 5, { width: 80, align: 'right' });
@@ -452,8 +476,8 @@ export class RiesgosService {
                     doc.fill('white');
                     doc.fontSize(9).font('Helvetica-Bold');
                     doc.text('Código', 60, y + 5);
-                    doc.text('Proceso', 110, y + 5);
-                    doc.text('Zona', 210, y + 5);
+                    doc.text('Proceso / Radicado', 110, y + 5);
+                    doc.text('Zona', 230, y + 5);
                     doc.text('Cuantía', 280, y + 5, { width: 80, align: 'right' });
                     doc.text('%', 370, y + 5, { width: 30, align: 'right' });
                     doc.text('Provisión', 410, y + 5, { width: 80, align: 'right' });
@@ -471,8 +495,8 @@ export class RiesgosService {
 
                 doc.fontSize(8);
                 doc.text(r.codigo, 60, y);
-                doc.text(r.proceso.substring(0, 20), 110, y);
-                doc.text(r.zona, 210, y);
+                doc.text(r.proceso.substring(0, 35), 110, y, { width: 110 }); // Más espacio para proceso
+                doc.text(r.zona, 230, y);
                 doc.text(`$${r.cuantiaEstimada.toLocaleString('es-CO')}`, 280, y, { width: 80, align: 'right' });
                 doc.text(`${r.porcentajeProvision}%`, 370, y, { width: 30, align: 'right' });
                 doc.text(`$${r.provisionContable.toLocaleString('es-CO')}`, 410, y, { width: 80, align: 'right' });

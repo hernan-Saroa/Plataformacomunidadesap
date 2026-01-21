@@ -128,7 +128,8 @@ IDENTIFICACIÓN DEL RIESGO
 ═══════════════════════════════════════════════════════════════
 ID del Riesgo:        ${riesgo.codigo || riesgo.id}
 Descripción:          ${riesgo.descripcion}
-Proceso:              ${riesgo.proceso}
+Módulo Origen:        ${riesgo.moduloOrigen || 'No especificado'}
+Proceso / Radicado:   ${riesgo.procesoRadicado || riesgo.proceso}
 Tipo de Riesgo:       ${TIPO_RIESGO_MAP[riesgo.tipo]}
 Etapa:                ${etapaConfig.label}
 Estado:               ${riesgo.estado}
@@ -154,7 +155,7 @@ Reducción del Riesgo: ${reduccionRiesgo}%
 ESTIMACIÓN CONTABLE
 ═══════════════════════════════════════════════════════════════
 Cuantía Estimada:     $${Number(riesgo.cuantiaEstimada || 0).toLocaleString('es-CO')}
-Porcentaje Provisión: ${riesgo.porcentajeProvision || 0}% (${riesgo.zonaResidual})
+Porcentaje Provisión: ${riesgo.porcentajeProvision || 0}%
 Provisión Contable:   $${Number(riesgo.provisionContable || 0).toLocaleString('es-CO')}
 Fecha Cálculo:        ${riesgo.fechaCalculoProvision ? new Date(riesgo.fechaCalculoProvision).toLocaleString('es-CO') : '-'}
 
@@ -264,10 +265,35 @@ Metodología DAFP - MECI
             </div>
 
             {/* INFORMACIÓN GENERAL */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 bg-white rounded-lg border border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">Proceso Afectado</p>
-                <p className="text-sm font-bold text-gray-900">{riesgo.proceso}</p>
+                <p className="text-xs text-gray-500 mb-1">Módulo de Origen</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {{
+                    'DEFENSA_JUDICIAL': '⚖️ Defensa Judicial',
+                    'JUZGAMIENTO': '👨‍⚖️ Juzgamiento',
+                    'ASESORIA_JURIDICA': '📝 Asesoría Jurídica',
+                    'COACTIVOS': '💰 Proc. Coactivos',
+                    'ORGANOS_CONTROL': '🏛️ Órganos Control'
+                  }[riesgo.moduloOrigen || ''] || 'General / No asociado'}
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-1">Proceso / Radicado</p>
+                <p className="text-sm font-bold text-gray-900 truncate" title={riesgo.proceso}>
+                  {riesgo.procesoRadicado ? (
+                    <span className="flex items-center gap-1">
+                      <Target className="w-3 h-3 text-blue-500" />
+                      {riesgo.procesoRadicado}
+                    </span>
+                  ) : (
+                    riesgo.proceso
+                  )}
+                </p>
+                {riesgo.procesoRadicado && riesgo.proceso !== riesgo.procesoRadicado && (
+                  <p className="text-xs text-gray-500 truncate mt-1">{riesgo.proceso}</p>
+                )}
               </div>
 
               <div className="p-4 bg-white rounded-lg border border-gray-200">
