@@ -104,17 +104,19 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASS: 
+      DB_PASS:
       DB_NAME: esap_db
       DB_SCHEMA: academic_registration
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:3009
     ports:
       - "3002:3002"
     depends_on:
       - db
       - redis
+      - notifications-service
     networks:
       - superapp-net
 
@@ -383,11 +385,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_DB: esap_db
       # Para poder usarla sin contraseña dentro del contenedor:
-      POSTGRES_HOST_AUTH_METHOD: trust
+      # POSTGRES_HOST_AUTH_METHOD: trust
       # O, si quieres password:
-      # POSTGRES_PASSWORD: ""   # y que DB_PASS coincida
+      POSTGRES_PASSWORD: "postgres"   # y que DB_PASS coincida
     ports:
-      - "5432:5432"
+      - "8080:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
