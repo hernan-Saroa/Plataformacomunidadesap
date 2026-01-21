@@ -127,7 +127,7 @@ const oficiosRecibidosMock = [
 ];
 
 export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOficiosProps) {
-  console.log('🚀 ModalOficios: modulo:', modulo);
+  
   const [oficiosEnviados, setOficiosEnviados] = useState(oficiosEnviadosMock);
   const [oficiosRecibidos, setOficiosRecibidos] = useState(oficiosRecibidosMock);
   const [busquedaEnviados, setBusquedaEnviados] = useState('');
