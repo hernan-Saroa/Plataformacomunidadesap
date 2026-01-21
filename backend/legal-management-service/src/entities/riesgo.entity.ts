@@ -97,6 +97,17 @@ export class Riesgo {
     @Column({ name: 'fecha_calculo_provision', type: 'timestamp', nullable: true })
     fechaCalculoProvision: Date;
 
+    // Asociación con Proceso (desde submódulos)
+    // Valores válidos: DEFENSA_JUDICIAL, JUZGAMIENTO, ASESORIA_JURIDICA, COACTIVOS, ORGANOS_CONTROL
+    @Column({ name: 'modulo_origen', type: 'varchar', length: 50, nullable: true })
+    moduloOrigen: string | null;
+
+    @Column({ name: 'proceso_id', type: 'uuid', nullable: true })
+    procesoId: string | null;
+
+    @Column({ name: 'proceso_radicado', type: 'varchar', length: 100, nullable: true })
+    procesoRadicado: string | null;
+
     // Estado
     @Column({ length: 20, default: 'ACTIVO' })
     estado: EstadoRiesgo;

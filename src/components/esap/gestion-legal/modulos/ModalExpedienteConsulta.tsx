@@ -35,6 +35,8 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -947,10 +949,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         <Download className="w-4 h-4 mr-2" />
                         Descargar Todos (ZIP)
                       </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
                       <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
                         <Upload className="w-4 h-4 mr-2" />
                         {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
                       </Button>
+                      )}
                     </div>
                   </div>
 
@@ -997,6 +1001,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               <Download className="w-4 h-4 mr-1" />
                               Descargar
                             </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -1006,6 +1011,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               <Trash2 className="w-4 h-4 mr-1" />
                               Eliminar
                             </Button>
+                            )}
                           </div>
                         </div>
                       </Card>
