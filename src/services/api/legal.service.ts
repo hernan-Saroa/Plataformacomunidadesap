@@ -499,19 +499,7 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`);
     }
 
-    // ==================== PLANES DE MEJORAMIENTO ====================
-    async getPlanesMejoramiento(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
-    }
 
-    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
-    }
-
-    // Métodos para ModalNuevoPlan
-    async createPlanMejoramiento(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
-    }
 
     async getRiesgosDisponibles(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/riesgos-disponibles`);
@@ -814,6 +802,10 @@ export interface RiesgoAPI {
     provisionContable?: number;
     porcentajeProvision?: number;
     fechaCalculoProvision?: string;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
 }
 
 export interface CreateRiesgoData {
@@ -831,6 +823,10 @@ export interface CreateRiesgoData {
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
     cuantiaEstimada?: number;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
 }
 
 export interface RiesgoHistorialAPI {
