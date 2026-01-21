@@ -139,6 +139,27 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
     }
 
+    async createJuzgamientoActuacion(radicado: string, data: {
+        tipoActuacion: string;
+        descripcion: string;
+        fechaActuacion: string;
+        file?: File;
+    }): Promise<any> {
+        if (data.file) {
+            const formData = new FormData();
+            formData.append('file', data.file);
+            formData.append('tipoActuacion', data.tipoActuacion);
+            formData.append('descripcion', data.descripcion);
+            formData.append('fechaActuacion', data.fechaActuacion);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, formData);
+        }
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, {
+            tipoActuacion: data.tipoActuacion,
+            descripcion: data.descripcion,
+            fechaActuacion: data.fechaActuacion
+        });
+    }
+
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
         return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);

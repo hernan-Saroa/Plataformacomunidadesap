@@ -119,6 +119,42 @@ export class JuzgamientoController {
         return expediente.actuaciones || [];
     }
 
+    @Post(':radicado/actuaciones')
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array.from(Array(32)).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+                return cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        })
+    }))
+    async createActuacion(
+        @Param('radicado') radicado: string,
+        @Body() body: { tipoActuacion: string; descripcion: string; fechaActuacion?: string },
+        @UploadedFile() file?: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) {
+            throw new BadRequestException('Expediente no encontrado');
+        }
+
+        const actuacionData: any = {
+            tipoActuacion: body.tipoActuacion || 'ACTUACION',
+            descripcion: body.descripcion,
+            fechaActuacion: body.fechaActuacion ? new Date(body.fechaActuacion) : new Date(),
+            usuarioResponsable: 'Usuario Actual' // TODO: obtener del JWT
+        };
+
+        // Si hay archivo, agregar info del documento
+        if (file) {
+            actuacionData.documentoNombre = file.originalname;
+            actuacionData.documentoUrl = `files/${file.filename}`;
+        }
+
+        return this.expedienteService.agregarActuacion(expediente.id, actuacionData);
+    }
+
     @Get(':radicado/decisiones')
     async getDecisiones(@Param('radicado') radicado: string) {
         const expediente = await this.expedienteService.findOneByRadicado(radicado);
