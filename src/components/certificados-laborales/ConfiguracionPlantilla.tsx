@@ -1274,83 +1274,88 @@ export function ConfiguracionPlantilla() {
           </Card>
         </TabsContent>
 
-        {/* Tab: Historial - CON RESTAURACIÓN DE VERSIONES */}
+        {/* Tab: Historial - CON RESTAURACIÓN DE VERSIONES - RESPONSIVE OPTIMIZADO */}
         <TabsContent value="historial" className="space-y-4 mt-6">
-          <Card className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <History className="w-5 h-5 text-[#003DA5]" />
-                  Historial de Cambios de Plantilla
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <History className="w-4 h-4 sm:w-5 sm:h-5 text-[#003DA5] flex-shrink-0" />
+                  <span className="truncate">Historial de Cambios</span>
                 </h3>
-                <p className="text-sm text-gray-600 mt-2">
-                  Registro completo de todas las modificaciones. Puedes restaurar cualquiera de las últimas 5 versiones.
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 sm:mt-2">
+                  Registro completo de modificaciones. Restaura versiones anteriores.
                 </p>
               </div>
-              <Badge variant="outline" className="text-sm">
-                {logCambios.length} versiones guardadas
+              <Badge variant="outline" className="text-xs sm:text-sm whitespace-nowrap self-start">
+                {logCambios.length} versiones
               </Badge>
             </div>
 
             {/* Info de restauración */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-800">
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Info className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm text-blue-800 min-w-0">
                   <p className="font-semibold mb-1">Sistema de Restauración Activo</p>
-                  <p>
+                  <p className="leading-relaxed">
                     Mantenemos las <strong>últimas 5 versiones</strong> de la plantilla para que puedas 
-                    restaurar configuraciones anteriores en cualquier momento. Cada restauración crea un nuevo 
-                    registro en el historial.
+                    restaurar configuraciones anteriores en cualquier momento.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {logCambios.map((log, index) => (
                 <div key={log.id} className="relative">
                   {index !== logCambios.length - 1 && (
-                    <div className="absolute left-6 top-12 bottom-0 w-0.5 bg-gray-200" />
+                    <div className="absolute left-5 sm:left-6 top-12 sm:top-14 bottom-0 w-0.5 bg-gray-200 hidden sm:block" />
                   )}
-                  <Card className={`p-4 hover:shadow-md transition-shadow ${index === 0 ? 'border-2 border-green-300' : ''}`}>
-                    <div className="flex gap-4">
+                  <Card className={`p-3 sm:p-4 hover:shadow-md transition-shadow ${index === 0 ? 'border-2 border-green-300' : ''}`}>
+                    <div className="flex gap-2 sm:gap-4">
+                      {/* Icon */}
                       <div className="flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center ${
                           index === 0 ? 'bg-green-100' : 'bg-blue-100'
                         }`}>
-                          <History className={`w-6 h-6 ${index === 0 ? 'text-green-600' : 'text-[#003DA5]'}`} />
+                          <History className={`w-5 h-5 sm:w-6 sm:h-6 ${index === 0 ? 'text-green-600' : 'text-[#003DA5]'}`} />
                         </div>
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-gray-900">{log.accion}</h4>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Header - Responsive Stack */}
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                              <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{log.accion}</h4>
                               {index === 0 && (
-                                <Badge className="bg-green-600 text-white text-xs">
+                                <Badge className="bg-green-600 text-white text-[10px] sm:text-xs flex-shrink-0">
                                   Actual
                                 </Badge>
                               )}
                               {log.plantillaSnapshot && index > 0 && (
-                                <Badge variant="outline" className="text-xs border-blue-300 text-blue-700">
+                                <Badge variant="outline" className="text-[10px] sm:text-xs border-blue-300 text-blue-700 flex-shrink-0">
                                   Restaurable
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-xs sm:text-sm text-gray-600 truncate">
                               Por: <strong>{log.usuario}</strong>
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm text-gray-600">
+                          
+                          {/* Fecha - Mobile/Desktop */}
+                          <div className="text-left sm:text-right flex-shrink-0">
+                            <p className="text-xs sm:text-sm text-gray-600">
                               {new Date(log.fecha).toLocaleDateString('es-CO', {
                                 day: '2-digit',
                                 month: 'short',
                                 year: 'numeric'
                               })}
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-[10px] sm:text-xs text-gray-500">
                               {new Date(log.fecha).toLocaleTimeString('es-CO', {
                                 hour: '2-digit',
                                 minute: '2-digit'
@@ -1359,23 +1364,25 @@ export function ConfiguracionPlantilla() {
                           </div>
                         </div>
 
-                        <div className="bg-gray-50 rounded-lg p-3 mt-3">
-                          <p className="text-xs font-semibold text-gray-700 mb-2">
+                        {/* Cambios */}
+                        <div className="bg-gray-50 rounded-lg p-2.5 sm:p-3 mt-2 sm:mt-3">
+                          <p className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1.5 sm:mb-2">
                             Cambios realizados:
                           </p>
-                          <ul className="text-sm text-gray-700 space-y-1">
+                          <ul className="text-xs sm:text-sm text-gray-700 space-y-1">
                             {log.cambios.map((cambio, i) => (
-                              <li key={i} className="flex items-start gap-2">
-                                <span className="text-[#003DA5] mt-1">•</span>
-                                <span>{cambio}</span>
+                              <li key={i} className="flex items-start gap-1.5 sm:gap-2">
+                                <span className="text-[#003DA5] mt-0.5 flex-shrink-0">•</span>
+                                <span className="break-words">{cambio}</span>
                               </li>
                             ))}
                           </ul>
                         </div>
 
-                        <div className="mt-3 flex items-center justify-between">
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span>
+                        {/* Footer - Actions Responsive */}
+                        <div className="mt-2 sm:mt-3 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-2">
+                          <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-gray-500 overflow-x-auto scrollbar-hide">
+                            <span className="whitespace-nowrap">
                               Versión: <strong>{log.versionAnterior}</strong> → <strong>{log.versionNueva}</strong>
                             </span>
                           </div>
@@ -1386,10 +1393,10 @@ export function ConfiguracionPlantilla() {
                               variant="outline"
                               size="sm"
                               onClick={() => handleAbrirRestaurar(log)}
-                              className="gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                              className="gap-1.5 sm:gap-2 text-blue-600 border-blue-300 hover:bg-blue-50 text-xs sm:text-sm min-h-[44px] sm:min-h-[36px] w-full xs:w-auto"
                             >
-                              <RefreshCw className="w-4 h-4" />
-                              Restaurar versión
+                              <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                              <span className="whitespace-nowrap">Restaurar versión</span>
                             </Button>
                           )}
                         </div>
@@ -1401,9 +1408,9 @@ export function ConfiguracionPlantilla() {
             </div>
 
             {logCambios.length === 0 && (
-              <div className="text-center py-12">
-                <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">No hay cambios registrados aún</p>
+              <div className="text-center py-8 sm:py-12">
+                <History className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                <p className="text-sm sm:text-base text-gray-500">No hay cambios registrados aún</p>
               </div>
             )}
           </Card>
