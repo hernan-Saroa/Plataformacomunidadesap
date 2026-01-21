@@ -795,24 +795,28 @@ export function ExpedientesModuloSIGL() {
             isOpen={modalAutosOpen}
             onClose={() => setModalAutosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalActas
             isOpen={modalActasOpen}
             onClose={() => setModalActasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalEvidencias
             isOpen={modalEvidenciasOpen}
             onClose={() => setModalEvidenciasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalOficios
             isOpen={modalOficiosOpen}
             onClose={() => setModalOficiosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           {modalRespuestaOpen && (

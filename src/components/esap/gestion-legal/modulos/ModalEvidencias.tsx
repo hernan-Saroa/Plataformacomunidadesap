@@ -36,6 +36,7 @@ interface ModalEvidenciasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 const categorias = [
@@ -48,7 +49,7 @@ const categorias = [
   'Digitales'
 ];
 
-export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
+export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
@@ -292,6 +293,23 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
   };
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -425,13 +443,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          {ev.estado !== 'Admitida' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR) && (
+                          {ev.estado !== 'Admitida' && hasPermission('admitir') && (
                             <Button size="sm" onClick={() => handleMarcarAdmitida(ev.id)} className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white">
                               <CheckCircle className="w-3.5 h-3.5 mr-1" />
                               Admitir
                             </Button>
                           )}
-                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE) && (
+                          {hasPermission('delete') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -477,7 +495,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   <Download className="w-4 h-4 mr-1.5" />
                   Descargar Todas (ZIP)
                 </Button>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_EVIDENCIA_CREATE) && (
+                {hasPermission('create') && (
                 <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
                   <Upload className="w-4 h-4 mr-1.5" />
                   Cargar Evidencia

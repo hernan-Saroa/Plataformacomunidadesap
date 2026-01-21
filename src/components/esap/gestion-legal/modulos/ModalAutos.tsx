@@ -33,6 +33,7 @@ interface ModalAutosProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 // Tipos de autos judiciales
@@ -61,7 +62,8 @@ interface Auto {
   diasRestantes?: number; // Calculated on frontend or backend
 }
 
-export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
+export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosProps) {
+  console.log('🚀 ModalAutos: modulo:', modulo);
   const [autos, setAutos] = useState<Auto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -309,6 +311,21 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       (a.resumen && a.resumen.toLowerCase().includes(busqueda.toLowerCase()))
     );
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_DELETE)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_DELETE)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+    };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
@@ -531,7 +548,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           )}
 
                           {/* Botón Eliminar */}
-                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_DELETE) && (
+                          {hasPermission('delete') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -580,7 +597,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_CREATE) && (
+              {hasPermission('create') && (
               <Button
                 onClick={() => {
                   // Limpiar todos los valores antes de abrir

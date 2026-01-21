@@ -854,21 +854,25 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalEvidencias
           isOpen={modalEvidenciasOpen}
           onClose={() => setModalEvidenciasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalOficios
           isOpen={modalOficiosOpen}
           onClose={() => setModalOficiosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalActas
           isOpen={modalActasOpen}
           onClose={() => setModalActasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
       </Card>
     </div>

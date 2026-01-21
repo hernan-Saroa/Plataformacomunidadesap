@@ -30,6 +30,8 @@ import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
 import { FormularioExcepcionProcesal } from './FormularioExcepcionProcesal';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
@@ -678,9 +680,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="pruebas" className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Material Probatorio</h3>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_PRUEBA) && (
               <Button onClick={handleAgregarPrueba} style={{ background: '#003DA5', color: '#FFFFFF' }}>
                 <Plus className="w-4 h-4 mr-2" /> Agregar Prueba
               </Button>
+              )}
             </div>
 
             {pruebas.length === 0 && <p className="text-gray-500 italic">No hay pruebas registradas.</p>}
@@ -765,6 +769,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                     Excepciones Procesales ({excepciones.length})
                   </h3>
                 </div>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
                 <Button
                   onClick={() => setMostrarFormularioExcepcion(true)}
                   style={{ background: '#F97316', color: '#FFFFFF' }}
@@ -772,6 +777,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 >
                   <Plus className="w-4 h-4 mr-2" /> Nueva Excepción
                 </Button>
+                )}
               </div>
 
               {excepciones.length === 0 ? (
@@ -941,9 +947,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <TabsContent value="documentos" className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD) && (
               <Button onClick={handleAgregarDocumento} style={{ background: '#003DA5', color: '#FFFFFF' }}>
                 <Upload className="w-4 h-4 mr-2" /> Subir Documento
               </Button>
+              )}
             </div>
 
             {documentos.length === 0 && <p className="text-gray-500 italic">No hay documentos registrados.</p>}
@@ -980,9 +988,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleCerrar} className="font-semibold">Cerrar</Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT) && (
             <Button onClick={handleGuardarCambios} disabled={!hasChanges} className="font-semibold" style={{ background: hasChanges ? '#003DA5' : '#9CA3AF', color: '#FFFFFF', cursor: hasChanges ? 'pointer' : 'not-allowed' }}>
               <CheckCircle className="w-4 h-4 mr-2" /> Guardar Cambios
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

@@ -828,24 +828,28 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
           expediente={expediente}
+          modulo='defensa-judicial'
         />
 
         <ModalEvidencias
           isOpen={modalEvidenciasOpen}
           onClose={() => setModalEvidenciasOpen(false)}
           expediente={expediente}
+          modulo='defensa-judicial'
         />
 
         <ModalOficios
           isOpen={modalOficiosOpen}
           onClose={() => setModalOficiosOpen(false)}
           expediente={expediente}
+          modulo='defensa-judicial'
         />
 
         <ModalActas
           isOpen={modalActasOpen}
           onClose={() => setModalActasOpen(false)}
           expediente={expediente}
+          modulo='defensa-judicial'
         />
       </Card>
     </div>

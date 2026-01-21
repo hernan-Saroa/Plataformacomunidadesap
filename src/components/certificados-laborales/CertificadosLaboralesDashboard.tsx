@@ -86,6 +86,14 @@ interface CertificadosLaboralesDashboardProps {
 }
 
 export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
+  const normalizarDependencia = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cargoFilter, setCargoFilter] = useState<string>('all');
@@ -135,10 +143,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         params.status = statusFilter;
       }
       if (cargoFilter !== 'all') {
-        params.cargo = cargoFilter;
+        params.tipoVinculacion = cargoFilter;
       }
       if (tipoVinculacionFilter !== 'all') {
-        params.tipoVinculacion = tipoVinculacionFilter;
+        params.cargo = tipoVinculacionFilter;
       }
 
       const response = await certificadosService.laborales.listar(params);
@@ -148,41 +156,53 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => ({
-        id: cert.id,
-        consecutivo: cert.certificate_number,
-        certificateHash: cert.verification_code,
-        qrCode: cert.verification_code,
-        position_location: cert.position_location || cert.positionLocation,
-        observations: cert.observations || cert.request?.observations,
-        department: cert.department,
-        department_parent: cert.department_parent || cert.departmentParent,
-        department_son: cert.department_son || cert.departmentSon,
-        campus: cert.campus,
-        technical_bonus: cert.technical_bonus,
-        empleado: {
-          nombre: cert.full_name,
-          documento: cert.id_number,
-          cargo: cert.position_category,
-          dependencia: cert.department_son || cert.departmentSon || 'Registro hijo',
-          dependenciaPadre: cert.department_parent || cert.departmentParent || '',
-          tipoVinculacion: cert.career_category,
-          fechaVinculacion: cert.hiring_date,
-          grado: cert.department || '',
-          salario: Number(cert.monthly_salary),
-          email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
-        },
-        estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
-        fechaSolicitud: cert.created_at,
-        fechaGeneracion: cert.issuance_timestamp,
-        cantidadEscaneos: cert.validation_count || 0,
-        pdfUrl: cert.pdf_url,
-        firmante: {
-          nombre: cert.signer_name,
-          cargo: cert.signer_position,
-          dependencia: cert.signer_department
-        }
-      }));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => {
+        const dependenciaPadreRaw =
+          cert.request?.department_parent ||
+          cert.request?.departmentParent ||
+          cert.department_parent ||
+          cert.departmentParent ||
+          '';
+        return {
+          id: cert.id,
+          consecutivo: cert.certificate_number,
+          certificateHash: cert.verification_code,
+          qrCode: cert.verification_code,
+          position_location:
+            cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation,
+          observations: cert.observations || cert.request?.observations,
+          department: cert.department,
+          department_parent: dependenciaPadreRaw || cert.department_parent || cert.departmentParent,
+          department_son: cert.department_son || cert.departmentSon,
+          campus: cert.campus,
+          technical_bonus: cert.technical_bonus,
+          empleado: {
+            nombre: cert.full_name,
+            documento: cert.id_number,
+            cargo: cert.career_category,
+            dependencia: normalizarDependencia(cert.department_son || cert.departmentSon),
+            dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
+            tipoVinculacion: cert.position_category,
+            fechaVinculacion: cert.hiring_date,
+            grado: cert.department || '',
+            salario: Number(cert.monthly_salary),
+            email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
+          },
+          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
+          fechaSolicitud: cert.created_at,
+          fechaGeneracion: cert.issuance_timestamp,
+          cantidadEscaneos: cert.validation_count || 0,
+          pdfUrl: cert.pdf_url,
+          firmante: {
+            nombre: cert.signer_name,
+            cargo: cert.signer_position,
+            dependencia: cert.signer_department
+          }
+        };
+      });
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -751,17 +771,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                     </th>
                     <th className="px-4 py-4 text-left">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        DEPENDENCIA PADRE
-                      </span>
-                    </th>
-                    <th className="px-4 py-4 text-left">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        DEPENDENCIA HIJO
-                      </span>
-                    </th>
-                    <th className="px-4 py-4 text-left">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        GRADO
+                        UBICACIÓN
                       </span>
                     </th>
                     <th className="px-4 py-4 text-left">
@@ -832,21 +842,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                           </p>
                         </td>
 
-                        {/* Dependencia */}
+                        {/* Ubicación */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">
-                            {cert.empleado.dependenciaPadre || 'Registro padre'}
-                          </p>
-                        </td>
-
-                        {/* Dependencia Hijo */}
-                        <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.empleado.dependencia || 'Registro hijo'}</p>
-                        </td>
-
-                        {/* Grado */}
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-900">{cert.empleado.grado || '-'}</p>
+                          <p className="text-sm text-gray-900">{cert.position_location || ''}</p>
                         </td>
 
                         {/* Fecha Solicitud */}
