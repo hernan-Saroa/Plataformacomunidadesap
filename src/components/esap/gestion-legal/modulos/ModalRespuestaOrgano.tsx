@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalRespuestaOrganoProps {
   isOpen: boolean;
@@ -562,6 +564,7 @@ Escuela Superior de Administración Pública - ESAP`;
             Cancelar
           </Button>
           <div className="flex items-center gap-2">
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_RESPUESTA_ERASE) && (
             <Button
               variant="outline"
               onClick={handleGuardarBorrador}
@@ -570,6 +573,7 @@ Escuela Superior de Administración Pública - ESAP`;
               <Save className="w-4 h-4 mr-2" />
               Guardar Borrador
             </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => toast.info('Exportando documento...')}
@@ -577,6 +581,7 @@ Escuela Superior de Administración Pública - ESAP`;
               <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_RESPUESTA_SEND) && (
             <Button
               onClick={handleEnviarRespuesta}
               style={{ background: isReadOnly ? undefined : '#10B981' }}
@@ -590,6 +595,7 @@ Escuela Superior de Administración Pública - ESAP`;
               )}
               {enviando ? 'Enviando...' : 'Enviar Respuesta'}
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

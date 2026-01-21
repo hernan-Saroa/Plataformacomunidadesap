@@ -1005,24 +1005,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                   </CardContent>
                 </Card>
 
-                {/* Datos de prueba */}
-                <Card className="mt-6 bg-gray-50 border-2 border-gray-300">
-                  <CardContent className="p-6">
-                    <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-gray-600" />
-                      Datos de Prueba para Testing
-                    </h4>
-                    <div className="space-y-2 text-sm text-gray-700">
-                      <p><strong>Administrativo:</strong> CC 1234567890</p>
-                      <p><strong>Docente Planta:</strong> CC 9876543210</p>
-                      <p><strong>Docente Cátedra:</strong> CC 5555555555</p>
-                      <p><strong>Asistente:</strong> CC 1111111111</p>
-                      <p className="text-xs text-gray-500 mt-2">
-                        💡 El código de validación se mostrará en la consola del navegador
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
               </motion.div>
             )}
 
