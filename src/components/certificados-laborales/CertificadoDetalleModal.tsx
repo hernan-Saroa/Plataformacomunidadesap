@@ -32,6 +32,15 @@ interface CertificadoDetalleModalProps {
 
 export function CertificadoDetalleModal({ certificado, isOpen, onClose }: CertificadoDetalleModalProps) {
   if (!isOpen) return null;
+  const normalizarDependencia = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+  const dependenciaPadre = normalizarDependencia(certificado?.empleado?.dependenciaPadre);
+  const dependenciaHijo = normalizarDependencia(certificado?.empleado?.dependencia);
 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
@@ -308,7 +317,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.dependenciaPadre || 'Registro padre'}
+                            {dependenciaPadre || ''}
                           </p>
                         </div>
                         <div>
@@ -317,7 +326,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.dependencia}
+                            {dependenciaHijo || ''}
                           </p>
                         </div>
                       </div>
