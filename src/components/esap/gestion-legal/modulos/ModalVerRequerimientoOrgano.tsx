@@ -24,6 +24,8 @@ import { ModalArchivar } from './ModalArchivar';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { legalService, ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface RequerimientoOrganoControl {
   id: string;
@@ -639,6 +641,7 @@ export function ModalVerRequerimientoOrgano({
             Cerrar
           </Button>
           <div className="flex items-center gap-2">
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) && (
             <Button
               variant="outline"
               className="text-red-600 hover:bg-red-50"
@@ -658,6 +661,8 @@ export function ModalVerRequerimientoOrgano({
               <Trash2 className="w-4 h-4 mr-2" />
               Eliminar
             </Button>
+            )}
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) && (
             <Button
               style={{ background: '#003DA5' }}
               className="text-white"
@@ -666,6 +671,7 @@ export function ModalVerRequerimientoOrgano({
               <Send className="w-4 h-4 mr-2" />
               Elaborar Respuesta
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

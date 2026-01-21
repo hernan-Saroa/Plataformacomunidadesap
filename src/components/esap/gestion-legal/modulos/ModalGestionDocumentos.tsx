@@ -18,6 +18,8 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface DocumentoSeleccionado {
   archivo: File;
@@ -392,6 +394,7 @@ export function ModalGestionDocumentos({
                 <p className="text-sm text-gray-600 mb-4">
                   Arrastra archivos aquí o haz clic en el botón
                 </p>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
                 <Button
                   onClick={handleSeleccionarArchivo}
                   style={{ background: '#003DA5' }}
@@ -400,6 +403,7 @@ export function ModalGestionDocumentos({
                   <FolderOpen className="w-4 h-4 mr-2" />
                   📂 Seleccionar Archivo
                 </Button>
+                )}
                 <p className="text-xs text-gray-500 mt-3">
                   Tamaño máximo: 50 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
                 </p>
@@ -667,6 +671,7 @@ export function ModalGestionDocumentos({
               <Download className="w-4 h-4 mr-2" />
               Descargar Todos
             </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
             <Button
               onClick={handleSeleccionarArchivo}
               style={{ background: '#003DA5' }}
@@ -675,6 +680,7 @@ export function ModalGestionDocumentos({
               <Upload className="w-4 h-4 mr-2" />
               Agregar Más Documentos
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

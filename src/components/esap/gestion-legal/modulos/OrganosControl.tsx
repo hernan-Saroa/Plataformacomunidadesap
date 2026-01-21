@@ -27,6 +27,8 @@ import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ocService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // Modales
 import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
@@ -237,6 +239,19 @@ export function OrganosControl() {
     );
   }
 
+  const addBtnsPermission = () => {
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_CREATE)) {
+      return [{
+        label: 'Nuevo Requerimiento',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevoOpen(true),
+        variant: 'primary'
+      }]
+    }
+    return []
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -251,15 +266,7 @@ export function OrganosControl() {
             { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Requerimiento',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoOpen(true),
-            variant: 'primary'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Órganos de Control"
@@ -641,7 +648,7 @@ function TarjetaRequerimiento({
               >
                 <Send className="w-3 h-3" />
               </Button>
-
+              {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_SOLICITAR_INSUMO) && (
               <Button
                 onClick={() => onInsumo(req)}
                 size="sm"
@@ -651,6 +658,7 @@ function TarjetaRequerimiento({
               >
                 <User className="w-3 h-3" />
               </Button>
+              )}
             </div>
 
             <Button
