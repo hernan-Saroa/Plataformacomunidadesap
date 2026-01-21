@@ -38,7 +38,9 @@ export function VisorDocumentoModal({
   // Reset loading state when archivo changes
   useEffect(() => {
     if (archivo) {
-      setIsLoading(true);
+      const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+      // Si es un archivo mock, no necesitamos esperar 'load' event del iframe/img
+      setIsLoading(!isMock);
       setHasError(false);
     }
   }, [archivo]);
