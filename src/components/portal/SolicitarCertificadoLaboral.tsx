@@ -160,8 +160,19 @@ type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
   const resolverTemplateType = (data?: { position_category?: string; career_category?: string }) => {
-    const texto = `${data?.position_category || ''} ${data?.career_category || ''}`.toLowerCase();
-    return texto.includes('docent') ? 'docente' : 'administrador';
+    const texto = (data?.career_category || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!texto) {
+      return 'administrador';
+    }
+
+    return /\bdocen\w*\b|\bdoc\b/.test(texto) ? 'docente' : 'administrador';
   };
 
   const parseDateOnly = (fechaStr?: string) => {
@@ -246,7 +257,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [pasoActual, setPasoActual] = useState<Paso>('ingreso-documento');
   const [certificadoExistente, setCertificadoExistente] = useState(false);
   const [incluirSalario, setIncluirSalario] = useState(true);
-  const [incluirPrimaTecnica, setIncluirPrimaTecnica] = useState(false);
+  const incluirPrimaTecnica = false;
   const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
   
   // Paso 1: Ingreso de documento
@@ -285,7 +296,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
     const empleadoCertificado = cert.certificado_completo?.empleado;
 
-    const bonusBase = cert.prima_tecnica ?? salarioBase * 0.2;
+    const bonusBase = incluirPrima ? (cert.prima_tecnica ?? salarioBase * 0.2) : 0;
 
     const certificadoActualizado: CertificadoGenerado = {
       ...cert,
@@ -704,7 +715,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     try {
       const response = await certificadosService.laborales.reenviar(certificadoId, {
         includeSalary: incluirSalario,
-        includeTechnicalBonus: incluirPrimaTecnica,
+        includeTechnicalBonus: false,
         templateType: certificadoGenerado?.certificado_completo?.templateType,
       });
 
@@ -751,7 +762,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     setIsSendingEmail(true);
     toast.loading('Enviando certificado a tu correo...', { id: 'auto-email-cert' });
     void enviarCertificadoPorEmail(cert.certificado_completo.id);
-  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario, incluirPrimaTecnica]);
+  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario]);
 
   // Si se marca certificado existente, asegura que el paso sea certificado
   useEffect(() => {
@@ -764,7 +775,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     if (certificadoBaseRef.current) {
       setCertificadoGenerado(aplicarPreferenciasCertificado(certificadoBaseRef.current, incluirSalario, incluirPrimaTecnica));
     }
-  }, [incluirSalario, incluirPrimaTecnica]);
+  }, [incluirSalario]);
 
   // Paso visual para el stepper: si ya hay certificado, mostrar siempre el paso 3 activo
   const pasoActivoUI: Paso =
@@ -953,22 +964,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </Label>
                           <p className="text-xs text-gray-600 mt-1">
                             Oculta el salario en el PDF y en la vista previa. Puedes cambiarlo en cualquier momento.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <Checkbox
-                          id="con-prima-tecnica"
-                          checked={incluirPrimaTecnica}
-                          onCheckedChange={(checked) => setIncluirPrimaTecnica(Boolean(checked))}
-                          className="mt-1"
-                        />
-                        <div>
-                          <Label htmlFor="con-prima-tecnica" className="text-sm font-semibold text-gray-800 cursor-pointer">
-                            Incluir prima tecnica (20%)
-                          </Label>
-                          <p className="text-xs text-gray-600 mt-1">
-                            Agrega la prima tecnica mensual al certificado y la vista previa.
                           </p>
                         </div>
                       </div>
@@ -1281,22 +1276,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       </p>
                     </div>
                   </div>
-                  <div className="mt-4 flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <Checkbox
-                      id="toggle-prima-tecnica"
-                      checked={incluirPrimaTecnica}
-                      onCheckedChange={(checked) => setIncluirPrimaTecnica(Boolean(checked))}
-                      className="mt-1"
-                    />
-                    <div>
-                      <Label htmlFor="toggle-prima-tecnica" className="text-sm font-semibold text-gray-800 cursor-pointer">
-                        Incluir prima tecnica (20%) en este certificado
-                      </Label>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Si la marcas, la prima tecnica se muestra en el PDF y las impresiones.
-                      </p>
-                    </div>
-                  </div>
 
                   {/* Contenido del certificado */}
                   <div className="space-y-6">
@@ -1326,12 +1305,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                             <p className="font-bold text-gray-900">{empleadoEncontrado.tipo_vinculacion}</p>
                           </div>
                           <div>
-                            <p className="text-gray-600 mb-1">Dependencia</p>
-                            <p className="font-bold text-gray-900">
-                              {certificadoGenerado.dependenciaPadre || 'Registro padre'}
-                            </p>
-                          </div>
-                          <div>
                             <p className="text-gray-600 mb-1">Fecha de Vinculación</p>
                             <p className="font-bold text-gray-900">
                               {parseDateOnly(certificadoGenerado.fecha_vinculacion)?.toLocaleDateString('es-CO') || 'N/A'}
@@ -1350,14 +1323,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                                 <Shield className="w-4 h-4" />
                                 El certificado se generará sin información salarial.
                               </div>
-                            </div>
-                          )}
-                          {incluirPrimaTecnica && (
-                            <div className="sm:col-span-2">
-                              <p className="text-gray-600 mb-1">Prima tecnica mensual (20%)</p>
-                              <p className="font-bold text-gray-900">
-                                ${((certificadoGenerado.prima_tecnica ?? certificadoGenerado.salario_actual * 0.2) || 0).toLocaleString('es-CO')} COP
-                              </p>
                             </div>
                           )}
                         </div>
