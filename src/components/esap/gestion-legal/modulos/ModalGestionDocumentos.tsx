@@ -276,7 +276,8 @@ export function ModalGestionDocumentos({
     });
     try {
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       let filename = doc.url;
       if (doc.url.includes('/files/')) filename = doc.url.split('/files/').pop()!;
       else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop()!;

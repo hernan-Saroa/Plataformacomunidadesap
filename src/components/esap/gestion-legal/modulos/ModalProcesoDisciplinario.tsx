@@ -98,6 +98,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   }, [proceso.id]);
 
   // Helper para construir URL completa de archivo (legal-management-service)
+  // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
     if (archivoUrl.startsWith('http')) return archivoUrl;
@@ -109,7 +110,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     } else if (archivoUrl.includes('/')) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
