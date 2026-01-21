@@ -23,6 +23,8 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FileCheck, Search, Download, Eye, Trash2, FileText, Calendar, User, Clock, CheckCircle, AlertCircle, Plus, Filter, Play, Users, X, Upload } from 'lucide-react';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalActasProps {
   isOpen: boolean;
@@ -637,6 +639,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                                 <Download className="w-3.5 h-3.5 mr-1" />
                                 Descargar
                               </Button>
+                              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_DELETE) && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -645,6 +648,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -708,6 +712,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                   <Download className="w-3.5 h-3.5 mr-1.5" />
                   Descargar Firmadas (ZIP)
                 </Button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_CREATE) && (
                 <Button
                   onClick={() => setIsCreateOpen(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
@@ -715,6 +720,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
                   Nueva Acta
                 </Button>
+                )}
               </div>
             </div>
           </div>
