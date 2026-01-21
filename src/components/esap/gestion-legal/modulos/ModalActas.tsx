@@ -187,6 +187,13 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     window.open(fileUrl, '_blank');
   };
 
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
+  };
+
   const handleCargarActa = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -395,43 +402,43 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-        <DialogTitle className="sr-only">
-          Actas de Audiencias - Expediente {expediente.id}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Gestión de actas de audiencias y diligencias del expediente {expediente.id}
-        </DialogDescription>
-        
-        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
-        <ModalHeaderClean
-          titulo="Actas de Audiencias y Diligencias"
-          subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
-          icono={FileCheck}
-          colorIcono="purple"
-          badgePrincipal="CONTESTACIÓN"
-          badges={
-            <>
-              <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
-                {expediente.etapa}
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
-                <FileCheck className="w-3 h-3 mr-1" />
-                {actas.length} actas
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                {actas.filter(a => a.estado === 'Firmada').length} firmadas
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                <Clock className="w-3 h-3 mr-1" />
-                {actas.filter(a => a.estado === 'Programada').length} programadas
-              </Badge>
-            </>
-          }
-          onClose={onClose}
-        />
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+          <DialogTitle className="sr-only">
+            Actas de Audiencias - Expediente {expediente.id}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Gestión de actas de audiencias y diligencias del expediente {expediente.id}
+          </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+          <ModalHeaderClean
+            titulo="Actas de Audiencias y Diligencias"
+            subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
+            icono={FileCheck}
+            colorIcono="purple"
+            badgePrincipal="CONTESTACIÓN"
+            badges={
+              <>
+                <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
+                  {expediente.etapa}
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                  <FileCheck className="w-3 h-3 mr-1" />
+                  {actas.length} actas
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  {actas.filter(a => a.estado === 'Firmada').length} firmadas
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {actas.filter(a => a.estado === 'Programada').length} programadas
+                </Badge>
+              </>
+            }
+            onClose={onClose}
+          />
 
           {/* Barra de filtros */}
           <div className="px-6 py-4 bg-gradient-to-b from-purple-50 to-white border-b flex-shrink-0">
@@ -609,15 +616,18 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleVerActa(acta)}
-                                className="flex-1 text-xs font-bold text-blue-600 hover:bg-blue-50 border-blue-300"
-                              >
-                                <Eye className="w-3.5 h-3.5 mr-1" />
-                                Ver Acta
-                              </Button>
+                              {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                              {isPrevisuable(acta.archivo) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleVerActa(acta)}
+                                  className="flex-1 text-xs font-bold text-blue-600 hover:bg-blue-50 border-blue-300"
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" />
+                                  Ver Acta
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"

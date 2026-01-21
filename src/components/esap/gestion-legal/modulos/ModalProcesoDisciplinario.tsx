@@ -16,6 +16,7 @@ import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
 import { useState, useMemo, useEffect } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
@@ -93,6 +94,67 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         });
     }
   }, [proceso.id]);
+
+  // Helper para construir URL completa de archivo (legal-management-service)
+  const getFileUrl = (archivoUrl: string): string => {
+    if (!archivoUrl) return '';
+    if (archivoUrl.startsWith('http')) return archivoUrl;
+
+    const baseUrl = getServiceUrl('legal');
+    let filename = archivoUrl;
+    if (archivoUrl.includes('/files/')) {
+      filename = archivoUrl.split('/files/').pop() || archivoUrl;
+    } else if (archivoUrl.includes('/')) {
+      filename = archivoUrl.split('/').pop() || archivoUrl;
+    }
+    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    return `${baseUrl}${prefix}/files/${filename}`;
+  };
+
+  // Handler para descargar actuación con documento
+  const handleDescargarActuacion = async (act: any) => {
+    const url = act.documentoUrl || act.url;
+    if (!url) {
+      toast.error('No hay documento disponible');
+      return;
+    }
+
+    const fileUrl = getFileUrl(url);
+    const nombreArchivo = act.documentoNombre || act.nombreArchivo || 'documento.pdf';
+
+    try {
+      toast.loading('Descargando...', { id: 'download-act' });
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('Error al descargar');
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = nombreArchivo;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      toast.success('Descarga completada', { id: 'download-act' });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Error al descargar el archivo', { id: 'download-act' });
+    }
+  };
+
+  // Handler para ver actuación con documento
+  const handleVerActuacion = (act: any) => {
+    const url = act.documentoUrl || act.url;
+    if (!url) {
+      toast.error('No hay documento disponible');
+      return;
+    }
+    const fileUrl = getFileUrl(url);
+    window.open(fileUrl, '_blank');
+    toast.success('Documento abierto en nueva pestaña');
+  };
 
 
   // ==================== ESTADOS RECUPERADOS (POST-MERGE) ====================
@@ -655,8 +717,34 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <div className="flex items-start gap-3">
                     <Calendar className="w-5 h-5 text-gray-500 mt-0.5" />
                     <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="text-xs">{act.tipoActuacion}</Badge>
+                        {(act.documentoUrl || act.url) && (
+                          <Badge className="bg-green-100 text-green-700 text-xs">
+                            <FileText className="w-3 h-3 mr-1" />
+                            Con documento
+                          </Badge>
+                        )}
+                      </div>
                       <p className="font-bold text-sm text-gray-900">{act.descripcion || act.tipoActuacion}</p>
+                      {act.documentoNombre && (
+                        <p className="text-xs text-gray-600 mt-1">
+                          📄 {act.documentoNombre}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">📅 {new Date(act.fechaActuacion).toLocaleDateString('es-CO')}</p>
+
+                      {/* Botones de Ver/Descargar si hay documento */}
+                      {(act.documentoUrl || act.url) && (
+                        <div className="flex gap-2 mt-2">
+                          <Button size="sm" variant="outline" onClick={() => handleVerActuacion(act)}>
+                            <Eye className="w-3 h-3 mr-1" /> Ver
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleDescargarActuacion(act)}>
+                            <Download className="w-3 h-3 mr-1" /> Descargar
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>

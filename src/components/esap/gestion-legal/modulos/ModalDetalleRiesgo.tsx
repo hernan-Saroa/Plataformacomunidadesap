@@ -86,7 +86,10 @@ export function ModalDetalleRiesgo({ open, onClose, riesgo, onEdit, onDelete }: 
   const calcularValorRiesgo = (prob: number, imp: number) => prob * imp;
   const valorInherente = calcularValorRiesgo(riesgo.probabilidadInherente || 0, riesgo.impactoInherente || 0);
   const valorResidual = calcularValorRiesgo(riesgo.probabilidadResidual || 0, riesgo.impactoResidual || 0);
-  const reduccionRiesgo = ((valorInherente - valorResidual) / valorInherente * 100).toFixed(0);
+  // Si el residual es mayor que inherente, mostrar 0% (no hay reducción)
+  const reduccionRiesgo = valorInherente > 0 && valorResidual <= valorInherente
+    ? Math.max(0, ((valorInherente - valorResidual) / valorInherente * 100)).toFixed(0)
+    : '0';
 
   // Formatear fecha para mostrar
   const formatearFecha = (fechaStr: string) => {
@@ -147,6 +150,13 @@ Zona:                 ${zonaConfig.label}
 EFECTIVIDAD DE CONTROLES
 ═══════════════════════════════════════════════════════════════
 Reducción del Riesgo: ${reduccionRiesgo}%
+
+ESTIMACIÓN CONTABLE
+═══════════════════════════════════════════════════════════════
+Cuantía Estimada:     $${Number(riesgo.cuantiaEstimada || 0).toLocaleString('es-CO')}
+Porcentaje Provisión: ${riesgo.porcentajeProvision || 0}% (${riesgo.zonaResidual})
+Provisión Contable:   $${Number(riesgo.provisionContable || 0).toLocaleString('es-CO')}
+Fecha Cálculo:        ${riesgo.fechaCalculoProvision ? new Date(riesgo.fechaCalculoProvision).toLocaleString('es-CO') : '-'}
 
 CAUSAS IDENTIFICADAS
 ═══════════════════════════════════════════════════════════════
@@ -267,6 +277,48 @@ Metodología DAFP - MECI
                   {riesgo.responsable || 'Sin asignar'}
                 </p>
               </div>
+            </div>
+
+            {/* PROVISIÓN CONTABLE */}
+            <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+              <h4 className="font-bold text-green-900 mb-3 flex items-center gap-2">
+                💰 Provisión Contable
+              </h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <p className="text-xs text-green-700 mb-1">Cuantía Estimada</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    ${Number(riesgo.cuantiaEstimada || 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-green-700 mb-1">Porcentaje ({riesgo.zonaResidual})</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {riesgo.porcentajeProvision || (
+                      riesgo.zonaResidual === 'EXTREMO' ? 100 :
+                        riesgo.zonaResidual === 'ALTO' ? 75 :
+                          riesgo.zonaResidual === 'MODERADO' ? 50 : 25
+                    )}%
+                  </p>
+                </div>
+                <div className="text-center bg-green-100 rounded-lg p-2">
+                  <p className="text-xs text-green-700 mb-1">Provisión Calculada</p>
+                  <p className="text-xl font-bold text-green-600">
+                    ${Number(riesgo.provisionContable || (
+                      (Number(riesgo.cuantiaEstimada || 0) * (
+                        riesgo.zonaResidual === 'EXTREMO' ? 1 :
+                          riesgo.zonaResidual === 'ALTO' ? 0.75 :
+                            riesgo.zonaResidual === 'MODERADO' ? 0.5 : 0.25
+                      ))
+                    )).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              {riesgo.fechaCalculoProvision && (
+                <p className="text-xs text-green-600 mt-2 text-right">
+                  📅 Calculada: {new Date(riesgo.fechaCalculoProvision).toLocaleDateString('es-CO')}
+                </p>
+              )}
             </div>
 
             {/* TABS CON INFORMACIÓN DETALLADA */}

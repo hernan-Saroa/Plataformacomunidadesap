@@ -180,8 +180,20 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     // Aplicar filtros según el campo
     switch (field) {
       case 'cuantia':
-        // Solo números para cuantía
+        // Solo números para cuantía, máximo 9 dígitos
         filteredValue = onlyNumbers(value);
+        // Si el valor actual es "0", no permitir más dígitos
+        if (formData.cuantia === '0' && filteredValue.length > 1) {
+          filteredValue = '0';
+        }
+        // Si empieza con 0 y tiene más de 1 dígito, mantener solo el primer dígito no-cero
+        if (filteredValue.startsWith('0') && filteredValue.length > 1) {
+          filteredValue = '0';
+        }
+        // Limitar a 9 dígitos
+        if (filteredValue.length > 9) {
+          filteredValue = filteredValue.slice(0, 9);
+        }
         break;
       case 'identificacionDemandante':
         // Solo números si es persona natural
@@ -198,6 +210,29 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       case 'demandadoTelefono':
         // Formato teléfono internacional
         filteredValue = phoneFormat(value);
+        break;
+      case 'demandado':
+        // Solo letras y espacios para nombre del demandado
+        filteredValue = onlyLetters(value);
+        break;
+      case 'numeroIdDemandado':
+        // Validación según tipo de identificación
+        if (formData.tipoIdDemandado === 'CC') {
+          // Cédula de Ciudadanía: solo números
+          filteredValue = value.replace(/[^0-9]/g, '');
+        } else if (formData.tipoIdDemandado === 'NIT') {
+          // NIT: números, puntos y guiones (ej: 899.999.061-4)
+          filteredValue = value.replace(/[^0-9.\-]/g, '');
+        } else if (formData.tipoIdDemandado === 'CE') {
+          // Cédula Extranjería: números y letras (ej: E-123456 o 123456)
+          filteredValue = value.replace(/[^0-9a-zA-Z\-]/g, '');
+        }
+        break;
+      case 'numeroRadicado':
+        // Máximo 23 caracteres para el radicado
+        if (value.length > 23) {
+          filteredValue = value.slice(0, 23);
+        }
         break;
       default:
         filteredValue = value;
@@ -218,6 +253,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
     if (!formData.medioControl) {
       newErrors.medioControl = 'Seleccione el medio de control';
+    }
+    if (!formData.tipoProceso) {
+      newErrors.tipoProceso = 'Seleccione el tipo de proceso';
     }
     if (!formData.demandante.trim()) {
       newErrors.demandante = 'El nombre del demandante es obligatorio';
@@ -374,7 +412,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   ? 'border-red-500 focus:ring-red-500 bg-red-50'
                   : 'border-gray-300 focus:ring-blue-500'
                   }`}
-                placeholder="Ej: 25000-23-33-001-2024-00001-00"
+                placeholder="Ej: 11001333300120240001 (23 dígitos)"
               />
               {errors.numeroRadicado && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">

@@ -23,7 +23,8 @@ import {
   Eye,
   TrendingUp,
   TrendingDown,
-  Circle
+  Circle,
+  Download
 } from 'lucide-react';
 import type { Riesgo, EtapaRiesgo } from '../core/types';
 import { toast } from 'sonner';
@@ -81,7 +82,12 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
     timeline: [],
     fechaCreacion: new Date(api.createdAt),
     fechaActualizacion: new Date(api.updatedAt),
-    estado: api.estado
+    estado: api.estado,
+    // Nuevos campos de provisión
+    cuantiaEstimada: api.cuantiaEstimada,
+    provisionContable: api.provisionContable,
+    porcentajeProvision: api.porcentajeProvision,
+    fechaCalculoProvision: api.fechaCalculoProvision ? new Date(api.fechaCalculoProvision) : undefined
   };
 }
 
@@ -198,6 +204,11 @@ export function Riesgos() {
       // Actualizar en la lista local
       setRiesgos(prev => prev.map(r => r.id === riesgoActualizado.id ? riesgoActualizado : r));
 
+      // Actualizar riesgo seleccionado si es el mismo que se está editando
+      if (riesgoSeleccionado && riesgoSeleccionado.id === riesgoActualizado.id) {
+        setRiesgoSeleccionado(riesgoActualizado);
+      }
+
       setModalNuevoOpen(false);
       setRiesgoEditando(null);
       toast.success('Riesgo actualizado exitosamente', { id: toastId });
@@ -242,6 +253,16 @@ export function Riesgos() {
           ]
         }}
         buttons={[
+          {
+            label: 'Reporte Contable',
+            labelMobile: 'Reporte',
+            icon: <Download className="w-4 h-4" />,
+            onClick: () => {
+              const url = riesgosService.getReporteContabilidadUrl();
+              window.open(url, '_blank');
+            },
+            variant: 'outline'
+          },
           {
             label: 'Nuevo Riesgo',
             labelMobile: 'Nuevo',

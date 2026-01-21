@@ -56,14 +56,38 @@ export interface Actuacion {
     fechaActuacion: string;
     descripcion: string;
     tipoActuacion: string;
+    origen?: 'MANUAL' | 'AUDIENCIA' | 'AUTO' | 'ACTA' | 'EVIDENCIA' | 'OFICIO';
+    referenciaId?: string;
+    metadata?: any;
+    usuarioResponsable?: string;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface Audiencia {
+    id: string;
+    titulo: string;
+    fechaHoraInicio: string;
+    duracionMinutos: number;
+    modalidad: 'VIRTUAL' | 'PRESENCIAL';
+    ubicacion?: string;
+    linkReunion?: string;
+    estado: string;
+    notasPreparacion?: string;
+    abogadoId: string;
+    expedienteId: string;
+    // Campos opcionales de vista
+    radicado?: string;
+    nombreInvestigado?: string;
+    nombreAbogado?: string;
 }
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, { params: filtros });
     }
+
+
 
     async getJuzgamientoProcesos(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento`);
@@ -113,6 +137,27 @@ export class LegalService {
 
     async updateJuzgamientoProceso(radicado: string, data: any): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
+    }
+
+    async createJuzgamientoActuacion(radicado: string, data: {
+        tipoActuacion: string;
+        descripcion: string;
+        fechaActuacion: string;
+        file?: File;
+    }): Promise<any> {
+        if (data.file) {
+            const formData = new FormData();
+            formData.append('file', data.file);
+            formData.append('tipoActuacion', data.tipoActuacion);
+            formData.append('descripcion', data.descripcion);
+            formData.append('fechaActuacion', data.fechaActuacion);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, formData);
+        }
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, {
+            tipoActuacion: data.tipoActuacion,
+            descripcion: data.descripcion,
+            fechaActuacion: data.fechaActuacion
+        });
     }
 
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
@@ -182,16 +227,27 @@ export class LegalService {
 
     // ==================== ABOGADOS ====================
 
-    // Actuaciones
+    // ==================== ACTUACIONES (HISTORIAL UNIFICADO) ====================
     async getActuaciones(expedienteId: string): Promise<Actuacion[]> {
         return apiClient.get<Actuacion[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`);
     }
 
-    async registrarActuacion(expedienteId: string, data: any): Promise<Actuacion> {
-        if (data instanceof FormData) {
-            return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
+    async createActuacion(data: {
+        expedienteId: string;
+        tipoActuacion: string;
+        descripcion: string;
+        fechaActuacion: string;
+        file?: File;
+    }): Promise<Actuacion> {
+        if (data.file) {
+            const formData = new FormData();
+            formData.append('file', data.file);
+            formData.append('tipoActuacion', data.tipoActuacion);
+            formData.append('descripcion', data.descripcion);
+            formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
+            return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
-        return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
+        return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
     }
 
     // Abogados
@@ -209,17 +265,27 @@ export class LegalService {
         return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
     }
 
-    // Audiencias
-    async getAudiencias(filtros?: { start?: string; end?: string }): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
+    // ==================== AUDIENCIAS ====================
+    async getAudiencias(filtros?: { start?: string; end?: string }): Promise<Audiencia[]> {
+        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
     }
 
     async getAudienciasDashboard(): Promise<any> {
         return apiClient.get<any>(`${SERVICE_PREFIX}/audiencias/dashboard`);
     }
 
-    async createAudiencia(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/audiencias`, data);
+    async createAudiencia(data: {
+        expedienteId: string;
+        abogadoId: string;
+        titulo: string;
+        fechaHoraInicio: string; // ISO string
+        duracionMinutos: number;
+        modalidad: 'VIRTUAL' | 'PRESENCIAL';
+        ubicacion?: string;
+        linkReunion?: string;
+        notasPreparacion?: string;
+    }): Promise<Audiencia> {
+        return apiClient.post<Audiencia>(`${SERVICE_PREFIX}/audiencias`, data);
     }
 
     // Autos
@@ -743,6 +809,11 @@ export interface RiesgoAPI {
     estado: 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
+    // Provisión Contable
+    cuantiaEstimada?: number;
+    provisionContable?: number;
+    porcentajeProvision?: number;
+    fechaCalculoProvision?: string;
 }
 
 export interface CreateRiesgoData {
@@ -759,6 +830,7 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    cuantiaEstimada?: number;
 }
 
 export interface RiesgoHistorialAPI {
@@ -809,6 +881,12 @@ class RiesgosService {
         porEtapa: Record<string, number>;
     }> {
         return apiClient.get(`${SERVICE_PREFIX}/riesgos/estadisticas`);
+    }
+
+    getReporteContabilidadUrl(): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/riesgos/export/contabilidad`;
     }
 
     async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
