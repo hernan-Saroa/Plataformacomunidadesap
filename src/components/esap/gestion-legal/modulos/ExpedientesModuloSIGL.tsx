@@ -21,7 +21,42 @@ import { ModalSubirRespuesta } from './ModalSubirRespuesta';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 
-import { buildApiUrl } from '../../../../config/environment';
+import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environment';
+
+// Helper to build correct file URL for both direct and gateway modes
+// Direct mode: http://localhost:3008/files/{filename}
+// Gateway mode: http://gateway:3000/legal/files/{filename} (NOT /legal/api/v1/files!)
+const getFileUrl = (url: string): string => {
+  if (!url) return '';
+  if (url.startsWith('http') || url.startsWith('blob:')) return url;
+
+  const baseUrl = getServiceUrl('legal');
+
+  // Extract filename from various path formats
+  let filename = url;
+  if (url.includes('/files/')) {
+    filename = url.split('/files/').pop() || url;
+  } else if (url.includes('/legal/')) {
+    filename = url.split('/').pop() || url;
+  } else if (url.includes('/')) {
+    filename = url.split('/').pop() || url;
+  }
+
+  // Limpiar prefijos incorrectos
+  filename = filename.replace(/^\/+/, '');
+
+  // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
+  return `${baseUrl}${prefix}/files/${filename}`;
+};
+
+// URL base para archivos del servicio legal (uploads, etc.)
+// Gateway rutea /legal/uploads/* -> backend /uploads/*
+const LEGAL_BASE_URL = (() => {
+  const baseUrl = getServiceUrl('legal');
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
+  return `${baseUrl}${prefix}`;
+})();
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -205,19 +240,19 @@ export function ExpedientesModuloSIGL() {
       // Caso especial: /legal/files/ en cualquier parte
       if (url.includes('/legal/files/')) {
         const filename = url.split('/').pop();
-        url = `http://localhost:3008/files/${filename}`;
+        url = getFileUrl(filename);
       } else {
         // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
         url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
 
         if (url.startsWith('/files/') || !url.includes('/')) {
           const filename = url.split('/').pop();
-          url = `http://localhost:3008/files/${filename}`;
+          url = getFileUrl(filename);
         } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
           const cleanPath = url.startsWith('/') ? url : `/${url}`;
-          url = `http://localhost:3008${cleanPath}`;
+          url = `${LEGAL_BASE_URL}${cleanPath}`;
         } else {
-          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+          url = `${LEGAL_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
         }
       }
     }
@@ -259,7 +294,7 @@ export function ExpedientesModuloSIGL() {
     // Caso especial: /legal/files/ en cualquier parte de la URL
     if (url.includes('/legal/files/')) {
       const filename = url.split('/').pop();
-      return `http://localhost:3008/files/${filename}`;
+      return getFileUrl(filename);
     }
 
     // Limpiar prefijos incorrectos (sin ^ para que coincida en cualquier posición)
@@ -268,12 +303,12 @@ export function ExpedientesModuloSIGL() {
     // Construir URL absoluta
     if (cleanUrl.startsWith('/files/') || !cleanUrl.includes('/')) {
       const filename = cleanUrl.split('/').pop();
-      return `http://localhost:3008/files/${filename}`;
+      return getFileUrl(filename);
     } else if (cleanUrl.startsWith('/uploads') || cleanUrl.startsWith('uploads')) {
       const cleanPath = cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
-      return `http://localhost:3008${cleanPath}`;
+      return `${LEGAL_BASE_URL}${cleanPath}`;
     } else {
-      return `http://localhost:3008${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+      return `${LEGAL_BASE_URL}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
     }
   };
 
@@ -405,19 +440,19 @@ export function ExpedientesModuloSIGL() {
               // Limpiar prefijos incorrectos - NO usar ^ para que coincida en cualquier posición
               if (url.includes('/legal/files/')) {
                 const filename = url.split('/').pop();
-                url = `http://localhost:3008/files/${filename}`;
+                url = getFileUrl(filename);
               } else {
                 url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
 
                 // Construir URL absoluta
                 if (url.startsWith('/files/') || !url.includes('/')) {
                   const filename = url.split('/').pop();
-                  url = `http://localhost:3008/files/${filename}`;
+                  url = getFileUrl(filename);
                 } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
                   const cleanPath = url.startsWith('/') ? url : `/${url}`;
-                  url = `http://localhost:3008${cleanPath}`;
+                  url = `${LEGAL_BASE_URL}${cleanPath}`;
                 } else {
-                  url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+                  url = `${LEGAL_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
                 }
               }
             }
@@ -760,24 +795,28 @@ export function ExpedientesModuloSIGL() {
             isOpen={modalAutosOpen}
             onClose={() => setModalAutosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalActas
             isOpen={modalActasOpen}
             onClose={() => setModalActasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalEvidencias
             isOpen={modalEvidenciasOpen}
             onClose={() => setModalEvidenciasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalOficios
             isOpen={modalOficiosOpen}
             onClose={() => setModalOficiosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           {modalRespuestaOpen && (
@@ -1251,19 +1290,19 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
       // Caso especial: /legal/files/ en cualquier parte
       if (url.includes('/legal/files/')) {
         const filename = url.split('/').pop();
-        url = `http://localhost:3008/files/${filename}`;
+        url = getFileUrl(filename);
       } else {
         // Limpiar prefijos incorrectos (sin ^ para coincidir en cualquier posición)
         url = url.replace(/\/legal\//gi, '/').replace(/\/api\/legal\//gi, '/');
 
         if (url.startsWith('/files/') || !url.includes('/')) {
           const filename = url.split('/').pop();
-          url = `http://localhost:3008/files/${filename}`;
+          url = getFileUrl(filename);
         } else if (url.startsWith('/uploads') || url.startsWith('uploads')) {
           const cleanPath = url.startsWith('/') ? url : `/${url}`;
-          url = `http://localhost:3008${cleanPath}`;
+          url = `${LEGAL_BASE_URL}${cleanPath}`;
         } else {
-          url = `http://localhost:3008${url.startsWith('/') ? '' : '/'}${url}`;
+          url = `${LEGAL_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
         }
       }
     }

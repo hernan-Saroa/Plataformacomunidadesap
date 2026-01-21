@@ -36,6 +36,8 @@ import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 import { ModalNuevaActuacion } from './ModalNuevaActuacion';
 import { ModalNuevaAudiencia } from './ModalNuevaAudiencia';
 
@@ -316,8 +318,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       filename = url.split('/').pop() || url;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -409,6 +411,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
     window.open(fullUrl, '_blank');
     toast.success('👁️ Documento abierto en nueva pestaña', { description: doc.nombre });
+  };
+
+  // Helper para detectar si un archivo es previsuable en el navegador
+  const isPrevisuable = (doc: any): boolean => {
+    const nombre = (doc.nombre || '').toLowerCase();
+    // Word files cannot be previewed, only downloaded
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+      return false;
+    }
+    // PDF and images can be previewed
+    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.jpeg') || nombre.endsWith('.png') || nombre.endsWith('.gif')) {
+      return true;
+    }
+    // Default to true for other file types
+    return true;
   };
 
   const handleEliminarDocumento = async (doc: any) => {
@@ -1105,15 +1122,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <Download className="w-3 h-3 mr-1" />
                         Descargar Todos
                       </Button>
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingDoc}
-                      >
-                        <Upload className="w-3 h-3 mr-1" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir'}
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingDoc}
+                        >
+                          <Upload className="w-3 h-3 mr-1" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir'}
+                        </Button>
+                      )}
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -1203,9 +1222,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-3">
-                          <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
+                          {isPrevisuable(doc) && (
+                            <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
                           </Button>
@@ -1230,18 +1251,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <p className="text-sm text-gray-600 mb-6">
                               Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
                             </p>
-                            <Button
-                              style={{ background: '#003DA5', color: '#FFFFFF' }}
-                              className="font-bold"
-                              onClick={() => {
-                                toast.info('📎 Función de carga de documentos', {
-                                  description: 'Esta función permitirá subir documentos al expediente'
-                                });
-                              }}
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Cargar Primer Documento
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
+                              <Button
+                                style={{ background: '#003DA5', color: '#FFFFFF' }}
+                                className="font-bold"
+                                onClick={() => {
+                                  toast.info('📎 Función de carga de documentos', {
+                                    description: 'Esta función permitirá subir documentos al expediente'
+                                  });
+                                }}
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                Cargar Primer Documento
+                              </Button>
+                            )}
                           </>
                         ) : (
                           <>
@@ -1300,6 +1323,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Badge className="ml-2 bg-blue-600 text-white font-bold">{actuacionesList.length}</Badge>
                   </h4>
                   <div className="flex gap-2">
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1309,6 +1333,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Calendar className="w-3 h-3 mr-1" />
                       Programar Audiencia
                     </Button>
+                    )}
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) && (
                     <Button
                       size="sm"
                       className="text-xs font-bold"
@@ -1318,6 +1344,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Plus className="w-3 h-3 mr-1" />
                       Registrar Actuación
                     </Button>
+                    )}
                   </div>
                 </Card>
 
@@ -1462,14 +1489,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Target className="w-4 h-4 text-orange-600" />
                       Tareas y Pendientes del Expediente
                     </h4>
-                    <Button
-                      size="sm"
-                      className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                      onClick={() => setShowNuevaTarea(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Nueva Tarea
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                        onClick={() => setShowNuevaTarea(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Nueva Tarea
+                      </Button>
+                    )}
                   </div>
                 </Card>
 
@@ -1625,14 +1654,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                 Marcar Completada
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs font-bold text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarTarea(tarea.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs font-bold text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarTarea(tarea.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </Card>
                       );
@@ -1649,14 +1680,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Bookmark className="w-4 h-4 text-yellow-600" />
                       Notas Internas del Expediente
                     </h4>
-                    <Button
-                      size="sm"
-                      className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                      onClick={() => setShowNuevaNota(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Agregar Nota
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
+                      <Button
+                        size="sm"
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                        onClick={() => setShowNuevaNota(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Agregar Nota
+                      </Button>
+                    )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
                     Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial
@@ -1757,14 +1790,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               <Calendar className="w-3 h-3" />
                               {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
                             </span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarNota(nota.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_DELETE) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarNota(nota.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <p className="text-sm text-gray-800 mb-2">{nota.contenido}</p>

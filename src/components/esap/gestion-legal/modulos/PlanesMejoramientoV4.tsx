@@ -232,7 +232,7 @@ export function ModuloPlanesMejoramientoV4() {
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     codigo: '',
     nombre: '',
     enteControl: '',
@@ -245,7 +245,9 @@ export function ModuloPlanesMejoramientoV4() {
     fechaFin: '',
     estado: 'FORMULACION',
     descripcion: ''
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
 
   // Fetch from API
   const fetchPlanes = async () => {
@@ -309,6 +311,7 @@ export function ModuloPlanesMejoramientoV4() {
       await legalService.createPlanMejoramiento(payload);
       toast.success('Plan de Mejoramiento creado exitosamente');
       setModalNuevoPlanAbierto(false);
+      setFormData({ ...initialFormData });
       fetchPlanes();
     } catch (error) {
       console.error("Error creating plan", error);

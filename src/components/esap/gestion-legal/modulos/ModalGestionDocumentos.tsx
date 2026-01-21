@@ -257,6 +257,17 @@ export function ModalGestionDocumentos({
     }
   };
 
+  // Helper para detectar si un archivo es previsuable en el navegador
+  const isPrevisuable = (doc: DocumentoCargado): boolean => {
+    const nombre = doc.nombre?.toLowerCase() || '';
+    // Word files cannot be previewed, only downloaded
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+      return false;
+    }
+    // PDF and images can be previewed
+    return doc.tipo === 'PDF' || doc.tipo === 'Imagen';
+  };
+
   const handleDescargar = (doc: DocumentoCargado) => {
     if (!doc.url) return;
     toast.info('Abriendo documento...', {
@@ -265,7 +276,8 @@ export function ModalGestionDocumentos({
     });
     try {
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       let filename = doc.url;
       if (doc.url.includes('/files/')) filename = doc.url.split('/files/').pop()!;
       else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop()!;
@@ -578,14 +590,16 @@ export function ModalGestionDocumentos({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDescargar(doc)}
-                        title="Ver Documento"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
+                      {isPrevisuable(doc) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDescargar(doc)}
+                          title="Ver Documento"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
                       {/* <Button
                         variant="ghost"
                         size="sm"
