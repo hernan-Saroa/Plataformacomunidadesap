@@ -50,6 +50,8 @@ import { siglFullTourSteps } from '../design-system/tourStepsMultiModulo';
 // Sistema de Notificaciones para Términos (usa el contexto del Backoffice)
 import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 type VistaDisponible =
   | 'defensa-judicial'
@@ -158,6 +160,7 @@ export function GestionLegalFull() {
       subtitle: 'Defensa de ESAP ante demandas externas',
       icon: <Scale className="w-5 h-5" />,
       color: '#10B981',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE),
     },
     {
       id: 'juzgamiento',
@@ -165,6 +168,7 @@ export function GestionLegalFull() {
       subtitle: 'Control disciplinario de funcionarios',
       icon: <Gavel className="w-5 h-5" />,
       color: '#DC2626',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_MANAGE),
     },
     {
       id: 'asesoria',
@@ -172,6 +176,7 @@ export function GestionLegalFull() {
       subtitle: 'Consultas jurídicas de dependencias',
       icon: <FileQuestion className="w-5 h-5" />,
       color: '#8B5CF6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_MANAGE),
     },
 
     // MÓDULOS DE SOPORTE
@@ -181,6 +186,7 @@ export function GestionLegalFull() {
       subtitle: 'Radicación y notificaciones jurídicas',
       icon: <Inbox className="w-5 h-5" />,
       color: '#3B82F6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_MANAGE),
     },
     {
       id: 'terminos',
@@ -188,6 +194,7 @@ export function GestionLegalFull() {
       subtitle: 'Gestión de vencimientos y reportes',
       icon: <CalendarClock className="w-5 h-5" />,
       color: '#6366F1',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_TERMINOS_MANAGE),
     },
     {
       id: 'organos-control',
@@ -195,6 +202,7 @@ export function GestionLegalFull() {
       subtitle: 'Requerimientos externos de control',
       icon: <Building2 className="w-5 h-5" />,
       color: '#2563EB',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_MANAGE),
     },
     {
       id: 'procesos-coactivos',
@@ -202,6 +210,7 @@ export function GestionLegalFull() {
       subtitle: 'Cobro judicial y administrativo',
       icon: <DollarSign className="w-5 h-5" />,
       color: '#F59E0B',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_MANAGE),
     },
     {
       id: 'expedientes',
@@ -209,6 +218,7 @@ export function GestionLegalFull() {
       subtitle: 'Gestión documental de procesos',
       icon: <FolderOpen className="w-5 h-5" />,
       color: '#0891B2',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_MANAGE),
     },
 
     // MÓDULOS DE GESTIÓN ESTRATÉGICA
@@ -218,6 +228,7 @@ export function GestionLegalFull() {
       subtitle: 'Indicadores y metas institucionales',
       icon: <Target className="w-5 h-5" />,
       color: '#7C3AED',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_MANAGE),
     },
     {
       id: 'riesgos',
@@ -225,6 +236,7 @@ export function GestionLegalFull() {
       subtitle: 'Matriz de riesgos y controles',
       icon: <AlertTriangle className="w-5 h-5" />,
       color: '#DC2626',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_MANAGE),
     },
     {
       id: 'planes-mejoramiento',
@@ -232,6 +244,7 @@ export function GestionLegalFull() {
       subtitle: 'Acciones de mejora institucional',
       icon: <ClipboardCheck className="w-5 h-5" />,
       color: '#14B8A6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE),
     },
     {
       id: 'configuraciones',
@@ -239,6 +252,7 @@ export function GestionLegalFull() {
       subtitle: 'Ajustes y parámetros del SIGL',
       icon: <Settings className="w-5 h-5" />,
       color: '#94A3B8',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_MANAGE),
     },
   ];
 
@@ -275,41 +289,41 @@ export function GestionLegalFull() {
   };
 
   return (
-    <ModuleLayout
-      moduleName="GESTIÓN LEGAL"
-      moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
-      moduleIcon={<Briefcase className="w-6 h-6" />}
-      moduleColor="#003DA5"
-      menuItems={menuItems}
-      activeSection={vistaActual}
-      onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-      initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
-    >
-      <ConfiguracionesSIGLProvider>
+    <ConfiguracionesSIGLProvider>
+      <ModuleLayout
+        moduleName="GESTIÓN LEGAL"
+        moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
+        moduleIcon={<Briefcase className="w-6 h-6" />}
+        moduleColor="#003DA5"
+        menuItems={menuItems}
+        activeSection={vistaActual}
+        onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
+        initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
+      >
         {renderVistaActual()}
-      </ConfiguracionesSIGLProvider>
 
-      {/* Tour Guiado Multi-Módulo */}
-      <GuidedTour
-        steps={siglFullTourSteps}
-        isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
-        onComplete={() => {
-          console.log('✅ Tour completo de 11 módulos completado!');
-          setIsTourOpen(false);
-        }}
-        tourId="sigl-full-tour"
-        onStepChange={handleTourStepChange}
-      />
+        {/* Tour Guiado Multi-Módulo */}
+        <GuidedTour
+          steps={siglFullTourSteps}
+          isOpen={isTourOpen}
+          onClose={() => setIsTourOpen(false)}
+          onComplete={() => {
+            console.log('✅ Tour completo de 11 módulos completado!');
+            setIsTourOpen(false);
+          }}
+          tourId="sigl-full-tour"
+          onStepChange={handleTourStepChange}
+        />
 
-      {/* Botón Flotante del Tour */}
-      <TourButton
-        onClick={() => {
-          setIsTourOpen(true);
-        }}
-        variant="floating"
-        label="Tour Completo"
-      />
-    </ModuleLayout>
+        {/* Botón Flotante del Tour */}
+        <TourButton
+          onClick={() => {
+            setIsTourOpen(true);
+          }}
+          variant="floating"
+          label="Tour Completo"
+        />
+      </ModuleLayout>
+    </ConfiguracionesSIGLProvider>
   );
 }

@@ -13,6 +13,7 @@ import { Separator } from '../ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { Dialog } from '../ui/dialog';
+import { authService } from '../../services/api/authService';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export function ProfileModal({
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [viewAllPermissions, setViewAllPermissions] = useState('');
   const [formData, setFormData] = useState({
     fullName: userName,
     email: userEmail,
@@ -48,7 +50,15 @@ export function ProfileModal({
   });
 
   // Mock: Roles activos del usuario (basado en sistema Usuario-Persona)
-  const rolesActivos = ['Super Administrador', 'Administrativo'];
+  const userLogged = authService.getCurrentUser();
+  userRole = userLogged?.roles[0].name || userRole;
+  // const rolesActivos = ['Super Administrador', 'Administrativo'];
+  const rolesActivos = userLogged?.roles?.map((role: any) => ({
+    code: role.code,
+    name: role.name,
+    permissions: role.permissions || []
+  })) || [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
+  console.log('🚀 ProfileModal: rolesActivos:', rolesActivos);
   
   // Mock: Última sesión
   const lastSession = {
@@ -174,7 +184,8 @@ export function ProfileModal({
                     <p className="text-[11px] md:text-xs text-white/90 truncate font-medium">{userEmail}</p>
                   </div>
                   <div className="flex items-center gap-1 flex-wrap">
-                    <Badge className="bg-white/20 backdrop-blur-md border-white/30 text-white text-[9px] md:text-[10px] py-0.5 px-2 h-auto font-semibold">
+                    <Badge className="bg-white/20 backdrop-blur-md border-white/30 text-white text-[9px] md:text-[10px] py-0.5 px-2 h-auto font-semibold"
+                      style={{textWrap: 'wrap'}}>
                       <Shield className="w-2.5 h-2.5 mr-1" />
                       {userRole}
                     </Badge>
@@ -347,20 +358,34 @@ export function ProfileModal({
                     </h3>
                     <div className="space-y-2">
                       {rolesActivos.map((rol, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                        <div key={idx} className="p-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#1e5da8] to-[#154a85] flex items-center justify-center">
                               <Shield className="w-3.5 h-3.5 text-white" />
                             </div>
                             <div>
-                              <p className="text-[11px] md:text-xs font-bold text-gray-900">{rol}</p>
-                              <p className="text-[9px] md:text-[10px] text-gray-600">Acceso completo</p>
+                              <p className="text-[11px] md:text-xs font-bold text-gray-900">{rol.name}</p>
+                              <p className="text-[9px] md:text-[10px] text-gray-600">{rol.permissions.length} accesos &nbsp;
+                                <button onClick={() => setViewAllPermissions(viewAllPermissions === rol.code ? '' : rol.code)}className="text-blue-600 hover:underline" style={{fontSize: '10px'}}>
+                                  {viewAllPermissions === rol.code ? 'ocultar permisos' : 'ver permisos'}
+                                </button></p>
                             </div>
                           </div>
                           <Badge className="bg-green-100 text-green-700 border-green-200 text-[9px]">
                             <CheckCircle2 className="w-2 h-2 mr-0.5" />
                             Activo
                           </Badge>
+                          </div>
+                          {viewAllPermissions === rol.code && (
+                            <div >
+                              {rol.permissions.map((permission: any) => (
+                                <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[9px] mr-1">
+                                  {permission.name}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -368,6 +393,7 @@ export function ProfileModal({
 
                   {/* Work Info */}
                   <motion.div 
+                    style={{display: 'none'}}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2, delay: 0.15 }}

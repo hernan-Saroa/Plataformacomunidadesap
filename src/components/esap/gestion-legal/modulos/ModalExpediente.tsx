@@ -36,6 +36,10 @@ import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
+import { ModalNuevaActuacion } from './ModalNuevaActuacion';
+import { ModalNuevaAudiencia } from './ModalNuevaAudiencia';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -57,6 +61,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+
+  // Estados para modales de Actuaciones/Audiencias
+  const [showNuevaActuacion, setShowNuevaActuacion] = useState(false);
+  const [showNuevaAudiencia, setShowNuevaAudiencia] = useState(false);
 
   // Estado para documentos cargados desde la API
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -97,6 +105,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       loadDocumentos();
       loadTareas();
       loadNotas();
+      loadActuaciones(); // Cargar historial unificado
       // Inicializar form
       setEditForm({
         juzgado: expediente.juzgado || '',
@@ -129,6 +138,37 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       setNotas([]);
     } finally {
       setLoadingNotas(false);
+    }
+  };
+
+  // ==================== ACTUACIONES Y AUDIENCIAS (Historial Unificado) ====================
+  const [actuacionesList, setActuacionesList] = useState<any[]>([]);
+  const [loadingActuaciones, setLoadingActuaciones] = useState(false);
+
+  const loadActuaciones = async () => {
+    try {
+      setLoadingActuaciones(true);
+      const data = await legalService.getActuaciones(expediente.uuid || expediente.id);
+
+      // Mapear para visualización unificada
+      const mapped = data.map((act: any) => ({
+        id: act.id,
+        fechaObj: new Date(act.fechaActuacion), // Para ordenar si hiciera falta
+        fecha: new Date(act.fechaActuacion).toLocaleDateString('es-CO'),
+        tipo: act.tipoActuacion,
+        descripcion: act.descripcion,
+        responsable: act.usuarioResponsable || 'Sistema',
+        estado: 'Registrado',
+        origen: act.origen || 'MANUAL',
+        metadata: act.metadata,
+        referenciaId: act.referenciaId
+      }));
+      setActuacionesList(mapped);
+    } catch (error) {
+      console.error('Error cargando actuaciones:', error);
+      // toast.error('Error al cargar historial de actuaciones'); // Silencioso para no saturar al inicio
+    } finally {
+      setLoadingActuaciones(false);
     }
   };
 
@@ -278,8 +318,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       filename = url.split('/').pop() || url;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -371,6 +411,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     }
     window.open(fullUrl, '_blank');
     toast.success('👁️ Documento abierto en nueva pestaña', { description: doc.nombre });
+  };
+
+  // Helper para detectar si un archivo es previsuable en el navegador
+  const isPrevisuable = (doc: any): boolean => {
+    const nombre = (doc.nombre || '').toLowerCase();
+    // Word files cannot be previewed, only downloaded
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+      return false;
+    }
+    // PDF and images can be previewed
+    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.jpeg') || nombre.endsWith('.png') || nombre.endsWith('.gif')) {
+      return true;
+    }
+    // Default to true for other file types
+    return true;
   };
 
   const handleEliminarDocumento = async (doc: any) => {
@@ -583,50 +638,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // ==================== DATOS MOCK (ya no usamos mock para documentos) ====================
   // Los documentos ahora se cargan desde la API via loadDocumentos()
 
-  const actuaciones = [
-    {
-      fecha: '26/12/2024',
-      descripcion: 'Se aportaron pruebas documentales adicionales',
-      responsable: expediente.abogadoAsignado,
-      tipo: 'Aporte de Pruebas',
-      estado: 'Completado'
-    },
-    {
-      fecha: '22/12/2024',
-      descripcion: 'Se presentó contestación de la demanda',
-      responsable: expediente.abogadoAsignado,
-      tipo: 'Contestación',
-      estado: 'Completado'
-    },
-    {
-      fecha: '20/12/2024',
-      descripcion: 'Se asignó abogado defensor',
-      responsable: 'Sistema',
-      tipo: 'Asignación',
-      estado: 'Completado'
-    },
-    {
-      fecha: '15/12/2024',
-      descripcion: 'Se recibió notificación de demanda',
-      responsable: 'Centro Comunicaciones',
-      tipo: 'Notificación',
-      estado: 'Completado'
-    },
-    {
-      fecha: '10/12/2024',
-      descripcion: 'Auto admisorio emitido por juzgado',
-      responsable: 'Juzgado Administrativo',
-      tipo: 'Auto',
-      estado: 'Completado'
-    },
-    {
-      fecha: '05/12/2024',
-      descripcion: 'Demanda presentada ante el juzgado',
-      responsable: 'Apoderado Demandante',
-      tipo: 'Demanda',
-      estado: 'Completado'
-    }
-  ];
+  // Mocks de Actuaciones eliminados - ahora usa actuacionesList desde loadActuaciones()
 
   // Tareas now loaded from API via loadTareas()
 
@@ -730,7 +742,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
                   <Activity className="w-3 h-3 mr-1" />
-                  {actuaciones.length} actuaciones
+                  {actuacionesList.length} actuaciones
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
                   <Target className="w-3 h-3 mr-1" />
@@ -1110,15 +1122,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <Download className="w-3 h-3 mr-1" />
                         Descargar Todos
                       </Button>
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingDoc}
-                      >
-                        <Upload className="w-3 h-3 mr-1" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir'}
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingDoc}
+                        >
+                          <Upload className="w-3 h-3 mr-1" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir'}
+                        </Button>
+                      )}
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -1208,15 +1222,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-3">
-                          <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
+                          {isPrevisuable(doc) && (
+                            <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
                           </Button>
+                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) && (
                           <Button size="sm" variant="outline" onClick={() => handleEliminarDocumento(doc)} title="Eliminar" className="text-red-600 hover:text-red-700 hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -1235,18 +1253,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <p className="text-sm text-gray-600 mb-6">
                               Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
                             </p>
-                            <Button
-                              style={{ background: '#003DA5', color: '#FFFFFF' }}
-                              className="font-bold"
-                              onClick={() => {
-                                toast.info('📎 Función de carga de documentos', {
-                                  description: 'Esta función permitirá subir documentos al expediente'
-                                });
-                              }}
-                            >
-                              <Upload className="w-4 h-4 mr-2" />
-                              Cargar Primer Documento
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
+                              <Button
+                                style={{ background: '#003DA5', color: '#FFFFFF' }}
+                                className="font-bold"
+                                onClick={() => {
+                                  toast.info('📎 Función de carga de documentos', {
+                                    description: 'Esta función permitirá subir documentos al expediente'
+                                  });
+                                }}
+                              >
+                                <Upload className="w-4 h-4 mr-2" />
+                                Cargar Primer Documento
+                              </Button>
+                            )}
                           </>
                         ) : (
                           <>
@@ -1296,69 +1316,171 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               </TabsContent>
 
               {/* ==================== TAB: ACTUACIONES ==================== */}
+              {/* ==================== TAB: ACTUACIONES ==================== */}
               <TabsContent value="actuaciones" className="space-y-3">
-                <Card className="p-4 bg-gray-50">
+                <Card className="p-4 bg-gray-50 flex items-center justify-between">
                   <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                     <Activity className="w-4 h-4 text-blue-600" />
-                    Historial Cronológico de Actuaciones Procesales
-                    <Badge className="ml-auto bg-blue-600 text-white font-bold">{actuaciones.length} registros</Badge>
+                    Historial Cronológico Unificado
+                    <Badge className="ml-2 bg-blue-600 text-white font-bold">{actuacionesList.length}</Badge>
                   </h4>
+                  <div className="flex gap-2">
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-bold border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => setShowNuevaAudiencia(true)}
+                    >
+                      <Calendar className="w-3 h-3 mr-1" />
+                      Programar Audiencia
+                    </Button>
+                    )}
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) && (
+                    <Button
+                      size="sm"
+                      className="text-xs font-bold"
+                      style={{ background: '#003DA5' }}
+                      onClick={() => setShowNuevaActuacion(true)}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Registrar Actuación
+                    </Button>
+                    )}
+                  </div>
                 </Card>
 
-                <div className="relative">
-                  <div className="absolute left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-blue-300" />
+                {loadingActuaciones ? (
+                  <div className="text-center py-10">
+                    <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                    <p className="text-xs text-gray-500">Cargando historial...</p>
+                  </div>
+                ) : actuacionesList.length === 0 ? (
+                  <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg">
+                    <Activity className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No hay actuaciones registradas</p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div className="absolute left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-blue-300" />
 
-                  {actuaciones.map((actuacion, idx) => (
-                    <div key={idx} className="relative pl-10 pb-6 last:pb-0">
-                      <div
-                        className="absolute left-0 top-0 w-7 h-7 rounded-full border-4 border-white shadow-lg flex items-center justify-center"
-                        style={{ background: idx === 0 ? '#003DA5' : idx === 1 ? '#3B82F6' : '#CBD5E0' }}
-                      >
-                        {idx === 0 && <Activity className="w-3 h-3 text-white" />}
-                      </div>
+                    {actuacionesList.map((actuacion, idx) => (
+                      <div key={idx} className="relative pl-10 pb-6 last:pb-0">
+                        <div
+                          className={`absolute left-0 top-0 w-7 h-7 rounded-full border-4 border-white shadow-lg flex items-center justify-center ${actuacion.origen === 'AUDIENCIA' ? 'bg-purple-600' :
+                            actuacion.origen === 'AUTO' ? 'bg-amber-500' :
+                              actuacion.origen === 'ACTA' ? 'bg-green-500' :
+                                idx === 0 ? '#003DA5' : '#3B82F6'
+                            }`}
+                          style={{
+                            background:
+                              actuacion.origen === 'AUDIENCIA' ? '#7C3AED' : // Morado
+                                actuacion.origen === 'AUTO' ? '#F59E0B' : // Ámbar
+                                  actuacion.origen === 'ACTA' ? '#10B981' : // Verde
+                                    idx === 0 ? '#003DA5' : '#3B82F6' // Azul corporativo o lighter
+                          }}
+                        >
+                          {/* Icono según origen */}
+                          {actuacion.origen === 'AUDIENCIA' ? <Calendar className="w-3 h-3 text-white" /> :
+                            actuacion.origen === 'AUTO' ? <Gavel className="w-3 h-3 text-white" /> :
+                              actuacion.origen === 'ACTA' ? <FileText className="w-3 h-3 text-white" /> :
+                                <Activity className="w-3 h-3 text-white" />
+                          }
+                        </div>
 
-                      <Card className={`p-4 ${idx === 0 ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200'}`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
+                        <Card className={`p-4 ${idx === 0 ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200'}`}>
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                className="text-xs font-bold"
+                                style={{
+                                  background: idx === 0 ? '#003DA5' : '#E5E7EB',
+                                  color: idx === 0 ? '#FFFFFF' : '#6B7280'
+                                }}
+                              >
+                                {actuacion.fecha}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs font-semibold">
+                                {actuacion.tipo}
+                              </Badge>
+                              {actuacion.origen !== 'MANUAL' && (
+                                <Badge className="text-[10px] px-1 py-0 bg-gray-100 text-gray-500 border border-gray-200">
+                                  AUTO-GENERADO
+                                </Badge>
+                              )}
+                            </div>
+                            {idx === 0 && (
+                              <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
+                                ⚡ Más Reciente
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm font-bold text-gray-900 mb-2">{actuacion.descripcion}</p>
+
+                          {/* Mostrar Metadata si es Audiencia */}
+                          {actuacion.origen === 'AUDIENCIA' && actuacion.metadata && (
+                            <div className="bg-purple-50 p-3 rounded text-xs text-purple-800 mb-2 border border-purple-100 space-y-1">
+                              <p><strong>Modalidad:</strong> {actuacion.metadata.modalidad === 'VIRTUAL' ? '🖥️ Virtual' : '📍 Presencial'}</p>
+                              {actuacion.metadata.modalidad === 'VIRTUAL' && actuacion.metadata.linkReunion && (
+                                <div className="flex items-center gap-2">
+                                  <span><strong>Enlace:</strong></span>
+                                  <a
+                                    href={actuacion.metadata.linkReunion}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline font-semibold truncate max-w-[250px]"
+                                  >
+                                    {actuacion.metadata.linkReunion}
+                                  </a>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px] bg-purple-100 hover:bg-purple-200 text-purple-700"
+                                    onClick={() => window.open(actuacion.metadata.linkReunion, '_blank')}
+                                  >
+                                    Abrir
+                                  </Button>
+                                </div>
+                              )}
+                              {actuacion.metadata.modalidad === 'PRESENCIAL' && actuacion.metadata.ubicacion && (
+                                <p><strong>Ubicación:</strong> {actuacion.metadata.ubicacion}</p>
+                              )}
+                              {actuacion.metadata.duracionMinutos && (
+                                <p><strong>Duración:</strong> {actuacion.metadata.duracionMinutos} min</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Mostrar Link al archivo si existe en metadata */}
+                          {actuacion.metadata?.archivo && (
+                            <div className="mb-2">
+                              <Button variant="link" size="sm" className="h-auto p-0 text-blue-600" onClick={() => window.open(getFullUrl(actuacion.metadata.archivo), '_blank')}>
+                                <Paperclip className="w-3 h-3 mr-1" />
+                                Ver Documento Adjunto
+                              </Button>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                              <User className="w-3 h-3" />
+                              {actuacion.responsable}
+                            </p>
                             <Badge
-                              className="text-xs font-bold"
+                              className="text-xs font-semibold"
                               style={{
-                                background: idx === 0 ? '#003DA5' : idx === 1 ? '#3B82F6' : '#E5E7EB',
-                                color: idx <= 1 ? '#FFFFFF' : '#6B7280'
+                                background: actuacion.estado === 'Completado' || actuacion.estado === 'Registrado' ? '#D1FAE5' : '#FEF3C7',
+                                color: actuacion.estado === 'Completado' || actuacion.estado === 'Registrado' ? '#065F46' : '#92400E'
                               }}
                             >
-                              {actuacion.fecha}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs font-semibold">
-                              {actuacion.tipo}
+                              {actuacion.estado}
                             </Badge>
                           </div>
-                          {idx === 0 && (
-                            <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
-                              ⚡ Más Reciente
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm font-bold text-gray-900 mb-2">{actuacion.descripcion}</p>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                            <User className="w-3 h-3" />
-                            {actuacion.responsable}
-                          </p>
-                          <Badge
-                            className="text-xs font-semibold"
-                            style={{
-                              background: actuacion.estado === 'Completado' ? '#D1FAE5' : '#FEF3C7',
-                              color: actuacion.estado === 'Completado' ? '#065F46' : '#92400E'
-                            }}
-                          >
-                            {actuacion.estado}
-                          </Badge>
-                        </div>
-                      </Card>
-                    </div>
-                  ))}
-                </div>
+                        </Card>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </TabsContent>
 
               {/* ==================== TAB: TAREAS ==================== */}
@@ -1369,14 +1491,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Target className="w-4 h-4 text-orange-600" />
                       Tareas y Pendientes del Expediente
                     </h4>
-                    <Button
-                      size="sm"
-                      className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-                      onClick={() => setShowNuevaTarea(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Nueva Tarea
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                        onClick={() => setShowNuevaTarea(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Nueva Tarea
+                      </Button>
+                    )}
                   </div>
                 </Card>
 
@@ -1532,14 +1656,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                 Marcar Completada
                               </Button>
                             )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs font-bold text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarTarea(tarea.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs font-bold text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarTarea(tarea.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </Card>
                       );
@@ -1556,14 +1682,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Bookmark className="w-4 h-4 text-yellow-600" />
                       Notas Internas del Expediente
                     </h4>
-                    <Button
-                      size="sm"
-                      className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-                      onClick={() => setShowNuevaNota(true)}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Agregar Nota
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
+                      <Button
+                        size="sm"
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                        onClick={() => setShowNuevaNota(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Agregar Nota
+                      </Button>
+                    )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
                     Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial
@@ -1664,14 +1792,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               <Calendar className="w-3 h-3" />
                               {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
                             </span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
-                              onClick={() => handleEliminarNota(nota.id)}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_DELETE) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-red-600 hover:bg-red-50"
+                                onClick={() => handleEliminarNota(nota.id)}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                         <p className="text-sm text-gray-800 mb-2">{nota.contenido}</p>
@@ -1697,7 +1827,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <div className="text-xs text-gray-600 hidden md:block">
                   Expediente <strong className="font-black" style={{ color: '#003DA5' }}>{expediente.id}</strong> ·
                   <strong className="text-green-600"> {documentos.length} docs</strong> ·
-                  <strong className="text-blue-600"> {actuaciones.length} actuaciones</strong> ·
+                  <strong className="text-blue-600"> {actuacionesList.length} actuaciones</strong> ·
                   <strong className="text-orange-600"> {tareas.length} tareas</strong>
                 </div>
               </div>
@@ -1716,6 +1846,24 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           </div>
         </DialogContent >
       </Dialog >
+
+      {showNuevaActuacion && (
+        <ModalNuevaActuacion
+          isOpen={showNuevaActuacion}
+          onClose={() => setShowNuevaActuacion(false)}
+          expedienteId={expediente.uuid || expediente.id}
+          onSuccess={loadActuaciones}
+        />
+      )}
+
+      {showNuevaAudiencia && (
+        <ModalNuevaAudiencia
+          isOpen={showNuevaAudiencia}
+          onClose={() => setShowNuevaAudiencia(false)}
+          expedienteId={expediente.uuid || expediente.id}
+          onSuccess={loadActuaciones}
+        />
+      )}
 
       {/* Modal de Reasignar Profesional - usando Portal para aparecer encima */}
       {

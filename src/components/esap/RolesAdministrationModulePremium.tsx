@@ -906,10 +906,10 @@ export function RolesAdministrationModulePremium() {
                                       <Edit className="w-4 h-4 mr-2" />
                                       Editar Rol
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDuplicateRole(role)}>
+                                    {/* <DropdownMenuItem onClick={() => handleDuplicateRole(role)}>
                                       <Copy className="w-4 h-4 mr-2" />
                                       Duplicar Rol
-                                    </DropdownMenuItem>
+                                    </DropdownMenuItem> */}
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => handleToggleActive(role)}>
                                       {role.is_active ? (

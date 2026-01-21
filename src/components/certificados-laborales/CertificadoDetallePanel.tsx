@@ -12,7 +12,6 @@ import {
   Hash,
   Mail,
   Printer,
-  Building2,
   QrCode,
   Eye,
   Copy,
@@ -69,13 +68,14 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
   const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
-  const ubicacionCargo =
-    certificado.position_location ||
-    certificado.campus ||
-    certificado.empleado.dependencia ||
-    certificado.empleado.dependenciaPadre ||
-    '-';
-  const gradoTexto = certificado.empleado.grado || '-';
+  const normalizarDependencia = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+  const ubicacionCargo = normalizarDependencia(certificado.position_location) || '';
 
   // Helper para formatear fechas de forma segura
   const parseDateOnly = (fechaStr: string) => {
@@ -600,16 +600,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Grado y Correo */}
+                    {/* Correo y Salario */}
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Grado
-                        </label>
-                        <p className="text-sm text-gray-900">
-                          {gradoTexto}
-                        </p>
-                      </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Correo Electrónico
@@ -619,32 +611,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           {certificado.empleado.email}
                         </p>
                       </div>
-                    </div>
-
-                    {/* Dependencia Padre y Dependencia Hijo */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Dependencia Padre
-                        </label>
-                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.dependenciaPadre || 'Registro padre'}
-                        </p>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Dependencia Hijo
-                        </label>
-                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.dependencia || 'Registro hijo'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Salario */}
-                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario

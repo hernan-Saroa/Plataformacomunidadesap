@@ -16,13 +16,17 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, Filter, Search,
   Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Gavel
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Gavel, X, ArrowRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { Textarea } from '../../../ui/textarea';
+import { Label } from '../../../ui/label';
+import { Input } from '../../../ui/input';
 import type { ProcesoDisciplinario } from '../core/types';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -64,6 +68,18 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
+
+  // ✅ Estado para modal de confirmación de cambio de etapa
+  const [modalCambioEtapaOpen, setModalCambioEtapaOpen] = useState(false);
+  const [cambioEtapaPendiente, setCambioEtapaPendiente] = useState<{
+    procesoId: string;
+    procesoRadicado: string;
+    etapaActual: string;
+    nuevaEtapa: string;
+  } | null>(null);
+  const [justificacionCambio, setJustificacionCambio] = useState('');
+  const [archivoCambio, setArchivoCambio] = useState<File | null>(null);
+  const [guardandoCambio, setGuardandoCambio] = useState(false);
 
   // ✅ Log de configuraciones cargadas
   useEffect(() => {
@@ -110,32 +126,98 @@ export function ModuloJuzgamientoDisciplinarioV3() {
     fetchProcesos();
   }, []);
 
-  // Manejar movimiento de proceso entre etapas
+  // Manejar movimiento de proceso entre etapas - AHORA REQUIERE JUSTIFICACIÓN
   const handleMoverProceso = async (procesoId: string, nuevaEtapa: string) => {
-    // 1. Actualización Optimista
-    setProcesos((prevProcesos) =>
-      prevProcesos.map((p) =>
-        p.id === procesoId
-          ? { ...p, etapa: nuevaEtapa as any }
-          : p
-      )
-    );
+    // Buscar el proceso para obtener info adicional
+    const proceso = procesos.find(p => p.id === procesoId);
+    if (!proceso) {
+      toast.error('Proceso no encontrado');
+      return;
+    }
+
+    // NO hacer cambio directo - Abrir modal de confirmación
+    setCambioEtapaPendiente({
+      procesoId,
+      procesoRadicado: proceso.id,
+      etapaActual: proceso.etapa || 'Sin etapa',
+      nuevaEtapa
+    });
+    setJustificacionCambio('');
+    setArchivoCambio(null);
+    setModalCambioEtapaOpen(true);
+  };
+
+  // Handler para confirmar cambio de etapa CON justificación
+  const handleConfirmarCambioEtapa = async () => {
+    if (!cambioEtapaPendiente) return;
+
+    if (!justificacionCambio.trim()) {
+      toast.error('Justificación requerida', {
+        description: 'Debe ingresar una justificación para el cambio de etapa'
+      });
+      return;
+    }
+
+    if (justificacionCambio.trim().length < 20) {
+      toast.error('Justificación muy corta', {
+        description: 'La justificación debe tener al menos 20 caracteres'
+      });
+      return;
+    }
+
+    setGuardandoCambio(true);
 
     try {
-      // 2. Persistencia Backend
-      // El procesoId corresponde al radicado (ej: PD-2025-001)
-      await legalService.updateJuzgamientoProceso(procesoId, { etapa: nuevaEtapa });
+      // 1. Crear Actuación en historial (SIEMPRE, con o sin archivo)
+      const descripcionActuacion = `CAMBIO DE ETAPA: ${cambioEtapaPendiente.etapaActual} → ${cambioEtapaPendiente.nuevaEtapa}. Justificación: ${justificacionCambio}`;
 
-      toast.success('Proceso movido exitosamente', {
-        description: `Guardado en backend: ${nuevaEtapa}`
+      await legalService.createJuzgamientoActuacion(cambioEtapaPendiente.procesoId, {
+        tipoActuacion: 'CAMBIO_ETAPA',
+        descripcion: descripcionActuacion,
+        fechaActuacion: new Date().toISOString(),
+        file: archivoCambio || undefined
       });
+
+      // 2. Actualizar etapa en backend
+      await legalService.updateJuzgamientoProceso(cambioEtapaPendiente.procesoId, {
+        etapa: cambioEtapaPendiente.nuevaEtapa
+      });
+
+      // 3. Actualización local optimista
+      setProcesos((prevProcesos) =>
+        prevProcesos.map((p) =>
+          p.id === cambioEtapaPendiente.procesoId
+            ? { ...p, etapa: cambioEtapaPendiente.nuevaEtapa as any }
+            : p
+        )
+      );
+
+      toast.success('Cambio de etapa registrado', {
+        description: `${cambioEtapaPendiente.etapaActual} → ${cambioEtapaPendiente.nuevaEtapa}${archivoCambio ? ' (con documento)' : ''}`
+      });
+
+      // Cerrar modal y limpiar
+      setModalCambioEtapaOpen(false);
+      setCambioEtapaPendiente(null);
+      setJustificacionCambio('');
+      setArchivoCambio(null);
+
     } catch (error) {
-      console.error('Error al mover proceso:', error);
+      console.error('Error al cambiar etapa:', error);
       toast.error('Error al guardar cambio', {
-        description: 'No se pudo sincronizar con el servidor'
+        description: 'No se pudo registrar el cambio de etapa'
       });
-      // Opcional: Revertir cambio local si falla
+    } finally {
+      setGuardandoCambio(false);
     }
+  };
+
+  // Handler para cancelar cambio
+  const handleCancelarCambioEtapa = () => {
+    setModalCambioEtapaOpen(false);
+    setCambioEtapaPendiente(null);
+    setJustificacionCambio('');
+    setArchivoCambio(null);
   };
 
   // Agrupar procesos por etapa de forma dinámica
@@ -336,6 +418,119 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         />
       )}
 
+      {/* ✅ MODAL DE CONFIRMACIÓN DE CAMBIO DE ETAPA */}
+      <Dialog open={modalCambioEtapaOpen} onOpenChange={setModalCambioEtapaOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+            <ArrowRight className="w-5 h-5 text-blue-600" />
+            Confirmar Cambio de Etapa
+          </DialogTitle>
+          <DialogDescription className="text-gray-600">
+            Debe justificar el cambio de etapa. Opcionalmente puede adjuntar un documento de soporte.
+          </DialogDescription>
+
+          {cambioEtapaPendiente && (
+            <div className="space-y-4 mt-4">
+              {/* Info del cambio */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800 font-medium mb-2">
+                  Proceso: <span className="font-bold">{cambioEtapaPendiente.procesoRadicado}</span>
+                </p>
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline" className="bg-gray-100">{cambioEtapaPendiente.etapaActual}</Badge>
+                  <ArrowRight className="w-4 h-4 text-blue-600" />
+                  <Badge className="bg-blue-600 text-white">{cambioEtapaPendiente.nuevaEtapa}</Badge>
+                </div>
+              </div>
+
+              {/* Justificación (requerida) */}
+              <div className="space-y-2">
+                <Label htmlFor="justificacion" className="font-bold text-gray-700">
+                  Justificación del cambio <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="justificacion"
+                  placeholder="Describa la razón del cambio de etapa (mínimo 20 caracteres)..."
+                  value={justificacionCambio}
+                  onChange={(e) => setJustificacionCambio(e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                />
+                <p className="text-xs text-gray-500">
+                  {justificacionCambio.length}/20 caracteres mínimos
+                </p>
+              </div>
+
+              {/* Documento de soporte (opcional) */}
+              <div className="space-y-2">
+                <Label htmlFor="documento" className="font-bold text-gray-700">
+                  Documento de soporte <span className="text-gray-400">(opcional)</span>
+                </Label>
+                <Input
+                  id="documento"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => setArchivoCambio(e.target.files?.[0] || null)}
+                />
+                {archivoCambio && (
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-2 rounded">
+                    <FileCheck className="w-4 h-4" />
+                    {archivoCambio.name}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setArchivoCambio(null)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Advertencia */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-yellow-800">
+                    <strong>Importante:</strong> Este cambio quedará registrado en el historial del proceso
+                    con su justificación y el usuario que lo realizó.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones */}
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleCancelarCambioEtapa}
+                  disabled={guardandoCambio}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleConfirmarCambioEtapa}
+                  disabled={guardandoCambio || justificacionCambio.trim().length < 20}
+                >
+                  {guardandoCambio ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Confirmar Cambio
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
@@ -659,21 +854,25 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalEvidencias
           isOpen={modalEvidenciasOpen}
           onClose={() => setModalEvidenciasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalOficios
           isOpen={modalOficiosOpen}
           onClose={() => setModalOficiosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
         <ModalActas
           isOpen={modalActasOpen}
           onClose={() => setModalActasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='juzgamiento-disciplinario'
         />
       </Card>
     </div>

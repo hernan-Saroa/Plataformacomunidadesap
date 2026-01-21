@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Res, HttpStatus } from '@nestjs/common';
+import type { Response } from 'express';
 import { RiesgosService } from '../services/riesgos.service';
 import { Riesgo } from '../entities/riesgo.entity';
 import type { EtapaRiesgo, ZonaRiesgo } from '../entities/riesgo.entity';
@@ -18,6 +19,32 @@ export class RiesgosController {
     @Get('estadisticas')
     async getEstadisticas() {
         return this.riesgosService.getEstadisticas();
+    }
+
+    @Get('export/contabilidad')
+    async getReporteContabilidad(@Res() res: Response) {
+        try {
+            const pdfBuffer = await this.riesgosService.generarReporteContabilidadPDF();
+
+            res.set({
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': `attachment; filename="Reporte_Contabilidad_Riesgos_${new Date().getTime()}.pdf"`,
+                'Content-Length': pdfBuffer.length
+            });
+
+            res.send(pdfBuffer);
+        } catch (error) {
+            console.error('Error generando reporte PDF:', error);
+            res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Error generando reporte' });
+        }
+    }
+
+    @Patch(':id/provision')
+    async actualizarProvision(
+        @Param('id') id: string,
+        @Body('cuantiaEstimada') cuantiaEstimada: number
+    ) {
+        return this.riesgosService.actualizarProvision(id, cuantiaEstimada);
     }
 
     @Get(':id')

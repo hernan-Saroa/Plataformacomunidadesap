@@ -192,6 +192,8 @@ export class GraduationCertificatesService {
     const issueDate = dto.idIssueDate ? this.normalizeDateString(dto.idIssueDate) : null;
     const gradDate = dto.graduationDate ? this.normalizeDateString(dto.graduationDate) : null;
     const lastNameNormalized = dto.lastName ? this.normalizeName(dto.lastName) : '';
+    const requesterName = (dto.requesterName || '').trim();
+    const requesterEmail = (dto.requesterEmail || '').trim();
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedici?n inv?lida');
@@ -239,14 +241,14 @@ export class GraduationCertificatesService {
       graduateId: graduate?.id,
       idNumber: dto.idNumber,
       idIssueDate,
-      fullName: graduate?.fullName || dto.requesterName,
+      fullName: graduate?.fullName || requesterName || dto.requesterName,
       programName: graduate?.programName || dto.programName || 'No disponible',
       graduationDate:
         graduate?.graduationDate ||
         this.parseDate(dto.graduationDate) ||
         new Date(),
-      requesterName: dto.requesterName,
-      requesterEmail: dto.requesterEmail,
+      requesterName: requesterName || dto.requesterName,
+      requesterEmail: requesterEmail || dto.requesterEmail,
       requesterPhone: dto.requesterPhone,
       companyName: dto.companyName,
       certificateType: 'STANDARD',
@@ -287,7 +289,7 @@ export class GraduationCertificatesService {
 
     try {
       await this.notifyCertificateDelivery(
-        dto.requesterEmail,
+        requesterEmail || dto.requesterEmail,
         certificate,
         frontendBaseUrl,
       );
@@ -355,7 +357,8 @@ export class GraduationCertificatesService {
 
   /**
    * Generar certificado de graduado
-   */  private async generateCertificate(
+   */
+  private async generateCertificate(
     request: GraduationCertificateRequest,
     frontendBaseUrl?: string,
   ) {
@@ -641,7 +644,8 @@ export class GraduationCertificatesService {
     const count = await this.requestRepository.count();
     const sequence = (count + 1).toString().padStart(4, '0');
     return `GC-${year}-${sequence}`;
-  }  private async generateCertificateNumber(): Promise<string> {
+  }
+  private async generateCertificateNumber(): Promise<string> {
     const year = new Date().getFullYear();
     const count = await this.certificateRepository.count();
     const sequence = (count + 1).toString().padStart(4, '0');
@@ -1162,6 +1166,15 @@ export class GraduationCertificatesService {
         if (payload.fullName !== undefined) request.fullName = payload.fullName.trim();
         if (payload.idNumber !== undefined) request.idNumber = payload.idNumber.trim();
         if (payload.programName !== undefined) request.programName = payload.programName;
+        if (payload.requesterName !== undefined) {
+          request.requesterName = payload.requesterName.trim();
+        }
+        if (payload.requesterEmail !== undefined) {
+          request.requesterEmail = payload.requesterEmail.trim();
+        }
+        if (payload.requesterPhone !== undefined) {
+          request.requesterPhone = payload.requesterPhone.trim();
+        }
         if (payload.graduationDate !== undefined) {
           request.graduationDate =
             this.parseDate(payload.graduationDate) ?? request.graduationDate;

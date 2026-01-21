@@ -93,6 +93,8 @@ import { CorreosJuridicosService } from './services/correos-juridicos.service';
 import { CorreosSyncScheduler } from './services/correos-sync.scheduler';
 import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
+import { DiasHabilesService } from './services/dias-habiles.service';
+import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -215,7 +217,10 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Procesos Coactivos
     ProcesoCoactivoService,
     // Configurations
-    ConfigurationsService
+    ConfigurationsService,
+    // Días Hábiles y Alertas
+    DiasHabilesService,
+    AlertasVencimientoService
   ],
 })
 export class AppModule { }

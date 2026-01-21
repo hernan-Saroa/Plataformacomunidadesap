@@ -81,12 +81,23 @@ export function VisorPDFCertificado({
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
 
+  const normalizarTexto = (value: string) =>
+    (value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
+
   const resolverTipoPlantilla = (): 'docente' | 'administrador' => {
     const fromCert = (certificado as any)?.templateType;
     if (fromCert === 'docente' || fromCert === 'administrador') return fromCert;
 
-    const cargoTexto = `${certificado.empleado.cargo || ''} ${certificado.empleado.tipoVinculacion || ''}`.toLowerCase();
-    return cargoTexto.includes('docent') ? 'docente' : 'administrador';
+    const cargoTexto = `${certificado.empleado.cargo || ''}`;
+    return esDocente(cargoTexto) ? 'docente' : 'administrador';
   };
 
   // Cargar configuración de plantilla
@@ -149,8 +160,17 @@ export function VisorPDFCertificado({
     const tipoVinculacion = certificado.empleado.tipoVinculacion || '';
     const cargoTexto = certificado.empleado.cargo || '';
     const grado = certificado.empleado.grado || '';
-    const dependenciaHijo = certificado.empleado.dependencia || certificado.department || '';
-    const dependenciaPadre = certificado.empleado.dependenciaPadre || certificado.department_parent || 'Registro padre';
+    const normalizarDependencia = (value?: string | null) => {
+      const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+      if (!cleaned) return '';
+      const lower = cleaned.toLowerCase();
+      if (lower === 'registro padre' || lower === 'registro hijo') return '';
+      return cleaned;
+    };
+    const dependenciaHijo = normalizarDependencia(certificado.empleado.dependencia || certificado.department || '');
+    const dependenciaPadre = normalizarDependencia(
+      certificado.empleado.dependenciaPadre || certificado.department_parent || ''
+    );
     const dependenciaPlantilla = dependenciaPadre;
     const ubicacion = certificado.position_location || certificado.campus || dependenciaHijo || dependenciaPadre || '';
     const ubicacionCargo = certificado.position_location || ubicacion;
@@ -170,10 +190,8 @@ export function VisorPDFCertificado({
         ? ubicacionCargo
         : (certificado.observations || '');
 
-    const dato7 =
-      templateType === 'administrador'
-        ? ubicacionCargo
-        : dependenciaHijo;
+    const dato7 = certificado.position_location || '';
+    const cargoDato6 = cargoTexto;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
     const fechaExpedicionSource =
@@ -194,6 +212,7 @@ export function VisorPDFCertificado({
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
       '[CARGO]': cargoPlantilla,
+      '[CARGO DATO6]': cargoDato6,
       '[DEPENDENCIA]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
@@ -837,7 +856,7 @@ export function VisorPDFCertificado({
                       fontSize: '12pt',
                       margin: '0 0 12pt 0'
                     }}>
-                      Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || certificado.department || certificado.empleado.dependencia}.
+                      Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || ''}.
                     </p>
 
                     {incluirSalario && (

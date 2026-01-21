@@ -36,6 +36,8 @@ import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComun
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
 import { RefreshCw, Loader2 } from 'lucide-react';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // TIPOS UNIFICADOS
 type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
@@ -348,6 +350,28 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     setSeleccionadas(new Set());
   };
 
+  const addBtnsPermission = () => {
+    const arrayBtns: any[] = [];
+    arrayBtns.push({
+      label: syncing ? 'Sincronizando...' : 'Sincronizar',
+      labelMobile: syncing ? '...' : 'Sync',
+      icon: syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />,
+      onClick: handleSyncCorreos,
+      variant: 'outline' as const,
+      disabled: syncing
+    });
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_CREATE)) {
+      arrayBtns.push({
+        label: 'Nueva Comunicación',
+        labelMobile: 'Nueva',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevaComunicacionOpen(true),
+        variant: 'primary' as const
+      })
+    }
+    return arrayBtns
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -364,23 +388,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
                 { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
               ]
             }}
-            buttons={[
-              {
-                label: syncing ? 'Sincronizando...' : 'Sincronizar',
-                labelMobile: syncing ? '...' : 'Sync',
-                icon: syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />,
-                onClick: handleSyncCorreos,
-                variant: 'outline' as const,
-                disabled: syncing
-              },
-              {
-                label: 'Nueva Comunicación',
-                labelMobile: 'Nueva',
-                icon: <Plus className="w-4 h-4" />,
-                onClick: () => setModalNuevaComunicacionOpen(true),
-                variant: 'primary' as const
-              }
-            ]}
+            buttons={addBtnsPermission()}
           />
         </div>
 
@@ -939,7 +947,7 @@ function VistaPreviaComunicacion({
           <Eye className="w-4 h-4 mr-2" />
           Ver Expediente Completo
         </Button>
-        {!comunicacion.leida && (
+        {!comunicacion.leida && authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_LEIDO) && (
           <Button
             variant="outline"
             className="w-full"
@@ -949,6 +957,7 @@ function VistaPreviaComunicacion({
             Marcar como Leída
           </Button>
         )}
+        {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
         <Button
           variant="outline"
           className="w-full"
@@ -957,6 +966,7 @@ function VistaPreviaComunicacion({
           <Archive className="w-4 h-4 mr-2" />
           Archivar
         </Button>
+        )}
       </div>
     </div>
   );

@@ -29,6 +29,8 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
@@ -85,6 +87,7 @@ export function ModuloAsesoriaJuridicaV3() {
     let filteredValue = value;
 
     switch (field) {
+      case 'dependenciaSolicitante':
       case 'nombreSolicitante':
       case 'cargoSolicitante':
         filteredValue = onlyLetters(value);
@@ -345,22 +348,27 @@ export function ModuloAsesoriaJuridicaV3() {
     setModalExpedienteOpen(true);
   };
 
+  const addBtnsPermission = () => {
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE)) {
+      return [{
+        label: 'Nueva Consulta',
+        labelMobile: 'Nueva',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setIsCreateOpen(true),
+        // onClick: () => setModalNuevaConsultaOpen(true),
+        variant: 'primary'
+      }]
+    }
+    return []
+  };
+
   return (
     <div className="space-y-4">
       {/* Header con ModuleHeader - SIN toggleView */}
       <ModuleHeader
         title="Asesoría Jurídica"
         subtitle="Seguimiento a consultas y términos de respuesta"
-        buttons={[
-          {
-            label: 'Nueva Consulta',
-            labelMobile: 'Nueva',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setIsCreateOpen(true),
-            // onClick: () => setModalNuevaConsultaOpen(true),
-            variant: 'primary'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Asesoría Jurídica"
@@ -573,7 +581,7 @@ export function ModuloAsesoriaJuridicaV3() {
                 <Input
                   placeholder="Ej: Dirección de Contratación"
                   value={newConsultaData.dependenciaSolicitante}
-                  onChange={e => setNewConsultaData({ ...newConsultaData, dependenciaSolicitante: e.target.value })}
+                  onChange={e => handleNewConsultaInput('dependenciaSolicitante', e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
@@ -805,6 +813,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                 >
                   <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
                 </Button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
                 <Button
                   onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
                   size="sm"
@@ -813,6 +822,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                 >
                   <Trash2 className="w-3 h-3 mr-1" /> Eliminar
                 </Button>
+                )}
               </td>
             </tr>
           ))}

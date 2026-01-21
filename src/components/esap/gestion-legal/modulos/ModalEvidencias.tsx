@@ -29,11 +29,14 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 const categorias = [
@@ -46,7 +49,7 @@ const categorias = [
   'Digitales'
 ];
 
-export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
+export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
@@ -169,7 +172,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -183,9 +186,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo: localhost:3008/files/
-    // En modo gateway: localhost:3000/legal/api/v1/files/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -197,6 +199,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
     window.open(fileUrl, '_blank');
     toast.success('👁️ Documento abierto', { description: ev.nombre });
+  };
+
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
   };
 
   const handleDescargarEvidencia = async (ev: any) => {
@@ -284,42 +293,59 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
   };
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-        <DialogTitle className="sr-only">
-          Evidencias y Pruebas - Expediente {expediente.id}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Gestión de evidencias y pruebas documentales del expediente {expediente.id}
-        </DialogDescription>
-        
-        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
-        <ModalHeaderClean
-          titulo="Evidencias y Pruebas Documentales"
-          subtitulo={`Material probatorio del expediente ${expediente.id}`}
-          icono={Paperclip}
-          colorIcono="orange"
-          badgePrincipal={expediente.etapa}
-          badges={
-            <>
-              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                {evidenciasAdmitidas} admitidas
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                <AlertCircle className="w-3 h-3 mr-1" />
-                {evidenciasPendientes} pendientes
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
-                <Paperclip className="w-3 h-3 mr-1" />
-                {totalEvidencias} total
-              </Badge>
-            </>
-          }
-          onClose={onClose}
-        />
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+          <DialogTitle className="sr-only">
+            Evidencias y Pruebas - Expediente {expediente.id}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Gestión de evidencias y pruebas documentales del expediente {expediente.id}
+          </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+          <ModalHeaderClean
+            titulo="Evidencias y Pruebas Documentales"
+            subtitulo={`Material probatorio del expediente ${expediente.id}`}
+            icono={Paperclip}
+            colorIcono="orange"
+            badgePrincipal={expediente.etapa}
+            badges={
+              <>
+                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  {evidenciasAdmitidas} admitidas
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {evidenciasPendientes} pendientes
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                  <Paperclip className="w-3 h-3 mr-1" />
+                  {totalEvidencias} total
+                </Badge>
+              </>
+            }
+            onClose={onClose}
+          />
 
           <div className="flex items-center gap-2 px-6 py-3 border-b bg-white sticky top-0 z-10">
             <div className="flex-1 relative">
@@ -406,20 +432,24 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
-                            <Eye className="w-3.5 h-3.5 mr-1" />
-                            Ver
-                          </Button>
+                          {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                          {isPrevisuable(ev.nombre) && (
+                            <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                          )}
                           <Button size="sm" onClick={() => handleDescargarEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#003DA5' }}>
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          {ev.estado !== 'Admitida' && (
+                          {ev.estado !== 'Admitida' && hasPermission('admitir') && (
                             <Button size="sm" onClick={() => handleMarcarAdmitida(ev.id)} className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white">
                               <CheckCircle className="w-3.5 h-3.5 mr-1" />
                               Admitir
                             </Button>
                           )}
+                          {hasPermission('delete') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -432,6 +462,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -464,10 +495,12 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   <Download className="w-4 h-4 mr-1.5" />
                   Descargar Todas (ZIP)
                 </Button>
+                {hasPermission('create') && (
                 <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
                   <Upload className="w-4 h-4 mr-1.5" />
                   Cargar Evidencia
                 </Button>
+                )}
               </div>
             </div>
           </div>

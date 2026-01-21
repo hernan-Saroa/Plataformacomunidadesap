@@ -57,6 +57,7 @@ export interface PermissionModule {
   color: string;
   bgColor: string;
   permissions: Permission[];
+  permissionGroups?: {group: string, permissions: Permission[]}[];
 }
 
 // ============================================================================

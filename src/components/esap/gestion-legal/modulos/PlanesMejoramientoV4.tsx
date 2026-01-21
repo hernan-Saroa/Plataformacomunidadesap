@@ -32,6 +32,8 @@ import { legalService } from '../../../../services/api/legal.service';
 import { ModalDetallePlanV4 } from './ModalDetallePlanV4';
 import jsPDF from 'jspdf';
 import JSZip from 'jszip';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 import {
   DropdownMenu,
@@ -40,6 +42,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
+import { add } from '@dnd-kit/utilities';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -232,7 +235,7 @@ export function ModuloPlanesMejoramientoV4() {
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     codigo: '',
     nombre: '',
     enteControl: '',
@@ -245,7 +248,9 @@ export function ModuloPlanesMejoramientoV4() {
     fechaFin: '',
     estado: 'FORMULACION',
     descripcion: ''
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
 
   // Fetch from API
   const fetchPlanes = async () => {
@@ -309,6 +314,7 @@ export function ModuloPlanesMejoramientoV4() {
       await legalService.createPlanMejoramiento(payload);
       toast.success('Plan de Mejoramiento creado exitosamente');
       setModalNuevoPlanAbierto(false);
+      setFormData({ ...initialFormData });
       fetchPlanes();
     } catch (error) {
       console.error("Error creating plan", error);
@@ -451,6 +457,27 @@ export function ModuloPlanesMejoramientoV4() {
     }
   };
 
+  const addBtnsPermission = () => {
+    const arrayBtns: any[] = [];
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE)) {
+      arrayBtns.push({
+        label: 'Nuevo Plan',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevoPlanAbierto(true),
+        variant: 'primary'
+      })
+    }
+    arrayBtns.push({
+      label: 'Exportar',
+      labelMobile: 'Exportar',
+      icon: <Download className="w-4 h-4" />,
+      onClick: () => handleExportarPlanes(),
+      variant: 'outline'
+    })
+    return arrayBtns
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -466,22 +493,7 @@ export function ModuloPlanesMejoramientoV4() {
             { label: 'Timeline', icon: '📅', value: 'timeline' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Plan',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoPlanAbierto(true),
-            variant: 'primary'
-          },
-          {
-            label: 'Exportar',
-            labelMobile: 'Exportar',
-            icon: <Download className="w-4 h-4" />,
-            onClick: () => handleExportarPlanes(),
-            variant: 'outline'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Planes de Mejoramiento"

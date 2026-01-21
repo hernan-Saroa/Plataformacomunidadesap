@@ -26,11 +26,14 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalAutosProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 // Tipos de autos judiciales
@@ -59,7 +62,8 @@ interface Auto {
   diasRestantes?: number; // Calculated on frontend or backend
 }
 
-export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
+export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosProps) {
+  
   const [autos, setAutos] = useState<Auto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -102,7 +106,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -121,8 +125,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -162,6 +166,13 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     }
     window.open(fileUrl, '_blank');
     toast.success('👁️ Documento abierto en nueva pestaña', { description: auto.archivoNombre });
+  };
+
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
   };
 
   const handleCreateAuto = async () => {
@@ -299,6 +310,21 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       a.tipo.toLowerCase().includes(busqueda.toLowerCase()) ||
       (a.resumen && a.resumen.toLowerCase().includes(busqueda.toLowerCase()))
     );
+
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_DELETE)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_DELETE)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+    };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -481,17 +507,19 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           {/* <p className="text-xs text-gray-500 font-semibold">{auto.tamaño}</p> */}
                         </div>
                         <div className="flex items-center gap-1 flex-wrap">
-                          {/* Botón Ver */}
-                          <Button
-                            size="sm"
-                            onClick={() => handleVerAuto(auto)}
-                            title="Ver documento completo"
-                            className="font-bold text-xs px-3 py-1.5 text-white"
-                            style={{ background: '#F57C00' }}
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-1" />
-                            Ver
-                          </Button>
+                          {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                          {isPrevisuable(auto.archivoNombre) && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleVerAuto(auto)}
+                              title="Ver documento completo"
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#F57C00' }}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                          )}
 
                           {/* Botón Descargar */}
                           <Button
@@ -520,6 +548,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           )}
 
                           {/* Botón Eliminar */}
+                          {hasPermission('delete') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -529,6 +558,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -567,6 +597,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
+              {hasPermission('create') && (
               <Button
                 onClick={() => {
                   // Limpiar todos los valores antes de abrir
@@ -586,6 +617,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Plus className="w-4 h-4 mr-1.5" />
                 Cargar Auto Nuevo
               </Button>
+              )}
             </div>
           </div>
         </div>

@@ -81,6 +81,7 @@ export class CertificatesController {
     const forwarded = req.headers?.['x-forwarded-for'];
     const realIp = req.headers?.['x-real-ip'];
     const cfConnectingIp = req.headers?.['cf-connecting-ip'];
+    const clientIpHeader = req.headers?.['x-client-ip'];
     const forwardedIp = Array.isArray(forwarded)
       ? forwarded[0]
       : typeof forwarded === 'string'
@@ -88,10 +89,12 @@ export class CertificatesController {
         : '';
     const realIpValue = Array.isArray(realIp) ? realIp[0] : realIp;
     const cfIpValue = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+    const clientIpValue = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
     const ip =
       forwardedIp?.trim() ||
       (typeof cfIpValue === 'string' ? cfIpValue.trim() : '') ||
       (typeof realIpValue === 'string' ? realIpValue.trim() : '') ||
+      (typeof clientIpValue === 'string' ? clientIpValue.trim() : '') ||
       req.ip ||
       req.connection?.remoteAddress;
     const userAgent = req.get('user-agent');

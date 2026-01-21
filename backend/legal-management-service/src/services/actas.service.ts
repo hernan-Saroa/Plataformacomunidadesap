@@ -3,13 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Acta } from '../entities/acta.entity';
 import { ExpedienteService } from './expediente.service';
+import { ActuacionService } from './actuacion.service';
 
 @Injectable()
 export class ActasService {
     constructor(
         @InjectRepository(Acta)
         private readonly actaRepository: Repository<Acta>,
-        private readonly expedienteService: ExpedienteService
+        private readonly expedienteService: ExpedienteService,
+        private readonly actuacionService: ActuacionService
     ) { }
 
     // Helper para validar si es UUID
@@ -56,7 +58,25 @@ export class ActasService {
             })
         });
 
-        return this.actaRepository.save(nuevaActa);
+        const saved = await this.actaRepository.save(nuevaActa);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        try {
+            let descripcion = saved.archivoNombre ? `Nueva Acta cargada: ${saved.archivoNombre}` : 'Nueva Acta programada';
+            descripcion += saved.fecha ? `. Fecha: ${new Date(saved.fecha).toLocaleDateString()}` : '';
+            await this.actuacionService.registrarEventoAutomatico(
+                expedienteId,
+                saved.tipo ? `Acta ${saved.tipo} ${saved.numeroActa || ''}` : 'Acta de Comité',
+                descripcion,
+                'ACTA',
+                saved.id,
+                { archivo: saved.archivoUrl }
+            );
+        } catch (error) {
+            console.error('Error creando log de actuación automática para Acta:', error);
+        }
+
+        return saved;
     }
 
     async updateEstado(id: string, estado: string): Promise<Acta> {
