@@ -881,8 +881,10 @@ class RiesgosService {
 
     getReporteContabilidadUrl(): string {
         const baseUrl = getServiceUrl('legal');
-        const prefix = API_MODE === 'direct' ? '' : '/legal';
-        return `${baseUrl}${prefix}/riesgos/export/contabilidad`;
+        // Usar SERVICE_PREFIX (/legal/api/v1) en modo gateway para consistencia con otros endpoints
+        // En modo directo, asumir root del backend (sin prefijo si main.ts no lo tiene)
+        const path = API_MODE === 'direct' ? '' : SERVICE_PREFIX;
+        return `${baseUrl}${path}/riesgos/export/contabilidad`;
     }
 
     async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
