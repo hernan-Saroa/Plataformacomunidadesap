@@ -408,6 +408,16 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       // Llamar al backend para verificar documento y generar código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
 
+      const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
+      if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
+        setBuscandoEmpleado(false);
+        toast.error('El usuario no cuenta con correo registrado.', {
+          description: 'Es necesario comunicarte con un administrador para validar la identidad.',
+          duration: 7000
+        });
+        return;
+      }
+
       // Si ya tiene certificado, el backend lanzará un error
       // Guardar el código enviado
       const codigo = response.codigoTest || '470547';
@@ -432,7 +442,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         dependenciaPadre: solicitud.department_parent || solicitud.departmentParent || 'Registro padre',
         fecha_vinculacion: solicitud.hiring_date || new Date().toISOString(),
         estado: 'Activo',
-        correo_institucional: response.email,
+        correo_institucional: emailDestino,
         correo_personal: '',
         salario_actual: solicitud.monthly_salary || 0,
         templateType,
@@ -441,14 +451,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setEmpleadoEncontrado(empleado);
       setBuscandoEmpleado(false);
 
-      toast.success(`Código enviado a ${response.email}`, {
+      toast.success(`Código enviado a ${emailDestino}`, {
         description: `Por seguridad, revisa tu bandeja de entrada`,
         duration: 5000
       });
 
       // Mostrar el código en consola para pruebas
       console.log('🔐 CÓDIGO DE VALIDACIÓN:', codigo);
-      console.log('📧 Enviado a:', response.email);
+      console.log('📧 Enviado a:', emailDestino);
 
       // Avanzar al siguiente paso
       setPasoActual('validacion-codigo');
@@ -592,6 +602,16 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       // Llamar al backend para generar y enviar nuevo código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
 
+      const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
+      if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
+        setReenviandoCodigo(false);
+        toast.error('El usuario no cuenta con correo registrado.', {
+          description: 'Es necesario comunicarte con un administrador para validar la identidad.',
+          duration: 7000
+        });
+        return;
+      }
+
       const nuevoCodigo = response.codigoTest || '470547';
       setCodigoEnviado(nuevoCodigo);
       setReenviandoCodigo(false);
@@ -604,11 +624,11 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setDigitosCodigo(['', '', '', '', '', '']);
 
       toast.success('Código reenviado a tu correo', {
-        description: response.email
+        description: emailDestino
       });
 
       console.log('🔐 NUEVO CÓDIGO:', nuevoCodigo);
-      console.log('📧 Enviado a:', response.email);
+      console.log('📧 Enviado a:', emailDestino);
     } catch (error: any) {
       setReenviandoCodigo(false);
       console.error('Error al reenviar código:', error);
