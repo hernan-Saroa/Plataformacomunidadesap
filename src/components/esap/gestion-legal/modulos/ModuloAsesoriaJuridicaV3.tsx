@@ -85,6 +85,7 @@ export function ModuloAsesoriaJuridicaV3() {
     let filteredValue = value;
 
     switch (field) {
+      case 'dependenciaSolicitante':
       case 'nombreSolicitante':
       case 'cargoSolicitante':
         filteredValue = onlyLetters(value);
@@ -573,7 +574,7 @@ export function ModuloAsesoriaJuridicaV3() {
                 <Input
                   placeholder="Ej: Dirección de Contratación"
                   value={newConsultaData.dependenciaSolicitante}
-                  onChange={e => setNewConsultaData({ ...newConsultaData, dependenciaSolicitante: e.target.value })}
+                  onChange={e => handleNewConsultaInput('dependenciaSolicitante', e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
