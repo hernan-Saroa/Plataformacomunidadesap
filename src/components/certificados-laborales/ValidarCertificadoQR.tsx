@@ -137,7 +137,13 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
         empleado: {
           nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
-          cargo: getVal(response?.position_category, response?.cargo, response?.positionCategory),
+          cargo: getVal(
+            response?.career_category,
+            response?.careerCategory,
+            response?.cargo,
+            response?.position_category,
+            response?.positionCategory
+          ),
           dependencia: getVal(response?.department, response?.dependencia, response?.departmentName, response?.position_location, response?.positionLocation)
         },
         fechaEmision: fechaEmisionValida,
