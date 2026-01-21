@@ -62,6 +62,7 @@ import { GestionUsuariosPasswordTracking } from './admin/GestionUsuariosPassword
 
 // Importar Visualizador PTA (versión original)
 import { GestionProfesoralApp } from '../gestion-profesoral/GestionProfesoralApp';
+import { PermissionsProvider } from '../../contexts/PermissionsContext';
 
 type ModuleView = 
   | 'dashboard'
@@ -344,9 +345,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   console.log('---> currentSidebarModule:', currentSidebarModule);
 
   return (
-    <NotificationsProvider>
-      <TourProvider>
-        <div className="min-h-screen bg-gray-50">
+    <PermissionsProvider
+      modules={userData?.modules}
+      permissions={userData?.permissions}
+    >
+      <NotificationsProvider>
+        <TourProvider>
+          <div className="min-h-screen bg-gray-50">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
             <SidebarPremium
@@ -437,7 +442,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
             />
           )}
         </div>
-      </TourProvider>
-    </NotificationsProvider>
+        </TourProvider>
+      </NotificationsProvider>
+    </PermissionsProvider>
   );
 }

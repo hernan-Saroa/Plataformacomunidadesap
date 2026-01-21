@@ -96,19 +96,48 @@ export const modulesService = {
    * Esta función mapea la estructura de la API a la estructura esperada por el componente
    */
   mapToPermissionModules(modules: ModuleWithPermissions[]): any[] {
-    return modules.map((module) => ({
-      id: module.code,
-      name: module.name,
-      icon: module.icon,
-      color: getTextColorClass(module.color),
-      bgColor: getBgColorClass(module.color),
-      permissions: module.permissions.map((permission) => ({
+    return modules.map((module) => {
+      const flatPermissions = (module.permissions || []).map((permission) => ({
         id: permission.id,
         name: permission.name,
         description: permission.description,
         module: module.code,
-      })),
-    }));
+        code: permission.code,
+      }));
+
+      const permissionsByGroup = flatPermissions.reduce<Record<string, typeof flatPermissions>>((acc, permission) => {
+        const [, group] = permission.code.split('.');
+        const groupKey = group || 'otros';
+        if (!acc[groupKey]) acc[groupKey] = [];
+        acc[groupKey].push(permission);
+        return acc;
+      }, {});
+
+      return {
+        id: module.code,
+        name: module.name,
+        icon: module.icon,
+        color: getTextColorClass(module.color),
+        bgColor: getBgColorClass(module.color),
+        permissions: flatPermissions,
+        // Solo agrupamos permisos por segundo segmento del code para gestión legal
+        permissionGroups:
+          module.code === 'gestion-legal'
+            ? Object.entries(
+                flatPermissions.reduce<Record<string, typeof flatPermissions>>((acc, permission) => {
+                  const [, group] = permission.code.split('.');
+                  const groupKey = group || 'otros';
+                  if (!acc[groupKey]) acc[groupKey] = [];
+                  acc[groupKey].push(permission);
+                  return acc;
+                }, {}),
+              ).map(([group, permissions]) => ({
+                group,
+                permissions,
+              }))
+            : [],
+      };
+    });
   },
 };
 

@@ -36,6 +36,8 @@ import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 import { ModalNuevaActuacion } from './ModalNuevaActuacion';
 import { ModalNuevaAudiencia } from './ModalNuevaAudiencia';
 
@@ -1120,6 +1122,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <Download className="w-3 h-3 mr-1" />
                         Descargar Todos
                       </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
                       <Button
                         size="sm"
                         className="bg-green-600 hover:bg-green-700 text-white font-bold"
@@ -1129,6 +1132,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <Upload className="w-3 h-3 mr-1" />
                         {uploadingDoc ? 'Subiendo...' : 'Subir'}
                       </Button>
+                      )}
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -1247,6 +1251,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <p className="text-sm text-gray-600 mb-6">
                               Este expediente aún no tiene documentos cargados. Los documentos aparecerán aquí una vez sean agregados al proceso judicial.
                             </p>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) && (
                             <Button
                               style={{ background: '#003DA5', color: '#FFFFFF' }}
                               className="font-bold"
@@ -1259,6 +1264,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               <Upload className="w-4 h-4 mr-2" />
                               Cargar Primer Documento
                             </Button>
+                            )}
                           </>
                         ) : (
                           <>
@@ -1479,6 +1485,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Target className="w-4 h-4 text-orange-600" />
                       Tareas y Pendientes del Expediente
                     </h4>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
                     <Button
                       size="sm"
                       className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
@@ -1487,6 +1494,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Plus className="w-3 h-3 mr-1" />
                       Nueva Tarea
                     </Button>
+                    )}
                   </div>
                 </Card>
 
@@ -1642,6 +1650,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                 Marcar Completada
                               </Button>
                             )}
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -1650,6 +1659,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             >
                               <Trash2 className="w-3 h-3" />
                             </Button>
+                            )}
                           </div>
                         </Card>
                       );
@@ -1666,6 +1676,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Bookmark className="w-4 h-4 text-yellow-600" />
                       Notas Internas del Expediente
                     </h4>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
                     <Button
                       size="sm"
                       className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
@@ -1674,6 +1685,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Plus className="w-3 h-3 mr-1" />
                       Agregar Nota
                     </Button>
+                    )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
                     Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial
@@ -1774,6 +1786,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                               <Calendar className="w-3 h-3" />
                               {nota.createdAt ? new Date(nota.createdAt).toLocaleDateString() : ''}
                             </span>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_DELETE) && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -1782,6 +1795,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             >
                               <Trash2 className="w-3 h-3" />
                             </Button>
+                            )}
                           </div>
                         </div>
                         <p className="text-sm text-gray-800 mb-2">{nota.contenido}</p>

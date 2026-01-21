@@ -40,6 +40,8 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
@@ -308,6 +310,18 @@ export function ModuloDefensaJudicialV3() {
     }
   };
 
+  const addBtnsPermission = () => {
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
+      return [{
+        label: 'Nueva Demanda',
+        icon: <Plus className="w-4 h-4 mr-1" />,
+        onClick: () => setModalNuevaDemandaOpen(true),
+        className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
+      }]
+    }
+    return []
+  };
+
   return (
     <div className="space-y-3 md:space-y-4">
       {/* Header con Info Tooltip */}
@@ -316,14 +330,7 @@ export function ModuloDefensaJudicialV3() {
           <ModuleHeader
             title="Tablero Kanban Operativo"
             subtitle="Gestión visual de demandas judiciales contra ESAP"
-            buttons={[
-              {
-                label: 'Nueva Demanda',
-                icon: <Plus className="w-4 h-4 mr-1" />,
-                onClick: () => setModalNuevaDemandaOpen(true),
-                className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
-              }
-            ]}
+            buttons={addBtnsPermission()}
             toggleView={{
               current: tipoVista,
               onChange: setTipoVista,

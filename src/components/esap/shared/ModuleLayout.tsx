@@ -170,7 +170,7 @@ export function ModuleLayout({
                 {menuItems.map((item) => {
                   const isActive = activeSection === item.id;
                   const itemColor = item.color || moduleColor;
-                  
+                  if (item.visible != undefined && !item.visible) return null;
                   return (
                     <button
                       key={item.id}
@@ -306,7 +306,7 @@ export function ModuleLayout({
             {menuItems.map((item) => {
               const isActive = activeSection === item.id;
               const itemColor = item.color || moduleColor;
-              
+              if (item.visible != undefined && !item.visible) return null;
               return (
                 <motion.button
                   key={item.id}
