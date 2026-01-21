@@ -26,6 +26,8 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -102,7 +104,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -121,8 +123,8 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -529,6 +531,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           )}
 
                           {/* Botón Eliminar */}
+                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_DELETE) && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -538,6 +541,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -576,6 +580,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_CREATE) && (
               <Button
                 onClick={() => {
                   // Limpiar todos los valores antes de abrir
@@ -595,6 +600,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Plus className="w-4 h-4 mr-1.5" />
                 Cargar Auto Nuevo
               </Button>
+              )}
             </div>
           </div>
         </div>

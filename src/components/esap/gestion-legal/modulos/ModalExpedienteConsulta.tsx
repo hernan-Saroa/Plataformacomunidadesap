@@ -399,8 +399,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         filename = url.split('/').pop() || url;
       }
 
-      // Construir URL: directo sin prefix, gateway con /legal/api/v1/
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Construir URL: directo sin prefix, gateway con /legal/ (NO /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
@@ -455,7 +455,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -1263,8 +1264,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </div>
         </DialogContent>
       </Dialog>
-  {/* MODALES SECUNDARIOS */ }
-  {/* 
+      {/* MODALES SECUNDARIOS */}
+      {/* 
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}
