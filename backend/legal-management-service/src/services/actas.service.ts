@@ -62,10 +62,12 @@ export class ActasService {
 
         // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
         try {
+            let descripcion = saved.archivoNombre ? `Nueva Acta cargada: ${saved.archivoNombre}` : 'Nueva Acta programada';
+            descripcion += saved.fecha ? `. Fecha: ${new Date(saved.fecha).toLocaleDateString()}` : '';
             await this.actuacionService.registrarEventoAutomatico(
                 expedienteId,
                 saved.tipo ? `Acta ${saved.tipo} ${saved.numeroActa || ''}` : 'Acta de Comité',
-                `Nueva Acta cargada: ${saved.archivoNombre}. Fecha: ${saved.fecha ? new Date(saved.fecha).toLocaleDateString() : 'N/A'}`,
+                descripcion,
                 'ACTA',
                 saved.id,
                 { archivo: saved.archivoUrl }
