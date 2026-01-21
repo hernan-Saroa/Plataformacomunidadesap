@@ -39,6 +39,8 @@ import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 type ApprovalForm = {
   fullName: string;
@@ -1097,7 +1099,7 @@ export function ReviewRequestsModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {request.status === 'pending' && (
+                          {request.status === 'pending' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -1108,14 +1110,18 @@ export function ReviewRequestsModule() {
                           )}
                           {request.status === 'under_review' && (
                             <>
+                              {authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_APROBAR) && (
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
                                 Aprobar
                               </DropdownMenuItem>
+                              )}
+                              {authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR) && (
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
                                 <XCircle className="w-4 h-4 mr-2" />
                                 Rechazar
                               </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                             </>
                           )}

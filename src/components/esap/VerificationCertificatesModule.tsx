@@ -68,6 +68,8 @@ import graduadosService, {
   ValidacionCertificado,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -1201,6 +1203,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       </motion.div>
 
           <div className="flex justify-end">
+            {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all"
@@ -1226,6 +1229,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <Download className="w-5 h-5" strokeWidth={2} />
               <span>Exportar</span>
             </button>
+            )}
           </div>
 
       {/* Info Banner */}
@@ -1575,10 +1579,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar certificado
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_REENVIAR) && (
                           <DropdownMenuItem
                             onClick={() => handleResendCertificate(cert)}
                             disabled={resendingCertificateId === cert.id}
@@ -1590,6 +1597,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             )}
                             {resendingCertificateId === cert.id ? 'Reenviando...' : 'Reenviar certificado'}
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
