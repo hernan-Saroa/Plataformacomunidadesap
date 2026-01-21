@@ -164,6 +164,13 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
     toast.success('👁️ Documento abierto en nueva pestaña', { description: auto.archivoNombre });
   };
 
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
+  };
+
   const handleCreateAuto = async () => {
     if (!selectedFile) {
       toast.error('Debes adjuntar el archivo del auto');
@@ -481,17 +488,19 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           {/* <p className="text-xs text-gray-500 font-semibold">{auto.tamaño}</p> */}
                         </div>
                         <div className="flex items-center gap-1 flex-wrap">
-                          {/* Botón Ver */}
-                          <Button
-                            size="sm"
-                            onClick={() => handleVerAuto(auto)}
-                            title="Ver documento completo"
-                            className="font-bold text-xs px-3 py-1.5 text-white"
-                            style={{ background: '#F57C00' }}
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-1" />
-                            Ver
-                          </Button>
+                          {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                          {isPrevisuable(auto.archivoNombre) && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleVerAuto(auto)}
+                              title="Ver documento completo"
+                              className="font-bold text-xs px-3 py-1.5 text-white"
+                              style={{ background: '#F57C00' }}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                          )}
 
                           {/* Botón Descargar */}
                           <Button
