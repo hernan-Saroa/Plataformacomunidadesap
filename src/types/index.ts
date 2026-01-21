@@ -86,10 +86,28 @@ export interface AuthUser {
   lastName: string;
   fullName: string;
   avatar?: string;
-  roles: string[];
+  roles: Role[];
   permissions: string[];
   isActive: boolean;
   lastLogin?: string;
+}
+
+export interface Role {
+  category: string;
+  code: string;
+  color: string;
+  created_at: string;
+  created_by: string;
+  description: string;
+  icon: string;
+  id: string;
+  is_active: boolean;
+  name: string;
+  permissions: string[];
+  requires_2fa: boolean;
+  type: string;
+  updated_at: string;
+  updated_by: string;
 }
 
 // ============================================================================

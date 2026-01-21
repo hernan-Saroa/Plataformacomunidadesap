@@ -49,6 +49,32 @@ export class ActuacionService {
         return saved;
     }
 
+    /**
+     * Registra automáticamente un evento crítico en el historial cronológico unificado
+     * (Usado por hooks desde otros servicios)
+     */
+    async registrarEventoAutomatico(
+        expedienteId: string,
+        titulo: string,
+        descripcion: string,
+        origen: string,
+        referenciaId: string,
+        metadatos: any = {},
+        usuario: string = 'Sistema'
+    ): Promise<Actuacion> {
+        const actuacion = this.actuacionRepository.create({
+            expedienteId,
+            tipoActuacion: titulo, // El título del evento actúa como tipo
+            descripcion,
+            origen,
+            referenciaId,
+            metadata: metadatos,
+            usuarioResponsable: usuario,
+            fechaActuacion: new Date()
+        });
+        return this.actuacionRepository.save(actuacion);
+    }
+
     async listarPorExpediente(expedienteId: string): Promise<Actuacion[]> {
         return this.actuacionRepository.find({
             where: { expedienteId },

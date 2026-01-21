@@ -18,6 +18,8 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface DocumentoSeleccionado {
   archivo: File;
@@ -257,6 +259,17 @@ export function ModalGestionDocumentos({
     }
   };
 
+  // Helper para detectar si un archivo es previsuable en el navegador
+  const isPrevisuable = (doc: DocumentoCargado): boolean => {
+    const nombre = doc.nombre?.toLowerCase() || '';
+    // Word files cannot be previewed, only downloaded
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+      return false;
+    }
+    // PDF and images can be previewed
+    return doc.tipo === 'PDF' || doc.tipo === 'Imagen';
+  };
+
   const handleDescargar = (doc: DocumentoCargado) => {
     if (!doc.url) return;
     toast.info('Abriendo documento...', {
@@ -265,7 +278,8 @@ export function ModalGestionDocumentos({
     });
     try {
       const baseUrl = getServiceUrl('legal');
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       let filename = doc.url;
       if (doc.url.includes('/files/')) filename = doc.url.split('/files/').pop()!;
       else if (doc.url.includes('files/')) filename = doc.url.split('files/').pop()!;
@@ -380,6 +394,7 @@ export function ModalGestionDocumentos({
                 <p className="text-sm text-gray-600 mb-4">
                   Arrastra archivos aquí o haz clic en el botón
                 </p>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
                 <Button
                   onClick={handleSeleccionarArchivo}
                   style={{ background: '#003DA5' }}
@@ -388,6 +403,7 @@ export function ModalGestionDocumentos({
                   <FolderOpen className="w-4 h-4 mr-2" />
                   📂 Seleccionar Archivo
                 </Button>
+                )}
                 <p className="text-xs text-gray-500 mt-3">
                   Tamaño máximo: 50 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
                 </p>
@@ -578,14 +594,16 @@ export function ModalGestionDocumentos({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 ml-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDescargar(doc)}
-                        title="Ver Documento"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
+                      {isPrevisuable(doc) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDescargar(doc)}
+                          title="Ver Documento"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
                       {/* <Button
                         variant="ghost"
                         size="sm"
@@ -653,6 +671,7 @@ export function ModalGestionDocumentos({
               <Download className="w-4 h-4 mr-2" />
               Descargar Todos
             </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
             <Button
               onClick={handleSeleccionarArchivo}
               style={{ background: '#003DA5' }}
@@ -661,6 +680,7 @@ export function ModalGestionDocumentos({
               <Upload className="w-4 h-4 mr-2" />
               Agregar Más Documentos
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

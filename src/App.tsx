@@ -153,8 +153,21 @@ interface UserData {
   personId: string;
   hasBothSystemsAccess?: boolean;
   module?: string;
+  modules?: string[];
+  roles?: string[];
+  permissions?: string[];
   datos_por_rol?: any;
 }
+
+const extractPermissionCodes = (user: any): string[] => {
+  if (!user?.roles || !Array.isArray(user.roles)) return [];
+  const codes = user.roles.flatMap((role: any) =>
+    Array.isArray(role?.permissions)
+      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
+      : []
+  );
+  return Array.from(new Set(codes));
+};
 
 // Configuración de timeout (15 minutos en milisegundos)
 const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
@@ -182,7 +195,7 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '' });
+  const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
   const [userRoles, setUserRoles] = useState<string[]>([]);
   const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
@@ -214,6 +227,7 @@ export default function App() {
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
+      const permissions = extractPermissionCodes(user);
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
       // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
@@ -277,6 +291,7 @@ export default function App() {
         personId: user?.person?.id || user?.id,
         modules: user?.modules || [],
         roles,
+        permissions,
         module
       });
       setUsuarioActual({
@@ -468,6 +483,7 @@ export default function App() {
 
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
+      const permissions = extractPermissionCodes(user);
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
       // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
@@ -484,7 +500,8 @@ export default function App() {
           email: userEmail,
           personId: user?.person?.id || user?.id,
           modules: user?.modules || [],
-          roles
+          roles,
+          permissions
         });
         setUsuarioActual({
           id: user?.id || user?.person?.id || 'unknown',
@@ -537,13 +554,15 @@ export default function App() {
             personId: user?.person?.id || user?.id,
             modules: user?.modules || [],
             roles,
+            permissions,
             module: module // Módulo específico de acceso
           };
           setUserData(userDataToSave);
           // También guardar en esap_user_data para que otros componentes puedan acceder
           localStorage.setItem('esap_user_data', JSON.stringify({
             ...user,
-            roles: user?.roles || roles.map((code: string) => ({ code, name: code }))
+            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
+            permissions
           }));
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -568,7 +587,8 @@ export default function App() {
                 anos_experiencia: 10,
               }
             },
-            roles
+            roles,
+            permissions
           };
           setUserData(userDataWithDetails);
         } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
@@ -579,7 +599,8 @@ export default function App() {
             email: userEmail,
             personId: user?.person?.id || user?.id,
             modules: user?.modules || [],
-            roles
+            roles,
+            permissions
           });
         } else {
           userType = 'estudiante';
@@ -589,7 +610,8 @@ export default function App() {
             email: userEmail,
             personId: user?.person?.id || user?.id,
             modules: user?.modules || [],
-            roles
+            roles,
+            permissions
           });
         }
 

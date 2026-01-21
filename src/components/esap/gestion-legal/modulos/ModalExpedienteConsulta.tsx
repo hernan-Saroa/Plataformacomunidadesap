@@ -35,6 +35,8 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -399,8 +401,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         filename = url.split('/').pop() || url;
       }
 
-      // Construir URL: directo sin prefix, gateway con /legal/api/v1/
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Construir URL: directo sin prefix, gateway con /legal/ (NO /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
@@ -455,7 +457,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -946,10 +949,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         <Download className="w-4 h-4 mr-2" />
                         Descargar Todos (ZIP)
                       </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
                       <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
                         <Upload className="w-4 h-4 mr-2" />
                         {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
                       </Button>
+                      )}
                     </div>
                   </div>
 
@@ -996,6 +1001,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               <Download className="w-4 h-4 mr-1" />
                               Descargar
                             </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -1005,6 +1011,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               <Trash2 className="w-4 h-4 mr-1" />
                               Eliminar
                             </Button>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -1263,8 +1270,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </div>
         </DialogContent>
       </Dialog>
-  {/* MODALES SECUNDARIOS */ }
-  {/* 
+      {/* MODALES SECUNDARIOS */}
+      {/* 
       {modalCompartirAbierto && (
         <ModalCompartir
           isOpen={modalCompartirAbierto}

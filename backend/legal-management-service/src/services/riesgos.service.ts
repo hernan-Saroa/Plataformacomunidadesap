@@ -85,6 +85,27 @@ export class RiesgosService {
         data.zonaInherente = this.calcularZona(data.probabilidadInherente || 3, data.impactoInherente || 3);
         data.zonaResidual = this.calcularZona(data.probabilidadResidual || data.probabilidadInherente || 3, data.impactoResidual || data.impactoInherente || 3);
 
+        // Recalcular provisión contable
+        if (data.cuantiaEstimada && Number(data.cuantiaEstimada) > 0) {
+            let provision = 0;
+            let porcentaje = 0;
+
+            if (data.porcentajeProvision !== undefined) {
+                // Prioridad: Porcentaje Manual
+                porcentaje = Number(data.porcentajeProvision);
+                provision = (Number(data.cuantiaEstimada) * porcentaje) / 100;
+            } else {
+                // Fallback: Automático por zona
+                const calculo = this.calcularProvision(Number(data.cuantiaEstimada), data.zonaResidual);
+                provision = calculo.provision;
+                porcentaje = calculo.porcentaje;
+            }
+
+            data.provisionContable = provision;
+            data.porcentajeProvision = porcentaje;
+            data.fechaCalculoProvision = new Date();
+        }
+
         const riesgo = this.riesgoRepo.create(data);
         const saved = await this.riesgoRepo.save(riesgo);
 
@@ -133,6 +154,28 @@ export class RiesgosService {
                 data.probabilidadResidual ?? riesgo.probabilidadResidual,
                 data.impactoResidual ?? riesgo.impactoResidual
             );
+        }
+
+        // Recalcular provisión contable (Lógica Híbrida Manual/Automática)
+        const zonaFinal = data.zonaResidual ?? riesgo.zonaResidual;
+        const cuantiaFinal = data.cuantiaEstimada !== undefined ? Number(data.cuantiaEstimada) : Number(riesgo.cuantiaEstimada || 0);
+
+        // Si viene un porcentaje manual explícito (incluso 0), lo respetamos
+        if (data.porcentajeProvision !== undefined) {
+            const porcentaje = Number(data.porcentajeProvision);
+            const provision = (cuantiaFinal * porcentaje) / 100;
+
+            data.provisionContable = provision;
+            data.porcentajeProvision = porcentaje;
+            data.fechaCalculoProvision = new Date();
+        }
+        // Si no viene porcentaje pero cambia cuantía/zona, recalculamos automático solo si no había manual antes?
+        // Simplificación: Si el usuario no mandó porcentaje, asumimos recálculo automático
+        else if (data.cuantiaEstimada !== undefined || data.zonaResidual !== undefined) {
+            const { provision, porcentaje } = this.calcularProvision(cuantiaFinal, zonaFinal);
+            data.provisionContable = provision;
+            data.porcentajeProvision = porcentaje;
+            data.fechaCalculoProvision = new Date();
         }
 
         Object.assign(riesgo, data);
@@ -263,6 +306,219 @@ export class RiesgosService {
         if (valor >= 12) return 'ALTO';
         if (valor >= 5) return 'MODERADO';
         return 'BAJO';
+    }
+
+    // ============================================
+    // PROVISIÓN CONTABLE
+    // ============================================
+
+    /**
+     * Calcula la provisión contable según la zona de riesgo
+     * EXTREMO: 100%, ALTO: 75%, MODERADO: 50%, BAJO: 25%
+     */
+    calcularProvision(cuantia: number, zona: ZonaRiesgo): { provision: number; porcentaje: number } {
+        const porcentajes: Record<ZonaRiesgo, number> = {
+            'EXTREMO': 100,
+            'ALTO': 75,
+            'MODERADO': 50,
+            'BAJO': 25
+        };
+        const porcentaje = porcentajes[zona] || 50;
+        const provision = (cuantia * porcentaje) / 100;
+        return { provision, porcentaje };
+    }
+
+    /**
+     * Actualiza la provisión contable de un riesgo
+     */
+    async actualizarProvision(id: string, cuantiaEstimada: number): Promise<Riesgo> {
+        const riesgo = await this.findOne(id);
+        const cuantiaAnterior = riesgo.cuantiaEstimada;
+
+        const { provision, porcentaje } = this.calcularProvision(cuantiaEstimada, riesgo.zonaResidual);
+
+        riesgo.cuantiaEstimada = cuantiaEstimada;
+        riesgo.provisionContable = provision;
+        riesgo.porcentajeProvision = porcentaje;
+        riesgo.fechaCalculoProvision = new Date();
+
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar evento
+        await this.registrarEvento(
+            id,
+            'ACTUALIZACION',
+            `Provisión calculada: $${provision.toLocaleString()} (${porcentaje}% de $${cuantiaEstimada.toLocaleString()})`,
+            'provision_contable',
+            cuantiaAnterior?.toString() || '0',
+            cuantiaEstimada.toString(),
+            'Sistema'
+        );
+
+        return saved;
+    }
+
+    /**
+     * Genera reporte de provisiones para Contabilidad
+     */
+    async getReporteContabilidad(): Promise<{
+        fechaGeneracion: Date;
+        totalProvision: number;
+        totalCuantia: number;
+        riesgos: {
+            codigo: string;
+            nombre: string;
+            proceso: string;
+            zona: ZonaRiesgo;
+            cuantiaEstimada: number;
+            porcentajeProvision: number;
+            provisionContable: number;
+            fechaCalculo: Date | null;
+        }[];
+    }> {
+        const riesgos = await this.riesgoRepo.find({
+            where: { estado: 'ACTIVO' as EstadoRiesgo },
+            order: { zonaResidual: 'DESC', cuantiaEstimada: 'DESC' }
+        });
+
+        const reporte = riesgos.map(r => ({
+            codigo: r.codigo,
+            nombre: r.nombre,
+            proceso: r.procesoRadicado ? `${r.procesoRadicado} (${r.moduloOrigen || 'General'})` : r.proceso,
+            zona: r.zonaResidual,
+            cuantiaEstimada: Number(r.cuantiaEstimada) || 0,
+            porcentajeProvision: r.porcentajeProvision || 0,
+            provisionContable: Number(r.provisionContable) || 0,
+            fechaCalculo: r.fechaCalculoProvision || null
+        }));
+
+        const totalCuantia = reporte.reduce((sum, r) => sum + r.cuantiaEstimada, 0);
+        const totalProvision = reporte.reduce((sum, r) => sum + r.provisionContable, 0);
+
+        return {
+            fechaGeneracion: new Date(),
+            totalProvision,
+            totalCuantia,
+            riesgos: reporte
+        };
+    }
+    async generarReporteContabilidadPDF(): Promise<Buffer> {
+        const PDFDocument = require('pdfkit');
+        const data = await this.getReporteContabilidad();
+
+        return new Promise((resolve, reject) => {
+            const doc = new PDFDocument({ margin: 50 });
+            const buffers: any[] = [];
+
+            doc.on('data', (buffer: any) => buffers.push(buffer));
+            doc.on('end', () => resolve(Buffer.concat(buffers)));
+            doc.on('error', reject);
+
+            // LOGO (Texto por ahora)
+            doc.fontSize(10).text('PLATAFORMA ESAP - GESTIÓN DE RIESGOS', { align: 'right' });
+            doc.moveDown();
+
+            // === ENCABEZADO ===
+            doc.fontSize(16).font('Helvetica-Bold').text('REPORTE DE ESTIMACIÓN DE RIESGOS PARA PROVISIÓN CONTABLE', { align: 'center' });
+            doc.moveDown();
+            doc.fontSize(10).font('Helvetica').text(`Fecha de Generación: ${new Date().toLocaleString('es-CO')}`, { align: 'right' });
+            doc.moveDown();
+
+            // === RESUMEN ===
+            doc.rect(50, doc.y, 510, 80).fillAndStroke('#f3f4f6', '#e5e7eb');
+            doc.fill('black');
+            doc.moveUp(); // Volver arriba
+
+            let y = doc.y + 15;
+            doc.fontSize(12).font('Helvetica-Bold').text('RESUMEN GENERAL', 70, y);
+            y += 25;
+
+            // Fila 1 de resumen
+            doc.fontSize(10).font('Helvetica').text(`Total Riesgos Activos: ${data.riesgos.length}`, 70, y);
+
+            // Fila 2 de resumen (separada para evitar solapamiento)
+            y += 20;
+            doc.text(`Total Cuantía Estimada: $${data.totalCuantia.toLocaleString('es-CO')}`, 70, y);
+            doc.font('Helvetica-Bold').text(`Total Provisión: $${data.totalProvision.toLocaleString('es-CO')}`, 350, y);
+
+            doc.y = y + 50; // Mover cursor abajo del cuadro
+
+            // === DETALLE ===
+            doc.fontSize(14).font('Helvetica-Bold').text('DETALLE POR RIESGO', 50, doc.y);
+            doc.moveDown();
+
+            const itemHeight = 20;
+
+            // Cabecera de tabla
+            y = doc.y;
+            doc.rect(50, y, 510, 20).fillAndStroke('#003DA5', '#003DA5');
+            doc.fill('white');
+            doc.fontSize(9).font('Helvetica-Bold');
+            doc.text('Código', 60, y + 5);
+            doc.text('Proceso / Radicado', 110, y + 5);
+            doc.text('Zona', 230, y + 5);
+            doc.text('Cuantía', 280, y + 5, { width: 80, align: 'right' });
+            doc.text('%', 370, y + 5, { width: 30, align: 'right' });
+            doc.text('Provisión', 410, y + 5, { width: 80, align: 'right' });
+            doc.text('Fecha Calc.', 500, y + 5);
+
+            doc.fill('black');
+            y += 25;
+            doc.font('Helvetica');
+
+            data.riesgos.forEach((r: any, index: number) => {
+                // Verificar salto de página
+                if (y + itemHeight > doc.page.height - 50) {
+                    doc.addPage();
+                    y = 50;
+                    // Repetir cabecera
+                    doc.rect(50, y, 510, 20).fillAndStroke('#003DA5', '#003DA5');
+                    doc.fill('white');
+                    doc.fontSize(9).font('Helvetica-Bold');
+                    doc.text('Código', 60, y + 5);
+                    doc.text('Proceso / Radicado', 110, y + 5);
+                    doc.text('Zona', 230, y + 5);
+                    doc.text('Cuantía', 280, y + 5, { width: 80, align: 'right' });
+                    doc.text('%', 370, y + 5, { width: 30, align: 'right' });
+                    doc.text('Provisión', 410, y + 5, { width: 80, align: 'right' });
+                    doc.text('Fecha Calc.', 500, y + 5);
+                    doc.fill('black');
+                    y += 25;
+                    doc.font('Helvetica');
+                }
+
+                // Alternar color de fondo
+                if (index % 2 === 0) {
+                    doc.rect(50, y - 2, 510, itemHeight).fill('#f9fafb');
+                    doc.fill('black');
+                }
+
+                doc.fontSize(8);
+                doc.text(r.codigo, 60, y);
+                doc.text(r.proceso.substring(0, 35), 110, y, { width: 110 }); // Más espacio para proceso
+                doc.text(r.zona, 230, y);
+                doc.text(`$${r.cuantiaEstimada.toLocaleString('es-CO')}`, 280, y, { width: 80, align: 'right' });
+                doc.text(`${r.porcentajeProvision}%`, 370, y, { width: 30, align: 'right' });
+                doc.text(`$${r.provisionContable.toLocaleString('es-CO')}`, 410, y, { width: 80, align: 'right' });
+                doc.text(r.fechaCalculo ? new Date(r.fechaCalculo).toLocaleDateString() : '-', 500, y);
+
+                y += itemHeight;
+            });
+
+            // Pie de página
+            const pageCount = doc.bufferedPageRange().count;
+            for (let i = 0; i < pageCount; i++) {
+                doc.switchToPage(i);
+                doc.fontSize(8).text(
+                    `Generado por Plataforma ESAP | Página ${i + 1} de ${pageCount}`,
+                    50,
+                    doc.page.height - 40,
+                    { align: 'center', width: 500 }
+                );
+            }
+
+            doc.end();
+        });
     }
 }
 

@@ -135,7 +135,17 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
+    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
     return user?.permissions?.includes(permission) || false;
+  }
+
+  /**
+   * Verifica si el usuario es un super admin
+   */
+  isSuperAdmin(): boolean {
+    const user = this.getCurrentUser();
+    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
+    return false;
   }
 
   /**

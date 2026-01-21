@@ -58,6 +58,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
     let filteredValue = value;
 
     switch (field) {
+      case 'solicitante':
       case 'funcionarioSolicitante':
       case 'cargo':
         // Solo letras y espacios - usar helper (igual que NuevaDemanda)
@@ -272,7 +273,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSubmit }: ModalNuevaCons
                     id="solicitante"
                     placeholder="Ej: Dirección de Contratación, Talento Humano..."
                     value={formData.solicitante || ''}
-                    onChange={(e) => setFormData({ ...formData, solicitante: e.target.value })}
+                    onChange={(e) => handleInputChange('solicitante', e.target.value)}
                     required
                   />
                 </div>

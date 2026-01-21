@@ -61,7 +61,7 @@ export class LaborCertificatePdfService {
   }
 
   private resolveTemplateType(certificate: Certificate): TemplateType {
-    const rawText = `${certificate.position_category || ''} ${certificate.career_category || ''}`;
+    const rawText = `${certificate.career_category || ''}`;
     const text = rawText
       .toLowerCase()
       .normalize('NFD')
@@ -127,6 +127,9 @@ export class LaborCertificatePdfService {
     const requestObservations =
       (certificate as Certificate & { request?: { observations?: string } }).request
         ?.observations || certificateExtras.observations || '';
+    const requestPositionLocation =
+      (certificate as Certificate & { request?: { position_location?: string } }).request
+        ?.position_location || '';
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
@@ -137,10 +140,11 @@ export class LaborCertificatePdfService {
     const grado = certificate.position_location || '';
     const dependenciaHijo = certificate.department || '';
     const dependenciaPadre =
+      (certificate as Certificate & { request?: { department_parent?: string } }).request
+        ?.department_parent ||
       certificateExtras.department_parent ||
       certificateExtras.departmentParent ||
-      dependenciaHijo ||
-      'Registro padre';
+      '';
 
     const ubicacion =
       certificate.position_location ||
@@ -159,7 +163,8 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 = templateType === 'administrador' ? ubicacionCargo : dependenciaHijo;
+    const dato7 = requestPositionLocation || certificate.position_location || '';
+    const cargoDato6 = cargoTexto;
 
     const salarioBase = Number(certificate.monthly_salary || 0);
     const salarioTextoBase = certificate.salary_text || '';
@@ -181,6 +186,7 @@ export class LaborCertificatePdfService {
       '[NOMBRE_EMPLEADO]': fullName,
       '[DOCUMENTO]': documentNumber,
       '[CARGO]': cargoPlantilla,
+      '[CARGO DATO6]': cargoDato6,
       '[DEPENDENCIA]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',

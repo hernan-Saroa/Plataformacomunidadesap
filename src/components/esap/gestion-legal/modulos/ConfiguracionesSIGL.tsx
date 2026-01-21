@@ -26,6 +26,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar Context API
 import {
@@ -444,6 +446,7 @@ export function ConfiguracionesSIGL() {
                         }
                       </p>
                     </div>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
                     <button
                       onClick={agregarEstado}
                       className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
@@ -455,6 +458,7 @@ export function ConfiguracionesSIGL() {
                       <Plus className="w-4 h-4" />
                       <span>Agregar</span>
                     </button>
+                    )}
                   </div>
 
                   <DndContext
@@ -496,6 +500,7 @@ export function ConfiguracionesSIGL() {
                           Define los tipos de procesos que estarán disponibles en el formulario de Nueva Demanda
                         </p>
                       </div>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
                       <button
                         onClick={agregarTipoProceso}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
@@ -507,6 +512,7 @@ export function ConfiguracionesSIGL() {
                         <Plus className="w-4 h-4" />
                         <span>Agregar Tipo</span>
                       </button>
+                      )}
                     </div>
 
                     <div className="space-y-3">
@@ -518,23 +524,27 @@ export function ConfiguracionesSIGL() {
                           {/* Fila 1: Nombre + Eliminar */}
                           <div className="flex items-center gap-2 mb-3">
                             <input
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
                               type="text"
                               value={tipo.nombre}
                               onChange={(e) => actualizarTipoProceso(tipo.id, { nombre: e.target.value })}
                               className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="Nombre del tipo de proceso"
                             />
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
                             <button
                               onClick={() => solicitarEliminarTipoProceso(tipo.id)}
                               className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                            )}
                           </div>
 
                           {/* Fila 2: Descripción */}
                           <div className="mb-3">
                             <textarea
+                              disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
                               value={tipo.descripcion}
                               onChange={(e) => actualizarTipoProceso(tipo.id, { descripcion: e.target.value })}
                               className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -551,6 +561,7 @@ export function ConfiguracionesSIGL() {
                                 Plazo:
                               </label>
                               <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
                                 type="number"
                                 value={tipo.plazo}
                                 onChange={(e) => actualizarTipoProceso(tipo.id, { plazo: parseInt(e.target.value) || 0 })}
@@ -566,6 +577,7 @@ export function ConfiguracionesSIGL() {
                                 Alerta:
                               </label>
                               <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
                                 type="number"
                                 value={tipo.alertaDias}
                                 onChange={(e) => actualizarTipoProceso(tipo.id, { alertaDias: parseInt(e.target.value) || 0 })}
@@ -579,6 +591,7 @@ export function ConfiguracionesSIGL() {
                             {/* Toggle Activo */}
                             <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
                               <input
+                                disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
                                 type="checkbox"
                                 checked={tipo.activo}
                                 onChange={(e) => actualizarTipoProceso(tipo.id, { activo: e.target.checked })}
@@ -928,6 +941,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
         </div>
 
         <input
+          disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
           type="text"
           value={estado.nombre}
           onChange={(e) => onUpdate(estado.id, { nombre: e.target.value })}
@@ -938,6 +952,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
         {/* Toggle Activo */}
         <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
           <input
+            disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_EDIT)}
             type="checkbox"
             checked={estado.activo}
             onChange={(e) => onUpdate(estado.id, { activo: e.target.checked })}
@@ -945,7 +960,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
           />
           <span className="text-xs sm:text-sm text-gray-700 whitespace-nowrap">Activo</span>
         </label>
-
+        {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -955,6 +970,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
         >
           <Trash2 className="w-4 h-4" />
         </button>
+        )}
       </div>
     </div>
   );

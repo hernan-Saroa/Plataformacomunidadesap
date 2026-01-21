@@ -4,12 +4,15 @@ import { Repository } from 'typeorm';
 import { Evidencia } from '../entities/evidencia.entity';
 import { ExpedienteService } from './expediente.service';
 
+import { ActuacionService } from './actuacion.service';
+
 @Injectable()
 export class EvidenciasService {
     constructor(
         @InjectRepository(Evidencia)
         private readonly evidenciaRepository: Repository<Evidencia>,
-        private readonly expedienteService: ExpedienteService
+        private readonly expedienteService: ExpedienteService,
+        private readonly actuacionService: ActuacionService
     ) { }
 
     // Helper para validar si es UUID
@@ -57,7 +60,23 @@ export class EvidenciasService {
             archivoTamano: file.size,
         });
 
-        return this.evidenciaRepository.save(nuevaEvidencia);
+        const saved = await this.evidenciaRepository.save(nuevaEvidencia);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                expedienteId,
+                saved.descripcion || 'Evidencia Cargada',
+                `Nueva Evidencia: ${saved.archivoNombre}. Fecha: ${saved.fechaPresentacion ? new Date(saved.fechaPresentacion).toLocaleDateString() : 'N/A'}`,
+                'EVIDENCIA',
+                saved.id,
+                { archivo: saved.archivoUrl }
+            );
+        } catch (error) {
+            console.error('Error creando log de actuación automática para Evidencia:', error);
+        }
+
+        return saved;
     }
 
     async updateEstado(id: string, estado: string): Promise<Evidencia> {
