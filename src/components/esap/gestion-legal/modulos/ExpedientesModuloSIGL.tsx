@@ -50,6 +50,13 @@ const getFileUrl = (url: string): string => {
   return `${baseUrl}${prefix}/files/${filename}`;
 };
 
+// URL base para archivos del servicio legal (uploads, etc.)
+const LEGAL_BASE_URL = (() => {
+  const baseUrl = getServiceUrl('legal');
+  const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+  return `${baseUrl}${prefix}`;
+})();
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
