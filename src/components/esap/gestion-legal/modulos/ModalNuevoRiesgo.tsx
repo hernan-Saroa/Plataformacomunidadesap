@@ -3,14 +3,15 @@
  * Modal para crear nuevos riesgos institucionales en la Matriz de Riesgos
  */
 
-import React, { useState } from 'react';
-import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2, Loader2, Link } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { legalService, ocService } from '../../../../services/api/legal.service';
 
 interface ControlItem {
   id: string;
@@ -38,12 +39,21 @@ const initialFormState = {
   probabilidadResidual: '2',
   impactoResidual: '2',
   etapa: 'IDENTIFICADO',
-  cuantiaEstimada: ''
+  cuantiaEstimada: '',
+  // Nuevos campos para asociación con proceso
+  moduloOrigen: '',
+  procesoId: '',
+  procesoRadicado: '',
+  porcentajeProvision: ''
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
   const [formData, setFormData] = useState(initialFormState);
   const [controlesLista, setControlesLista] = useState<ControlItem[]>([]);
+
+  // Estados para carga dinámica de procesos
+  const [procesosDisponibles, setProcesosDisponibles] = useState<any[]>([]);
+  const [loadingProcesos, setLoadingProcesos] = useState(false);
 
   const isEditing = !!riesgoEditar;
 
@@ -63,7 +73,12 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
         etapa: riesgoEditar.etapa || 'IDENTIFICADO',
-        cuantiaEstimada: riesgoEditar.cuantiaEstimada ? String(riesgoEditar.cuantiaEstimada) : ''
+        cuantiaEstimada: riesgoEditar.cuantiaEstimada ? String(riesgoEditar.cuantiaEstimada) : '',
+        // Campos de asociación (pueden ser null en riesgos antiguos)
+        moduloOrigen: riesgoEditar.moduloOrigen || '',
+        procesoId: riesgoEditar.procesoId || '',
+        procesoRadicado: riesgoEditar.procesoRadicado || '',
+        porcentajeProvision: riesgoEditar.porcentajeProvision ? String(riesgoEditar.porcentajeProvision) : ''
       });
       // Cargar controles existentes
       if (Array.isArray(riesgoEditar.controlesExistentes)) {
@@ -80,6 +95,73 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       setControlesLista([]);
     }
   }, [riesgoEditar, open]);
+
+  // Cargar procesos cuando cambia el módulo de origen
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      if (!formData.moduloOrigen) {
+        setProcesosDisponibles([]);
+        return;
+      }
+
+      setLoadingProcesos(true);
+      try {
+        let procesos: any[] = [];
+        switch (formData.moduloOrigen) {
+          case 'DEFENSA_JUDICIAL':
+            procesos = await legalService.getExpedientes();
+            procesos = procesos.map(p => ({
+              id: p.id || p.uuid,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.demandante || 'Sin demandante'}`,
+              cuantia: p.cuantia || 0
+            }));
+            break;
+          case 'JUZGAMIENTO':
+            procesos = await legalService.getJuzgamientoProcesos();
+            procesos = procesos.map(p => ({
+              id: p.id || p.radicado,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.nombreInvestigado || 'Sin investigado'}`
+            }));
+            break;
+          case 'ASESORIA_JURIDICA':
+            procesos = await legalService.getConsultasJuridicas();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.numeroRadicado || p.id,
+              label: `${p.numeroRadicado || p.id} - ${p.asunto || 'Sin asunto'}`
+            }));
+            break;
+          case 'COACTIVOS':
+            procesos = await legalService.getProcesosCoactivos();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.deudor || 'Sin deudor'}`
+            }));
+            break;
+          case 'ORGANOS_CONTROL':
+            procesos = await ocService.getRequerimientosOC();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.numeroRequerimiento || p.id,
+              label: `${p.numeroRequerimiento} - ${p.organismoControl || p.organismo || 'Organismo'}`
+            }));
+            break;
+        }
+        setProcesosDisponibles(procesos);
+      } catch (error) {
+        console.error('Error cargando procesos:', error);
+        toast.error('Error al cargar procesos del módulo');
+        setProcesosDisponibles([]);
+      } finally {
+        setLoadingProcesos(false);
+      }
+    };
+
+    cargarProcesos();
+  }, [formData.moduloOrigen]);
 
   // Calcular zona de riesgo
   const calcularZonaRiesgo = (probabilidad: string, impacto: string): string => {
@@ -125,6 +207,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       probabilidadResidual: parseInt(formData.probabilidadResidual),
       impactoResidual: parseInt(formData.impactoResidual),
       cuantiaEstimada: formData.cuantiaEstimada ? Number(formData.cuantiaEstimada) : 0,
+      porcentajeProvision: formData.porcentajeProvision ? Number(formData.porcentajeProvision) : 0,
+      provisionContable: formData.cuantiaEstimada && formData.porcentajeProvision
+        ? (Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100))
+        : 0,
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
       controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
@@ -238,29 +324,96 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Selector de Módulo de Origen */}
                 <div className="space-y-2">
-                  <Label htmlFor="proceso" className="text-sm font-semibold text-gray-700">
-                    Proceso Asociado <span className="text-red-600">*</span>
+                  <Label htmlFor="moduloOrigen" className="text-sm font-semibold text-gray-700">
+                    Módulo de Origen <span className="text-red-600">*</span>
                   </Label>
                   <select
-                    id="proceso"
-                    value={formData.proceso}
-                    onChange={(e) => handleChange('proceso', e.target.value)}
+                    id="moduloOrigen"
+                    value={formData.moduloOrigen}
+                    onChange={(e) => {
+                      handleChange('moduloOrigen', e.target.value);
+                      handleChange('procesoId', '');
+                      handleChange('procesoRadicado', '');
+                      // También actualizar el campo proceso para compatibilidad
+                      const nombreModulo = {
+                        'DEFENSA_JUDICIAL': 'Defensa Judicial',
+                        'JUZGAMIENTO': 'Juzgamiento Disciplinario',
+                        'ASESORIA_JURIDICA': 'Asesoría Jurídica',
+                        'COACTIVOS': 'Procesos Coactivos',
+                        'ORGANOS_CONTROL': 'Órganos de Control'
+                      }[e.target.value] || '';
+                      handleChange('proceso', nombreModulo);
+                    }}
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
                     required
                   >
-                    <option value="">Seleccione proceso...</option>
-                    <option value="Defensa Judicial">Defensa Judicial</option>
-                    <option value="Órganos de Control">Órganos de Control</option>
-                    <option value="Procesos Coactivos">Procesos Coactivos</option>
-                    <option value="Juzgamiento Disciplinario">Juzgamiento Disciplinario</option>
-                    <option value="Asesoría Jurídica">Asesoría Jurídica</option>
-                    <option value="Gestión Contractual">Gestión Contractual</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Gestión Financiera">Gestión Financiera</option>
+                    <option value="">Seleccione módulo...</option>
+                    <option value="DEFENSA_JUDICIAL">⚖️ Defensa Judicial</option>
+                    <option value="JUZGAMIENTO">👨‍⚖️ Juzgamiento Disciplinario</option>
+                    <option value="ASESORIA_JURIDICA">📝 Asesoría Jurídica</option>
+                    <option value="COACTIVOS">💰 Procesos Coactivos</option>
+                    <option value="ORGANOS_CONTROL">🏛️ Órganos de Control</option>
                   </select>
                 </div>
 
+                {/* Selector de Proceso específico */}
+                <div className="space-y-2">
+                  <Label htmlFor="procesoId" className="text-sm font-semibold text-gray-700">
+                    Proceso/Demanda <span className="text-red-600">*</span>
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id="procesoId"
+                      value={formData.procesoId}
+                      onChange={(e) => {
+                        const selected = procesosDisponibles.find(p => p.id === e.target.value);
+                        handleChange('procesoId', e.target.value);
+                        handleChange('procesoRadicado', selected?.radicado || '');
+
+                        // Autocompletar cuantía si es Defensa Judicial y tiene valor
+                        if (formData.moduloOrigen === 'DEFENSA_JUDICIAL' && selected?.cuantia) {
+                          handleChange('cuantiaEstimada', String(selected.cuantia));
+                          toast.info(`Cuantía actualizada automáticamente: $${selected.cuantia.toLocaleString()}`);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                      disabled={!formData.moduloOrigen || loadingProcesos}
+                      required={!!formData.moduloOrigen}
+                    >
+                      <option value="">
+                        {loadingProcesos
+                          ? 'Cargando procesos...'
+                          : !formData.moduloOrigen
+                            ? 'Primero seleccione módulo'
+                            : procesosDisponibles.length === 0
+                              ? 'No hay procesos disponibles'
+                              : 'Seleccione proceso...'}
+                      </option>
+                      {procesosDisponibles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingProcesos && (
+                      <Loader2 className="w-4 h-4 absolute right-10 top-1/2 -translate-y-1/2 animate-spin text-blue-500" />
+                    )}
+                  </div>
+                  {formData.procesoRadicado && (
+                    <p className="text-xs text-blue-600 flex items-center gap-1">
+                      <Link className="w-3 h-3" />
+                      Radicado: {formData.procesoRadicado}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Campo oculto para mantener compatibilidad con riesgos antiguos */}
+              <input type="hidden" value={formData.proceso} />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
                     Tipo de Riesgo <span className="text-red-600">*</span>
@@ -298,20 +451,36 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                     Valor monetario estimado del riesgo (para cálculo de provisión)
                   </p>
                 </div>
-                {formData.cuantiaEstimada && (
-                  <div className="space-y-2 bg-green-50 p-3 rounded-lg border border-green-200">
-                    <Label className="text-sm font-semibold text-green-700">
-                      📊 Provisión Calculada ({zonaResidual === 'EXTREMO' ? '100%' : zonaResidual === 'ALTO' ? '75%' : zonaResidual === 'MODERADO' ? '50%' : '25%'})
-                    </Label>
-                    <p className="text-xl font-bold text-green-600">
-                      ${(Number(formData.cuantiaEstimada) * (zonaResidual === 'EXTREMO' ? 1 : zonaResidual === 'ALTO' ? 0.75 : zonaResidual === 'MODERADO' ? 0.5 : 0.25)).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-green-600">
-                      Basado en zona de riesgo residual: {zonaResidual}
-                    </p>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label htmlFor="porcentajeProvision" className="text-sm font-semibold text-gray-700">
+                    📊 Porcentaje Provisión (%)
+                  </Label>
+                  <Input
+                    id="porcentajeProvision"
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="Ej: 50"
+                    value={formData.porcentajeProvision}
+                    onChange={(e) => handleChange('porcentajeProvision', e.target.value)}
+                    className="border-2 border-gray-300 focus:border-green-500"
+                  />
+                </div>
               </div>
+
+              {formData.cuantiaEstimada && formData.porcentajeProvision && (
+                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-semibold text-green-700 block">Provisión Contable Calculada</span>
+                    <span className="text-xs text-green-600">
+                      ${Number(formData.cuantiaEstimada).toLocaleString()} × {formData.porcentajeProvision}%
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-green-700">
+                    ${(Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100)).toLocaleString()}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Sección 2: Análisis del Riesgo */}
@@ -618,8 +787,8 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
 
