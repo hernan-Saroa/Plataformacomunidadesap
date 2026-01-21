@@ -30,6 +30,7 @@ interface ModalActasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 // Tipos de actas
@@ -45,7 +46,7 @@ const tiposActa = [
 
 // Mocks eliminados - Datos cargados desde API
 
-export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
+export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasProps) {
   const [actas, setActas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODAS');
@@ -402,6 +403,21 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     a.resumen.toLowerCase().includes(busqueda.toLowerCase())
   );
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_DELETE)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_ACTAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_ACTAS_DELETE)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -639,7 +655,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                                 <Download className="w-3.5 h-3.5 mr-1" />
                                 Descargar
                               </Button>
-                              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_DELETE) && (
+                              {hasPermission('delete') && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -712,7 +728,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                   <Download className="w-3.5 h-3.5 mr-1.5" />
                   Descargar Firmadas (ZIP)
                 </Button>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_CREATE) && (
+                {hasPermission('create') && (
                 <Button
                   onClick={() => setIsCreateOpen(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
