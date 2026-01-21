@@ -100,6 +100,13 @@ export interface CertificadoGraduado {
   revocationReason?: string;
 }
 
+export interface UpdateCertificadoPayload extends Partial<CertificadoGraduado> {
+  requesterName?: string;
+  requesterEmail?: string;
+  requesterPhone?: string;
+}
+
+
 export interface AprobarSolicitudPayload {
   reviewNotes: string;
   reviewerName?: string;
@@ -463,7 +470,7 @@ const graduadosService = {
      */
     actualizar: async (
       id: string,
-      payload: Partial<CertificadoGraduado>
+      payload: UpdateCertificadoPayload
     ): Promise<CertificadoGraduado> => {
       const response = await apiClient.put(
         `${SERVICE_PREFIX}/certificates/${id}`,

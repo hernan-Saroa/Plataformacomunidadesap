@@ -199,6 +199,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     toast.success('👁️ Documento abierto', { description: ev.nombre });
   };
 
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
+  };
+
   const handleDescargarEvidencia = async (ev: any) => {
     const fileUrl = getFileUrl(ev.url);
     if (!fileUrl) {
@@ -286,40 +293,40 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-        <DialogTitle className="sr-only">
-          Evidencias y Pruebas - Expediente {expediente.id}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Gestión de evidencias y pruebas documentales del expediente {expediente.id}
-        </DialogDescription>
-        
-        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
-        <ModalHeaderClean
-          titulo="Evidencias y Pruebas Documentales"
-          subtitulo={`Material probatorio del expediente ${expediente.id}`}
-          icono={Paperclip}
-          colorIcono="orange"
-          badgePrincipal={expediente.etapa}
-          badges={
-            <>
-              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                {evidenciasAdmitidas} admitidas
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                <AlertCircle className="w-3 h-3 mr-1" />
-                {evidenciasPendientes} pendientes
-              </Badge>
-              <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
-                <Paperclip className="w-3 h-3 mr-1" />
-                {totalEvidencias} total
-              </Badge>
-            </>
-          }
-          onClose={onClose}
-        />
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+          <DialogTitle className="sr-only">
+            Evidencias y Pruebas - Expediente {expediente.id}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Gestión de evidencias y pruebas documentales del expediente {expediente.id}
+          </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+          <ModalHeaderClean
+            titulo="Evidencias y Pruebas Documentales"
+            subtitulo={`Material probatorio del expediente ${expediente.id}`}
+            icono={Paperclip}
+            colorIcono="orange"
+            badgePrincipal={expediente.etapa}
+            badges={
+              <>
+                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  {evidenciasAdmitidas} admitidas
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {evidenciasPendientes} pendientes
+                </Badge>
+                <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
+                  <Paperclip className="w-3 h-3 mr-1" />
+                  {totalEvidencias} total
+                </Badge>
+              </>
+            }
+            onClose={onClose}
+          />
 
           <div className="flex items-center gap-2 px-6 py-3 border-b bg-white sticky top-0 z-10">
             <div className="flex-1 relative">
@@ -406,10 +413,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
-                            <Eye className="w-3.5 h-3.5 mr-1" />
-                            Ver
-                          </Button>
+                          {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                          {isPrevisuable(ev.nombre) && (
+                            <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                          )}
                           <Button size="sm" onClick={() => handleDescargarEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#003DA5' }}>
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar

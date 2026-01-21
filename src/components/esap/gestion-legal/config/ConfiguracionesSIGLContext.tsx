@@ -299,6 +299,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
 export function useConfiguracionesSIGL() {
   const context = useContext(ConfiguracionesSIGLContext);
+  // Debug log
+  if (context === undefined) {
+    console.error('❌ useConfiguracionesSIGL: Context is undefined. Provider missing or module mismatch?');
+  }
   if (context === undefined) {
     throw new Error('useConfiguracionesSIGL debe ser usado dentro de ConfiguracionesSIGLProvider');
   }

@@ -4,6 +4,7 @@ import { Repository, Like } from 'typeorm';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { ConsultaJuridicaHistorial } from '../entities/consulta-juridica-historial.entity';
 import { TerminosService } from './terminos.service';
+import { DiasHabilesService } from './dias-habiles.service';
 
 import { OnModuleInit } from '@nestjs/common';
 
@@ -14,7 +15,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
         private readonly consultaRepository: Repository<ConsultaJuridica>,
         @InjectRepository(ConsultaJuridicaHistorial)
         private readonly historialRepository: Repository<ConsultaJuridicaHistorial>,
-        private readonly terminosService: TerminosService
+        private readonly terminosService: TerminosService,
+        private readonly diasHabilesService: DiasHabilesService
     ) { }
 
     async onModuleInit() {
@@ -87,9 +89,9 @@ export class ConsultasJuridicasService implements OnModuleInit {
 
         const numeroRadicado = `${prefix}${String(nextNumber).padStart(4, '0')}`;
 
-        // Calculate fecha maxima respuesta (30 business days from now)
-        const fechaMaxima = new Date();
-        fechaMaxima.setDate(fechaMaxima.getDate() + (data.terminoLegalDias || 30));
+        // Calcular fecha máxima respuesta usando días HÁBILES (Ley 1437)
+        const terminoDias = this.diasHabilesService.obtenerTerminoLegal(data.tipoSolicitud || 'consulta');
+        const fechaMaxima = this.diasHabilesService.agregarDiasHabiles(new Date(), terminoDias);
 
         const nuevaConsulta = this.consultaRepository.create({
             ...data,
