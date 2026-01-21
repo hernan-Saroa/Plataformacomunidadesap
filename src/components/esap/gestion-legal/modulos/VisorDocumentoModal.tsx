@@ -172,6 +172,100 @@ export function VisorDocumentoModal({
               const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf');
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i);
 
+              // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
+              // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")
+              const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+
+              if (isMockFile && isPdf) {
+                return (
+                  <div
+                    className="w-full h-full overflow-auto flex justify-center p-8 bg-gray-200"
+                    style={{
+                      transform: `scale(${zoomLevel / 100})`,
+                      transformOrigin: 'top center'
+                    }}
+                  >
+                    <div className="bg-white shadow-2xl p-12 w-[800px] min-h-[1100px] relative text-gray-800">
+                      {/* Membrete Simulado */}
+                      <div className="text-center border-b-2 border-gray-300 pb-6 mb-8">
+                        <h4 className="font-serif text-lg font-bold text-gray-600 mb-1">REPÚBLICA DE COLOMBIA</h4>
+                        <h2 className="font-serif text-2xl font-black text-blue-900 mb-2">ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h2>
+                        <h5 className="font-serif text-md font-bold text-gray-500">OFICINA ASESORA JURÍDICA</h5>
+                        <div className="mt-4 text-sm text-gray-500 font-mono">
+                          <strong>Radicado No.</strong> {numero || '2025-400-001234-2'}
+                        </div>
+                        <div className="text-sm text-gray-500 font-mono">
+                          <strong>Fecha:</strong> {new Date().toLocaleDateString('es-CO')}
+                        </div>
+                      </div>
+
+                      {/* Cuerpo del Documento Simulado */}
+                      <div className="space-y-6 font-serif leading-relaxed text-justify">
+                        <div className="flex justify-between items-start mb-8">
+                          <div>
+                            <p className="font-bold">Señor(a):</p>
+                            <p className="uppercase">Juez Administrativo del Circuito</p>
+                            <p>E. S. D.</p>
+                          </div>
+                        </div>
+
+                        <p className="font-bold uppercase mb-4 text-center text-lg decoration-slice underline">
+                          ASUNTO: {asunto || 'DOCUMENTO OFICIAL DEL PROCESO'}
+                        </p>
+
+                        <p>
+                          Respetado Juez,
+                        </p>
+
+                        <p>
+                          Por medio del presente escrito, actuando en nombre y representación de la
+                          <strong> ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</strong>,
+                          me permito allegar el presente documento correspondiente al proceso de la referencia.
+                        </p>
+
+                        <p>
+                          Este documento constituye una representación visual del archivo <strong>"{archivo}"</strong>
+                          que se encuentra almacenado en el sistema de gestión documental.
+                          En un entorno de producción, aquí se visualizaría el contenido real del archivo PDF cargado.
+                        </p>
+
+                        <p>
+                          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt
+                          ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation
+                          ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in
+                          reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
+                        </p>
+
+                        <div className="py-8"></div>
+
+                        <p>
+                          Atentamente,
+                        </p>
+
+                        <div className="mt-12 pt-4 border-t w-64 border-black">
+                          <p className="font-bold">OFICINA JURÍDICA</p>
+                          <p className="text-sm">Escuela Superior de Administración Pública</p>
+                          <p className="text-xs text-gray-500 mt-1">Firmado electrónicamente</p>
+                        </div>
+                      </div>
+
+                      {/* Marca de agua */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none">
+                        <div className="transform -rotate-45 text-9xl font-black text-gray-900 border-8 border-gray-900 p-4 rounded-xl">
+                          ESAP
+                        </div>
+                      </div>
+
+                      {/* Footer de página */}
+                      <div className="absolute bottom-12 left-12 right-12 text-center text-xs text-gray-400 border-t pt-2">
+                        <p>Calle 44 No. 53-37 CAN Bogotá D.C. - Código Postal: 111321</p>
+                        <p>Documento generado por Plataforma Gestión Legal ESAP</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               if (isPdf) {
                 return (
                   <div
