@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import type { Riesgo } from '../core/types';
 import { riesgosService, RiesgoHistorialAPI } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalDetalleRiesgoProps {
   open: boolean;
@@ -680,14 +682,18 @@ Metodología DAFP - MECI
               <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_EDIT) && (
             <Button variant="outline" onClick={handleEditar}>
               <Edit className="w-4 h-4 mr-2" />
               Editar
             </Button>
+            )}
+            {authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_DELETE) && (
             <Button variant="outline" onClick={handleEliminar} className="text-red-600 border-red-300 hover:bg-red-50">
               <Trash2 className="w-4 h-4 mr-2" />
               Eliminar
             </Button>
+            )}
           </div>
         </div>
       </DialogContent>

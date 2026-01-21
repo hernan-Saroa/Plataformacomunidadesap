@@ -63,7 +63,7 @@ interface Auto {
 }
 
 export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosProps) {
-  console.log('🚀 ModalAutos: modulo:', modulo);
+  
   const [autos, setAutos] = useState<Auto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
