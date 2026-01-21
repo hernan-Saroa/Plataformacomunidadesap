@@ -11,7 +11,6 @@ import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStreng
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
-import { initBrowserCompatibility, initKeyboardNavigation } from './utils/browserDetection';
 
 /**
  * ============================================
@@ -67,20 +66,6 @@ export default function App() {
   
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ============================================
-  // INICIALIZACIÓN DE COMPATIBILIDAD CROSS-BROWSER
-  // ============================================
-  
-  useEffect(() => {
-    // Inicializar detección de navegador y polyfills
-    initBrowserCompatibility();
-    
-    // Inicializar detección de navegación por teclado
-    initKeyboardNavigation();
-    
-    console.log('✅ ESAP Platform initialized with security and compatibility');
-  }, []);
 
   // ============================================
   // PERSISTENCIA DE SESIÓN

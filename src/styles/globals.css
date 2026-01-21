@@ -5,11 +5,6 @@
    ============================================ */
 @import './esap-theme.css';
 
-/* ============================================
-   IMPORTAR COMPATIBILIDAD CROSS-BROWSER
-   ============================================ */
-@import './browser-compatibility.css';
-
 /* Utility classes */
 .scrollbar-hide {
   -ms-overflow-style: none;

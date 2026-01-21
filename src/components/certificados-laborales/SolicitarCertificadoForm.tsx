@@ -18,7 +18,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../lib/api/certificadosAPI';
 
 interface FormData {
