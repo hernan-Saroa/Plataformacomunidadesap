@@ -41,6 +41,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     document.body.appendChild(textarea);
     
     // Seleccionar y copiar
+    textarea.focus();
     textarea.select();
     textarea.setSelectionRange(0, text.length);
     
