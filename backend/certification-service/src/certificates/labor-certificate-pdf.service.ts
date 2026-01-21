@@ -61,7 +61,7 @@ export class LaborCertificatePdfService {
   }
 
   private resolveTemplateType(certificate: Certificate): TemplateType {
-    const rawText = `${certificate.career_category || ''}`;
+    const rawText = `${certificate.position_category || ''} ${certificate.career_category || ''}`;
     const text = rawText
       .toLowerCase()
       .normalize('NFD')
@@ -133,10 +133,20 @@ export class LaborCertificatePdfService {
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
+    const requestData = (certificate as Certificate & {
+      request?: { career_category?: string; position_category?: string };
+    }).request;
+    // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
-      certificate.career_category || certificate.position_category || '';
+      requestData?.position_category ||
+      certificate.position_category ||
+      certificate.career_category ||
+      '';
     const cargoTexto =
-      certificate.position_category || certificate.career_category || '';
+      requestData?.career_category ||
+      certificate.career_category ||
+      certificate.position_category ||
+      '';
     const grado = certificate.position_location || '';
     const dependenciaHijo = certificate.department || '';
     const dependenciaPadre =
