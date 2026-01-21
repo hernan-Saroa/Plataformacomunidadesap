@@ -140,6 +140,15 @@ class AuthService {
   }
 
   /**
+   * Verifica si el usuario es un super admin
+   */
+  isSuperAdmin(): boolean {
+    const user = this.getCurrentUser();
+    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
+    return false;
+  }
+
+  /**
    * Verifica si el usuario tiene un rol específico
    */
   hasRole(role: string): boolean {

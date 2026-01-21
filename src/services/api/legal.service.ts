@@ -499,19 +499,7 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`);
     }
 
-    // ==================== PLANES DE MEJORAMIENTO ====================
-    async getPlanesMejoramiento(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
-    }
 
-    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
-    }
-
-    // Métodos para ModalNuevoPlan
-    async createPlanMejoramiento(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
-    }
 
     async getRiesgosDisponibles(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/riesgos-disponibles`);
@@ -814,6 +802,10 @@ export interface RiesgoAPI {
     provisionContable?: number;
     porcentajeProvision?: number;
     fechaCalculoProvision?: string;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
 }
 
 export interface CreateRiesgoData {
@@ -831,6 +823,10 @@ export interface CreateRiesgoData {
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
     cuantiaEstimada?: number;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
 }
 
 export interface RiesgoHistorialAPI {
@@ -885,8 +881,10 @@ class RiesgosService {
 
     getReporteContabilidadUrl(): string {
         const baseUrl = getServiceUrl('legal');
-        const prefix = API_MODE === 'direct' ? '' : '/legal';
-        return `${baseUrl}${prefix}/riesgos/export/contabilidad`;
+        // Usar SERVICE_PREFIX (/legal/api/v1) en modo gateway para consistencia con otros endpoints
+        // En modo directo, asumir root del backend (sin prefijo si main.ts no lo tiene)
+        const path = API_MODE === 'direct' ? '' : SERVICE_PREFIX;
+        return `${baseUrl}${path}/riesgos/export/contabilidad`;
     }
 
     async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {

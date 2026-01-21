@@ -20,6 +20,8 @@ import { CardSIGL } from '../design-system/CardSIGL';
 import { BadgeSIGL } from '../design-system/BadgeSIGL';
 import { ButtonSIGL } from '../design-system/ButtonSIGL';
 import { ModalSIGL } from '../design-system/ModalSIGL';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 import {
   procesosCoactivosService,
   ProcesoCoactivo as ProcesoCoactivoAPI,
@@ -197,6 +199,7 @@ export function ModuloProcesosCoactivosV3() {
               Gestión de cobro coactivo de obligaciones
             </p>
           </div>
+          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
           <ButtonSIGL
             onClick={() => {
               setProcesoEditar(null);
@@ -207,6 +210,7 @@ export function ModuloProcesosCoactivosV3() {
           >
             {!isMobile && 'Nuevo Proceso'}
           </ButtonSIGL>
+          )}
         </div>
 
         {/* Métricas */}
@@ -495,6 +499,7 @@ function TarjetaProceso({
           >
             Ver Detalle
           </ButtonSIGL>
+          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
           <ButtonSIGL
             variant="secondary"
             size="md"
@@ -504,6 +509,8 @@ function TarjetaProceso({
           >
             Editar
           </ButtonSIGL>
+          )}
+          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
           <ButtonSIGL
             variant="danger"
             size="md"
@@ -513,6 +520,7 @@ function TarjetaProceso({
           >
             Eliminar
           </ButtonSIGL>
+          )}
         </div>
       </div>
     </CardSIGL>
@@ -1190,6 +1198,7 @@ function ModalDetalleProceso({
                     >
                       <Download className="w-4 h-4" />
                     </button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
                     <button
                       onClick={() => handleDeleteAdjunto(adjunto.id)}
                       className="p-1.5 text-red-600 hover:bg-red-50 rounded"
@@ -1197,6 +1206,7 @@ function ModalDetalleProceso({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
+                    )}
                   </div>
                 </div>
               ))}

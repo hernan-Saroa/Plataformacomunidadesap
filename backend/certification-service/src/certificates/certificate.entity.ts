@@ -47,6 +47,9 @@ export class Certificate {
   department: string;
 
   @Column({ length: 255, nullable: true })
+  department_parent: string;
+
+  @Column({ length: 255, nullable: true })
   department_son: string;
 
   @Column({ length: 100, nullable: true })

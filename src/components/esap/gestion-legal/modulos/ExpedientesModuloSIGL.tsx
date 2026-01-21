@@ -16,7 +16,8 @@ import { ModalAutos } from './ModalAutos';
 import { ModalActas } from './ModalActas';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
-
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 import { ModalSubirRespuesta } from './ModalSubirRespuesta';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
@@ -795,24 +796,28 @@ export function ExpedientesModuloSIGL() {
             isOpen={modalAutosOpen}
             onClose={() => setModalAutosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalActas
             isOpen={modalActasOpen}
             onClose={() => setModalActasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalEvidencias
             isOpen={modalEvidenciasOpen}
             onClose={() => setModalEvidenciasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalOficios
             isOpen={modalOficiosOpen}
             onClose={() => setModalOficiosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           {modalRespuestaOpen && (
@@ -1156,6 +1161,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
             </div>
 
             <div className="flex gap-2 w-full sm:w-auto">
+              {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
               <button
                 onClick={onUpload}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
@@ -1163,6 +1169,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
                 <Upload className="w-4 h-4" />
                 Cargar
               </button>
+              )}
               <button
                 onClick={onToggleExpand}
                 className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center justify-center gap-2"

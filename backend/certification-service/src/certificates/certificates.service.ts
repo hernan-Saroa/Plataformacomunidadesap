@@ -385,6 +385,7 @@ export class CertificatesService {
       technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
+      department_parent: request.department_parent,
       department_son: request.department_son || undefined,
       campus: request.campus,
       issue_date: new Date(),

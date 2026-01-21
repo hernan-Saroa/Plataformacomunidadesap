@@ -31,6 +31,7 @@ interface ModalOficiosProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 // Datos mock de oficios enviados
@@ -125,7 +126,8 @@ const oficiosRecibidosMock = [
   }
 ];
 
-export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps) {
+export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOficiosProps) {
+  
   const [oficiosEnviados, setOficiosEnviados] = useState(oficiosEnviadosMock);
   const [oficiosRecibidos, setOficiosRecibidos] = useState(oficiosRecibidosMock);
   const [busquedaEnviados, setBusquedaEnviados] = useState('');
@@ -412,6 +414,23 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
     );
   };
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_DELETE)
+        if (action === 'atender') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_ATENDER)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_OFICIOS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_OFICIOS_DELETE)
+        if (action === 'atender') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_OFICIOS_ATENDER)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
@@ -560,7 +579,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                               <Download className="w-3.5 h-3.5 mr-1" />
                               Descargar
                             </Button>
-                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_DELETE) && (
+                            {hasPermission('delete') && (
                             <Button 
                               size="sm" 
                               variant="outline"
@@ -682,7 +701,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                               <Download className="w-3.5 h-3.5 mr-1" />
                               Descargar
                             </Button>
-                            {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_ATENDER) && (
+                            {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && hasPermission('atender') && (
                               <Button 
                                 size="sm" 
                                 onClick={() => handleMarcarOficioRecibidoAtendido(oficio.id)}
@@ -731,7 +750,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_CREATE) && (
+              {hasPermission('create') && (
               <Button
                 onClick={() => setModalRedactarAbierto(true)}
                 className="font-bold text-white"

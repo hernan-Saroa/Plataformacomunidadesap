@@ -33,6 +33,8 @@ import {
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 // Importar modales ESAP 2025
 import { ModalNuevoIndicador } from './ModalNuevoIndicador';
@@ -430,6 +432,27 @@ export function ModuloPlanAccionV4() {
     setExpandedGroups(newExpanded);
   };
 
+  const addBtnsPermission = () => {
+    const arrayBtns: any[] = [];
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
+      arrayBtns.push({
+        label: 'Nuevo Indicador',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: handleNuevoIndicador,
+        variant: 'primary'
+      })
+    }
+    arrayBtns.push({
+      label: 'Exportar',
+      labelMobile: 'Exportar',
+      icon: <Download className="w-4 h-4" />,
+      onClick: handleExportarZip,
+      variant: 'outline'
+    })
+    return arrayBtns
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -446,22 +469,7 @@ export function ModuloPlanAccionV4() {
             { label: 'Matriz', icon: '⊞', value: 'matriz' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Indicador',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: handleNuevoIndicador,
-            variant: 'primary'
-          },
-          {
-            label: 'Exportar',
-            labelMobile: 'Exportar',
-            icon: <Download className="w-4 h-4" />,
-            onClick: handleExportarZip,
-            variant: 'outline'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Plan de Acción"

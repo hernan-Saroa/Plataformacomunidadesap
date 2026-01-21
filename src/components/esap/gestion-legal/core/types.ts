@@ -783,6 +783,9 @@ export interface Riesgo {
   tipoRiesgo?: TipoRiesgo; // Alias for UI compatibility
   nombre: string;
   descripcion: string;
+  moduloOrigen?: string;
+  procesoId?: string;
+  procesoRadicado?: string;
   causas: string[];
   consecuencias: string[];
   probabilidadInherente: number; // 1-5

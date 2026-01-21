@@ -127,20 +127,34 @@ export class LaborCertificatePdfService {
     const requestObservations =
       (certificate as Certificate & { request?: { observations?: string } }).request
         ?.observations || certificateExtras.observations || '';
+    const requestPositionLocation =
+      (certificate as Certificate & { request?: { position_location?: string } }).request
+        ?.position_location || '';
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
+    const requestData = (certificate as Certificate & {
+      request?: { career_category?: string; position_category?: string };
+    }).request;
+    // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
-      certificate.career_category || certificate.position_category || '';
+      requestData?.position_category ||
+      certificate.position_category ||
+      certificate.career_category ||
+      '';
     const cargoTexto =
-      certificate.position_category || certificate.career_category || '';
+      requestData?.career_category ||
+      certificate.career_category ||
+      certificate.position_category ||
+      '';
     const grado = certificate.position_location || '';
     const dependenciaHijo = certificate.department || '';
     const dependenciaPadre =
+      (certificate as Certificate & { request?: { department_parent?: string } }).request
+        ?.department_parent ||
       certificateExtras.department_parent ||
       certificateExtras.departmentParent ||
-      dependenciaHijo ||
-      'Registro padre';
+      '';
 
     const ubicacion =
       certificate.position_location ||
@@ -159,7 +173,8 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 = templateType === 'administrador' ? ubicacionCargo : dependenciaHijo;
+    const dato7 = requestPositionLocation || certificate.position_location || '';
+    const cargoDato6 = cargoTexto;
 
     const salarioBase = Number(certificate.monthly_salary || 0);
     const salarioTextoBase = certificate.salary_text || '';
@@ -181,6 +196,7 @@ export class LaborCertificatePdfService {
       '[NOMBRE_EMPLEADO]': fullName,
       '[DOCUMENTO]': documentNumber,
       '[CARGO]': cargoPlantilla,
+      '[CARGO DATO6]': cargoDato6,
       '[DEPENDENCIA]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
@@ -267,16 +283,33 @@ export class LaborCertificatePdfService {
   }
 
   private stripSalarySections(html: string): string {
-    let result = html;
-    const patterns = [
-      /<p[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/p>/gi,
-      /<div[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/div>/gi,
-      /<li[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/li>/gi,
-      /<span[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/span>/gi,
-    ];
-    for (const pattern of patterns) {
-      result = result.replace(pattern, '');
+    if (!html) {
+      return html;
     }
+
+    const keywordRegex = /(salari|asignaci)/i;
+
+    let result = html.replace(
+      /<(p|li)([^>]*)>([\s\S]*?)<\/\1>/gi,
+      (match, _tag, _attrs, body) => {
+        const text = body.replace(/<[^>]+>/g, ' ');
+        return keywordRegex.test(text) ? '' : match;
+      },
+    );
+
+    result = result.replace(
+      /<div([^>]*)>([\s\S]*?)<\/div>/gi,
+      (match, _attrs, body) => {
+        const hasBlock = /<(p|div|li|ul|ol|table|tr|td)\b/i.test(body);
+        const text = body.replace(/<[^>]+>/g, ' ');
+        return keywordRegex.test(text) && !hasBlock ? '' : match;
+      },
+    );
+
+    result = result.replace(/<p[^>]*>\s*<\/p>/gi, '');
+    result = result.replace(/<div[^>]*>\s*<\/div>/gi, '');
+    result = result.replace(/<li[^>]*>\s*<\/li>/gi, '');
+
     return result;
   }
 
