@@ -3,6 +3,7 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Checkbox } from '../ui/checkbox';
 import { ArrowLeft, AlertCircle, Award, Calendar, User, Loader2, Building2, UserCircle, Mail, FileText, CheckCircle, Shield, Sparkles, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { motion } from 'motion/react';
@@ -44,6 +45,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [requesterName, setRequesterName] = useState('');
   const [requesterEmail, setRequesterEmail] = useState('');
   const [requesterType, setRequesterType] = useState<'empresa' | 'graduado'>('graduado');
+  const [isDataPolicyAccepted, setIsDataPolicyAccepted] = useState(false);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
@@ -156,6 +158,10 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       toast.error('Por favor ingresa tu correo electronico');
       return;
     }
+    if (!isDataPolicyAccepted) {
+      toast.error('Debes aceptar la politica de proteccion de datos para continuar');
+      return;
+    }
 
     // Validacion de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -217,6 +223,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setRequesterName('');
     setRequesterEmail('');
     setRequesterType('graduado');
+    setIsDataPolicyAccepted(false);
     setGeneratedCertificate(null);
     setReviewRequestCreated(false);
   };
@@ -798,6 +805,44 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         </li>
                       </ul>
                     </div>
+                  </div>
+                </motion.div>
+
+                {/* Data Policy Consent */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.55 }}
+                  className="border-2 border-gray-200 rounded-2xl p-4 bg-slate-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="data-policy-consent"
+                      checked={isDataPolicyAccepted}
+                      onCheckedChange={(checked) => setIsDataPolicyAccepted(checked === true)}
+                      className="mt-1"
+                    />
+                    <Label
+                      htmlFor="data-policy-consent"
+                      className="block text-sm font-normal leading-relaxed text-gray-700 cursor-pointer"
+                    >
+                      <span>
+                        Manifiesto que la informacion aqui consignada es veraz y que realizo esta
+                        consulta de manera personal o como tercero autorizado.
+                      </span>
+                      <span className="block mt-1">
+                        Acepto tambien que los datos sean tratados de acuerdo a la{' '}
+                        <a
+                          href="https://www.esap.edu.co/ley-de-transparencia-y-acceso-a-la-informacion/politica-proteccion-datos-personales/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#1e5da8] font-semibold underline underline-offset-2 hover:text-[#164a8f]"
+                        >
+                          politica de proteccion de datos personales
+                        </a>{' '}
+                        de la ESAP.
+                      </span>
+                    </Label>
                   </div>
                 </motion.div>
 

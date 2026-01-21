@@ -61,6 +61,7 @@ export function ReviewRequestsModule() {
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [timeNow, setTimeNow] = useState(() => Date.now());
   
   // Estados para modal de revisión
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -156,16 +157,29 @@ export function ReviewRequestsModule() {
     );
   };
 
-  const calculateTimeSince = (dateString: string) => {
-    const now = new Date();
+  const calculateTimeSince = (dateString: string, nowMs: number) => {
     const date = new Date(dateString);
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 1) return 'Hace menos de 1 hora';
-    if (hours < 24) return `Hace ${hours} hora${hours > 1 ? 's' : ''}`;
+    const dateMs = date.getTime();
+    if (Number.isNaN(dateMs)) return '-';
+
+    const diffMs = Math.max(0, nowMs - dateMs);
+    const seconds = Math.max(1, Math.floor(diffMs / 1000));
+    if (seconds < 60) {
+      return `Hace ${seconds} segundo${seconds !== 1 ? 's' : ''}`;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `Hace ${minutes} minuto${minutes !== 1 ? 's' : ''}`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return `Hace ${hours} hora${hours !== 1 ? 's' : ''}`;
+    }
+
     const days = Math.floor(hours / 24);
-    return `Hace ${days} día${days > 1 ? 's' : ''}`;
+    return `Hace ${days} día${days !== 1 ? 's' : ''}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -217,6 +231,8 @@ export function ReviewRequestsModule() {
       graduateDocumentNumber: request.idNumber,
       graduateDocumentIssueDate:
         request.idIssueDate || request.graduationDate || request.requestDate,
+      graduationDate: request.graduationDate,
+      graduateLastName: request.graduateLastName,
       requester: {
         name: request.requesterName || request.companyName || 'Solicitante',
         email: request.requesterEmail,
@@ -308,6 +324,16 @@ export function ReviewRequestsModule() {
 
   useEffect(() => {
     loadRequests();
+  }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setTimeNow(Date.now());
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -1053,7 +1079,7 @@ export function ReviewRequestsModule() {
                     <div className="col-span-2">
                       <div className="space-y-1">
                         <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                          {calculateTimeSince(request.createdAt)}
+                          {calculateTimeSince(request.createdAt, timeNow)}
                         </p>
                         {request.reviewerName && (
                           <div className="flex items-center gap-1.5">
@@ -1175,6 +1201,30 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Cédula</p>
                                   <p className="font-semibold text-gray-900 font-mono">{request.graduateDocumentNumber}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Apellido</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {request.graduateLastName || 'Sin registrar'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Fecha de Grado</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {request.graduationDate
+                                      ? new Date(request.graduationDate).toLocaleDateString('es-CO', {
+                                          year: 'numeric',
+                                          month: 'long',
+                                          day: 'numeric',
+                                        })
+                                      : 'Sin fecha'}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">

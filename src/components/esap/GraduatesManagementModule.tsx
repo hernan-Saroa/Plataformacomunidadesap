@@ -245,7 +245,11 @@ export function GraduatesManagementModule() {
         });
 
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
-          const { firstName, lastName } = splitFullName(graduate.fullName);
+          const derivedName = splitFullName(graduate.fullName);
+          const firstName =
+            (graduate.firstName || '').trim() || derivedName.firstName;
+          const lastName =
+            (graduate.lastName || '').trim() || derivedName.lastName;
           const campus = graduate.campus || 'Sin sede';
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
@@ -657,6 +661,8 @@ export function GraduatesManagementModule() {
       const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         email: trimmedEmail,
         phone: phoneDigits,
         idNumber: trimmedDocument,

@@ -82,6 +82,8 @@ interface CertificateRequest {
     fullName: string;
     document: string;
     program: string;
+    email?: string;
+    phone?: string;
     graduationDate: string;
     campus?: string;
     seccionalName?: string;
@@ -94,6 +96,7 @@ interface CertificateRequest {
   requester: {
     name: string;
     email: string;
+    phone?: string;
     type: 'entidad' | 'graduado'; // Quién solicitó el certificado
     logo?: string;
   };
@@ -291,6 +294,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const requestDate = mainRequest?.requestDate;
           const normalizedRequestDate = requestDate ? normalizeDate(requestDate) : '';
           const fallbackIssueDate = normalizeDate(certificate.issueDate);
+          const isGraduateRequester = mainRequest?.requesterType === 'GRADUATE';
+          const graduateEmail =
+            mainRequest?.graduateEmail ||
+            (isGraduateRequester ? mainRequest?.requesterEmail : '') ||
+            '';
+          const graduatePhone =
+            mainRequest?.graduatePhone ||
+            (isGraduateRequester ? mainRequest?.requesterPhone : '') ||
+            '';
 
           const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
           const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
@@ -328,6 +340,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               fullName: certificate.fullName,
               document: certificate.idNumber,
               program: certificate.programName,
+              email: graduateEmail,
+              phone: graduatePhone,
               graduationDate: certificate.graduationDate,
               campus: certificate.campus || (certificate as any)?.graduate?.campus || '',
               seccionalName:
@@ -413,8 +427,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setEditCertificateForm({
       fullName: cert.graduate.fullName || '',
       idNumber: cert.graduate.document || '',
-      email: cert.requester.email || '',
-      phone: normalizePhone(cert.requester.phone || ''),
+      email: cert.graduate.email || '',
+      phone: normalizePhone(cert.graduate.phone || ''),
       programName: cert.graduate.program || '',
       programType: cert.programType || '',
       degreeTitle: cert.degreeTitle || '',
@@ -559,11 +573,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       };
       setEditCertificateForm(nextForm);
 
+      const isGraduateRequester = selectedCertificate.requester.type === 'graduado';
       const requesterName = (
-        selectedCertificate.requester.type === 'graduado'
-          ? nextForm.fullName
-          : selectedCertificate.requester.name
+        isGraduateRequester ? nextForm.fullName : selectedCertificate.requester.name
       ).trim();
+      const requesterEmail = (
+        isGraduateRequester ? nextForm.email : selectedCertificate.requester.email || ''
+      ).trim();
+      const requesterPhone = isGraduateRequester
+        ? nextForm.phone
+        : selectedCertificate.requester.phone || '';
       const certificatePayload: UpdateCertificadoPayload = isExistingGraduate
         ? {
             fullName: nextForm.fullName,
@@ -575,8 +594,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             diplomaNumber,
             actaNumber,
             requesterName,
-            requesterEmail: nextForm.email,
-            requesterPhone: nextForm.phone,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
+            graduatePhone: nextForm.phone,
           }
         : {
             fullName: nextForm.fullName,
@@ -590,8 +611,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             campus: nextForm.campus,
             seccionalName: nextForm.seccionalName,
             requesterName,
-            requesterEmail: nextForm.email,
-            requesterPhone: nextForm.phone,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
+            graduatePhone: nextForm.phone,
           };
 
       await graduadosService.certificados.actualizar(
@@ -655,6 +678,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   graduationDate: nextForm.graduationDate,
                   campus: nextForm.campus,
                   seccionalName: nextForm.seccionalName,
+                  email: nextForm.email,
+                  phone: nextForm.phone,
                 },
                 programType: nextForm.programType,
                 degreeTitle: nextForm.degreeTitle,
@@ -664,8 +689,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 requester: {
                   ...cert.requester,
                   name: requesterName,
-                  email: nextForm.email,
-                  phone: nextForm.phone,
+                  email: requesterEmail,
+                  phone: requesterPhone,
                 },
               }
             : cert
