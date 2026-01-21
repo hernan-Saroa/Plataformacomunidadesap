@@ -26,6 +26,8 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { VisorPDFModal } from './VisorPDFModal';
 import { ModalNuevoAuto } from './ModalNuevoAuto';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalAutosProps {
   isOpen: boolean;
@@ -529,6 +531,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           )}
 
                           {/* Botón Eliminar */}
+                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_DELETE) && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -538,6 +541,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -576,6 +580,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUTOS_CREATE) && (
               <Button
                 onClick={() => {
                   // Limpiar todos los valores antes de abrir
@@ -595,6 +600,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
                 <Plus className="w-4 h-4 mr-1.5" />
                 Cargar Auto Nuevo
               </Button>
+              )}
             </div>
           </div>
         </div>

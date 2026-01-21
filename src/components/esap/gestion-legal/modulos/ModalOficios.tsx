@@ -24,6 +24,8 @@ import { ModalRedactarOficio } from './ModalRedactarOficio';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalOficiosProps {
   isOpen: boolean;
@@ -558,6 +560,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                               <Download className="w-3.5 h-3.5 mr-1" />
                               Descargar
                             </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_DELETE) && (
                             <Button 
                               size="sm" 
                               variant="outline"
@@ -569,6 +572,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -678,7 +682,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                               <Download className="w-3.5 h-3.5 mr-1" />
                               Descargar
                             </Button>
-                            {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && (
+                            {oficio.requiereRespuesta && oficio.estado !== 'Atendido' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_ATENDER) && (
                               <Button 
                                 size="sm" 
                                 onClick={() => handleMarcarOficioRecibidoAtendido(oficio.id)}
@@ -727,6 +731,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 <Download className="w-4 h-4 mr-1.5" />
                 Descargar Todos (ZIP)
               </Button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_OFICIOS_CREATE) && (
               <Button
                 onClick={() => setModalRedactarAbierto(true)}
                 className="font-bold text-white"
@@ -735,6 +740,7 @@ export function ModalOficios({ isOpen, onClose, expediente }: ModalOficiosProps)
                 <Plus className="w-4 h-4 mr-1.5" />
                 Redactar Oficio
               </Button>
+              )}
             </div>
           </div>
         </div>

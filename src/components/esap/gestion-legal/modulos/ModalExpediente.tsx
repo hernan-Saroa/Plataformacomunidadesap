@@ -1323,6 +1323,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     <Badge className="ml-2 bg-blue-600 text-white font-bold">{actuacionesList.length}</Badge>
                   </h4>
                   <div className="flex gap-2">
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1332,6 +1333,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Calendar className="w-3 h-3 mr-1" />
                       Programar Audiencia
                     </Button>
+                    )}
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) && (
                     <Button
                       size="sm"
                       className="text-xs font-bold"
@@ -1341,6 +1344,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <Plus className="w-3 h-3 mr-1" />
                       Registrar Actuación
                     </Button>
+                    )}
                   </div>
                 </Card>
 

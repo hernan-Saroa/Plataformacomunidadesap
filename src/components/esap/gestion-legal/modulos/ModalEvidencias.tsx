@@ -29,6 +29,8 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
@@ -423,12 +425,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          {ev.estado !== 'Admitida' && (
+                          {ev.estado !== 'Admitida' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR) && (
                             <Button size="sm" onClick={() => handleMarcarAdmitida(ev.id)} className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white">
                               <CheckCircle className="w-3.5 h-3.5 mr-1" />
                               Admitir
                             </Button>
                           )}
+                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE) && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -441,6 +444,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -473,10 +477,12 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   <Download className="w-4 h-4 mr-1.5" />
                   Descargar Todas (ZIP)
                 </Button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_EVIDENCIA_CREATE) && (
                 <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
                   <Upload className="w-4 h-4 mr-1.5" />
                   Cargar Evidencia
                 </Button>
+                )}
               </div>
             </div>
           </div>
