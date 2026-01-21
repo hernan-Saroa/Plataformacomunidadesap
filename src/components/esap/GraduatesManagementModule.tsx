@@ -787,7 +787,7 @@ export function GraduatesManagementModule() {
     ];
 
     const csvRows = [
-      headers.map(escapeCsvValue).join(','),
+      headers.map(escapeCsvValue).join(';'),
       ...rows.map((user) =>
         [
           user.document,
@@ -802,11 +802,11 @@ export function GraduatesManagementModule() {
           user.certificatesCount,
         ]
           .map(escapeCsvValue)
-          .join(',')
+          .join(';')
       ),
     ];
 
-    const csvContent = csvRows.join('\n');
+    const csvContent = `\uFEFF${csvRows.join('\n')}`;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

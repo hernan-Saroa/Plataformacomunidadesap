@@ -61,7 +61,7 @@ export class LaborCertificatePdfService {
   }
 
   private resolveTemplateType(certificate: Certificate): TemplateType {
-    const rawText = `${certificate.career_category || ''}`;
+    const rawText = `${certificate.position_category || ''} ${certificate.career_category || ''}`;
     const text = rawText
       .toLowerCase()
       .normalize('NFD')
@@ -133,10 +133,20 @@ export class LaborCertificatePdfService {
 
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
+    const requestData = (certificate as Certificate & {
+      request?: { career_category?: string; position_category?: string };
+    }).request;
+    // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
-      certificate.career_category || certificate.position_category || '';
+      requestData?.position_category ||
+      certificate.position_category ||
+      certificate.career_category ||
+      '';
     const cargoTexto =
-      certificate.position_category || certificate.career_category || '';
+      requestData?.career_category ||
+      certificate.career_category ||
+      certificate.position_category ||
+      '';
     const grado = certificate.position_location || '';
     const dependenciaHijo = certificate.department || '';
     const dependenciaPadre =
@@ -273,16 +283,33 @@ export class LaborCertificatePdfService {
   }
 
   private stripSalarySections(html: string): string {
-    let result = html;
-    const patterns = [
-      /<p[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/p>/gi,
-      /<div[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/div>/gi,
-      /<li[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/li>/gi,
-      /<span[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/span>/gi,
-    ];
-    for (const pattern of patterns) {
-      result = result.replace(pattern, '');
+    if (!html) {
+      return html;
     }
+
+    const keywordRegex = /(salari|asignaci)/i;
+
+    let result = html.replace(
+      /<(p|li)([^>]*)>([\s\S]*?)<\/\1>/gi,
+      (match, _tag, _attrs, body) => {
+        const text = body.replace(/<[^>]+>/g, ' ');
+        return keywordRegex.test(text) ? '' : match;
+      },
+    );
+
+    result = result.replace(
+      /<div([^>]*)>([\s\S]*?)<\/div>/gi,
+      (match, _attrs, body) => {
+        const hasBlock = /<(p|div|li|ul|ol|table|tr|td)\b/i.test(body);
+        const text = body.replace(/<[^>]+>/g, ' ');
+        return keywordRegex.test(text) && !hasBlock ? '' : match;
+      },
+    );
+
+    result = result.replace(/<p[^>]*>\s*<\/p>/gi, '');
+    result = result.replace(/<div[^>]*>\s*<\/div>/gi, '');
+    result = result.replace(/<li[^>]*>\s*<\/li>/gi, '');
+
     return result;
   }
 

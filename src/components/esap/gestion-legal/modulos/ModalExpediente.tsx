@@ -1230,9 +1230,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
                           </Button>
+                          {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE) && (
                           <Button size="sm" variant="outline" onClick={() => handleEliminarDocumento(doc)} title="Eliminar" className="text-red-600 hover:text-red-700 hover:bg-red-50">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </Card>
