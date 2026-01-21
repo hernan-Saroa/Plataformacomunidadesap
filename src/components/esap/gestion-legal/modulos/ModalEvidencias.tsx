@@ -29,11 +29,14 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 const categorias = [
@@ -46,7 +49,7 @@ const categorias = [
   'Digitales'
 ];
 
-export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
+export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
@@ -169,7 +172,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -183,9 +186,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo: localhost:3008/files/
-    // En modo gateway: localhost:3000/legal/api/v1/files/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -288,6 +290,23 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     } catch (error) {
       console.error('Error creando evidencia:', error);
       toast.error('Error al guardar la evidencia');
+    }
+  };
+
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
     }
   };
 
@@ -424,12 +443,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          {ev.estado !== 'Admitida' && (
+                          {ev.estado !== 'Admitida' && hasPermission('admitir') && (
                             <Button size="sm" onClick={() => handleMarcarAdmitida(ev.id)} className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white">
                               <CheckCircle className="w-3.5 h-3.5 mr-1" />
                               Admitir
                             </Button>
                           )}
+                          {hasPermission('delete') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -442,6 +462,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -474,10 +495,12 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   <Download className="w-4 h-4 mr-1.5" />
                   Descargar Todas (ZIP)
                 </Button>
+                {hasPermission('create') && (
                 <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
                   <Upload className="w-4 h-4 mr-1.5" />
                   Cargar Evidencia
                 </Button>
+                )}
               </div>
             </div>
           </div>

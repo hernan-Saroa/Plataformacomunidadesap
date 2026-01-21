@@ -23,11 +23,14 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FileCheck, Search, Download, Eye, Trash2, FileText, Calendar, User, Clock, CheckCircle, AlertCircle, Plus, Filter, Play, Users, X, Upload } from 'lucide-react';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalActasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 // Tipos de actas
@@ -43,7 +46,7 @@ const tiposActa = [
 
 // Mocks eliminados - Datos cargados desde API
 
-export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
+export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasProps) {
   const [actas, setActas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODAS');
@@ -133,7 +136,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -147,8 +150,8 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo, no agregar prefijo /legal/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -400,6 +403,21 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
     a.resumen.toLowerCase().includes(busqueda.toLowerCase())
   );
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_DELETE)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_ACTAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_ACTAS_DELETE)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -637,6 +655,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                                 <Download className="w-3.5 h-3.5 mr-1" />
                                 Descargar
                               </Button>
+                              {hasPermission('delete') && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -645,6 +664,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -708,6 +728,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                   <Download className="w-3.5 h-3.5 mr-1.5" />
                   Descargar Firmadas (ZIP)
                 </Button>
+                {hasPermission('create') && (
                 <Button
                   onClick={() => setIsCreateOpen(true)}
                   className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
@@ -715,6 +736,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
                   Nueva Acta
                 </Button>
+                )}
               </div>
             </div>
           </div>

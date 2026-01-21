@@ -329,21 +329,25 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalEvidencias
           isOpen={modalEvidenciasOpen}
           onClose={() => setModalEvidenciasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalOficios
           isOpen={modalOficiosOpen}
           onClose={() => setModalOficiosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalActas
           isOpen={modalActasOpen}
           onClose={() => setModalActasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
       </>
     );
@@ -569,21 +573,25 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalEvidencias
           isOpen={modalEvidenciasOpen}
           onClose={() => setModalEvidenciasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalOficios
           isOpen={modalOficiosOpen}
           onClose={() => setModalOficiosOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
         <ModalActas
           isOpen={modalActasOpen}
           onClose={() => setModalActasOpen(false)}
           expediente={expedienteParaModales as any}
+          modulo='lista-juzgamiento'
         />
       </>
     );

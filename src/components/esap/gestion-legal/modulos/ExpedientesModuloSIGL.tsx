@@ -25,7 +25,7 @@ import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environ
 
 // Helper to build correct file URL for both direct and gateway modes
 // Direct mode: http://localhost:3008/files/{filename}
-// Gateway mode: http://gateway:3000/legal/api/v1/files/{filename}
+// Gateway mode: http://gateway:3000/legal/files/{filename} (NOT /legal/api/v1/files!)
 const getFileUrl = (url: string): string => {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('blob:')) return url;
@@ -45,15 +45,16 @@ const getFileUrl = (url: string): string => {
   // Limpiar prefijos incorrectos
   filename = filename.replace(/^\/+/, '');
 
-  // En modo directo, no agregar prefijo /legal/api/v1
-  const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+  // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
   return `${baseUrl}${prefix}/files/${filename}`;
 };
 
 // URL base para archivos del servicio legal (uploads, etc.)
+// Gateway rutea /legal/uploads/* -> backend /uploads/*
 const LEGAL_BASE_URL = (() => {
   const baseUrl = getServiceUrl('legal');
-  const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+  const prefix = API_MODE === 'direct' ? '' : '/legal';
   return `${baseUrl}${prefix}`;
 })();
 
@@ -794,24 +795,28 @@ export function ExpedientesModuloSIGL() {
             isOpen={modalAutosOpen}
             onClose={() => setModalAutosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalActas
             isOpen={modalActasOpen}
             onClose={() => setModalActasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalEvidencias
             isOpen={modalEvidenciasOpen}
             onClose={() => setModalEvidenciasOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           <ModalOficios
             isOpen={modalOficiosOpen}
             onClose={() => setModalOficiosOpen(false)}
             expediente={{ ...expedienteSeleccionado, uuid: expedienteSeleccionado.id } as any}
+            modulo='espediente-sigl'
           />
 
           {modalRespuestaOpen && (
