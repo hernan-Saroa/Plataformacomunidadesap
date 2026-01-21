@@ -8,6 +8,8 @@ FROM (VALUES
   ('gestion-legal.defensa-judicial.create', 'Crear nueva demanda', 'Permite crear nueva demanda de defensa judicial', 'gestion-legal'),
   ('gestion-legal.defensa-judicial.expediente.doc.upload', 'Subir documento', 'Permite subir un documento del expediente de defensa judicial', 'gestion-legal'),
   ('gestion-legal.defensa-judicial.expediente.doc.delete', 'Eliminar documento', 'Permite eliminar un documento del expediente de defensa judicial', 'gestion-legal'),
+  ('gestion-legal.defensa-judicial.expediente.actuacion.create', 'Registrar actuación', 'Permite registrar una actuación del expediente de defensa judicial', 'gestion-legal'),
+  ('gestion-legal.defensa-judicial.expediente.actuacion.audiencia.create', 'Programar Audiencia', 'Permite programas una audiencia del expediente de defensa judicial', 'gestion-legal'),
   ('gestion-legal.defensa-judicial.expediente.tarea.create', 'Crear tarea', 'Permite crear una tarea del expediente de defensa judicial', 'gestion-legal'),
   ('gestion-legal.defensa-judicial.expediente.tarea.delete', 'Eliminar tarea', 'Permite eliminar una tarea del expediente de defensa judicial', 'gestion-legal'),
   ('gestion-legal.defensa-judicial.expediente.nota.create', 'Crear nota', 'Permite crear una nota del expediente de defensa judicial', 'gestion-legal'),
