@@ -27,6 +27,8 @@ export enum Permissions {
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT = 'gestion-legal.juzgamiento-disciplinario.expediente.edit',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_PRUEBA = 'gestion-legal.juzgamiento-disciplinario.expediente.prueba',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION = 'gestion-legal.juzgamiento-disciplinario.expediente.decision',
+  GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EXCEPCION = 'gestion-legal.juzgamiento-disciplinario.expediente.excepcion',
+  GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION_NOTIFICAR = 'gestion-legal.juzgamiento-disciplinario.expediente.decision.notificar',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.juzgamiento-disciplinario.expediente.doc.upload',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_CREATE = 'gestion-legal.juzgamiento-disciplinario.autos.create',
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_AUTOS_DELETE = 'gestion-legal.juzgamiento-disciplinario.autos.delete',
