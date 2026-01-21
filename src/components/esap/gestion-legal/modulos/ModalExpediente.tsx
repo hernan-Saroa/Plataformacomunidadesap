@@ -411,6 +411,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     toast.success('👁️ Documento abierto en nueva pestaña', { description: doc.nombre });
   };
 
+  // Helper para detectar si un archivo es previsuable en el navegador
+  const isPrevisuable = (doc: any): boolean => {
+    const nombre = (doc.nombre || '').toLowerCase();
+    // Word files cannot be previewed, only downloaded
+    if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+      return false;
+    }
+    // PDF and images can be previewed
+    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.jpeg') || nombre.endsWith('.png') || nombre.endsWith('.gif')) {
+      return true;
+    }
+    // Default to true for other file types
+    return true;
+  };
+
   const handleEliminarDocumento = async (doc: any) => {
     if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) {
       return;
@@ -1203,9 +1218,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-3">
-                          <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
+                          {isPrevisuable(doc) && (
+                            <Button size="sm" variant="outline" onClick={() => handleVerDocumento(doc)} title="Vista previa">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           <Button size="sm" variant="outline" onClick={() => handleDescargarDocumento(doc)} title="Descargar">
                             <Download className="w-3.5 h-3.5" />
                           </Button>
