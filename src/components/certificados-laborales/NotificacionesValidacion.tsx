@@ -15,7 +15,7 @@ import {
   Save,
   X
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -177,44 +177,31 @@ export function NotificacionesValidacion() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-6 md:py-8 px-3 sm:px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-8"
+          className="mb-4 sm:mb-6 md:mb-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 sm:gap-3 md:gap-4 min-w-0">
               <div 
-                className="w-16 h-16 rounded-xl flex items-center justify-center"
+                className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
                   background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                   boxShadow: '0 4px 12px rgba(0, 61, 165, 0.2)'
                 }}
               >
-                <Bell className="w-8 h-8 text-white" strokeWidth={2.5} />
+                <Bell className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white" strokeWidth={2.5} />
               </div>
-              <div>
-                <h1 
-                  className="font-bold"
-                  style={{
-                    fontSize: '32px',
-                    lineHeight: '40px',
-                    color: '#1F2937'
-                  }}
-                >
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">
                   Notificaciones de Validación
                 </h1>
-                <p 
-                  className="text-gray-600"
-                  style={{
-                    fontSize: '16px',
-                    lineHeight: '24px'
-                  }}
-                >
+                <p className="text-xs sm:text-sm md:text-base text-gray-600">
                   Configura alertas automáticas cuando se validen certificados
                 </p>
               </div>
@@ -222,7 +209,7 @@ export function NotificacionesValidacion() {
 
             <Button
               onClick={() => setNuevoCanal({ tipo: 'EMAIL', eventos: [] })}
-              className="bg-[#003DA5] hover:bg-[#002873]"
+              className="bg-[#003DA5] hover:bg-[#002873] min-h-[48px] w-full sm:w-auto"
             >
               <Plus className="w-4 h-4 mr-2" />
               Nuevo Canal
@@ -230,12 +217,12 @@ export function NotificacionesValidacion() {
           </div>
 
           {/* Info Banner */}
-          <Card className="p-4 bg-blue-50 border-2 border-blue-200 mb-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Sistema de Notificaciones Automáticas</h3>
-                <p className="text-sm text-gray-700">
+          <Card className="p-3 sm:p-4 bg-blue-50 border-2 border-blue-200 mb-4 sm:mb-6">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <h3 className="font-semibold text-gray-900 mb-1 text-sm sm:text-base">Sistema de Notificaciones Automáticas</h3>
+                <p className="text-xs sm:text-sm text-gray-700">
                   Recibe alertas en tiempo real cada vez que se valide un certificado laboral. Configura múltiples canales y personaliza los eventos que deseas monitorear.
                 </p>
               </div>

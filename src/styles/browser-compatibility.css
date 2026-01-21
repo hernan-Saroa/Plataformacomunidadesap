@@ -1,0 +1,576 @@
+/**
+ * ============================================
+ * ESAP - CROSS-BROWSER COMPATIBILITY STYLES
+ * ============================================
+ * 
+ * Garantiza compatibilidad con:
+ * - Chrome 90+
+ * - Edge 90+
+ * - Safari 14+
+ * - Firefox 88+
+ * 
+ * Incluye vendor prefixes y fallbacks necesarios
+ */
+
+/* ============================================
+   BACKDROP FILTER - Safari/Firefox Fallback
+   ============================================ */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-lg {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Fallback para navegadores que no soportan backdrop-filter */
+@supports not (backdrop-filter: blur(12px)) {
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+  
+  [class*="bg-black"][class*="backdrop-blur"] {
+    background-color: rgba(0, 0, 0, 0.85);
+  }
+  
+  [class*="bg-white"][class*="backdrop-blur"] {
+    background-color: rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* ============================================
+   SMOOTH SCROLLING - Safari Fix
+   ============================================ */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* Safari smooth scrolling */
+}
+
+/* ============================================
+   STICKY POSITIONING - Safari/Edge
+   ============================================ */
+.sticky,
+[class*="sticky"] {
+  position: -webkit-sticky;
+  position: sticky;
+}
+
+/* ============================================
+   FLEXBOX - Legacy Browser Support
+   ============================================ */
+.flex {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+}
+
+.inline-flex {
+  display: -webkit-inline-box;
+  display: -ms-inline-flexbox;
+  display: inline-flex;
+}
+
+.flex-col {
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -ms-flex-direction: column;
+  flex-direction: column;
+}
+
+.items-center {
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+}
+
+.justify-center {
+  -webkit-box-pack: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+}
+
+.justify-between {
+  -webkit-box-pack: justify;
+  -ms-flex-pack: justify;
+  justify-content: space-between;
+}
+
+.flex-1 {
+  -webkit-box-flex: 1;
+  -ms-flex: 1 1 0%;
+  flex: 1 1 0%;
+}
+
+.flex-shrink-0 {
+  -ms-flex-negative: 0;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   GRID - Legacy Browser Support
+   ============================================ */
+.grid {
+  display: -ms-grid;
+  display: grid;
+}
+
+/* ============================================
+   TRANSFORMS - Vendor Prefixes
+   ============================================ */
+.transform {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+/* ============================================
+   TRANSITIONS - Vendor Prefixes
+   ============================================ */
+.transition,
+.transition-all,
+.transition-colors {
+  -webkit-transition: all 0.3s ease;
+  -o-transition: all 0.3s ease;
+  transition: all 0.3s ease;
+}
+
+/* ============================================
+   USER SELECT - Vendor Prefixes
+   ============================================ */
+.select-none {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.select-text {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* ============================================
+   APPEARANCE - Form Elements Safari Fix
+   ============================================ */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Safari date input fix */
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* ============================================
+   SCROLLBAR - Custom Styling All Browsers
+   ============================================ */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E0 #F7FAFC;
+}
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F7FAFC;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A0AEC0;
+}
+
+/* ============================================
+   FOCUS VISIBLE - Accessibility
+   ============================================ */
+:focus-visible {
+  outline: 2px solid #003DA5;
+  outline-offset: 2px;
+}
+
+/* Safari fallback */
+@supports not selector(:focus-visible) {
+  :focus {
+    outline: 2px solid #003DA5;
+    outline-offset: 2px;
+  }
+}
+
+/* ============================================
+   GAP - Flexbox Gap Fallback
+   ============================================ */
+@supports not (gap: 1rem) {
+  .gap-1 > * + * { margin-left: 0.25rem; margin-top: 0.25rem; }
+  .gap-2 > * + * { margin-left: 0.5rem; margin-top: 0.5rem; }
+  .gap-3 > * + * { margin-left: 0.75rem; margin-top: 0.75rem; }
+  .gap-4 > * + * { margin-left: 1rem; margin-top: 1rem; }
+  .gap-6 > * + * { margin-left: 1.5rem; margin-top: 1.5rem; }
+}
+
+/* ============================================
+   CLAMP - Typography Fallback
+   ============================================ */
+@supports not (font-size: clamp(1rem, 2vw, 2rem)) {
+  .text-responsive {
+    font-size: 1.5rem;
+  }
+  
+  @media (min-width: 640px) {
+    .text-responsive {
+      font-size: 1.75rem;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .text-responsive {
+      font-size: 2rem;
+    }
+  }
+}
+
+/* ============================================
+   ASPECT RATIO - Fallback
+   ============================================ */
+@supports not (aspect-ratio: 16 / 9) {
+  .aspect-video {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 */
+  }
+  
+  .aspect-video > * {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* ============================================
+   OBJECT FIT - Safari Fix
+   ============================================ */
+.object-cover,
+.object-contain {
+  -o-object-fit: cover;
+  object-fit: cover;
+}
+
+/* ============================================
+   POINTER EVENTS - Safari Support
+   ============================================ */
+.pointer-events-none {
+  pointer-events: none;
+  -webkit-touch-callout: none;
+}
+
+.pointer-events-auto {
+  pointer-events: auto;
+}
+
+/* ============================================
+   OVERSCROLL BEHAVIOR - Safari/Chrome
+   ============================================ */
+body,
+html {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================
+   SAFE AREA INSETS - iOS Safari
+   ============================================ */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
+}
+
+/* ============================================
+   TOUCH ACTION - Mobile Browsers
+   ============================================ */
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================
+   WILL CHANGE - Performance Optimization
+   ============================================ */
+.animate-spin,
+.animate-pulse,
+[class*="animate-"] {
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* ============================================
+   GRADIENT - Vendor Prefixes
+   ============================================ */
+.bg-gradient-to-r,
+.bg-gradient-to-br,
+.bg-gradient-to-b {
+  background-image: -webkit-linear-gradient(left, var(--tw-gradient-stops));
+  background-image: -o-linear-gradient(left, var(--tw-gradient-stops));
+  background-image: linear-gradient(to right, var(--tw-gradient-stops));
+}
+
+/* ============================================
+   FILTER - Vendor Prefixes
+   ============================================ */
+.blur,
+.brightness,
+.contrast {
+  -webkit-filter: blur(8px);
+  filter: blur(8px);
+}
+
+/* ============================================
+   PRINT STYLES - Cross-browser
+   ============================================ */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+  
+  a[href]:after {
+    content: none !important;
+  }
+}
+
+/* ============================================
+   REDUCED MOTION - Accessibility
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   HIGH CONTRAST MODE - Windows Edge
+   ============================================ */
+@media (prefers-contrast: high) {
+  button,
+  a {
+    border: 2px solid currentColor;
+  }
+  
+  input,
+  select,
+  textarea {
+    border: 2px solid currentColor;
+  }
+}
+
+/* ============================================
+   DARK MODE - System Preference
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* ============================================
+   WEBKIT AUTOFILL - Chrome/Safari
+   ============================================ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #1F2937;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ============================================
+   LINE CLAMP - Multi-line Truncation
+   ============================================ */
+.line-clamp-1,
+.line-clamp-2,
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-1 {
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
+/* ============================================
+   PLACEHOLDER - Cross-browser
+   ============================================ */
+::-webkit-input-placeholder {
+  color: #9CA3AF;
+  opacity: 1;
+}
+
+::-moz-placeholder {
+  color: #9CA3AF;
+  opacity: 1;
+}
+
+:-ms-input-placeholder {
+  color: #9CA3AF;
+  opacity: 1;
+}
+
+::placeholder {
+  color: #9CA3AF;
+  opacity: 1;
+}
+
+/* ============================================
+   SELECTION - Text Selection Styling
+   ============================================ */
+::-moz-selection {
+  background-color: #003DA5;
+  color: white;
+}
+
+::selection {
+  background-color: #003DA5;
+  color: white;
+}
+
+/* ============================================
+   METER/PROGRESS - Cross-browser
+   ============================================ */
+progress,
+meter {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* ============================================
+   DETAILS/SUMMARY - Safari Fix
+   ============================================ */
+summary {
+  display: list-item;
+  cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ============================================
+   MIN/MAX - Safari Flexbox Bug Fix
+   ============================================ */
+.min-w-0 {
+  min-width: 0;
+  min-inline-size: 0;
+}
+
+.min-h-0 {
+  min-height: 0;
+  min-block-size: 0;
+}
+
+/* ============================================
+   BORDER RADIUS - Safari Overflow Fix
+   ============================================ */
+.overflow-hidden {
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+}
+
+/* ============================================
+   BUTTON RESET - Cross-browser
+   ============================================ */
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  outline: inherit;
+}
+
+/* ============================================
+   SVG - Edge Rendering Fix
+   ============================================ */
+svg {
+  overflow: visible;
+  vertical-align: middle;
+}
+
+/* ============================================
+   Z-INDEX MANAGEMENT - Layering System
+   ============================================ */
+:root {
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-notification: 9999;
+}
+
+/* ============================================
+   FONT SMOOTHING - Webkit/Moz
+   ============================================ */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================
+   PERFORMANCE HINTS
+   ============================================ */
+.gpu-accelerate {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-perspective: 1000px;
+  perspective: 1000px;
+}

@@ -13,7 +13,7 @@ import {
   File,
   BarChart3
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Label } from '../ui/label';
@@ -167,50 +167,37 @@ export function GeneradorReportes() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-6 md:py-8 px-3 sm:px-4">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-8"
+          className="mb-4 sm:mb-6 md:mb-8"
         >
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
             <div 
-              className="w-16 h-16 rounded-xl flex items-center justify-center"
+              className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
               style={{
                 background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                 boxShadow: '0 4px 12px rgba(0, 61, 165, 0.2)'
               }}
             >
-              <FileText className="w-8 h-8 text-white" strokeWidth={2.5} />
+              <FileText className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white" strokeWidth={2.5} />
             </div>
-            <div>
-              <h1 
-                className="font-bold"
-                style={{
-                  fontSize: '32px',
-                  lineHeight: '40px',
-                  color: '#1F2937'
-                }}
-              >
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 truncate">
                 Generador de Reportes
               </h1>
-              <p 
-                className="text-gray-600"
-                style={{
-                  fontSize: '16px',
-                  lineHeight: '24px'
-                }}
-              >
+              <p className="text-xs sm:text-sm md:text-base text-gray-600">
                 Crea reportes personalizados del histórico de validaciones
               </p>
             </div>
           </div>
         </motion.div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Panel de Configuración */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -218,33 +205,33 @@ export function GeneradorReportes() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="lg:col-span-2"
           >
-            <Card className="p-6 border-2">
-              <div className="space-y-6">
+            <Card className="p-4 sm:p-6 border-2">
+              <div className="space-y-4 sm:space-y-6">
                 {/* Periodo */}
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-[#003DA5]" />
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-[#003DA5]" />
                     Período del Reporte
                   </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <Label htmlFor="fechaInicio">Fecha Inicio</Label>
+                      <Label htmlFor="fechaInicio" className="text-xs sm:text-sm">Fecha Inicio</Label>
                       <Input
                         id="fechaInicio"
                         type="date"
                         value={filtros.fechaInicio}
                         onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
-                        className="mt-2"
+                        className="mt-2 min-h-[48px]"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="fechaFin">Fecha Fin</Label>
+                      <Label htmlFor="fechaFin" className="text-xs sm:text-sm">Fecha Fin</Label>
                       <Input
                         id="fechaFin"
                         type="date"
                         value={filtros.fechaFin}
                         onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
-                        className="mt-2"
+                        className="mt-2 min-h-[48px]"
                       />
                     </div>
                   </div>

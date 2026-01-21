@@ -14,7 +14,7 @@ import {
   Lock,
   Zap
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -180,54 +180,39 @@ echo $response;
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF] py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF] py-6 sm:py-8 md:py-12 px-3 sm:px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-12"
+          className="text-center mb-6 sm:mb-8 md:mb-12"
         >
           <div 
-            className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+            className="w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6"
             style={{
               background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
               boxShadow: '0 8px 24px rgba(0, 61, 165, 0.25)'
             }}
           >
-            <Code className="w-10 h-10 text-white" strokeWidth={2.5} />
+            <Code className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 text-white" strokeWidth={2.5} />
           </div>
           
-          <h1 
-            className="font-bold mb-3"
-            style={{
-              fontSize: '36px',
-              lineHeight: '44px',
-              letterSpacing: '-0.5px',
-              color: '#1F2937'
-            }}
-          >
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 sm:mb-3 text-gray-900 px-4">
             API de Validación de Certificados
           </h1>
           
-          <p 
-            className="font-normal max-w-3xl mx-auto"
-            style={{
-              fontSize: '16px',
-              lineHeight: '24px',
-              color: '#6B7280'
-            }}
-          >
+          <p className="text-sm sm:text-base text-gray-600 max-w-3xl mx-auto px-4">
             Integra la validación de certificados laborales ESAP en tu sistema con nuestra API REST segura y escalable
           </p>
 
-          <div className="flex items-center justify-center gap-4 mt-6">
-            <Badge className="bg-green-100 text-green-800 border-green-300 px-4 py-1">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mt-4 sm:mt-6 px-4">
+            <Badge className="bg-green-100 text-green-800 border-green-300 px-3 sm:px-4 py-1 text-xs sm:text-sm">
               <Zap className="w-3 h-3 mr-1 inline" />
               API v1.0 - Estable
             </Badge>
-            <Badge variant="outline" className="px-4 py-1">
+            <Badge variant="outline" className="px-3 sm:px-4 py-1 text-xs sm:text-sm">
               <Shield className="w-3 h-3 mr-1 inline" />
               OAuth 2.0 + API Key
             </Badge>

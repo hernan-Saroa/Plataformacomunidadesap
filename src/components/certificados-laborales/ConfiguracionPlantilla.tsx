@@ -615,54 +615,39 @@ export function ConfiguracionPlantilla() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
               <div 
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
                   background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                   boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
                 }}
               >
-                <FileText className="w-6 h-6 text-white" strokeWidth={2.5} />
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
               </div>
-              <div>
-                <h1 
-                  className="font-bold tracking-tight"
-                  style={{
-                    fontSize: '32px',
-                    lineHeight: '40px',
-                    letterSpacing: '-0.25px',
-                    color: '#1F2937'
-                  }}
-                >
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-gray-900 truncate">
                   Configuración de Plantilla
                 </h1>
               </div>
             </div>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
+            <p className="text-xs sm:text-sm text-gray-600">
               Gestiona la plantilla base de certificados laborales. Los cambios se aplican a todos los certificados futuros.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             {getEstadoBadge(plantilla.estado)}
-            <Badge variant="outline" className="px-3 py-1 text-sm">
+            <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
               Versión {plantilla.version}
             </Badge>
           </div>
@@ -674,15 +659,15 @@ export function ConfiguracionPlantilla() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4"
+          className="bg-yellow-50 border-2 border-yellow-300 rounded-lg sm:rounded-xl p-3 sm:p-4"
         >
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-yellow-900 mb-1">
+          <div className="flex items-start gap-2 sm:gap-3">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-yellow-900 mb-1 text-sm sm:text-base">
                 Cambios sin guardar
               </h3>
-              <p className="text-sm text-yellow-800">
+              <p className="text-xs sm:text-sm text-yellow-800">
                 Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
               </p>
             </div>
@@ -690,7 +675,7 @@ export function ConfiguracionPlantilla() {
               variant="ghost"
               size="sm"
               onClick={handleDescartarCambios}
-              className="text-yellow-700 hover:text-yellow-900"
+              className="text-yellow-700 hover:text-yellow-900 min-h-[44px] sm:min-h-[36px]"
             >
               Descartar
             </Button>
@@ -700,17 +685,19 @@ export function ConfiguracionPlantilla() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="configuracion" className="gap-2">
-            <Edit3 className="w-4 h-4" />
-            Configuración
+        <TabsList className="grid w-full grid-cols-3 gap-1 sm:w-auto sm:inline-grid">
+          <TabsTrigger value="configuracion" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <Edit3 className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Configuración</span>
+            <span className="sm:hidden">Config</span>
           </TabsTrigger>
-          <TabsTrigger value="preview" className="gap-2">
-            <Eye className="w-4 h-4" />
-            Vista Previa
+          <TabsTrigger value="preview" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Vista Previa</span>
+            <span className="sm:hidden">Vista</span>
           </TabsTrigger>
-          <TabsTrigger value="historial" className="gap-2">
-            <History className="w-4 h-4" />
+          <TabsTrigger value="historial" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <History className="w-3 h-3 sm:w-4 sm:h-4" />
             Historial
           </TabsTrigger>
         </TabsList>

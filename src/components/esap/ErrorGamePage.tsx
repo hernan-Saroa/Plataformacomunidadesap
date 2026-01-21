@@ -132,9 +132,10 @@ const questions: Question[] = [
 interface ErrorGamePageProps {
   onRetry?: () => void;
   onGoHome?: () => void;
+  errorId?: string | null;
 }
 
-export function ErrorGamePage({ onRetry, onGoHome }: ErrorGamePageProps) {
+export function ErrorGamePage({ onRetry, onGoHome, errorId }: ErrorGamePageProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);

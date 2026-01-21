@@ -10,7 +10,7 @@ import {
   Upload,
   SwitchCamera
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import jsQR from 'jsqr';
@@ -208,60 +208,60 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
           onClick={onClose}
         />
 
-        {/* Modal */}
+        {/* Modal - Mobile Optimized */}
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed inset-0 flex items-center justify-center p-4"
+          className="fixed inset-0 flex items-center justify-center p-0 sm:p-4"
         >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            {/* Header */}
-            <div className="bg-[#003DA5] px-6 py-4">
+          <div className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header - Compact on mobile */}
+            <div className="bg-[#003DA5] px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-white/10 p-2 rounded-lg">
-                    <Camera className="w-6 h-6 text-white" />
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <div className="bg-white/10 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
+                    <Camera className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
-                  <div>
-                    <h2 className="text-white text-xl">Escanear Código QR</h2>
-                    <p className="text-blue-100 text-sm mt-0.5">
+                  <div className="min-w-0">
+                    <h2 className="text-white text-base sm:text-xl font-semibold truncate">Escanear Código QR</h2>
+                    <p className="text-blue-100 text-xs sm:text-sm mt-0.5 truncate">
                       Apunta al certificado físico
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="text-white/80 hover:text-white transition-colors"
+                  className="text-white/80 hover:text-white transition-colors p-2 -mr-2 flex-shrink-0"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
             </div>
 
-            {/* Content */}
-            <div className="p-6">
-              {/* Video Container */}
-              <div className="relative bg-black rounded-xl overflow-hidden mb-6" style={{ aspectRatio: '16/9' }}>
+            {/* Content - Scrollable */}
+            <div className="p-3 sm:p-6 overflow-y-auto flex-1">
+              {/* Video Container - Responsive aspect ratio */}
+              <div className="relative bg-black rounded-lg sm:rounded-xl overflow-hidden mb-4 sm:mb-6" style={{ aspectRatio: '16/9' }}>
                 {hasPermission === null && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <Loader2 className="w-12 h-12 text-white animate-spin mx-auto mb-4" />
-                      <p className="text-white">Iniciando cámara...</p>
+                    <div className="text-center px-4">
+                      <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 text-white animate-spin mx-auto mb-3 sm:mb-4" />
+                      <p className="text-white text-sm sm:text-base">Iniciando cámara...</p>
                     </div>
                   </div>
                 )}
 
                 {hasPermission === false && (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                    <div className="text-center px-6">
-                      <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-                      <h3 className="text-white text-lg mb-2">Error de Cámara</h3>
-                      <p className="text-gray-300 text-sm mb-4">{errorMessage}</p>
+                    <div className="text-center px-4 sm:px-6">
+                      <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 text-red-400 mx-auto mb-3 sm:mb-4" />
+                      <h3 className="text-white text-base sm:text-lg mb-2">Error de Cámara</h3>
+                      <p className="text-gray-300 text-xs sm:text-sm mb-3 sm:mb-4">{errorMessage}</p>
                       <Button
                         variant="outline"
-                        className="bg-white text-gray-900"
+                        className="bg-white text-gray-900 min-h-[44px]"
                         onClick={startCamera}
                       >
                         Intentar de nuevo
@@ -280,20 +280,20 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
                       muted
                     />
 
-                    {/* Overlay de escaneo */}
+                    {/* Overlay de escaneo - Responsive */}
                     <div className="absolute inset-0 pointer-events-none">
                       {/* Marco de escaneo */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="relative" style={{ width: '300px', height: '300px' }}>
-                          {/* Esquinas */}
-                          <div className="absolute top-0 left-0 w-12 h-12 border-t-4 border-l-4 border-white rounded-tl-lg" />
-                          <div className="absolute top-0 right-0 w-12 h-12 border-t-4 border-r-4 border-white rounded-tr-lg" />
-                          <div className="absolute bottom-0 left-0 w-12 h-12 border-b-4 border-l-4 border-white rounded-bl-lg" />
-                          <div className="absolute bottom-0 right-0 w-12 h-12 border-b-4 border-r-4 border-white rounded-br-lg" />
+                      <div className="absolute inset-0 flex items-center justify-center p-4">
+                        <div className="relative w-full max-w-[280px] sm:max-w-[300px]" style={{ aspectRatio: '1/1' }}>
+                          {/* Esquinas - Responsive */}
+                          <div className="absolute top-0 left-0 w-10 h-10 sm:w-12 sm:h-12 border-t-[3px] sm:border-t-4 border-l-[3px] sm:border-l-4 border-white rounded-tl-lg" />
+                          <div className="absolute top-0 right-0 w-10 h-10 sm:w-12 sm:h-12 border-t-[3px] sm:border-t-4 border-r-[3px] sm:border-r-4 border-white rounded-tr-lg" />
+                          <div className="absolute bottom-0 left-0 w-10 h-10 sm:w-12 sm:h-12 border-b-[3px] sm:border-b-4 border-l-[3px] sm:border-l-4 border-white rounded-bl-lg" />
+                          <div className="absolute bottom-0 right-0 w-10 h-10 sm:w-12 sm:h-12 border-b-[3px] sm:border-b-4 border-r-[3px] sm:border-r-4 border-white rounded-br-lg" />
                           
                           {/* Línea de escaneo animada */}
                           <motion.div
-                            className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent"
+                            className="absolute inset-x-0 h-0.5 sm:h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent"
                             animate={{
                               top: ['0%', '100%']
                             }}
@@ -306,19 +306,19 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
                         </div>
                       </div>
 
-                      {/* Instrucción */}
-                      <div className="absolute bottom-6 left-0 right-0 text-center">
-                        <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-sm px-4 py-2 rounded-full">
-                          <QrCode className="w-4 h-4 text-white" />
-                          <span className="text-white text-sm">Alinea el código QR dentro del marco</span>
+                      {/* Instrucción - Compact on mobile */}
+                      <div className="absolute bottom-3 sm:bottom-6 left-0 right-0 text-center px-3">
+                        <div className="inline-flex items-center gap-1.5 sm:gap-2 bg-black/60 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-full max-w-full">
+                          <QrCode className="w-3 h-3 sm:w-4 sm:h-4 text-white flex-shrink-0" />
+                          <span className="text-white text-xs sm:text-sm truncate">Alinea el código QR dentro del marco</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Botón cambiar cámara */}
+                    {/* Botón cambiar cámara - Touch optimized */}
                     <button
                       onClick={toggleCamera}
-                      className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm p-3 rounded-full hover:bg-black/80 transition-colors"
+                      className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-black/60 backdrop-blur-sm p-2.5 sm:p-3 rounded-full hover:bg-black/80 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                     >
                       <SwitchCamera className="w-5 h-5 text-white" />
                     </button>
@@ -332,12 +332,12 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-gray-300" />
                   </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="bg-white px-4 text-gray-500">O usa otra opción</span>
+                  <div className="relative flex justify-center text-xs sm:text-sm">
+                    <span className="bg-white px-3 sm:px-4 text-gray-500">O usa otra opción</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {/* Upload de Imagen */}
                   <label>
                     <input
@@ -346,33 +346,33 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
                       className="hidden"
                       onChange={handleFileUpload}
                     />
-                    <div className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-[#003DA5] hover:bg-blue-50 transition-all">
-                      <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600 text-center">Subir imagen</p>
+                    <div className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-3 sm:p-4 hover:border-[#003DA5] hover:bg-blue-50 transition-all min-h-[88px] flex flex-col items-center justify-center">
+                      <Upload className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 mx-auto mb-1.5 sm:mb-2" />
+                      <p className="text-xs sm:text-sm text-gray-600 text-center">Subir imagen</p>
                     </div>
                   </label>
 
                   {/* Ingreso Manual */}
                   <button
                     onClick={handleManualInput}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-[#003DA5] hover:bg-blue-50 transition-all"
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-3 sm:p-4 hover:border-[#003DA5] hover:bg-blue-50 transition-all min-h-[88px] flex flex-col items-center justify-center"
                   >
-                    <QrCode className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-600 text-center">Ingreso manual</p>
+                    <QrCode className="w-5 h-5 sm:w-6 sm:h-6 text-gray-400 mx-auto mb-1.5 sm:mb-2" />
+                    <p className="text-xs sm:text-sm text-gray-600 text-center">Ingreso manual</p>
                   </button>
                 </div>
 
-                {/* Botón de Demo (solo para desarrollo) */}
-                <Card className="p-4 bg-yellow-50 border-2 border-yellow-200">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700">
+                {/* Botón de Demo - Mobile optimized */}
+                <Card className="p-3 sm:p-4 bg-yellow-50 border-2 border-yellow-200">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm text-gray-700">
                         <strong>Modo Demo:</strong> El escaneo real requiere integración con librería jsQR o @zxing/library
                       </p>
                       <Button
                         size="sm"
-                        className="mt-3 bg-yellow-600 hover:bg-yellow-700"
+                        className="mt-2 sm:mt-3 bg-yellow-600 hover:bg-yellow-700 w-full sm:w-auto min-h-[44px]"
                         onClick={simulateQRDetection}
                       >
                         Simular Escaneo Exitoso
@@ -383,10 +383,10 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+            {/* Footer - Sticky */}
+            <div className="border-t border-gray-200 px-3 sm:px-6 py-3 sm:py-4 bg-gray-50 flex-shrink-0">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
                   {isScanning ? (
                     <>
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -395,11 +395,12 @@ export function QRScannerModal({ isOpen, onClose, onQRDetected }: QRScannerModal
                   ) : (
                     <>
                       <div className="w-2 h-2 bg-gray-400 rounded-full" />
-                      <span>Cámara inactiva</span>
+                      <span className="hidden sm:inline">Cámara inactiva</span>
+                      <span className="sm:hidden">Inactiva</span>
                     </>
                   )}
                 </div>
-                <Button variant="outline" onClick={onClose}>
+                <Button variant="outline" onClick={onClose} className="min-h-[44px]">
                   Cancelar
                 </Button>
               </div>

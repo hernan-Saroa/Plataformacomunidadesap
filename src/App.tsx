@@ -6,11 +6,12 @@ import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
-import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
-import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
+// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+// import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
+import { initBrowserCompatibility, initKeyboardNavigation } from './utils/browserDetection';
 
 /**
  * ============================================
@@ -66,6 +67,20 @@ export default function App() {
   
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ============================================
+  // INICIALIZACIÓN DE COMPATIBILIDAD CROSS-BROWSER
+  // ============================================
+  
+  useEffect(() => {
+    // Inicializar detección de navegador y polyfills
+    initBrowserCompatibility();
+    
+    // Inicializar detección de navegación por teclado
+    initKeyboardNavigation();
+    
+    console.log('✅ ESAP Platform initialized with security and compatibility');
+  }, []);
 
   // ============================================
   // PERSISTENCIA DE SESIÓN
@@ -374,11 +389,11 @@ export default function App() {
       case 'password-demo':
         return <DemoPasswordStrength />;
       
-      case 'procesos-coactivos-demo':
-        return <DemoProcesosCoactivos />;
+      // case 'procesos-coactivos-demo':
+      //   return <DemoProcesosCoactivos />;
       
-      case 'edicion-foto-perfil-demo':
-        return <DemoEdicionFotoPerfil />;
+      // case 'edicion-foto-perfil-demo':
+      //   return <DemoEdicionFotoPerfil />;
       
       default:
         return <LandingPage onIrALogin={handleIrALogin} />;
