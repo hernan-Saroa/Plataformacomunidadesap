@@ -55,6 +55,8 @@ import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 // Procesos Coactivos
 import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
+import { PagoCoactivo } from './entities/pago-coactivo.entity';
+import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 
 // System Configurations
 import { SystemConfiguration } from './entities/system-configuration.entity';
@@ -94,7 +96,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Excepciones Procesales
         ExcepcionProcesal,
         // Procesos Coactivos
-        ProcesoCoactivo, ProcesoCoactivoAdjunto,
+        ProcesoCoactivo, ProcesoCoactivoAdjunto, PagoCoactivo, CoactivoHistorial,
         // System Configurations
         SystemConfiguration
     ],
