@@ -651,7 +651,10 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         id="graduateDocument"
                         type="text"
                         value={graduateDocumentNumber}
-                        onChange={(e) => setGraduateDocumentNumber(e.target.value)}
+                        onChange={(e) =>
+                          setGraduateDocumentNumber(e.target.value.replace(/\D+/g, ''))
+                        }
+                        inputMode="numeric"
                         placeholder="Ej: 1234567890"
                         className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
                         required

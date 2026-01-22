@@ -769,8 +769,14 @@ export class GraduationCertificatesService {
     email: string,
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
+    reviewNotes?: string,
   ): Promise<void> {
-    return this.sendCertificateEmail(email, certificate, frontendBaseUrl);
+    return this.sendCertificateEmail(
+      email,
+      certificate,
+      frontendBaseUrl,
+      reviewNotes,
+    );
   }
 
   private getMailTransporter() {
@@ -837,6 +843,7 @@ export class GraduationCertificatesService {
     email: string,
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
+    reviewNotes?: string,
   ): Promise<void> {
     this.logger.log(
       `Preparando reenvio del certificado ${certificate.certificateNumber} a ${email}`,
@@ -856,6 +863,17 @@ export class GraduationCertificatesService {
       'https://certificados.esap.edu.co'
     }/verificar-certificado/${certificate.verificationCode}`;
 
+    const trimmedReviewNotes = (reviewNotes || '').trim();
+    const reviewNotesText = trimmedReviewNotes
+      ? `\nNotas de revision: ${trimmedReviewNotes}`
+      : '';
+    const safeReviewNotes = trimmedReviewNotes
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     const attachment = await this.resolveCertificatePdf(
       certificate,
       frontendBaseUrl,
@@ -863,7 +881,7 @@ export class GraduationCertificatesService {
     const payload = {
       to: email,
       subject: `Certificado de verificacion de titulo - ${certificate.certificateNumber}`,
-      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}`,
+      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}${reviewNotesText}`,
       html: `
         <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
           <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
@@ -892,6 +910,16 @@ export class GraduationCertificatesService {
                 <strong>URL de validacion:</strong> <a href="${validationUrl}" style="color: #0b68d1;">${validationUrl}</a>
               </td>
             </tr>
+            ${
+              trimmedReviewNotes
+                ? `<tr>
+              <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
+                <strong>Notas de revision:</strong>
+                <div style="margin-top: 6px; white-space: pre-line;">${safeReviewNotes}</div>
+              </td>
+            </tr>`
+                : ''
+            }
             <tr>
               <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
                 Archivo adjunto: <strong>${attachment.filename}</strong>
@@ -1383,6 +1411,7 @@ export class GraduationCertificatesService {
           deliveryEmail,
           certificate,
           frontendBaseUrl,
+          reviewNotes,
         );
       } catch (error) {
         this.logger.warn(
