@@ -9,10 +9,9 @@ WORKDIR /app
 # Copiar archivos de dependencias primero (para aprovechar cache de Docker)
 COPY package.json package-lock.json* ./
 
-# Instalar dependencias con cache mount (BuildKit) para mejor rendimiento
-# sharing=locked previene conflictos cuando múltiples builds corren en paralelo
-RUN --mount=type=cache,target=/root/.npm,sharing=locked \
-    npm ci --legacy-peer-deps
+
+# Instalar dependencias
+RUN npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
