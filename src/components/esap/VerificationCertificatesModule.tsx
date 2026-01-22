@@ -1076,7 +1076,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillStyle = '#F9FAFB';
       ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
-      ctx.strokeStyle = qrPreviewCertificate.status === 'active' ? '#10B981' : '#9CA3AF';
+      ctx.strokeStyle = '#9CA3AF';
       ctx.lineWidth = 4;
       ctx.strokeRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
@@ -1105,15 +1105,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText(`Programa: ${qrPreviewCertificate.graduate.program}`, leftMargin, infoY + 60);
       ctx.fillText(`N? Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
   
-      const statusY = infoY + 140;
-      ctx.font = 'bold 18px Arial';
-      if (qrPreviewCertificate.status === 'active') {
-        ctx.fillStyle = '#10B981';
-        ctx.fillText('CERTIFICADO ACTIVO Y VALIDO', leftMargin, statusY);
-      } else {
-        ctx.fillStyle = '#EF4444';
-        ctx.fillText('CERTIFICADO REVOCADO', leftMargin, statusY);
-      }
   
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
@@ -1310,7 +1301,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -1333,7 +1324,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <option value="active">Activos</option>
               <option value="revoked">Revocados</option>
               <option value="expired">Expirados</option>
-            </select>
+            </select> */}
 
             {/* Filtro Tipo Solicitante */}
             <select
@@ -1435,8 +1426,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div className="col-span-2">SOLICITADO POR</div>
                 <div className="col-span-2">QR ÚNICO / ESCANEOS</div>
                 <div className="col-span-2">N° CERTIFICADO</div>
-                <div className="col-span-2">ESTADO / VALIDACIÓN</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1495,7 +1485,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <button
                           onClick={() => handleViewQR(cert)}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
-                          style={{ background: cert.status === 'active' ? '#FEF3C7' : '#F3F4F6', cursor: 'pointer' }}
+                          style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
                         >
                           <QrCode className="w-5 h-5" style={{ color: cert.status === 'active' ? '#F59E0B' : '#9CA3AF' }} />
@@ -1505,9 +1495,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {cert.qrScanCount} escaneos
                             </p>
-                            {cert.status === 'active' && (
-                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="QR Activo para Validación"></div>
-                            )}
                           </div>
                           <p className="text-xs truncate font-mono" style={{ color: '#6B7280' }}>
                             {cert.qrCode}
@@ -1533,12 +1520,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(cert.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(cert)}
                         className="p-2 rounded-lg transition-all"
@@ -2380,9 +2367,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 {/* QR real */}
                 <div 
                   className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{ 
-                    background: qrPreviewCertificate?.status === 'active' ? '#FFFFFF' : '#F3F4F6',
-                    border: `2px solid ${qrPreviewCertificate?.status === 'active' ? '#10B981' : '#D1D5DB'}`
+                  style={{
+                    background: '#FFFFFF',
+                    border: '2px solid #D1D5DB'
                   }}
                 >
                   <div className="text-center p-2">

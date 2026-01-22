@@ -1004,7 +1004,7 @@ export function GraduatesManagementModule() {
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -1027,7 +1027,7 @@ export function GraduatesManagementModule() {
               <option value="active">Activos</option>
               <option value="blocked">Bloqueados</option>
               <option value="inactive">Inactivos</option>
-            </select>
+            </select> */}
 
             {/* Filtro Programa */}
             <select
@@ -1182,8 +1182,7 @@ export function GraduatesManagementModule() {
                 <div className="col-span-2">FECHA DE GRADO</div>
                 <div className="col-span-2">CERTIFICADOS</div>
                 <div className="col-span-2">PROGRAMA</div>
-                <div className="col-span-2">ESTADO</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1277,12 +1276,12 @@ export function GraduatesManagementModule() {
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(user.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(user)}
                         className="p-2 rounded-lg transition-all"
