@@ -30,10 +30,6 @@ if ! docker compose version &> /dev/null; then
     exit 1
 fi
 
-# Habilitar BuildKit para mejor rendimiento (cache mounts, builds paralelos)
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
-echo -e "${GREEN}BuildKit habilitado para builds optimizados${NC}"
 
 # Cargar variables de entorno
 if [ -f .env.dev ]; then
@@ -67,8 +63,7 @@ usage() {
 # Comando: up
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios...${NC}"
-    # Si las imágenes no existen, construirlas en paralelo
-    docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build --parallel
+    docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
     echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
     echo ""
 
@@ -103,11 +98,10 @@ cmd_restart() {
 
 # Comando: rebuild
 cmd_rebuild() {
-    echo -e "${YELLOW}Reconstruyendo servicios con BuildKit y builds paralelos...${NC}"
+    echo -e "${YELLOW}Reconstruyendo servicios...${NC}"
     docker compose -f docker-compose.dev.yml down
-    # Construir imagenes en paralelo con BuildKit
-    echo -e "${GREEN}Construyendo imágenes en paralelo (esto puede tomar varios minutos)...${NC}"
-    docker compose -f docker-compose.dev.yml --env-file .env.dev build --parallel
+    # Construir imagenes
+    docker compose -f docker-compose.dev.yml --env-file .env.dev build
     docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
