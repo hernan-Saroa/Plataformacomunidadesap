@@ -43,16 +43,18 @@ export class GatewayService {
       );
     }
 
-    // Eliminar el prefijo /{service} del path, pero mantener /api/v{version}
-    // originalUrl: /control-disciplinario/api/v1/configuration/export/zip
-    // path a enviar: /api/v1/configuration/export/zip
+    // Eliminar el prefijo /{service}/api/v{version} del path
+    // originalUrl: /auth/api/v1/users?page=1
+    // path a enviar: /users?page=1
     const pathWithoutPrefix = req.originalUrl.replace(
-      new RegExp(`^/${serviceName}`),
+      new RegExp(`^/${serviceName}/api/v\\d+`),
       '',
     );
 
-    // El path ya incluye /api/v{version}, no necesitamos agregarlo
-    const targetUrl = `${serviceUrl}${pathWithoutPrefix}`;
+    // Para v1, enviar directamente al microservicio
+    // Para otras versiones, incluir el prefijo de versión
+    const versionPrefix = version === '1' ? '' : `/v${version}`;
+    const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
     
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
