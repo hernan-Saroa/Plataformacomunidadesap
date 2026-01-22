@@ -4,9 +4,11 @@
  */
 
 import { useState } from 'react';
-import { X, FileText, User, Calendar, DollarSign, Clock, Building2, AlertTriangle, 
-         CheckCircle, TrendingUp, History, Paperclip, Edit, Archive, RefreshCw, 
-         CreditCard, FileCheck, Scale, AlertCircle } from 'lucide-react';
+import {
+  X, FileText, User, Calendar, DollarSign, Clock, Building2, AlertTriangle,
+  CheckCircle, TrendingUp, History, Paperclip, Edit, Archive, RefreshCw,
+  CreditCard, FileCheck, Scale, AlertCircle
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner@2.0.3';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
@@ -134,11 +136,11 @@ export function ModalVerExpedienteCoactivo({
 
             {/* Contenido */}
             <div className="flex-1 overflow-y-auto">
-              
+
               {/* Resumen Superior */}
               <div className="p-6 bg-gray-50 border-b">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  
+
                   {/* Etapa Actual */}
                   <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
                     <p className="text-xs text-gray-600 font-bold mb-2">Etapa Actual</p>
@@ -167,17 +169,15 @@ export function ModalVerExpedienteCoactivo({
                   </div>
 
                   {/* Días Restantes */}
-                  <div className={`bg-white rounded-lg p-4 border-2 ${
-                    proceso.diasRestantes < 0 ? 'border-red-300' : 
-                    proceso.diasRestantes <= 10 ? 'border-yellow-300' : 
-                    'border-green-300'
-                  }`}>
-                    <p className="text-xs text-gray-600 font-bold mb-2">Plazo</p>
-                    <p className={`text-xl font-bold ${
-                      proceso.diasRestantes < 0 ? 'text-red-600' : 
-                      proceso.diasRestantes <= 10 ? 'text-yellow-600' : 
-                      'text-green-600'
+                  <div className={`bg-white rounded-lg p-4 border-2 ${proceso.diasRestantes < 0 ? 'border-red-300' :
+                      proceso.diasRestantes <= 10 ? 'border-yellow-300' :
+                        'border-green-300'
                     }`}>
+                    <p className="text-xs text-gray-600 font-bold mb-2">Plazo</p>
+                    <p className={`text-xl font-bold ${proceso.diasRestantes < 0 ? 'text-red-600' :
+                        proceso.diasRestantes <= 10 ? 'text-yellow-600' :
+                          'text-green-600'
+                      }`}>
                       {Math.abs(proceso.diasRestantes)} días
                     </p>
                     <p className="text-xs text-gray-500">
@@ -193,7 +193,7 @@ export function ModalVerExpedienteCoactivo({
                     <p className="text-sm font-bold text-blue-600">{porcentajePagado.toFixed(1)}%</p>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                    <div 
+                    <div
                       className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-500"
                       style={{ width: `${porcentajePagado}%` }}
                     />
@@ -237,7 +237,7 @@ export function ModalVerExpedienteCoactivo({
 
                   {/* TAB: General */}
                   <TabsContent value="general" className="space-y-6">
-                    
+
                     {/* Información del Deudor */}
                     <div className="bg-gray-50 rounded-lg p-5 border">
                       <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -329,7 +329,7 @@ export function ModalVerExpedienteCoactivo({
                         </div>
                       </div>
                     ))}
-                    
+
                     <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-bold text-blue-900">Total Obligaciones</p>
@@ -354,7 +354,7 @@ export function ModalVerExpedienteCoactivo({
                             <div className="flex-1">
                               <p className="text-sm font-bold text-gray-900">{pago.concepto}</p>
                               <p className="text-xs text-gray-600 mt-1">
-                                📅 {pago.fecha.toLocaleDateString('es-CO')} • 
+                                📅 {pago.fecha.toLocaleDateString('es-CO')} •
                                 📄 Comprobante: {pago.comprobante}
                               </p>
                             </div>
@@ -424,16 +424,7 @@ export function ModalVerExpedienteCoactivo({
                 Cerrar
               </button>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    toast.info('Abriendo gestión de pagos...');
-                    onRegistrarPago?.();
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-all flex items-center gap-2"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  Registrar Pago
-                </button>
+
                 <button
                   onClick={() => {
                     toast.info('Abriendo generador de actos administrativos...');

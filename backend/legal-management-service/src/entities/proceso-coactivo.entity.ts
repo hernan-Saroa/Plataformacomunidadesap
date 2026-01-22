@@ -48,6 +48,24 @@ export class ProcesoCoactivo {
     @OneToMany(() => ProcesoCoactivoAdjunto, adjunto => adjunto.proceso)
     adjuntos: ProcesoCoactivoAdjunto[];
 
+
+
+    @Column({
+        name: 'valor_pagado', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    valorPagado: number;
+
+    @Column({
+        name: 'saldo_pendiente', type: 'numeric', precision: 15, scale: 2, default: 0, transformer: {
+            to: (value: number) => value,
+            from: (value: string) => parseFloat(value)
+        }
+    })
+    saldoPendiente: number;
+
     @Column({ name: 'notificaciones_enviadas', type: 'int', default: 0 })
     notificacionesEnviadas: number;
 
