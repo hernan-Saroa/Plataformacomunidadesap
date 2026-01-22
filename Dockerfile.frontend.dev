@@ -17,7 +17,7 @@ COPY . .
 
 # Argumentos para las URLs (se pasan en build time)
 ARG VITE_API_URL=http://4.156.71.181:3000
-ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:8080
+ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:9000
 
 # Exportar como variables de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar las variables correctamente

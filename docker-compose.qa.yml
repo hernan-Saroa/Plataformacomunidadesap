@@ -14,7 +14,7 @@ services:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
         VITE_API_URL: "http://135.237.81.133:3000"
-        VITE_ONLYOFFICE_URL: "http://135.237.81.133:8080"
+        VITE_ONLYOFFICE_URL: "http://135.237.81.133:9000"
     container_name: superapp-frontend-qa
     ports:
       - "80:80"
@@ -30,7 +30,7 @@ services:
     image: onlyoffice/documentserver:latest
     container_name: onlyoffice-server-qa
     ports:
-      - "8080:80"
+      - "9000:80"
     environment:
       - JWT_ENABLED=false
     volumes:
