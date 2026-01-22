@@ -1039,6 +1039,8 @@ export class CorreosJuridicosService {
         const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
         return window.URL.createObjectURL(blob);
     }
+
+
 }
 
 // ===== PROCESOS COACTIVOS SERVICE =====
@@ -1068,6 +1070,30 @@ export interface ProcesoCoactivo {
     observaciones?: string;
     ultimaActuacion?: string;
     fechaCreacion: string;
+    valorPagado?: number;
+    saldoPendiente?: number;
+}
+
+export interface PagoCoactivo {
+    id: string;
+    procesoId: string;
+    valor: number;
+    fechaPago: string;
+    soporteUrl?: string;
+    origen: string;
+    observaciones?: string;
+}
+
+export interface CoactivoHistorial {
+    id: string;
+    procesoId: string;
+    tipoEvento: string;
+    campoModificado?: string;
+    valorAnterior?: string;
+    valorNuevo?: string;
+    usuario?: string;
+    detalles?: string;
+    fechaEvento: string;
 }
 
 export interface ProcesoCoactivoStats {
@@ -1146,6 +1172,39 @@ export class ProcesosCoactivosService {
         const baseUrl = getServiceUrl('legal');
         const prefix = API_MODE === 'direct' ? '' : '/legal';
         return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
+    }
+
+    async registrarPago(procesoId: string, data: any): Promise<PagoCoactivo> {
+        return apiClient.post<PagoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/pagos`, data);
+    }
+
+    async getPagos(procesoId: string): Promise<PagoCoactivo[]> {
+        return apiClient.get<PagoCoactivo[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/pagos`);
+    }
+
+    async getHistorial(procesoId: string): Promise<CoactivoHistorial[]> {
+        return apiClient.get<CoactivoHistorial[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/historial`);
+    }
+
+    async deletePago(pagoId: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/pagos/${pagoId}`);
+    }
+
+    async downloadPagoSoporte(filename: string): Promise<string> {
+        let url: string;
+        if (API_MODE === 'direct') {
+            url = `${MICROSERVICE_URLS.legal}/procesos-coactivos/pagos/soporte/${filename}`;
+        } else {
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
+        }
+
+        // Fetch to get blob
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error descargando soporte');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
     }
 }
 
