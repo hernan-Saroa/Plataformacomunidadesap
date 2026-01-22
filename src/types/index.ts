@@ -679,6 +679,10 @@ export interface ReviewRequest {
   // Datos del graduado buscado
   graduateDocumentNumber: string;
   graduateDocumentIssueDate: string;
+  graduationDate?: string;
+  graduateLastName?: string;
+  graduateEmail?: string;
+  graduatePhone?: string;
   
   // Datos del solicitante
   requester: {

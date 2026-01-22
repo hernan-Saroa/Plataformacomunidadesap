@@ -156,6 +156,8 @@ export class GraduationCertificatesService {
       idNumber: graduate.idNumber,
       idIssueDate: graduate.idIssueDate,
       fullName: graduate.fullName,
+      graduateEmail: graduate.email,
+      graduatePhone: graduate.phone,
       programName: graduate.programName,
       graduationDate: graduate.graduationDate,
       requesterName: graduate.fullName,
@@ -194,6 +196,7 @@ export class GraduationCertificatesService {
     const lastNameNormalized = dto.lastName ? this.normalizeName(dto.lastName) : '';
     const requesterName = (dto.requesterName || '').trim();
     const requesterEmail = (dto.requesterEmail || '').trim();
+    const graduateLastName = (dto.lastName || '').trim();
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedici?n inv?lida');
@@ -242,6 +245,9 @@ export class GraduationCertificatesService {
       idNumber: dto.idNumber,
       idIssueDate,
       fullName: graduate?.fullName || requesterName || dto.requesterName,
+      graduateLastName: graduateLastName || undefined,
+      graduateEmail: graduate?.email,
+      graduatePhone: graduate?.phone,
       programName: graduate?.programName || dto.programName || 'No disponible',
       graduationDate:
         graduate?.graduationDate ||
@@ -1038,7 +1044,24 @@ export class GraduationCertificatesService {
     }
 
     const update: Partial<Graduate> = {};
-    if (payload.fullName !== undefined) {
+    const hasNameParts =
+      payload.firstName !== undefined || payload.lastName !== undefined;
+    if (hasNameParts) {
+      if (payload.firstName !== undefined) {
+        update.firstName = payload.firstName.trim();
+      }
+      if (payload.lastName !== undefined) {
+        update.lastName = payload.lastName.trim();
+      }
+      const nextFirstName =
+        update.firstName !== undefined ? update.firstName : graduate.firstName || '';
+      const nextLastName =
+        update.lastName !== undefined ? update.lastName : graduate.lastName || '';
+      const combinedName = `${nextFirstName} ${nextLastName}`.trim();
+      if (combinedName) {
+        update.fullName = combinedName;
+      }
+    } else if (payload.fullName !== undefined) {
       update.fullName = payload.fullName.trim();
     }
     if (payload.idNumber !== undefined) {
@@ -1175,6 +1198,12 @@ export class GraduationCertificatesService {
         if (payload.requesterPhone !== undefined) {
           request.requesterPhone = payload.requesterPhone.trim();
         }
+        if (payload.graduateEmail !== undefined) {
+          request.graduateEmail = payload.graduateEmail.trim();
+        }
+        if (payload.graduatePhone !== undefined) {
+          request.graduatePhone = payload.graduatePhone.trim();
+        }
         if (payload.graduationDate !== undefined) {
           request.graduationDate =
             this.parseDate(payload.graduationDate) ?? request.graduationDate;
@@ -1274,6 +1303,12 @@ export class GraduationCertificatesService {
     }
     if (payload?.programName) {
       request.programName = payload.programName;
+    }
+    if (payload?.email !== undefined) {
+      request.graduateEmail = payload.email.trim();
+    }
+    if (payload?.phone !== undefined) {
+      request.graduatePhone = payload.phone.trim();
     }
     if (payload?.graduationDate !== undefined) {
       request.graduationDate =

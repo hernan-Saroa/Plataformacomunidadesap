@@ -139,12 +139,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   //   : userData?.module === 'procesos'
   //   ? 'control-interno'
   //   : 'users-persons';
-  
+  console.log('🚀 BackofficeApp: userData:', userData);
   let initialModule =  userData && userData.modules && userData.modules.length > 0 ? userData.modules[0] : 'none';
-  initialModule = initialModule === 'all' ? 'users-persons' : initialModule;
-  console.log('🚀 BackofficeApp: initialModule:', initialModule);
+  initialModule = initialModule === 'all' ? 'users-management' : initialModule;
     
-  const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule as ModuleView);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -153,6 +151,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [showProfile, setShowProfile] = useState(false);
 
   // Mapeo de IDs del Sidebar a módulos del BackofficeApp
+  // verification-certificates
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
     const mappings: Record<string, ModuleView> = {
       'executive': 'dashboard',
@@ -182,6 +181,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     };
     return (mappings[sidebarModule] as ModuleView) || 'dashboard';
   };
+  console.log('🚀 BackofficeApp: initialModule:', initialModule, ', mapSidebar:', mapSidebarToModule(initialModule));
+  const [currentModule, setCurrentModule] = useState<ModuleView>(mapSidebarToModule(initialModule));
 
   const currentUser = userData || {
     name: 'Administrador ESAP',
@@ -341,8 +342,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <EstructuraOrganizacionalModule />;
     }
   };
-
-  console.log('---> currentSidebarModule:', currentSidebarModule);
 
   return (
     <PermissionsProvider

@@ -21,6 +21,12 @@ export class Graduate {
   @Column({ name: 'full_name', length: 255 })
   fullName: string;
 
+  @Column({ name: 'first_name', length: 255, nullable: true })
+  firstName: string;
+
+  @Column({ name: 'last_name', length: 255, nullable: true })
+  lastName: string;
+
   @Column({ name: 'id_number', length: 50, unique: true })
   idNumber: string;
 
