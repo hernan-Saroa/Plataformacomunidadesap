@@ -12,8 +12,34 @@ export const mapLogToEvent = (log: AuditLog): AuditEvent => {
   // Usar submódulo si existe, sino usar módulo como fallback
   const displayModule = log.submodule || log.module || 'Desconocido';
   
-  // Usar la acción del backend si existe, sino construir desde method y path
-  const displayAction = log.action || `${log.method} ${log.path}`;
+  // Usar la acción del backend si existe (ya viene legible como "crear auditoria")
+  // Si no existe, intentar construir una acción más legible desde method y path
+  let displayAction = log.action;
+  
+  if (!displayAction) {
+    // Fallback: construir acción legible desde method y path
+    const methodMap: Record<string, string> = {
+      'POST': 'crear',
+      'PUT': 'actualizar',
+      'PATCH': 'actualizar',
+      'DELETE': 'eliminar',
+      'GET': 'consultar',
+    };
+    
+    const baseAction = methodMap[log.method] || log.method.toLowerCase();
+    
+    // Extraer recurso del path (último segmento antes de parámetros)
+    const pathSegments = log.path.split('/').filter(s => s && !/^\d+$/.test(s) && !/^[a-f0-9-]{36}$/i.test(s));
+    const resource = pathSegments[pathSegments.length - 1] || 'recurso';
+    
+    // Normalizar recurso
+    const normalizedResource = resource
+      .replace(/-/g, ' ')
+      .replace(/s$/, '')
+      .replace(/es$/, '');
+    
+    displayAction = `${baseAction} ${normalizedResource}`;
+  }
   
   return {
     id: log.id,
