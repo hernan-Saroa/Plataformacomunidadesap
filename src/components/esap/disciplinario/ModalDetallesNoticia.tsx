@@ -341,21 +341,40 @@ export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClo
                 <div className="space-y-2">
                   {noticia.adjuntos.map((archivo: string, idx: number) => {
                     const nombreArchivo = archivo.split('/').pop() || `Archivo ${idx + 1}`;
-                    const descargaUrl = disciplinaryService.getFileUrl(archivo);
+
+                    const handleDescargar = async () => {
+                      try {
+                        const descargaUrl = disciplinaryService.getFileUrl(archivo);
+                        const response = await fetch(descargaUrl);
+                        if (!response.ok) throw new Error('No se pudo descargar el archivo');
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = nombreArchivo;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                      } catch (error) {
+                        console.error('Error descargando archivo:', error);
+                        alert('Error al descargar el archivo. Por favor intente de nuevo.');
+                      }
+                    };
+
                     return (
                       <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <div className="flex items-center gap-3">
                           <Paperclip className="w-4 h-4 text-gray-500" />
                           <span className="text-sm font-medium text-gray-900">{nombreArchivo}</span>
                         </div>
-                        <a
-                          href={descargaUrl}
-                          download
+                        <button
+                          onClick={handleDescargar}
                           className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                         >
                           <Download className="w-4 h-4" />
                           Descargar
-                        </a>
+                        </button>
                       </div>
                     );
                   })}

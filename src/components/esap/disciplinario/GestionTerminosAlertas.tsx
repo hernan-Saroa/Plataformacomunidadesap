@@ -27,6 +27,8 @@ import terminosAlertasService, {
   type Alerta,
 } from '../../../services/api/terminosAlertas.service';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Interfaces importadas desde el servicio
 
@@ -442,7 +444,7 @@ export function GestionTerminosAlertas() {
               <RefreshCw className="w-4 h-4" />
               Recalcular
             </button>
-            {vistaActual === 'terminos' && (
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_CREATE) && (
               <button
                 onClick={() => setShowModalNuevoTermino(true)}
                 className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
@@ -452,7 +454,7 @@ export function GestionTerminosAlertas() {
                 Nuevo Término
               </button>
             )}
-            {vistaActual === 'calendario' && (
+            {vistaActual === 'calendario' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE) && (
               <button
                 onClick={() => setShowModalFestivo(true)}
                 className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
@@ -708,7 +710,7 @@ export function GestionTerminosAlertas() {
                       {/* Acciones */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {termino.estado !== 'cumplido' && (
+                          {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_FINISH) && (
                             <button
                               onClick={() => handleMarcarCompleto(termino.id)}
                               className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
@@ -796,6 +798,7 @@ export function GestionTerminosAlertas() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_EDIT) && (
                           <button
                             onClick={() => {
                               setNuevoFestivo({
@@ -812,12 +815,15 @@ export function GestionTerminosAlertas() {
                           >
                             <Edit2 className="w-4 h-4 text-gray-600" />
                           </button>
+                          )}
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_DELETE) && (
                           <button
                             onClick={() => handleEliminarFestivo(festivo.id, festivo.descripcion)}
                             className="p-2 rounded-lg hover:bg-red-50"
                           >
                             <Trash2 className="w-4 h-4 text-red-600" />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -888,6 +894,7 @@ export function GestionTerminosAlertas() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_EDIT) && (
                     <button
                       onClick={() => handleEditarRegla(regla)}
                       className="p-2 rounded-lg hover:bg-gray-100"
@@ -895,6 +902,8 @@ export function GestionTerminosAlertas() {
                     >
                       <Edit2 className="w-4 h-4 text-gray-600" />
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_EDIT) && (
                     <button
                       onClick={() => handleToggleRegla(regla)}
                       className={`p-2 rounded-lg ${regla.activa ? 'hover:bg-red-50' : 'hover:bg-green-50'}`}
@@ -906,6 +915,8 @@ export function GestionTerminosAlertas() {
                         <Play className="w-4 h-4 text-green-600" />
                       )}
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_DELETE) && (
                     <button
                       onClick={() => handleEliminarRegla(regla)}
                       className="p-2 rounded-lg hover:bg-red-50"
@@ -913,6 +924,7 @@ export function GestionTerminosAlertas() {
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -1557,7 +1569,7 @@ export function GestionTerminosAlertas() {
                   >
                     Cerrar
                   </button>
-                  {terminoSeleccionado.estado !== 'cumplido' && (
+                  {terminoSeleccionado.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_FINISH) && (
                     <button
                       onClick={() => {
                         handleMarcarCompleto(terminoSeleccionado.id);

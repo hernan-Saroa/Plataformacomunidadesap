@@ -57,6 +57,7 @@ export const MICROSERVICE_URLS = {
   legal: 'http://localhost:3008',
   notificaciones: 'http://localhost:3009',
   viaticos: 'http://localhost:3010',
+  audit: 'http://localhost:3011',
 };
 
 // Helper para otras variables de entorno (solo para variables no críticas)

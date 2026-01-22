@@ -21,7 +21,7 @@ import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  //
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
 import InformesLeyModulePremium from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
+// import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE - COMENTADO TEMPORALMENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 
 type SeccionActiva =
@@ -141,14 +141,15 @@ function ControlInternoContent({
     },
     
     // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
-    {
-      id: "roles-permisos",
-      label: "Roles y Permisos",
-      subtitle: "RBAC • Seguridad • Accesos",
-      icon: <Shield className="w-5 h-5" />,
-      color: "#DC2626", // Rojo - Seguridad
-      visible: puedeAcceder('roles-permisos'),
-    },
+    // COMENTADO TEMPORALMENTE
+    // {
+    //   id: "roles-permisos",
+    //   label: "Roles y Permisos",
+    //   subtitle: "RBAC • Seguridad • Accesos",
+    //   icon: <Shield className="w-5 h-5" />,
+    //   color: "#DC2626", // Rojo - Seguridad
+    //   visible: puedeAcceder('roles-permisos'),
+    // },
     
     // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
     {
@@ -230,8 +231,8 @@ function ControlInternoContent({
       case "expedientes":
         return <ExpedientesModulePremium />;
       
-      case "roles-permisos":
-        return <RolesYPermisosModulePremium />;
+      // case "roles-permisos":
+      //   return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;
