@@ -346,25 +346,6 @@ export default function ValidarCertificadoGraduado({
               </div>
             </div>
 
-            {/* Firmante */}
-            <div className="border-t pt-6">
-              <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-4 flex items-center gap-2">
-                <Award className="w-5 h-5 text-blue-600" />
-                Firmante
-              </h4>
-
-              <div className="space-y-3">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Nombre:</span>
-                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.signerName}</span>
-                </div>
-
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
-                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Cargo:</span>
-                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.signerPosition}</span>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 

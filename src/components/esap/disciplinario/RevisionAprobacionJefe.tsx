@@ -22,6 +22,8 @@ import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner';
 import { FlujoRevisionAprobacion } from './FlujoRevisionAprobacion';
 import { disciplinaryService, LegalAuto } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Interfaces
 interface BorradorPendiente {
@@ -279,6 +281,7 @@ function ModalRevisionEdicion({
         <div className="p-3 sm:p-6 border-t bg-gray-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
           {borrador.estado === 'REVISION_JEFE' && (
             <>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER) && (
               <Button
                 onClick={() => setShowModalDevolver(true)}
                 className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto order-2 sm:order-1"
@@ -286,6 +289,8 @@ function ModalRevisionEdicion({
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Devolver
               </Button>
+              )}
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
               <Button
                 onClick={() => setShowConfirmAprobar(true)}
                 style={{ background: '#10B981', color: '#FFFFFF' }}
@@ -294,6 +299,7 @@ function ModalRevisionEdicion({
                 <CheckCircle className="w-4 h-4 mr-2" />
                 Aprobar (Visto Bueno)
               </Button>
+              )}
             </>
           )}
 

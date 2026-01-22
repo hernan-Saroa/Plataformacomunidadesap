@@ -48,6 +48,8 @@ import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { ModalRemitirCompetencia } from './ModalRemitirCompetencia';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 import { disciplinaryService, DisciplinaryNews, CreateNewsDto } from '../../../services/api/disciplinary.service';
 
@@ -1342,6 +1344,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"
@@ -1350,6 +1353,7 @@ export function GestionNoticias() {
           <Plus className="w-4 h-4" />
           Nueva Noticia
         </Button>
+        )}
       </div>
 
       {/* Estadísticas - RESPONSIVE */}
@@ -1622,7 +1626,7 @@ export function GestionNoticias() {
                   </button>
 
                   {/* Botón Archivar */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1636,7 +1640,7 @@ export function GestionNoticias() {
                   )}
 
                   {/* Botón Remitir por Competencia */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && (
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
@@ -1653,6 +1657,7 @@ export function GestionNoticias() {
                   {(noticia.estado === 'RADICADA' || noticia.estado === 'EN_VALORACION' || noticia.estado === 'pendiente' || noticia.estado === 'en-valoracion') && (
                     <>
                       {/* Devolver */}
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER) && (
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);
@@ -1664,8 +1669,10 @@ export function GestionNoticias() {
                         <CornerDownLeft className="w-4 h-4" />
                         <span className="hidden sm:inline">Devolver</span>
                       </button>
+                      )}
 
                       {/* Asignar */}
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE) && (
                       <button
                         onClick={() => {
                           setNoticiaSeleccionada(noticia);
@@ -1678,6 +1685,7 @@ export function GestionNoticias() {
                         <UserCheck className="w-4 h-4" />
                         <span className="hidden sm:inline">Asignar</span>
                       </button>
+                      )}
                     </>
                   )}
 

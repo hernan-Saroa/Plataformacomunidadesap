@@ -30,6 +30,10 @@ export class CreateAuditLogDto {
 
   @IsOptional()
   @IsString()
+  action?: string;
+
+  @IsOptional()
+  @IsString()
   version?: string;
 
   @IsOptional()

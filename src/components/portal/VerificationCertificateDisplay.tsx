@@ -757,7 +757,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                             <p className="text-xs text-gray-600 uppercase tracking-wider mb-1">Estado del Certificado</p>
                             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-800 rounded-lg font-bold text-sm">
                               <CheckCircle className="w-4 h-4" />
-                              {certificate.status === 'active' ? 'Activo y Válido' : certificate.status}
+                              {certificate.status === 'active' ? 'Válido' : certificate.status}
                             </span>
                           </div>
                         </div>
