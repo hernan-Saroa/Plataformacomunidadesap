@@ -1,5 +1,5 @@
 ﻿/**
- * MODALES DE GESTIÃ“N DOCUMENTAL - CONTROL INTERNO DISCIPLINARIO
+ * MODALES DE GESTIoN DOCUMENTAL - CONTROL INTERNO DISCIPLINARIO
  * Componentes para Gestión de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
  */
 
@@ -105,7 +105,7 @@ interface Proceso {
   etapaActual: string;
 }
 
-// ==================== MODAL GESTIÃ“N DE AUTOS ====================
+// ==================== MODAL GESTIoN DE AUTOS ====================
 interface ModalAutosProps {
   proceso: Proceso | null;
   onClose: () => void;
@@ -175,7 +175,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
     return {
       id: auto.id,
-      numero: auto.numero || 'Auto Sin NÃºmero',
+      numero: auto.numero || 'Auto Sin Número',
       documentName: documentName,
       documentUrl: documentUrl,
       fileExtension: fileExtension,
@@ -327,7 +327,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     const resolverProceso = async () => {
       const directId = proceso?.id || '';
 
-      // Primero intentar usar el ID directamente si es un UUID vÃ¡lido
+      // Primero intentar usar el ID directamente si es un UUID valido
       if (directId && isUuidLike(directId)) {
         console.log('âœ… Usando ID directo del proceso:', directId);
         if (activo) setProcessId(directId);
@@ -353,10 +353,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         console.error('âŒ Error resolviendo proceso por radicado:', error);
         if (activo) {
           setProcessId('');
-          // Solo mostrar error si no es un 404 de proceso reciÃ©n creado
+          // Solo mostrar error si no es un 404 de proceso recion creado
           if (error?.message?.includes('404') || error?.message?.includes('no encontrado')) {
-            console.warn('âš ï¸ Proceso no encontrado aÃºn, puede estar reciÃ©n creado');
-            toast.warning('El proceso estÃ¡ siendo procesado', {
+            console.warn('âš¸ Proceso no encontrado aun, puede estar recien creado');
+            toast.warning('El proceso esta siendo procesado', {
               description: 'Por favor espera un momento e intenta nuevamente'
             });
           } else {
@@ -411,10 +411,10 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     try {
       await disciplinaryService.sendToReview(autoId);
       await cargarAutos(processId);
-      toast.success('Auto enviado a revisiÃ³n', { description: numero });
+      toast.success('Auto enviado a revisión', { description: numero });
     } catch (error) {
-      console.error('Error enviando auto a revisiÃ³n', error);
-      toast.error('No se pudo enviar a revisiÃ³n');
+      console.error('Error enviando auto a revisión', error);
+      toast.error('No se pudo enviar a revisión');
     } finally {
       setAutoEnviandoRevision(null);
     }
@@ -588,11 +588,11 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const tiposAuto = [
     { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
     { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
-    { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de InvestigaciÃ³n', icon: FileText, color: '#10B981' },
-    { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de FormulaciÃ³n de Pliego', icon: FileCheck, color: '#F59E0B' },
+    { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de Investigación', icon: FileText, color: '#10B981' },
+    { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de Formulación de Pliego', icon: FileCheck, color: '#F59E0B' },
     { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
     { id: 'AUTO_ARCHIVO', nombre: 'Auto de Archivo', icon: Archive, color: '#6B7280' },
-    { id: 'FALLO_SANCION', nombre: 'Fallo con SanciÃ³n', icon: AlertTriangle, color: '#DC2626' },
+    { id: 'FALLO_SANCION', nombre: 'Fallo con Sanción', icon: AlertTriangle, color: '#DC2626' },
     { id: 'FALLO_ABSOLUTORIO', nombre: 'Fallo Absolutorio', icon: CheckCircle, color: '#10B981' }
   ];
 
@@ -846,7 +846,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                               handleEnviarRevision(auto.id, auto.numero);
                             }}
                             disabled={autoEnviandoRevision === auto.id}
-                            title="Enviar a revisiÃ³n del jefe"
+                            title="Enviar a revisión del jefe"
                             style={{ borderColor: '#0EA5E9', color: '#0EA5E9' }}
                           >
                             {autoEnviandoRevision === auto.id ? (
@@ -955,7 +955,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
               )}
             </div>
           ) : !tipoAutoSeleccionado ? (
-            // SelecciÃ³n de tipo de auto
+            // Seleccion de tipo de auto
             <div className="space-y-4">
               <Card className="p-4 bg-purple-50 border-purple-200">
                 <div className="flex items-start gap-3">
@@ -965,7 +965,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                       Selecciona el tipo de auto a crear
                     </p>
                     <p className="text-xs text-purple-700">
-                      El sistema pre-llenarÃ¡ automÃ¡ticamente los campos del documento con la informaciÃ³n del proceso
+                      El sistema pre-llenará automáticamente los campos del documento con la información del proceso
                     </p>
                   </div>
                 </div>
@@ -989,14 +989,14 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
               </div>
             </div>
           ) : (
-            // Formulario de creaciÃ³n de auto
+            // Formulario de creación de auto
             <form onSubmit={handleCrearAuto} className="space-y-4">
               <Card className="p-4 border-2" style={{ borderColor: tipoAutoSeleccionado.color + '40', backgroundColor: tipoAutoSeleccionado.color + '10' }}>
                 <div className="flex items-center gap-3">
                   <tipoAutoSeleccionado.icon className="w-8 h-8" style={{ color: tipoAutoSeleccionado.color }} />
                   <div>
                     <p className="font-bold text-gray-900">{tipoAutoSeleccionado.nombre}</p>
-                    <p className="text-xs text-gray-600">Completa la informaciÃ³n del documento</p>
+                    <p className="text-xs text-gray-600">Completa la información del documento</p>
                   </div>
                 </div>
               </Card>
@@ -1004,7 +1004,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">
-                    TÃ­tulo del Auto
+                    Título del Auto
                   </label>
                   <input
                     type="text"
@@ -1013,7 +1013,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">Generado automÃ¡ticamente, puedes editarlo si lo deseas</p>
+                  <p className="text-xs text-gray-500 mt-1">Generado automáticamente, puedes editarlo si lo deseas</p>
                 </div>
 
                 <div>
@@ -1406,8 +1406,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   );
 }
 
-// ==================== MODAL GESTIÃ"N DE EVIDENCIAS ====================
-// ==================== MODAL GESTIÃ“N DE EVIDENCIAS ====================
+// ==================== MODAL GESTIoN DE EVIDENCIAS ====================
+// ==================== MODAL GESTIoN DE EVIDENCIAS ====================
 interface ModalEvidenciasProps {
   proceso: Proceso;
   onClose: () => void;
@@ -1577,7 +1577,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
   const tiposEvidencia = [
     { id: 'documental', nombre: 'Documental', icon: FileText, color: '#3B82F6' },
     { id: 'testimonial', nombre: 'Testimonial', icon: MessageSquare, color: '#10B981' },
-    { id: 'fotografica', nombre: 'FotogrÃ¡fica', icon: Archive, color: '#F59E0B' },
+    { id: 'fotografica', nombre: 'Fotográfica', icon: Archive, color: '#F59E0B' },
     { id: 'audiovisual', nombre: 'Audiovisual', icon: Archive, color: '#8B5CF6' },
     { id: 'digital', nombre: 'Digital', icon: Package, color: '#06B6D4' },
     { id: 'pericial', nombre: 'Pericial', icon: FileCheck, color: '#DC2626' }
@@ -1665,7 +1665,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                             <p className="font-semibold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
                           </div>
                           <div>
-                            <p className="text-gray-600 text-xs">TamaÃ±o:</p>
+                            <p className="text-gray-600 text-xs">Tamaño:</p>
                             <p className="font-semibold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
                           </div>
                         </div>
@@ -1675,7 +1675,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       </div>
                     </div>
                     <div className="flex gap-1 flex-col sm:flex-row">
-                      {evidencia.estado === 'En RevisiÃ³n' && (
+                      {evidencia.estado === 'En Revisión' && (
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700 text-white"
@@ -1853,7 +1853,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
 
 
-// ==================== MODAL GESTIÃ“N DE OFICIOS ====================
+// ==================== MODAL GESTIoN DE OFICIOS ====================
 interface ModalOficiosProps {
   proceso: Proceso;
   onClose: () => void;
@@ -2351,7 +2351,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
   );
 }
 
-// ==================== MODAL HISTORIAL DE AUDITORÃA ====================
+// ==================== MODAL HISTORIAL DE AUDITORiA ====================
 // ==================== MODAL GESTIÓN DE ACTAS ====================
 interface ModalActasProps {
   proceso: Proceso;
@@ -2770,6 +2770,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
               className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="p-6 border-b sticky top-0 bg-white z-10" style={{ borderBottomColor: modalCrearActa.tipo.color + '40' }}>
                 <div className="flex items-center justify-between">
@@ -2989,7 +2990,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
               usuario: 'Sistema/Abogado', // O auto.usuario si existe
               fecha: auto.createdAt,
               accion: `Auto: ${auto.tipo}`,
-              detalle: `Estado: ${auto.estado} - ${auto.numero || 'Sin nÃºmero'}`
+              detalle: `Estado: ${auto.estado} - ${auto.numero || 'Sin número'}`
             }));
           } catch (err) {
             console.error('Error cargando autos para historial', err);
@@ -3017,7 +3018,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
     tipo: h.tipo || 'notificacion',
     usuario: h.usuario || 'Sistema',
     fecha: h.fecha ? new Date(h.fecha).toLocaleString() : 'Fecha desconocida',
-    accion: h.accion || 'AcciÃ³n registrada',
+    accion: h.accion || 'Acción registrada',
     detalle: h.observaciones || h.detalle || ''
   }));
 
@@ -3063,7 +3064,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
               </div>
               <div>
                 <h2 className="text-2xl font-black" style={{ color: '#003DA5' }}>
-                  Historial de AuditorÃ­a
+                  Historial de Auditoría
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   {proceso.numeroProceso} - Trazabilidad Completa
@@ -3100,7 +3101,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
         {/* Contenido - Timeline */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 260px)' }}>
           <div className="space-y-4 relative">
-            {/* LÃ­nea vertical */}
+            {/* Linea vertical */}
             <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
 
             {actividades.map((actividad, index) => {

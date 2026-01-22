@@ -1451,7 +1451,7 @@ export function GraduatesManagementModule() {
                           </div>
                         </div>
 
-                        <div>
+                        {/* <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documentos en Carpeta
                           </p>
@@ -1461,7 +1461,7 @@ export function GraduatesManagementModule() {
                               {user.documentsCount} archivos
                             </p>
                           </div>
-                        </div>
+                        </div> */}
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
