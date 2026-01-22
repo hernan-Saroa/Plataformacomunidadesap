@@ -180,18 +180,19 @@ export function mapearListaChequeoFrontendABackend(
     }
   }
   
-  // Mapear el tipo de lista de chequeo (planeacion, ejecucion, comunicacion)
-  const tipoLista = lista.tipo || TipoListaChequeoFrontend.EJECUCION;
+  // Mapear el tipo de lista de chequeo - SIEMPRE 'ejecucion'
+  const tipoLista = TipoListaChequeoFrontend.EJECUCION;
   
   return {
     codigo,
     nombre: lista.nombre,
     descripcion: lista.descripcion || '',
-    tipo: tipoLista, // Usar el tipo de lista correcto (planeacion, ejecucion, comunicacion)
+    categoria: 'General', // Valor por defecto para evitar NULL en la columna categoria
+    tipo: tipoLista, // Siempre 'ejecucion'
     tipoAuditoriaId: tipoAuditoriaId || undefined,
     items: (lista.items || []).map((item: ItemChequeo, index: number) => ({
       texto: item.texto,
-      categoria: item.categoria || undefined,
+      categoria: item.categoria || 'General', // Valor por defecto para evitar NULL
       obligatorio: item.obligatorio !== undefined ? item.obligatorio : false,
       orden: index,
     })),

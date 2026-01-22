@@ -59,6 +59,7 @@ export interface CreateListaChequeoDto {
   codigo: string;
   nombre: string;
   descripcion?: string;
+  categoria?: string;
   tipo: TipoListaChequeo;
   tipoAuditoriaId?: string;
   items: CreateItemListaChequeoDto[];
