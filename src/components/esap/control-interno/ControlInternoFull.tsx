@@ -18,18 +18,14 @@ import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
   | "planificacion"                  // RF001-004 (4 tabs)
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
-  | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-  | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
 export function ControlInternoFull() {
@@ -98,16 +94,7 @@ function ControlInternoContent({
       badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
     },
     
-    // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
-    {
-      id: "informes-ley",
-      label: "Informes de Ley",
-      subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
-      icon: <FileText className="w-5 h-5" />,
-      color: "#8B5CF6", // Púrpura - Informes
-    },
-    
-    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 4. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
@@ -116,16 +103,7 @@ function ControlInternoContent({
       color: "#0891B2", // Cyan - Documental
     },
     
-    // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
-    {
-      id: "roles-permisos",
-      label: "Roles y Permisos",
-      subtitle: "RBAC • Seguridad • Accesos",
-      icon: <Shield className="w-5 h-5" />,
-      color: "#DC2626", // Rojo - Seguridad
-    },
-    
-    // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 5. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -146,14 +124,8 @@ function ControlInternoContent({
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;
       
-      case "informes-ley":
-        return <InformesLeyModulePremium />;
-      
       case "expedientes":
         return <ExpedientesModulePremium />;
-      
-      case "roles-permisos":
-        return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;

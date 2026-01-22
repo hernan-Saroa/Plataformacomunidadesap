@@ -42,49 +42,20 @@ import {
   Calendar, Plus, Filter, Search, Users, MapPin,
   ChevronLeft, ChevronRight, Download, Check, X, AlertCircle,
   Grid, List, Edit2, Save, Trash2, Building2,
-  AlertTriangle, Eye, BarChart3, FileText, Layers
+  AlertTriangle, Eye, BarChart3, FileText, Layers, Send
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
+import { Badge } from '../../ui/badge';
 
 // ============ COMPONENTES DE AUDITORÍA ============
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
-// ============ COMPONENTE BADGE AUXILIAR ============
-function Badge({ 
-  variant = 'default', 
-  size = 'md',
-  children, 
-  className = '' 
-}: { 
-  variant?: 'default' | 'info' | 'success' | 'warning' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const variants = {
-    default: 'bg-gray-100 text-gray-700',
-    info: 'bg-blue-100 text-blue-700',
-    success: 'bg-green-100 text-green-700',
-    warning: 'bg-yellow-100 text-yellow-700',
-    danger: 'bg-red-100 text-red-700',
-  };
-  
-  const sizes = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-2.5 py-1 text-sm',
-    lg: 'px-3 py-1.5 text-base',
-  };
-
-  return (
-    <span className={`inline-flex items-center gap-1 rounded font-medium ${variants[variant]} ${sizes[size]} ${className}`}>
-      {children}
-    </span>
-  );
-}
+// ============ INTEGRACIÓN CONTEXT ============
+import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';
 
 // ============ TIPOS ============
 
@@ -273,6 +244,95 @@ export function ProgramaAnualCIG() {
   const [mesSeleccionado, setMesSeleccionado] = useState<MesAño | null>(null);
   const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
 
+  // ✅ NUEVO: Integración con Context
+  const { agregarAuditoriasProgramadas } = useIntegracionAuditoriaPlanes();
+  const [programaAprobado, setProgramaAprobado] = useState(false);
+
+  // ✅ NUEVO: Handler para aprobar programa
+  const handleAprobarPrograma = () => {
+    // 1. Validar que haya auditorías aprobadas
+    const auditoriasParaKanban = AUDITORIAS_PROGRAMADAS_MOCK.filter(
+      aud => aud.estadoPrograma === 'Aprobado' || aud.estadoPrograma === 'Pendiente Aprobación'
+    );
+
+    if (auditoriasParaKanban.length === 0) {
+      toast.error('No hay auditorías pendientes de enviar al Kanban', {
+        description: 'Debe aprobar al menos una auditoría antes de enviar al Kanban'
+      });
+      return;
+    }
+
+    // 2. Convertir a formato AuditoriaProgramada
+    const auditoriasFormateadas: AuditoriaProgramada[] = auditoriasParaKanban.map(aud => {
+      const fechaInicio = calcularFechaInicio(aud.mesInicio, aud.semanaInicio);
+      const fechaFin = calcularFechaFin(aud.mesInicio, aud.semanaInicio, aud.fases);
+      
+      return {
+        codigo: aud.codigo,
+        titulo: aud.nombre,
+        descripcion: aud.procesoNombre,
+        territorial: aud.tipo === 'Territorial' ? aud.areaAuditable : 'Nacional',
+        auditorLider: {
+          nombre: aud.auditorLider.nombre,
+          cargo: 'Auditor Líder',
+          iniciales: aud.auditorLider.iniciales
+        },
+        fechaInicio,
+        fechaFin,
+        tipo: aud.tipo === 'Sede' ? 'regular' : 'territorial',
+        prioridad: 'alta',
+        areaObjetivo: aud.areaAuditable,
+        programaId: 'programa-2025',
+        planAnualAño: añoActual
+      };
+    });
+
+    // 3. Agregar al context
+    console.log('📋 Enviando', auditoriasFormateadas.length, 'auditorías al Kanban');
+    agregarAuditoriasProgramadas(auditoriasFormateadas);
+
+    // 4. Marcar como aprobado
+    setProgramaAprobado(true);
+
+    // 5. Notificación de éxito
+    toast.success(
+      `✅ Programa Anual aprobado`,
+      {
+        description: `${auditoriasFormateadas.length} auditorías enviadas al Kanban de Auditorías`,
+        duration: 5000
+      }
+    );
+
+    // 6. Confirmar navegación (después de un breve delay)
+    setTimeout(() => {
+      toast.info(
+        'Las auditorías ya están disponibles en el Kanban',
+        {
+          description: 'Navega a "Auditorías OCIG" para verlas en la columna "Planeación"',
+          duration: 7000
+        }
+      );
+    }, 1500);
+  };
+
+  // Helper para calcular fecha de inicio
+  const calcularFechaInicio = (mes: MesAño, semana: number): string => {
+    const año = añoActual;
+    const dia = (semana - 1) * 7 + 1;
+    return `${año}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  };
+
+  // Helper para calcular fecha fin
+  const calcularFechaFin = (mes: MesAño, semana: number, fases: any): string => {
+    const fechaInicio = new Date(calcularFechaInicio(mes, semana));
+    const duracionTotal = fases.planeacion.duracionDias + 
+                          fases.ejecucion.duracionDias + 
+                          fases.comunicacion.duracionDias;
+    const fechaFin = new Date(fechaInicio);
+    fechaFin.setDate(fechaFin.getDate() + duracionTotal);
+    return fechaFin.toISOString().split('T')[0];
+  };
+
   // Filtrado de auditorías
   const auditoriasFiltradas = useMemo(() => {
     return AUDITORIAS_PROGRAMADAS_MOCK.filter(aud => {
@@ -312,6 +372,25 @@ export function ProgramaAnualCIG() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* ✅ NUEVO: Botón Aprobar Programa */}
+          {!programaAprobado && (
+            <ButtonSIGL
+              variant="primary"
+              icon={<Send className="w-4 h-4" />}
+              onClick={handleAprobarPrograma}
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-md"
+            >
+              Aprobar Programa
+            </ButtonSIGL>
+          )}
+
+          {programaAprobado && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg border border-green-300">
+              <Check className="w-4 h-4" />
+              <span className="text-sm">Programa Aprobado</span>
+            </div>
+          )}
+
           <ButtonSIGL
             variant="outline"
             icon={<Download className="w-4 h-4" />}

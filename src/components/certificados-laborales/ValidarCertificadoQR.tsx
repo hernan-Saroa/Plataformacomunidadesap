@@ -22,7 +22,9 @@ import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
+import { FooterWorldClass } from '../FooterWorldClass';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import logoESAP from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -297,6 +299,15 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
               <div className="space-y-6">
                 {validationResult.isValid && validationResult.certificado ? (
                   <>
+                    {/* Logo ESAP en Header del Certificado */}
+                    <div className="flex justify-center pt-4 pb-2">
+                      <img 
+                        src={logoESAP} 
+                        alt="ESAP Logo" 
+                        className="h-16 sm:h-20 w-auto object-contain"
+                      />
+                    </div>
+
                     {/* Header de Éxito */}
                     <div className="text-center py-6">
                       <div 
@@ -671,6 +682,10 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           </Card>
         </motion.div>
       </div>
+      
+      {/* Footer WorldClass - Consistencia con Landing Page */}
+      <FooterWorldClass />
+      
       <QRScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}

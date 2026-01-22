@@ -111,7 +111,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-2 sm:p-4"
       style={{ zIndex: 999 }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -376,7 +376,7 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4"
+      className="fixed inset-0 bg-black/50 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

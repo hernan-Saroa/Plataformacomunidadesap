@@ -2575,7 +2575,7 @@ export function DashboardKanbanOperativo({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/50 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
               onClick={() => setModalActivo(null)}
             >
               <motion.div
@@ -3269,7 +3269,7 @@ export function DashboardKanbanOperativo({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
               onClick={() => setModalActivo(null)}
             >
               <motion.div

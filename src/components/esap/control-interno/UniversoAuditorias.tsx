@@ -60,6 +60,7 @@ import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
+import { ModalNuevaAreaWorldClass } from './ModalNuevaAreaWorldClass';
 
 // ============ TIPOS ============
 
@@ -800,7 +801,8 @@ export function UniversoAuditorias() {
 
       {/* MODAL NUEVA ÁREA */}
       {modalNuevaArea && (
-        <ModalNuevaArea
+        <ModalNuevaAreaWorldClass
+          open={modalNuevaArea}
           onClose={() => setModalNuevaArea(false)}
           onGuardar={(nuevaArea) => {
             setAreas(prev => [...prev, nuevaArea]);
@@ -813,6 +815,7 @@ export function UniversoAuditorias() {
             const num = parseInt(a.codigo.split('-')[1]);
             return isNaN(num) ? 0 : num;
           })) : 0}
+          unidadesOrganizacionales={TERRITORIALES_ESAP}
         />
       )}
     </div>
@@ -1159,269 +1162,5 @@ function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesPr
         </table>
       </div>
     </Card>
-  );
-}
-
-// ============ MODAL NUEVA ÁREA ============
-
-interface ModalNuevaAreaProps {
-  onClose: () => void;
-  onGuardar: (nuevaArea: AreaAuditable) => void;
-  ultimoCodigo: number;
-}
-
-function ModalNuevaArea({ onClose, onGuardar, ultimoCodigo }: ModalNuevaAreaProps) {
-  const [nombre, setNombre] = useState('');
-  const [tipo, setTipo] = useState<TipoArea>('Sede');
-  const [descripcion, setDescripcion] = useState('');
-  const [responsable, setResponsable] = useState('');
-  const [criticidad, setCriticidad] = useState<CriticidadNivel>(5);
-  const [exposicion, setExposicion] = useState<ExposicionNivel>(5);
-  const [mitigantes, setMitigantes] = useState(2);
-  const [unidadSeleccionada, setUnidadSeleccionada] = useState('');
-
-  // Manejar selección de unidad organizacional
-  const handleSeleccionarUnidad = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const unidadId = e.target.value;
-    setUnidadSeleccionada(unidadId);
-    
-    const unidad = TERRITORIALES_ESAP.find(t => t.id === unidadId);
-    if (unidad) {
-      setNombre(unidad.nombre);
-      setTipo(unidad.codigo === 'ESAP-CENTRAL' ? 'Sede' : 'Territorial');
-      setDescripcion(`Dirección ${unidad.nombre} - ${unidad.departamentos.join(', ')}`);
-      setResponsable(`Director ${unidad.nombreCorto}`);
-    }
-  };
-
-  const handleGuardar = () => {
-    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-    const nuevoCodigo = `SEDE-${ultimoCodigo + 1}`;
-    const nuevaArea: AreaAuditable = {
-      id: `area-${ultimoCodigo + 1}`,
-      codigo: nuevoCodigo,
-      nombre,
-      tipo,
-      descripcion,
-      responsable,
-      criticidad,
-      factorExposicion: exposicion,
-      factoresMitigantes: mitigantes,
-      nivelRiesgo: nivel,
-      scoreRiesgo: score,
-      estado: 'pendiente',
-      numeroAuditorias: 0
-    };
-    onGuardar(nuevaArea);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto"
-      >
-        <Card className="p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-              <Plus className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Nueva Área Auditable
-            </h3>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-        <div className="space-y-4">
-          {/* SELECTOR DE ESTRUCTURA ORGANIZACIONAL */}
-          <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2" style={{ borderColor: '#003DA5' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Link2 className="w-5 h-5" style={{ color: '#003DA5' }} />
-              <h4 className="font-bold text-gray-900">Importar desde Estructura Organizacional</h4>
-              <Badge style={{ background: '#003DA5', color: 'white' }} className="text-xs">
-                {TERRITORIALES_ESAP.length} Unidades
-              </Badge>
-            </div>
-            <p className="text-xs text-gray-600 mb-3">
-              Selecciona una unidad organizacional existente para auto-completar los datos
-            </p>
-            <select
-              value={unidadSeleccionada}
-              onChange={handleSeleccionarUnidad}
-              className="w-full px-3 py-2 border-2 rounded-lg text-sm"
-              style={{ borderColor: unidadSeleccionada ? '#003DA5' : '#D1D5DB' }}
-            >
-              <option value="">➕ Crear área personalizada (sin vincular)</option>
-              <optgroup label="🏛️ SEDE CENTRAL (1)">
-                {TERRITORIALES_ESAP.filter(t => t.codigo === 'ESAP-CENTRAL').map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="📍 TERRITORIALES (17)">
-                {TERRITORIALES_ESAP.filter(t => t.codigo !== 'ESAP-CENTRAL').map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            {unidadSeleccionada && (
-              <div className="mt-2 p-2 bg-white rounded border" style={{ borderColor: '#003DA5' }}>
-                <p className="text-xs font-bold" style={{ color: '#003DA5' }}>
-                  ✓ Unidad vinculada - Datos auto-completados
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Nombre</label>
-              <Input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre del área"
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Tipo</label>
-              <select
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoArea)}
-                className="px-2 py-1 text-sm border rounded"
-              >
-                <option value="Sede">Sede</option>
-                <option value="Territorial">Territorial</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Descripción</label>
-            <Input
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Descripción del área"
-              className="text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Responsable</label>
-            <Input
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Responsable del área"
-              className="text-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">📊 Criticidad (Impacto)</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>Alta (5):</strong> Crítico/Financiero</li>
-                <li><strong>Media (3):</strong> Apoyo importante</li>
-                <li><strong>Baja (1):</strong> Secundario</li>
-              </ul>
-              <select
-                value={criticidad}
-                onChange={(e) => setCriticidad(Number(e.target.value) as CriticidadNivel)}
-                className="w-full px-2 py-1 text-xs border rounded"
-              >
-                <option value={5}>Alta (5) - Crítico/Financiero</option>
-                <option value={3}>Media (3) - Apoyo importante</option>
-                <option value={1}>Baja (1) - Secundario</option>
-              </select>
-            </div>
-
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">👥 Factor Exposición</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>Alta (5):</strong> &gt;100 personas</li>
-                <li><strong>Media (3):</strong> 50-100 personas</li>
-                <li><strong>Baja (1):</strong> &lt;50 personas</li>
-              </ul>
-              <select
-                value={exposicion}
-                onChange={(e) => setExposicion(Number(e.target.value) as ExposicionNivel)}
-                className="w-full px-2 py-1 text-xs border rounded"
-              >
-                <option value={5}>Alta (5) - &gt;100 personas</option>
-                <option value={3}>Media (3) - 50-100 personas</option>
-                <option value={1}>Baja (1) - &lt;50 personas</option>
-              </select>
-            </div>
-
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">🛡️ Factores Mitigantes</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>1-10:</strong> Controles existentes</li>
-                <li>Mayor valor = Más controles</li>
-                <li>Más controles = Menor riesgo</li>
-              </ul>
-              <Input
-                type="number"
-                value={mitigantes}
-                onChange={(e) => setMitigantes(Number(e.target.value))}
-                min={1}
-                max={10}
-                className="text-xs"
-                placeholder="Controles existentes"
-              />
-              <p className="text-xs text-gray-500 mt-1">Mayor valor = más controles = menor riesgo</p>
-            </div>
-          </div>
-
-          {/* Preview del cálculo DAFP */}
-          <div className="mt-3 p-3 bg-white rounded-lg border-2 border-orange-300">
-            <p className="text-xs font-bold text-gray-700 mb-1">Vista Previa - Score DAFP:</p>
-            <div className="flex items-center gap-2">
-              <code className="text-lg font-black" style={{ color: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel) }}>
-                {calcularRiesgo(criticidad, exposicion, mitigantes).score}
-              </code>
-              <Badge style={{ 
-                background: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel),
-                color: 'white'
-              }}>
-                {calcularRiesgo(criticidad, exposicion, mitigantes).nivel}
-              </Badge>
-              <p className="text-xs text-gray-600 ml-auto">
-                ({criticidad} × {exposicion}) ÷ {mitigantes}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onClose}
-          >
-            <X className="w-4 h-4 mr-1" />
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            style={{ background: '#003DA5' }}
-            className="gap-2"
-            onClick={handleGuardar}
-            disabled={!nombre || !descripcion || !responsable}
-          >
-            <Save className="w-4 h-4" />
-            Crear Área
-          </Button>
-        </div>
-      </Card>
-      </motion.div>
-    </div>
   );
 }

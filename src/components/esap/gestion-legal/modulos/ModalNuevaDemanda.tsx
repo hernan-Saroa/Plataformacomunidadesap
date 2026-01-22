@@ -3,10 +3,12 @@
  * ✅ Diseño corporativo ESAP 2025 con ModalHeaderClean
  * ✅ Validación completa y UX mejorada
  * ✅ Botones SIEMPRE visibles en el footer
+ * ✅ MÚLTIPLES DEMANDANTES con UI mejorada
+ * ✅ MODAL 30% MÁS ANCHO para mejor visualización
  */
 
 import { useState } from 'react';
-import { Scale, User, Calendar, FileText, Building2, AlertCircle, Save, MapPin, DollarSign, Gavel } from 'lucide-react';
+import { Scale, User, Calendar, FileText, Building2, AlertCircle, Save, MapPin, DollarSign, Gavel, Plus, X, UserPlus } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Button } from '../../../ui/button';
@@ -22,9 +24,12 @@ export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
   tipoProceso: string;
-  demandante: string;
-  tipoPersona: 'natural' | 'juridica';
-  identificacionDemandante: string;
+  demandantes: Array<{
+    id: string;
+    nombre: string;
+    tipoPersona: 'natural' | 'juridica';
+    identificacion: string;
+  }>;
   cuantia: string;
   juzgado: string;
   ciudad: string;
@@ -86,9 +91,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     numeroRadicado: '',
     medioControl: '',
     tipoProceso: '',
-    demandante: '',
-    tipoPersona: 'natural',
-    identificacionDemandante: '',
+    demandantes: [],
     cuantia: '',
     juzgado: '',
     ciudad: '',
@@ -102,14 +105,72 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     observaciones: ''
   });
 
+  // Estado para el demandante temporal que se está agregando
+  const [nuevoDemandante, setNuevoDemandante] = useState({
+    nombre: '',
+    tipoPersona: 'natural' as 'natural' | 'juridica',
+    identificacion: ''
+  });
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleInputChange = (field: keyof NuevaDemandaData, value: string) => {
+  const handleInputChange = (field: keyof NuevaDemandaData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Limpiar error del campo
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  // Agregar demandante a la lista
+  const handleAgregarDemandante = () => {
+    if (!nuevoDemandante.nombre.trim()) {
+      toast.error('⚠️ Nombre incompleto', {
+        description: 'Ingrese el nombre completo del demandante'
+      });
+      return;
+    }
+    if (!nuevoDemandante.identificacion.trim()) {
+      toast.error('⚠️ Identificación incompleta', {
+        description: 'Ingrese la identificación del demandante'
+      });
+      return;
+    }
+
+    const demandante = {
+      id: `DEM-${Date.now()}`,
+      nombre: nuevoDemandante.nombre,
+      tipoPersona: nuevoDemandante.tipoPersona,
+      identificacion: nuevoDemandante.identificacion
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      demandantes: [...prev.demandantes, demandante]
+    }));
+
+    // Limpiar formulario de nuevo demandante
+    setNuevoDemandante({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: ''
+    });
+
+    toast.success('✅ Demandante agregado', {
+      description: `${demandante.nombre} agregado a la lista`
+    });
+  };
+
+  // Eliminar demandante de la lista
+  const handleEliminarDemandante = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      demandantes: prev.demandantes.filter(d => d.id !== id)
+    }));
+    
+    toast.info('🗑️ Demandante eliminado', {
+      description: 'El demandante ha sido removido de la lista'
+    });
   };
 
   const validateForm = (): boolean => {
@@ -121,11 +182,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     if (!formData.medioControl) {
       newErrors.medioControl = 'Seleccione el medio de control';
     }
-    if (!formData.demandante.trim()) {
-      newErrors.demandante = 'El nombre del demandante es obligatorio';
-    }
-    if (!formData.identificacionDemandante.trim()) {
-      newErrors.identificacionDemandante = 'La identificación es obligatoria';
+    if (formData.demandantes.length === 0) {
+      newErrors.demandantes = 'Debe agregar al menos un demandante';
     }
     if (!formData.juzgado.trim()) {
       newErrors.juzgado = 'El juzgado es obligatorio';
@@ -169,9 +227,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       numeroRadicado: '',
       medioControl: '',
       tipoProceso: '',
-      demandante: '',
-      tipoPersona: 'natural',
-      identificacionDemandante: '',
+      demandantes: [],
       cuantia: '',
       juzgado: '',
       ciudad: '',
@@ -184,6 +240,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       hechos: '',
       observaciones: ''
     });
+    setNuevoDemandante({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: ''
+    });
     setErrors({});
     
     onClose();
@@ -191,7 +252,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl h-[90vh] flex flex-col p-0 gap-0">
+      {/* ✅ ANCHO AUMENTADO EN 30%: de max-w-2xl (672px) a max-w-4xl (896px) = ~33% más ancho */}
+      <DialogContent 
+        hideCloseButton 
+        className="w-[95vw] max-w-[850px] lg:max-w-3xl xl:max-w-4xl h-[90vh] flex flex-col p-0 gap-0"
+      >
         {/* Títulos ocultos para accesibilidad */}
         <DialogTitle className="sr-only">Nueva Demanda Judicial</DialogTitle>
         <DialogDescription className="sr-only">
@@ -219,9 +284,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 DATOS DEL PROCESO JUDICIAL
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Número de Radicado */}
-                <div>
+                <div className="lg:col-span-2">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Número de Radicado <span className="text-red-600">*</span>
                   </label>
@@ -272,7 +337,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 </div>
 
                 {/* Tipo de Proceso Judicial */}
-                <div className="md:col-span-2">
+                <div className="lg:col-span-2">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Tipo de Proceso Judicial
                   </label>
@@ -313,7 +378,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 </div>
 
                 {/* Cuantía */}
-                <div>
+                <div className="lg:col-span-3">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Cuantía (COP)
                   </label>
@@ -331,95 +396,156 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               </div>
             </div>
 
-            {/* Sección 2: Datos del Demandante */}
+            {/* Sección 2: Datos de Demandantes - ✅ NUEVO DISEÑO MEJORADO */}
             <div className="bg-gradient-to-br from-orange-50 to-white p-4 rounded-lg border-l-4 border-l-orange-500">
-              <h3 className="text-sm font-bold text-orange-900 mb-4 flex items-center gap-2">
-                <User className="w-5 h-5 text-orange-600" />
-                DATOS DEL DEMANDANTE
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Tipo de Persona */}
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-2">
-                    Tipo de Persona
-                  </label>
-                  <div className="flex gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="tipoPersona"
-                        value="natural"
-                        checked={formData.tipoPersona === 'natural'}
-                        onChange={(e) => handleInputChange('tipoPersona', e.target.value)}
-                        className="w-4 h-4"
-                        style={{ accentColor: '#2962FF' }}
-                      />
-                      <span className="text-sm text-gray-700">Natural</span>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-orange-900 flex items-center gap-2">
+                  <User className="w-5 h-5 text-orange-600" />
+                  DATOS DEL DEMANDANTE(S)
+                </h3>
+                <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-bold rounded-full">
+                  {formData.demandantes.length} agregado(s)
+                </span>
+              </div>
+
+              {/* ✅ FORMULARIO PARA AGREGAR DEMANDANTE */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-orange-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-orange-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandante</h4>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersona"
+                          value="natural"
+                          checked={nuevoDemandante.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersona"
+                          value="juridica"
+                          checked={nuevoDemandante.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Segunda fila: Identificación, Nombre y Botón - ALINEADOS */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoDemandante.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
                       <input
-                        type="radio"
-                        name="tipoPersona"
-                        value="juridica"
-                        checked={formData.tipoPersona === 'juridica'}
-                        onChange={(e) => handleInputChange('tipoPersona', e.target.value)}
-                        className="w-4 h-4"
-                        style={{ accentColor: '#2962FF' }}
+                        type="text"
+                        value={nuevoDemandante.identificacion}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, identificacion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder={nuevoDemandante.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
                       />
-                      <span className="text-sm text-gray-700">Jurídica</span>
-                    </label>
+                    </div>
+
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.nombre}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, nombre: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Nombre completo del demandante"
+                      />
+                    </div>
+
+                    {/* Botón Agregar */}
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={handleAgregarDemandante}
+                        className="w-full text-white text-xs font-bold"
+                        style={{ background: '#F57C00' }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                {/* Identificación */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    {formData.tipoPersona === 'natural' ? 'Cédula' : 'NIT'} <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.identificacionDemandante}
-                    onChange={(e) => handleInputChange('identificacionDemandante', e.target.value)}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                      errors.identificacionDemandante 
-                        ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                        : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                    placeholder={formData.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
-                  />
-                  {errors.identificacionDemandante && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errors.identificacionDemandante}
-                    </p>
-                  )}
-                </div>
-
-                {/* Nombre Completo */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Nombre Completo / Razón Social <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.demandante}
-                    onChange={(e) => handleInputChange('demandante', e.target.value)}
-                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                      errors.demandante 
-                        ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                        : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                    placeholder="Nombre completo del demandante"
-                  />
-                  {errors.demandante && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errors.demandante}
-                    </p>
-                  )}
-                </div>
               </div>
+
+              {/* ✅ LISTA DE DEMANDANTES AGREGADOS */}
+              {errors.demandantes && (
+                <p className="text-xs text-red-600 mb-2 flex items-center gap-1 bg-red-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  {errors.demandantes}
+                </p>
+              )}
+
+              {formData.demandantes.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.demandantes.map((demandante, index) => (
+                    <div 
+                      key={demandante.id} 
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-orange-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{demandante.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {demandante.tipoPersona}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandante.identificacion}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarDemandante(demandante.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay demandantes agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Sección 3: Juzgado y Ubicación */}
@@ -429,9 +555,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 JUZGADO Y UBICACIÓN
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Juzgado */}
-                <div className="md:col-span-2">
+                <div className="lg:col-span-3">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Juzgado / Tribunal <span className="text-red-600">*</span>
                   </label>
@@ -475,7 +601,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 </div>
 
                 {/* Ciudad */}
-                <div>
+                <div className="lg:col-span-2">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Ciudad <span className="text-red-600">*</span>
                   </label>
@@ -510,7 +636,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 FECHAS Y ASIGNACIÓN
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Fecha Notificación */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -548,7 +674,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 </div>
 
                 {/* Abogado Asignado */}
-                <div className="md:col-span-2">
+                <div className="lg:col-span-1">
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Abogado Responsable <span className="text-red-600">*</span>
                   </label>

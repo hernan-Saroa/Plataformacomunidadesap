@@ -359,7 +359,8 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriasConHallazgos,
     navegarAFormulacion,
     setNavegarAFormulacion,
-    crearPlan
+    crearPlan,
+    generarExpediente // ✅ NUEVO: Para generar expedientes
   } = useIntegracionAuditoriaPlanes();
 
   useInicializarDatosEjemplo();
@@ -416,6 +417,109 @@ export function PlanesMejoramientoModuleRediseno() {
     setModalCrearPlanOpen(false);
     limpiarSeleccion();
   };
+
+  // ✅ NUEVO: Handler para completar plan y generar expediente automáticamente
+  const handleCompletarPlan = (plan: PlanMejoramiento) => {
+    // 1. Validar que esté 100% completo
+    if (plan.porcentajeAvance < 100) {
+      toast.error('El plan debe estar completado al 100%', {
+        description: `Progreso actual: ${plan.porcentajeAvance}%. Completa todas las acciones primero.`
+      });
+      return;
+    }
+
+    // 2. Validar que todas las acciones estén completadas
+    if (plan.accionesCompletadas < plan.totalAcciones) {
+      toast.error(
+        `Faltan ${plan.totalAcciones - plan.accionesCompletadas} acciones por completar`,
+        {
+          description: 'Todas las acciones deben estar marcadas como completadas con evidencias.'
+        }
+      );
+      return;
+    }
+
+    // 3. Actualizar estado del plan
+    const planActualizado: PlanMejoramiento = {
+      ...plan,
+      estado: 'COMPLETADO',
+      semaforo: 'verde',
+      ultimaActualizacion: new Date().toISOString().split('T')[0]
+    };
+
+    setPlanes(prev => prev.map(p => p.id === plan.id ? planActualizado : p));
+
+    // 4. Generar expediente automáticamente
+    const expediente = {
+      id: `exp-${Date.now()}`,
+      auditoriaId: plan.id,
+      codigoAuditoria: plan.codigo,
+      planMejoramientoId: plan.id,
+      fechaGeneracion: new Date().toISOString(),
+      documentos: [
+        {
+          tipo: 'Plan de Auditoría',
+          nombre: `Plan_${plan.codigo}.pdf`,
+          url: '#',
+          fecha: plan.fechaCreacion
+        },
+        {
+          tipo: 'Informe Final de Auditoría',
+          nombre: `Informe_${plan.codigo}.pdf`,
+          url: '#',
+          fecha: plan.fechaCreacion
+        },
+        {
+          tipo: 'Plan de Mejoramiento',
+          nombre: `Plan_Mejoramiento_${plan.codigo}.pdf`,
+          url: '#',
+          fecha: plan.fechaCreacion
+        },
+        {
+          tipo: 'Evidencias de Cumplimiento',
+          nombre: `Evidencias_${plan.codigo}.zip`,
+          url: '#',
+          fecha: new Date().toISOString()
+        }
+      ],
+      metadatos: {
+        duracionTotal: calcularDuracionDias(plan.fechaCreacion, new Date().toISOString()),
+        hallazgos: plan.totalHallazgos,
+        hallazgosResueltos: plan.accionesCompletadas,
+        cumplimientoPlan: plan.porcentajeAvance
+      },
+      estado: 'GENERADO' as const
+    };
+
+    // 5. Guardar expediente en el context
+    generarExpediente(expediente);
+
+    // 6. Notificación de éxito
+    toast.success(
+      '✅ Plan completado y expediente generado',
+      {
+        description: `Expediente ${plan.codigo} generado automáticamente y disponible en el módulo de Expedientes.`,
+        duration: 7000,
+        action: {
+          label: 'Ver Expediente',
+          onClick: () => {
+            console.log('Navegar a expedientes', expediente.id);
+            toast.info('Navegando al módulo de Expedientes...');
+          }
+        }
+      }
+    );
+
+    console.log('📁 Expediente generado:', expediente);
+  };
+
+  // Helper para calcular duración en días
+  const calcularDuracionDias = (fechaInicio: string, fechaFin: string): number => {
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+    const diff = fin.getTime() - inicio.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
   
   return (
     <DndProvider backend={HTML5Backend}>
@@ -431,6 +535,7 @@ export function PlanesMejoramientoModuleRediseno() {
           setPlanes={setPlanes}
           onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
           auditoriasDisponibles={auditoriasConHallazgos}
+          onCompletarPlan={handleCompletarPlan}
         />
 
         {/* Modal Crear Plan desde Auditoría */}
@@ -466,9 +571,10 @@ interface SeguimientoViewProps {
   setPlanes: React.Dispatch<React.SetStateAction<PlanMejoramiento[]>>;
   onAbrirCrearPlan: () => void;
   auditoriasDisponibles: any[];
+  onCompletarPlan?: (plan: PlanMejoramiento) => void; // ✅ NUEVO
 }
 
-function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles }: SeguimientoViewProps) {
+function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan }: SeguimientoViewProps) {
   const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');

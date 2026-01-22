@@ -25,7 +25,8 @@ import {
   ChevronDown,
   Cog,
   Eye,
-  Filter
+  Filter,
+  Scale
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -170,77 +171,89 @@ const MOCK_ROLES: SystemRole[] = [
     ultima_modificacion: '2024-10-20',
     modificado_por: 'Admin Principal'
   },
+  // ============ ROLES PARA CONTROL DISCIPLINARIO ============
   {
-    id: '8',
-    nombre: 'Jefe de Admisiones',
-    descripcion: 'Gestión completa del proceso de admisiones y matrículas',
-    icono: 'FileText',
-    color: '#7c3aed',
-    tipo: 'personalizado',
-    requiere_2fa: false,
-    usuarios_count: 5,
-    permisos_count: 15,
-    esta_activo: true,
-    fecha_creacion: '2024-06-10',
-    creado_por: 'Super Admin',
-    ultima_modificacion: '2024-11-05',
-    modificado_por: 'Coordinador TI'
-  },
-  // ========== ROLES DE CONTROL INTERNO ==========
-  {
-    id: '9',
-    nombre: 'Jefe de Control Interno',
-    descripcion: 'Control total sobre todos los módulos de Control Interno de Gestión',
-    icono: 'Shield',
+    id: 'cd-1',
+    nombre: 'Profesional Especializado Disciplinario',
+    descripcion: 'Profesional especializado del equipo disciplinario con capacidad de gestión completa de procesos',
+    icono: 'Scale',
     color: '#dc2626',
-    tipo: 'sistema',
-    usuarios_count: 1,
-    permisos_count: 80,
+    tipo: 'personalizado',
+    usuarios_count: 5,
+    permisos_count: 75,
     esta_activo: true,
     requiere_2fa: true,
-    fecha_creacion: '2024-01-01',
+    fecha_creacion: '2026-01-21',
     creado_por: 'Sistema'
   },
   {
-    id: '10',
-    nombre: 'Profesional Auditor',
-    descripcion: 'Gestión completa de auditorías y seguimiento de planes de mejoramiento',
-    icono: 'FileText',
-    color: '#2563eb',
-    tipo: 'sistema',
+    id: 'cd-2',
+    nombre: 'Profesional Universitario Disciplinario',
+    descripcion: 'Profesional universitario del equipo disciplinario con permisos de gestión operativa',
+    icono: 'Scale',
+    color: '#dc2626',
+    tipo: 'personalizado',
+    usuarios_count: 8,
+    permisos_count: 60,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2026-01-21',
+    creado_por: 'Sistema'
+  },
+  {
+    id: 'cd-3',
+    nombre: 'Profesional Senior Disciplinario',
+    descripcion: 'Profesional senior con permisos avanzados incluyendo revisión y aprobación',
+    icono: 'Scale',
+    color: '#dc2626',
+    tipo: 'personalizado',
     usuarios_count: 3,
-    permisos_count: 52,
+    permisos_count: 85,
     esta_activo: true,
     requiere_2fa: true,
-    fecha_creacion: '2024-01-01',
+    fecha_creacion: '2026-01-21',
     creado_por: 'Sistema'
   },
   {
-    id: '11',
-    nombre: 'Auxiliar de Auditoría',
-    descripcion: 'Soporte en procesos de auditoría y gestión documental',
-    icono: 'FileText',
-    color: '#16a34a',
-    tipo: 'sistema',
+    id: 'cd-4',
+    nombre: 'Coordinador Disciplinario',
+    descripcion: 'Coordinador del equipo disciplinario con permisos ejecutivos y de supervisión',
+    icono: 'Scale',
+    color: '#dc2626',
+    tipo: 'personalizado',
     usuarios_count: 2,
-    permisos_count: 23,
+    permisos_count: 95,
     esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
+    requiere_2fa: true,
+    fecha_creacion: '2026-01-21',
     creado_por: 'Sistema'
   },
   {
-    id: '12',
-    nombre: 'Consulta (Control Interno)',
-    descripcion: 'Solo lectura de información pública del módulo de Control Interno',
+    id: 'cd-5',
+    nombre: 'Jefe Control Disciplinario',
+    descripcion: 'Jefe de Control Disciplinario con acceso completo incluyendo configuración y administración',
+    icono: 'Shield',
+    color: '#7c2d12',
+    tipo: 'personalizado',
+    usuarios_count: 1,
+    permisos_count: 95,
+    esta_activo: true,
+    requiere_2fa: true,
+    fecha_creacion: '2026-01-21',
+    creado_por: 'Sistema'
+  },
+  {
+    id: 'cd-6',
+    nombre: 'Consultor Disciplinario',
+    descripcion: 'Rol de solo lectura para consulta de procesos disciplinarios sin permisos de modificación',
     icono: 'Eye',
     color: '#64748b',
-    tipo: 'sistema',
-    usuarios_count: 5,
+    tipo: 'personalizado',
+    usuarios_count: 4,
     permisos_count: 15,
     esta_activo: true,
     requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
+    fecha_creacion: '2026-01-21',
     creado_por: 'Sistema'
   }
 ];
@@ -265,7 +278,8 @@ const ICON_MAP: Record<string, any> = {
   UserCircle,
   Building2,
   FileText,
-  Cog
+  Cog,
+  Scale
 };
 
 const getIconComponent = (iconName: string) => {

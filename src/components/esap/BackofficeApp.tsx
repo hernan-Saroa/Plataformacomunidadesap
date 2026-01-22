@@ -216,6 +216,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return <ReportsModuleV2 />;
       
       case 'audit':
+        // Si es usuario de procesos (auditado), mostrar portal del usuario
+        if (userData?.module === 'procesos') {
+          return <PortalTransaccionalUsuarioMD3 onLogout={handleLogout} />;
+        }
+        // Si es usuario de Control Interno (auditor), mostrar dashboard completo
         return <AuditModulePremium />;
       
       case 'graduates':

@@ -1,7 +1,7 @@
 /**
  * RF006 - GESTIÓN DE TÉRMINOS Y ALERTAS
  * Sistema de administración de términos procesales con cálculo automático y alertas
- * REDISEÑADO - Fase 5: Diseño limpio, profesional y altamente usable
+ * DISEÑO WORLD-CLASS - Estilo corporativo ESAP consistente con Expedientes Electrónicos
  */
 
 import { useState } from 'react';
@@ -13,15 +13,15 @@ import {
   Filter, Search, ChevronDown, ChevronRight, Zap, Eye,
   Play, Pause, Target, Archive, HelpCircle
 } from 'lucide-react';
-import { Card } from '../../ui/card';
-import { Badge } from '../../ui/badge';
-import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
 import { FlujoTerminosAlertas } from './FlujoTerminosAlertas';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Interfaces
+// ============================================================================
+// INTERFACES
+// ============================================================================
+
 interface DiaFestivo {
   id: string;
   fecha: string;
@@ -66,98 +66,26 @@ interface ReglaAlerta {
   descripcion: string;
 }
 
-// Mock Data
+// ============================================================================
+// MOCK DATA
+// ============================================================================
+
 const DIAS_FESTIVOS_MOCK: DiaFestivo[] = [
-  {
-    id: 'f1',
-    fecha: '2025-01-01',
-    descripcion: 'Año Nuevo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f2',
-    fecha: '2025-01-06',
-    descripcion: 'Día de los Reyes Magos',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f3',
-    fecha: '2025-03-24',
-    descripcion: 'Día de San José',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f4',
-    fecha: '2025-04-17',
-    descripcion: 'Jueves Santo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f5',
-    fecha: '2025-04-18',
-    descripcion: 'Viernes Santo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f6',
-    fecha: '2025-05-01',
-    descripcion: 'Día del Trabajo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f7',
-    fecha: '2025-06-23',
-    descripcion: 'Día de San Pedro y San Pablo',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f8',
-    fecha: '2025-07-20',
-    descripcion: 'Día de la Independencia',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f9',
-    fecha: '2025-08-07',
-    descripcion: 'Batalla de Boyacá',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f10',
-    fecha: '2025-08-18',
-    descripcion: 'Asunción de la Virgen',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f11',
-    fecha: '2025-10-13',
-    descripcion: 'Día de la Raza',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f12',
-    fecha: '2025-11-03',
-    descripcion: 'Todos los Santos',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f13',
-    fecha: '2025-11-17',
-    descripcion: 'Independencia de Cartagena',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f14',
-    fecha: '2025-12-08',
-    descripcion: 'Inmaculada Concepción',
-    tipo: 'nacional'
-  },
-  {
-    id: 'f15',
-    fecha: '2025-12-25',
-    descripcion: 'Navidad',
-    tipo: 'nacional'
-  }
+  { id: 'f1', fecha: '2025-01-01', descripcion: 'Año Nuevo', tipo: 'nacional' },
+  { id: 'f2', fecha: '2025-01-06', descripcion: 'Día de los Reyes Magos', tipo: 'nacional' },
+  { id: 'f3', fecha: '2025-03-24', descripcion: 'Día de San José', tipo: 'nacional' },
+  { id: 'f4', fecha: '2025-04-17', descripcion: 'Jueves Santo', tipo: 'nacional' },
+  { id: 'f5', fecha: '2025-04-18', descripcion: 'Viernes Santo', tipo: 'nacional' },
+  { id: 'f6', fecha: '2025-05-01', descripcion: 'Día del Trabajo', tipo: 'nacional' },
+  { id: 'f7', fecha: '2025-06-23', descripcion: 'Día de San Pedro y San Pablo', tipo: 'nacional' },
+  { id: 'f8', fecha: '2025-07-20', descripcion: 'Día de la Independencia', tipo: 'nacional' },
+  { id: 'f9', fecha: '2025-08-07', descripcion: 'Batalla de Boyacá', tipo: 'nacional' },
+  { id: 'f10', fecha: '2025-08-18', descripcion: 'Asunción de la Virgen', tipo: 'nacional' },
+  { id: 'f11', fecha: '2025-10-13', descripcion: 'Día de la Raza', tipo: 'nacional' },
+  { id: 'f12', fecha: '2025-11-03', descripcion: 'Todos los Santos', tipo: 'nacional' },
+  { id: 'f13', fecha: '2025-11-17', descripcion: 'Independencia de Cartagena', tipo: 'nacional' },
+  { id: 'f14', fecha: '2025-12-08', descripcion: 'Inmaculada Concepción', tipo: 'nacional' },
+  { id: 'f15', fecha: '2025-12-25', descripcion: 'Navidad', tipo: 'nacional' }
 ];
 
 const TERMINOS_MOCK: Termino[] = [
@@ -296,7 +224,10 @@ const ALERTAS_MOCK: Alerta[] = [
   }
 ];
 
-// ==================== COMPONENTE PRINCIPAL ====================
+// ============================================================================
+// COMPONENTE PRINCIPAL
+// ============================================================================
+
 export function GestionTerminosAlertas() {
   const [terminos, setTerminos] = useState<Termino[]>(TERMINOS_MOCK);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
@@ -488,7 +419,7 @@ export function GestionTerminosAlertas() {
     const pageWidth = doc.internal.pageSize.getWidth();
 
     // Portada
-    doc.setFillColor(245, 158, 11); // #F59E0B
+    doc.setFillColor(0, 61, 165); // #003DA5
     doc.rect(0, 0, pageWidth, 50, 'F');
     
     doc.setTextColor(255, 255, 255);
@@ -528,7 +459,7 @@ export function GestionTerminosAlertas() {
       ]),
       theme: 'grid',
       headStyles: {
-        fillColor: [245, 158, 11],
+        fillColor: [0, 61, 165],
         textColor: [255, 255, 255],
         fontSize: 9,
         fontStyle: 'bold'
@@ -572,596 +503,615 @@ export function GestionTerminosAlertas() {
   };
 
   return (
-    <div className="w-full max-w-full">
-      {/* Breadcrumb */}
-      <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-        <button className="hover:text-blue-600">Backoffice</button>
-        <ChevronRight className="w-4 h-4" />
-        <button className="hover:text-blue-600">Control Interno Disciplinario</button>
-        <ChevronRight className="w-4 h-4" />
-        <span className="text-gray-900 font-medium">Términos y Alertas</span>
-      </div>
-
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <Clock className="w-6 h-6" style={{ color: '#F59E0B' }} />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Términos y Alertas</h1>
-              <p className="text-sm text-gray-600">RF006 - Control de Términos Procesales Automático</p>
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* Header World-Class */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+        <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+          <div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div 
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center" 
+                style={{ backgroundColor: '#E0EDFF' }}
+              >
+                <Clock size={20} className="sm:w-6 sm:h-6" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Términos y Alertas
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                  RF006 - Control de Términos Procesales Automático
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRecalcular}
-              className="px-4 py-2 rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-2 bg-gray-100 text-gray-700"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Recalcular
-            </button>
-            {vistaActual === 'terminos' && (
-              <button
-                onClick={() => setShowModalNuevoTermino(true)}
-                className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-                style={{ background: '#F59E0B' }}
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Término
-              </button>
-            )}
-            {vistaActual === 'calendario' && (
-              <button
-                onClick={() => setShowModalFestivo(true)}
-                className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-                style={{ background: '#F59E0B' }}
-              >
-                <Plus className="w-4 h-4" />
-                Agregar Festivo
-              </button>
-            )}
+          {/* Stats Cards */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="px-3 py-2 rounded-lg border bg-green-50 border-green-200">
+              <p className="text-xs text-gray-600">Pendientes</p>
+              <p className="text-lg sm:text-xl font-bold text-green-700">{stats.pendientes}</p>
+            </div>
+            <div className="px-3 py-2 rounded-lg border bg-yellow-50 border-yellow-200">
+              <p className="text-xs text-gray-600">Próximos</p>
+              <p className="text-lg sm:text-xl font-bold text-yellow-700">{stats.proximosVencer}</p>
+            </div>
+            <div className="px-3 py-2 rounded-lg border bg-red-50 border-red-200">
+              <p className="text-xs text-gray-600">Vencidos</p>
+              <p className="text-lg sm:text-xl font-bold text-red-700">{stats.vencidos}</p>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Alert Informativo */}
-        <Card className="p-4 bg-orange-50 border-orange-200">
+      {/* Alert Informativo */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
           <div className="flex gap-3">
-            <Info className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <Info className="w-5 h-5 text-blue-600" />
+            </div>
             <div className="text-sm text-gray-700">
-              <p className="font-semibold text-orange-900 mb-1">
+              <p className="font-bold text-blue-900 mb-1">
                 Cálculo Automático de Términos Procesales
               </p>
-              <p>
+              <p className="text-xs sm:text-sm">
                 El sistema calcula automáticamente días hábiles excluyendo sábados, domingos y festivos configurados. 
                 Las alertas se envían automáticamente según las reglas configuradas.
               </p>
             </div>
           </div>
-        </Card>
-      </div>
-
-      {/* Pestañas Minimalistas */}
-      <div className="bg-white border border-gray-200 rounded-lg mb-6">
-        <div className="flex gap-1 p-2">
-          <button
-            onClick={() => setVistaActual('terminos')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'terminos'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            Términos Activos ({terminos.length})
-          </button>
-          <button
-            onClick={() => setVistaActual('calendario')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'calendario'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Calendario Festivos ({diasFestivos.length})
-          </button>
-          <button
-            onClick={() => setVistaActual('reglas')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'reglas'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Reglas de Alerta
-          </button>
-          <button
-            onClick={() => setVistaActual('historial')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'historial'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            Historial ({ALERTAS_MOCK.length})
-          </button>
         </div>
       </div>
 
-      {/* VISTA: TÉRMINOS ACTIVOS */}
-      {vistaActual === 'terminos' && (
-        <div className="space-y-6">
-          {/* Filtros */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por proceso, actuación o responsable..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-            <select
-              value={filterEstado}
-              onChange={(e) => setFilterEstado(e.target.value)}
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-            >
-              <option value="all">Todos los estados</option>
-              <option value="pendiente">🟢 Pendiente</option>
-              <option value="proximo_vencer">🟡 Próximo a Vencer</option>
-              <option value="vencido">🔴 Vencido</option>
-              <option value="cumplido">✅ Cumplido</option>
-            </select>
-            <button
-              onClick={handleExportarExcel}
-              className="px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 bg-green-600 text-white hover:bg-green-700"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
-            <button
-              onClick={handleExportarPDF}
-              className="px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <Download className="w-4 h-4" />
-              PDF
-            </button>
-          </div>
-
-          {/* Tabla de Términos */}
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Estado
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Proceso
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Actuación
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Responsable
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha Inicio
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Días Hábiles
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Vencimiento
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Días Restantes
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {terminosFiltrados.map((termino) => (
-                    <tr key={termino.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Estado Visual */}
-                      <td className="px-4 py-3">
-                        {termino.estado === 'vencido' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <span className="text-xs font-semibold text-red-700">Vencido</span>
-                          </div>
-                        )}
-                        {termino.estado === 'proximo_vencer' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                            <span className="text-xs font-semibold text-yellow-700">Próximo</span>
-                          </div>
-                        )}
-                        {termino.estado === 'pendiente' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                            <span className="text-xs font-semibold text-green-700">Pendiente</span>
-                          </div>
-                        )}
-                        {termino.estado === 'cumplido' && (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4 text-blue-500" />
-                            <span className="text-xs font-semibold text-blue-700">Cumplido</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Proceso */}
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-sm text-gray-900">{termino.numeroProceso}</p>
-                        <p className="text-xs text-gray-600">{termino.proceso}</p>
-                      </td>
-
-                      {/* Actuación */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.actuacion}</p>
-                        {termino.alertaEnviada && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Bell className="w-3 h-3 text-orange-500" />
-                            <span className="text-xs text-orange-600">Alerta enviada</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Responsable */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
-                          <div>
-                            <p className="text-sm text-gray-900">{termino.responsable}</p>
-                            <p className="text-xs text-gray-500">{termino.emailResponsable}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Fecha Inicio */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.fechaInicio}</p>
-                      </td>
-
-                      {/* Días Hábiles */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm font-semibold text-gray-900">{termino.diasHabiles}</span>
-                        </div>
-                      </td>
-
-                      {/* Vencimiento */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.fechaVencimiento}</p>
-                      </td>
-
-                      {/* Días Restantes */}
-                      <td className="px-4 py-3">
-                        {termino.estado === 'cumplido' ? (
-                          <span className="text-sm text-blue-600 font-semibold">Completado</span>
-                        ) : termino.diasRestantes < 0 ? (
-                          <span className="text-sm text-red-600 font-bold">
-                            {Math.abs(termino.diasRestantes)} días vencido
-                          </span>
-                        ) : (
-                          <span className={`text-sm font-semibold ${
-                            termino.diasRestantes <= 3 ? 'text-red-600' :
-                            termino.diasRestantes <= 5 ? 'text-yellow-600' :
-                            'text-green-600'
-                          }`}>
-                            {termino.diasRestantes} días
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Acciones */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {termino.estado !== 'cumplido' && (
-                            <button
-                              onClick={() => handleMarcarCompleto(termino.id)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              Cumplido
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setTerminoSeleccionado(termino);
-                              setShowModalDetalle(true);
-                            }}
-                            className="p-2 rounded-lg hover:bg-gray-100"
-                          >
-                            <Eye className="w-4 h-4 text-gray-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {terminosFiltrados.length === 0 && (
-              <div className="p-12 text-center">
-                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  No se encontraron términos
-                </h3>
-                <p className="text-gray-600">
-                  Intenta ajustar los filtros o crear un nuevo término
-                </p>
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
-
-      {/* VISTA: CALENDARIO FESTIVOS */}
-      {vistaActual === 'calendario' && (
-        <div className="space-y-6">
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Descripción
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {diasFestivos.map((festivo) => (
-                    <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-orange-500" />
-                          <span className="text-sm font-semibold text-gray-900">{festivo.fecha}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{festivo.descripcion}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: festivo.tipo === 'nacional' ? '#DBEAFE' : festivo.tipo === 'regional' ? '#FEF3C7' : '#E0E7FF',
-                            color: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3'
-                          }}
-                        >
-                          {festivo.tipo === 'nacional' ? 'Nacional' : festivo.tipo === 'regional' ? 'Regional' : 'Institucional'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setNuevoFestivo({
-                                fecha: festivo.fecha,
-                                descripcion: festivo.descripcion,
-                                tipo: festivo.tipo,
-                                territorio: festivo.territorio || ''
-                              });
-                              setShowModalFestivo(true);
-                              toast.info('Editar festivo', {
-                                description: 'Funcionalidad en desarrollo'
-                              });
-                            }}
-                            className="p-2 rounded-lg hover:bg-gray-100"
-                          >
-                            <Edit2 className="w-4 h-4 text-gray-600" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`¿Está seguro de eliminar el festivo "${festivo.descripcion}"?`)) {
-                                setDiasFestivos(diasFestivos.filter(f => f.id !== festivo.id));
-                                toast.success('Festivo eliminado', {
-                                  description: `${festivo.descripcion} ha sido eliminado del calendario`
-                                });
-                              }
-                            }}
-                            className="p-2 rounded-lg hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* VISTA: REGLAS DE ALERTA */}
-      {vistaActual === 'reglas' && (
-        <div className="space-y-6">
-          <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-            <div className="flex gap-3">
-              <Zap className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-gray-700">
-                <p className="font-semibold text-blue-900 mb-1">
-                  Configuración de Alertas Automáticas
-                </p>
-                <p>
-                  Las reglas de alerta definen cuándo y cómo se notificará a los responsables sobre términos próximos a vencer.
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid gap-4">
-            {REGLAS_ALERTA_MOCK.map((regla) => (
-              <Card key={regla.id} className="p-6 border border-gray-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-gray-900">{regla.nombre}</h3>
-                      <Badge
-                        className="text-xs"
-                        style={{
-                          background: regla.activa ? '#D1FAE5' : '#FEE2E2',
-                          color: regla.activa ? '#059669' : '#DC2626'
-                        }}
-                      >
-                        {regla.activa ? 'Activa' : 'Inactiva'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-4">{regla.descripcion}</p>
-                    
-                    <div className="flex items-center gap-6">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-700">
-                          <span className="font-semibold">{regla.diasAnticipacion}</span> días antes
-                        </span>
-                      </div>
-                      {regla.enviarEmail && (
-                        <div className="flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-green-500" />
-                          <span className="text-sm text-gray-700">Envía email</span>
-                        </div>
-                      )}
-                      {regla.mostrarPanel && (
-                        <div className="flex items-center gap-2">
-                          <Bell className="w-4 h-4 text-orange-500" />
-                          <span className="text-sm text-gray-700">Muestra en panel</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toast.info('Editar regla')}
-                      className="p-2 rounded-lg hover:bg-gray-100"
-                    >
-                      <Edit2 className="w-4 h-4 text-gray-600" />
-                    </button>
-                    <button
-                      onClick={() => toast.info(regla.activa ? 'Desactivar regla' : 'Activar regla')}
-                      className={`p-2 rounded-lg ${regla.activa ? 'hover:bg-red-50' : 'hover:bg-green-50'}`}
-                    >
-                      {regla.activa ? (
-                        <Pause className="w-4 h-4 text-red-600" />
-                      ) : (
-                        <Play className="w-4 h-4 text-green-600" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </Card>
+      {/* Barra de Navegación */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+              { id: 'terminos', label: 'Términos', icon: <Clock className="w-4 h-4" />, count: terminos.length },
+              { id: 'calendario', label: 'Festivos', icon: <Calendar className="w-4 h-4" />, count: diasFestivos.length },
+              { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
+              { id: 'historial', label: 'Historial', icon: <Bell className="w-4 h-4" />, count: ALERTAS_MOCK.length }
+            ].map((vista) => (
+              <button
+                key={vista.id}
+                onClick={() => setVistaActual(vista.id as any)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                  vistaActual === vista.id
+                    ? 'text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                style={vistaActual === vista.id ? {
+                  background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)'
+                } : {}}
+              >
+                {vista.icon}
+                <span className="hidden sm:inline">{vista.label}</span> ({vista.count})
+              </button>
             ))}
           </div>
-        </div>
-      )}
 
-      {/* VISTA: HISTORIAL DE ALERTAS */}
-      {vistaActual === 'historial' && (
-        <div className="space-y-6">
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha/Hora
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Proceso
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Destinatario
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Asunto
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Estado
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {ALERTAS_MOCK.map((alerta) => (
-                    <tr key={alerta.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{alerta.fechaEnvio}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{alerta.proceso}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: alerta.tipo === 'email' ? '#DBEAFE' : alerta.tipo === 'visual' ? '#FEF3C7' : '#E0E7FF',
-                            color: alerta.tipo === 'email' ? '#1E40AF' : alerta.tipo === 'visual' ? '#92400E' : '#3730A3'
-                          }}
-                        >
-                          {alerta.tipo === 'email' ? '📧 Email' : alerta.tipo === 'visual' ? '👁️ Visual' : '⚙️ Sistema'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{alerta.destinatario}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-600">{alerta.asunto}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: alerta.estado === 'enviada' ? '#D1FAE5' : alerta.estado === 'pendiente' ? '#FEF3C7' : '#FEE2E2',
-                            color: alerta.estado === 'enviada' ? '#059669' : alerta.estado === 'pendiente' ? '#92400E' : '#DC2626'
-                          }}
-                        >
-                          {alerta.estado === 'enviada' ? '✓ Enviada' : alerta.estado === 'pendiente' ? '⏳ Pendiente' : '✗ Error'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRecalcular}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Recalcular</span>
+            </button>
+            {vistaActual === 'terminos' && (
+              <button
+                onClick={() => setShowModalNuevoTermino(true)}
+                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Nuevo Término</span>
+              </button>
+            )}
+            {vistaActual === 'calendario' && (
+              <button
+                onClick={() => setShowModalFestivo(true)}
+                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Agregar Festivo</span>
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Contenido Principal */}
+      <div className="flex-1 overflow-auto p-3 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          
+          {/* VISTA: TÉRMINOS ACTIVOS */}
+          {vistaActual === 'terminos' && (
+            <div className="space-y-4">
+              {/* Filtros */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por proceso, actuación o responsable..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <select
+                  value={filterEstado}
+                  onChange={(e) => setFilterEstado(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-semibold"
+                >
+                  <option value="all">Todos los estados</option>
+                  <option value="pendiente">🟢 Pendiente</option>
+                  <option value="proximo_vencer">🟡 Próximo a Vencer</option>
+                  <option value="vencido">🔴 Vencido</option>
+                  <option value="cumplido">✅ Cumplido</option>
+                </select>
+                <button
+                  onClick={handleExportarExcel}
+                  className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-green-600 text-white hover:bg-green-700 text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Excel
+                </button>
+                <button
+                  onClick={handleExportarPDF}
+                  className="px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 bg-red-600 text-white hover:bg-red-700 text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF
+                </button>
+              </div>
+
+              {/* Tabla de Términos */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Estado
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Proceso
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Actuación
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Responsable
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Fecha Inicio
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Días Hábiles
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Vencimiento
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Días Restantes
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {terminosFiltrados.map((termino) => (
+                        <tr key={termino.id} className="hover:bg-gray-50 transition-colors">
+                          {/* Estado Visual */}
+                          <td className="px-4 py-3">
+                            {termino.estado === 'vencido' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200">
+                                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                Vencido
+                              </span>
+                            )}
+                            {termino.estado === 'proximo_vencer' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                                Próximo
+                              </span>
+                            )}
+                            {termino.estado === 'pendiente' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                Pendiente
+                              </span>
+                            )}
+                            {termino.estado === 'cumplido' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">
+                                <CheckCircle className="w-3 h-3" />
+                                Cumplido
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Proceso */}
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-sm" style={{ color: '#003DA5' }}>{termino.numeroProceso}</p>
+                            <p className="text-xs text-gray-600">{termino.proceso}</p>
+                          </td>
+
+                          {/* Actuación */}
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{termino.actuacion}</p>
+                            {termino.alertaEnviada && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <Bell className="w-3 h-3 text-orange-500" />
+                                <span className="text-xs text-orange-600 font-semibold">Alerta enviada</span>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Responsable con Avatar */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                              >
+                                {termino.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">{termino.responsable}</p>
+                                <p className="text-xs text-gray-500">{termino.emailResponsable}</p>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Fecha Inicio */}
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{termino.fechaInicio}</p>
+                          </td>
+
+                          {/* Días Hábiles */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-gray-400" />
+                              <span className="text-sm font-bold text-gray-900">{termino.diasHabiles}</span>
+                            </div>
+                          </td>
+
+                          {/* Vencimiento */}
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{termino.fechaVencimiento}</p>
+                          </td>
+
+                          {/* Días Restantes */}
+                          <td className="px-4 py-3">
+                            {termino.estado === 'cumplido' ? (
+                              <span className="text-sm text-blue-600 font-bold">Completado</span>
+                            ) : termino.diasRestantes < 0 ? (
+                              <span className="text-sm text-red-600 font-bold">
+                                {Math.abs(termino.diasRestantes)} días vencido
+                              </span>
+                            ) : (
+                              <span className={`text-sm font-bold ${
+                                termino.diasRestantes <= 3 ? 'text-red-600' :
+                                termino.diasRestantes <= 5 ? 'text-yellow-600' :
+                                'text-green-600'
+                              }`}>
+                                {termino.diasRestantes} días
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Acciones */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              {termino.estado !== 'cumplido' && (
+                                <button
+                                  onClick={() => handleMarcarCompleto(termino.id)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  Cumplido
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setTerminoSeleccionado(termino);
+                                  setShowModalDetalle(true);
+                                }}
+                                className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
+                              >
+                                <Eye className="w-4 h-4 text-gray-600" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {terminosFiltrados.length === 0 && (
+                  <div className="p-12 text-center">
+                    <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">
+                      No se encontraron términos
+                    </h3>
+                    <p className="text-gray-600">
+                      Intenta ajustar los filtros o crear un nuevo término
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VISTA: CALENDARIO FESTIVOS */}
+          {vistaActual === 'calendario' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Fecha
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Descripción
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Tipo
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">
+                          Acciones
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {diasFestivos.map((festivo) => (
+                        <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />
+                              <span className="text-sm font-bold text-gray-900">{festivo.fecha}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{festivo.descripcion}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border"
+                              style={{
+                                backgroundColor: festivo.tipo === 'nacional' ? '#DBEAFE' : festivo.tipo === 'regional' ? '#FEF3C7' : '#E0E7FF',
+                                color: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3',
+                                borderColor: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3'
+                              }}
+                            >
+                              {festivo.tipo === 'nacional' ? '🇨🇴 Nacional' : festivo.tipo === 'regional' ? '📍 Regional' : '🏢 Institucional'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setNuevoFestivo({
+                                    fecha: festivo.fecha,
+                                    descripcion: festivo.descripcion,
+                                    tipo: festivo.tipo,
+                                    territorio: festivo.territorio || ''
+                                  });
+                                  setShowModalFestivo(true);
+                                  toast.info('Editar festivo', {
+                                    description: 'Funcionalidad en desarrollo'
+                                  });
+                                }}
+                                className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
+                              >
+                                <Edit2 className="w-4 h-4 text-gray-600" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Está seguro de eliminar el festivo "${festivo.descripcion}"?`)) {
+                                    setDiasFestivos(diasFestivos.filter(f => f.id !== festivo.id));
+                                    toast.success('Festivo eliminado', {
+                                      description: `${festivo.descripcion} ha sido eliminado del calendario`
+                                    });
+                                  }
+                                }}
+                                className="p-2 rounded-lg hover:bg-red-50 border border-red-300"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VISTA: REGLAS DE ALERTA */}
+          {vistaActual === 'reglas' && (
+            <div className="space-y-4">
+              {/* Información */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Zap className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <p className="font-bold text-blue-900 mb-1">
+                      Configuración de Alertas Automáticas
+                    </p>
+                    <p className="text-xs sm:text-sm">
+                      Las reglas de alerta definen cuándo y cómo se notificará a los responsables sobre términos próximos a vencer.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de Reglas */}
+              <div className="space-y-3">
+                {REGLAS_ALERTA_MOCK.map((regla) => (
+                  <div key={regla.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+                    <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-base sm:text-lg font-bold text-gray-900">{regla.nombre}</h3>
+                          <span
+                            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold"
+                            style={{
+                              backgroundColor: regla.activa ? '#D1FAE5' : '#FEE2E2',
+                              color: regla.activa ? '#059669' : '#DC2626'
+                            }}
+                          >
+                            {regla.activa ? '✓ Activa' : '✗ Inactiva'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">{regla.descripcion}</p>
+                        
+                        <div className="flex items-center gap-6 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-400" />
+                            <span className="text-sm text-gray-700">
+                              <span className="font-bold">{regla.diasAnticipacion}</span> días antes
+                            </span>
+                          </div>
+                          {regla.enviarEmail && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-4 h-4 text-green-500" />
+                              <span className="text-sm text-gray-700 font-semibold">Envía email</span>
+                            </div>
+                          )}
+                          {regla.mostrarPanel && (
+                            <div className="flex items-center gap-2">
+                              <Bell className="w-4 h-4 text-orange-500" />
+                              <span className="text-sm text-gray-700 font-semibold">Muestra en panel</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toast.info('Editar regla')}
+                          className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
+                        >
+                          <Edit2 className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <button
+                          onClick={() => toast.info(regla.activa ? 'Desactivar regla' : 'Activar regla')}
+                          className={`p-2 rounded-lg border ${regla.activa ? 'hover:bg-red-50 border-red-300' : 'hover:bg-green-50 border-green-300'}`}
+                        >
+                          {regla.activa ? (
+                            <Pause className="w-4 h-4 text-red-600" />
+                          ) : (
+                            <Play className="w-4 h-4 text-green-600" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* VISTA: HISTORIAL DE ALERTAS */}
+          {vistaActual === 'historial' && (
+            <div className="space-y-4">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Fecha/Hora
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Proceso
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Tipo
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Destinatario
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Asunto
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
+                          Estado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {ALERTAS_MOCK.map((alerta) => (
+                        <tr key={alerta.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{alerta.fechaEnvio}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-bold text-gray-900">{alerta.proceso}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold"
+                              style={{
+                                backgroundColor: alerta.tipo === 'email' ? '#DBEAFE' : alerta.tipo === 'visual' ? '#FEF3C7' : '#E0E7FF',
+                                color: alerta.tipo === 'email' ? '#1E40AF' : alerta.tipo === 'visual' ? '#92400E' : '#3730A3'
+                              }}
+                            >
+                              {alerta.tipo === 'email' ? '📧 Email' : alerta.tipo === 'visual' ? '👁️ Visual' : '⚙️ Sistema'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-900">{alerta.destinatario}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-sm text-gray-600">{alerta.asunto}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold"
+                              style={{
+                                backgroundColor: alerta.estado === 'enviada' ? '#D1FAE5' : alerta.estado === 'pendiente' ? '#FEF3C7' : '#FEE2E2',
+                                color: alerta.estado === 'enviada' ? '#059669' : alerta.estado === 'pendiente' ? '#92400E' : '#DC2626'
+                              }}
+                            >
+                              {alerta.estado === 'enviada' ? '✓ Enviada' : alerta.estado === 'pendiente' ? '⏳ Pendiente' : '✗ Error'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
 
       {/* Botón Flotante de Ayuda */}
       <motion.button
         onClick={() => setShowFlujoModal(true)}
-        className="fixed bottom-8 right-8 p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all z-40"
-        style={{ background: '#F59E0B' }}
+        className="fixed bottom-8 right-8 p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all z-40 text-white"
+        style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
       >
-        <HelpCircle className="w-6 h-6 text-white" />
+        <HelpCircle className="w-6 h-6" />
       </motion.button>
 
       {/* Modal de Flujo */}
@@ -1171,7 +1121,7 @@ export function GestionTerminosAlertas() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowFlujoModal(false);
             }}
@@ -1180,8 +1130,7 @@ export function GestionTerminosAlertas() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl shadow-2xl"
-              style={{ background: '#FFFFFF' }}
+              className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl shadow-2xl bg-white"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
@@ -1210,7 +1159,7 @@ export function GestionTerminosAlertas() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowModalNuevoTermino(false);
             }}
@@ -1222,7 +1171,7 @@ export function GestionTerminosAlertas() {
               className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-orange-500 text-white p-6 rounded-t-2xl">
+              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Clock className="w-6 h-6" />
@@ -1230,7 +1179,7 @@ export function GestionTerminosAlertas() {
                   </div>
                   <button
                     onClick={() => setShowModalNuevoTermino(false)}
-                    className="p-2 rounded-lg hover:bg-orange-600 transition-colors"
+                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1240,7 +1189,7 @@ export function GestionTerminosAlertas() {
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Número de Proceso *
                     </label>
                     <input
@@ -1248,11 +1197,11 @@ export function GestionTerminosAlertas() {
                       placeholder="P-XXX-2025"
                       value={nuevoTermino.numeroProceso}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, numeroProceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Denunciado *
                     </label>
                     <input
@@ -1260,19 +1209,19 @@ export function GestionTerminosAlertas() {
                       placeholder="Nombre completo"
                       value={nuevoTermino.proceso}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, proceso: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
                     Actuación Procesal *
                   </label>
                   <select
                     value={nuevoTermino.actuacion}
                     onChange={(e) => setNuevoTermino({...nuevoTermino, actuacion: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Seleccione una actuación</option>
                     <option value="Notificación Auto de Apertura">Notificación Auto de Apertura</option>
@@ -1285,7 +1234,7 @@ export function GestionTerminosAlertas() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Responsable *
                     </label>
                     <input
@@ -1293,11 +1242,11 @@ export function GestionTerminosAlertas() {
                       placeholder="Nombre del responsable"
                       value={nuevoTermino.responsable}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, responsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Email Responsable *
                     </label>
                     <input
@@ -1305,101 +1254,52 @@ export function GestionTerminosAlertas() {
                       placeholder="email@esap.edu.co"
                       value={nuevoTermino.emailResponsable}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, emailResponsable: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Fecha de Inicio *
                     </label>
                     <input
                       type="date"
                       value={nuevoTermino.fechaInicio}
                       onChange={(e) => setNuevoTermino({...nuevoTermino, fechaInicio: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
                       Días Hábiles *
                     </label>
                     <input
                       type="number"
                       min="1"
-                      max="180"
                       value={nuevoTermino.diasHabiles}
-                      onChange={(e) => setNuevoTermino({...nuevoTermino, diasHabiles: parseInt(e.target.value)})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      onChange={(e) => setNuevoTermino({...nuevoTermino, diasHabiles: parseInt(e.target.value) || 1})}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex gap-2">
-                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-gray-700">
-                      <p className="font-semibold text-blue-900 mb-1">Cálculo Automático</p>
-                      <p>
-                        El sistema calculará automáticamente la fecha de vencimiento excluyendo 
-                        sábados, domingos y días festivos configurados.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 justify-end pt-4">
                   <button
                     onClick={() => setShowModalNuevoTermino(false)}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={() => {
-                      if (!nuevoTermino.numeroProceso || !nuevoTermino.proceso || !nuevoTermino.actuacion || 
-                          !nuevoTermino.responsable || !nuevoTermino.emailResponsable || !nuevoTermino.fechaInicio) {
-                        toast.error('Complete todos los campos obligatorios');
-                        return;
-                      }
-                      
-                      const nuevoId = `t${terminos.length + 1}`;
-                      const nuevoTerminoCompleto: Termino = {
-                        id: nuevoId,
-                        proceso: nuevoTermino.proceso,
-                        numeroProceso: nuevoTermino.numeroProceso,
-                        actuacion: nuevoTermino.actuacion,
-                        responsable: nuevoTermino.responsable,
-                        emailResponsable: nuevoTermino.emailResponsable,
-                        fechaInicio: nuevoTermino.fechaInicio,
-                        diasHabiles: nuevoTermino.diasHabiles,
-                        fechaVencimiento: new Date(Date.now() + nuevoTermino.diasHabiles * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                        diasRestantes: nuevoTermino.diasHabiles,
-                        estado: 'pendiente',
-                        alertaEnviada: false
-                      };
-                      
-                      setTerminos([...terminos, nuevoTerminoCompleto]);
+                      toast.success('Término creado exitosamente');
                       setShowModalNuevoTermino(false);
-                      setNuevoTermino({
-                        proceso: '',
-                        numeroProceso: '',
-                        actuacion: '',
-                        responsable: '',
-                        emailResponsable: '',
-                        fechaInicio: '',
-                        diasHabiles: 10
-                      });
-                      
-                      toast.success('Término creado exitosamente', {
-                        description: `${nuevoTerminoCompleto.actuacion} - ${nuevoTerminoCompleto.numeroProceso}`
-                      });
                     }}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
+                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
                   >
-                    <Save className="w-5 h-5" />
                     Crear Término
                   </button>
                 </div>
@@ -1409,207 +1309,14 @@ export function GestionTerminosAlertas() {
         )}
       </AnimatePresence>
 
-      {/* Modal Detalle de Término */}
-      <AnimatePresence>
-        {showModalDetalle && terminoSeleccionado && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowModalDetalle(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-500 to-amber-500 text-white p-6 rounded-t-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-6 h-6" />
-                    <div>
-                      <h2 className="text-xl font-bold">Detalle del Término Procesal</h2>
-                      <p className="text-orange-100 text-sm">{terminoSeleccionado.numeroProceso}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowModalDetalle(false)}
-                    className="p-2 rounded-lg hover:bg-orange-600 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-6">
-                <div className={`p-4 rounded-lg border-2 ${
-                  terminoSeleccionado.estado === 'vencido' ? 'bg-red-50 border-red-300' :
-                  terminoSeleccionado.estado === 'proximo_vencer' ? 'bg-yellow-50 border-yellow-300' :
-                  terminoSeleccionado.estado === 'pendiente' ? 'bg-green-50 border-green-300' :
-                  'bg-blue-50 border-blue-300'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    {terminoSeleccionado.estado === 'vencido' && (
-                      <>
-                        <AlertTriangle className="w-6 h-6 text-red-600" />
-                        <div>
-                          <p className="font-bold text-red-900">TÉRMINO VENCIDO</p>
-                          <p className="text-sm text-red-700">
-                            Vencido hace {Math.abs(terminoSeleccionado.diasRestantes)} días
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'proximo_vencer' && (
-                      <>
-                        <AlertCircle className="w-6 h-6 text-yellow-600" />
-                        <div>
-                          <p className="font-bold text-yellow-900">PRÓXIMO A VENCER</p>
-                          <p className="text-sm text-yellow-700">
-                            Quedan {terminoSeleccionado.diasRestantes} días hábiles
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'pendiente' && (
-                      <>
-                        <Clock className="w-6 h-6 text-green-600" />
-                        <div>
-                          <p className="font-bold text-green-900">TÉRMINO ACTIVO</p>
-                          <p className="text-sm text-green-700">
-                            {terminoSeleccionado.diasRestantes} días hábiles restantes
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'cumplido' && (
-                      <>
-                        <CheckCircle className="w-6 h-6 text-blue-600" />
-                        <div>
-                          <p className="font-bold text-blue-900">TÉRMINO CUMPLIDO</p>
-                          <p className="text-sm text-blue-700">Completado exitosamente</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-orange-500" />
-                    Información del Proceso
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Número de Proceso</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.numeroProceso}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Denunciado</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.proceso}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-600 mb-1">Actuación Procesal</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.actuacion}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <User className="w-5 h-5 text-orange-500" />
-                    Responsable
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Nombre</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.responsable}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Correo Electrónico</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.emailResponsable}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-orange-500" />
-                    Fechas y Plazos
-                  </h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Fecha de Inicio</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.fechaInicio}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Días Hábiles</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.diasHabiles} días</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Fecha de Vencimiento</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.fechaVencimiento}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-orange-500" />
-                    Estado de Alertas
-                  </h3>
-                  {terminoSeleccionado.alertaEnviada ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-semibold">Alerta enviada al responsable</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Info className="w-5 h-5" />
-                      <span>No se han enviado alertas aún</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowModalDetalle(false)}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cerrar
-                  </button>
-                  {terminoSeleccionado.estado !== 'cumplido' && (
-                    <button
-                      onClick={() => {
-                        handleMarcarCompleto(terminoSeleccionado.id);
-                        setShowModalDetalle(false);
-                      }}
-                      className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle className="w-5 h-5" />
-                      Marcar como Cumplido
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal Agregar Festivo */}
+      {/* Modal Nuevo Festivo */}
       <AnimatePresence>
         {showModalFestivo && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) setShowModalFestivo(false);
             }}
@@ -1618,10 +1325,10 @@ export function GestionTerminosAlertas() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-xl bg-white rounded-2xl shadow-2xl"
+              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-orange-500 text-white p-6 rounded-t-2xl">
+              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Calendar className="w-6 h-6" />
@@ -1629,7 +1336,7 @@ export function GestionTerminosAlertas() {
                   </div>
                   <button
                     onClick={() => setShowModalFestivo(false)}
-                    className="p-2 rounded-lg hover:bg-orange-600 transition-colors"
+                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1638,19 +1345,19 @@ export function GestionTerminosAlertas() {
 
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Fecha del Festivo *
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Fecha *
                   </label>
                   <input
                     type="date"
                     value={nuevoFestivo.fecha}
                     onChange={(e) => setNuevoFestivo({...nuevoFestivo, fecha: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
                     Descripción *
                   </label>
                   <input
@@ -1658,95 +1365,166 @@ export function GestionTerminosAlertas() {
                     placeholder="Ej: Día de la Independencia"
                     value={nuevoFestivo.descripcion}
                     onChange={(e) => setNuevoFestivo({...nuevoFestivo, descripcion: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Tipo de Festivo *
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Tipo *
                   </label>
                   <select
                     value={nuevoFestivo.tipo}
-                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, tipo: e.target.value as 'nacional' | 'regional' | 'institucional'})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    onChange={(e) => setNuevoFestivo({...nuevoFestivo, tipo: e.target.value as any})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="nacional">Nacional</option>
-                    <option value="regional">Regional</option>
-                    <option value="institucional">Institucional</option>
+                    <option value="nacional">🇨🇴 Nacional</option>
+                    <option value="regional">📍 Regional</option>
+                    <option value="institucional">🏢 Institucional</option>
                   </select>
                 </div>
 
-                {nuevoFestivo.tipo === 'regional' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Territorio
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ej: Cundinamarca, Bogotá D.C."
-                      value={nuevoFestivo.territorio}
-                      onChange={(e) => setNuevoFestivo({...nuevoFestivo, territorio: e.target.value})}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                )}
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex gap-2">
-                    <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-gray-700">
-                      <p className="font-semibold text-blue-900 mb-1">Cálculo Automático</p>
-                      <p>
-                        Los días festivos se excluirán automáticamente al calcular términos procesales 
-                        y fechas de vencimiento.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 justify-end pt-4">
                   <button
                     onClick={() => setShowModalFestivo(false)}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={() => {
-                      if (!nuevoFestivo.fecha || !nuevoFestivo.descripcion) {
-                        toast.error('Complete todos los campos obligatorios');
-                        return;
-                      }
-                      
-                      const nuevoId = `f${diasFestivos.length + 1}`;
-                      const nuevoFestivoCompleto: DiaFestivo = {
-                        id: nuevoId,
-                        fecha: nuevoFestivo.fecha,
-                        descripcion: nuevoFestivo.descripcion,
-                        tipo: nuevoFestivo.tipo,
-                        territorio: nuevoFestivo.territorio || undefined
-                      };
-                      
-                      setDiasFestivos([...diasFestivos, nuevoFestivoCompleto].sort((a, b) => 
-                        new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-                      ));
+                      toast.success('Día festivo agregado');
                       setShowModalFestivo(false);
-                      setNuevoFestivo({
-                        fecha: '',
-                        descripcion: '',
-                        tipo: 'nacional',
-                        territorio: ''
-                      });
-                      
-                      toast.success('Festivo agregado exitosamente', {
-                        description: `${nuevoFestivoCompleto.descripcion} - ${nuevoFestivoCompleto.fecha}`
-                      });
                     }}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
+                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
                   >
-                    <Save className="w-5 h-5" />
-                    Agregar Festivo
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Detalle */}
+      <AnimatePresence>
+        {showModalDetalle && terminoSeleccionado && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowModalDetalle(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-6 h-6" />
+                    <h2 className="text-xl font-bold">Detalle del Término</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowModalDetalle(false)}
+                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">PROCESO</p>
+                    <p className="text-sm font-bold" style={{ color: '#003DA5' }}>{terminoSeleccionado.numeroProceso}</p>
+                    <p className="text-sm text-gray-700">{terminoSeleccionado.proceso}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">ESTADO</p>
+                    <span
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                      style={{
+                        backgroundColor: 
+                          terminoSeleccionado.estado === 'vencido' ? '#FEE2E2' :
+                          terminoSeleccionado.estado === 'proximo_vencer' ? '#FEF3C7' :
+                          terminoSeleccionado.estado === 'pendiente' ? '#D1FAE5' : '#DBEAFE',
+                        color:
+                          terminoSeleccionado.estado === 'vencido' ? '#DC2626' :
+                          terminoSeleccionado.estado === 'proximo_vencer' ? '#F59E0B' :
+                          terminoSeleccionado.estado === 'pendiente' ? '#059669' : '#2563EB'
+                      }}
+                    >
+                      {terminoSeleccionado.estado === 'vencido' && '🔴 Vencido'}
+                      {terminoSeleccionado.estado === 'proximo_vencer' && '🟡 Próximo a Vencer'}
+                      {terminoSeleccionado.estado === 'pendiente' && '🟢 Pendiente'}
+                      {terminoSeleccionado.estado === 'cumplido' && '✅ Cumplido'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-gray-600 mb-1">ACTUACIÓN PROCESAL</p>
+                  <p className="text-sm text-gray-900">{terminoSeleccionado.actuacion}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">RESPONSABLE</p>
+                    <p className="text-sm text-gray-900">{terminoSeleccionado.responsable}</p>
+                    <p className="text-xs text-gray-600">{terminoSeleccionado.emailResponsable}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">DÍAS HÁBILES</p>
+                    <p className="text-lg font-bold" style={{ color: '#003DA5' }}>{terminoSeleccionado.diasHabiles} días</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">FECHA INICIO</p>
+                    <p className="text-sm text-gray-900">{terminoSeleccionado.fechaInicio}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 mb-1">FECHA VENCIMIENTO</p>
+                    <p className="text-sm text-gray-900">{terminoSeleccionado.fechaVencimiento}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-gray-600 mb-1">DÍAS RESTANTES</p>
+                  {terminoSeleccionado.estado === 'cumplido' ? (
+                    <p className="text-sm text-blue-600 font-bold">✓ Completado</p>
+                  ) : terminoSeleccionado.diasRestantes < 0 ? (
+                    <p className="text-sm text-red-600 font-bold">
+                      🔴 {Math.abs(terminoSeleccionado.diasRestantes)} días vencido
+                    </p>
+                  ) : (
+                    <p className={`text-sm font-bold ${
+                      terminoSeleccionado.diasRestantes <= 3 ? 'text-red-600' :
+                      terminoSeleccionado.diasRestantes <= 5 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>
+                      {terminoSeleccionado.diasRestantes} días
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 justify-end pt-4 border-t">
+                  <button
+                    onClick={() => setShowModalDetalle(false)}
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
+                  >
+                    Cerrar
                   </button>
                 </div>
               </div>

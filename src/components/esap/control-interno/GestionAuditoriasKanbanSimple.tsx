@@ -67,11 +67,11 @@ import { ModalNotasAuditoria } from './ModalNotasAuditoria';
 import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
-import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
+import { ModalAsignarAuditorWorldClass } from './ModalAsignarAuditorWorldClass';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
 import { ModalConfirmacionAccion } from './ModalConfirmacionAccion';
-import { ModalFormularioAuditoria } from './ModalFormularioAuditoria';
-import { InicioAuditoriaWizard } from './InicioAuditoriaWizard';
+import { ModalFormularioAuditoriaWorldClass } from './ModalFormularioAuditoriaWorldClass';
+import { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '../../ui/loading-spinner';
 import { SkeletonAuditoriaCard, SkeletonKanbanColumn } from '../../ui/skeleton';
@@ -1463,10 +1463,10 @@ function TarjetaAuditoria({
                 }}
                 size="sm"
                 variant="outline"
-                className="text-xs truncate"
+                className="text-xs truncate italic"
               >
                 <History className="w-3 h-3 mr-0.5 flex-shrink-0" />
-                Auditoría
+                Trazabilidad
               </Button>
             </div>
           </div>
@@ -1728,6 +1728,100 @@ export function GestionAuditoriasKanbanSimple() {
   const [tipoAccionConfirmacion, setTipoAccionConfirmacion] = useState<'archivar' | 'eliminar'>('archivar');
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
+
+  // ✅ NUEVO: Integración con Context - Recibir auditorías del Programa Anual
+  const { 
+    auditoriasProgramadas, 
+    limpiarAuditoriasProgramadas,
+    agregarAuditoriaConHallazgos,
+    seleccionarAuditoria
+  } = useIntegracionAuditoriaPlanes();
+
+  // ✅ NUEVO: Effect para procesar auditorías programadas desde Planeación
+  useEffect(() => {
+    if (auditoriasProgramadas.length > 0) {
+      console.log('🎯 Kanban: Recibidas', auditoriasProgramadas.length, 'auditorías del Programa Anual');
+      
+      // Convertir a formato del Kanban
+      const nuevasAuditorias: Auditoria[] = auditoriasProgramadas.map((audProg, index) => {
+        const fechaInicio = new Date(audProg.fechaInicio);
+        const fechaFin = new Date(audProg.fechaFin);
+        
+        return {
+          id: `aud-prog-${Date.now()}-${index}`,
+          codigo: audProg.codigo,
+          titulo: audProg.titulo,
+          descripcion: audProg.descripcion,
+          estado: 'Planeación', // ← Comienzan en Planeación
+          riesgo: 'Medio',
+          semaforo: 'verde',
+          territorial: audProg.territorial,
+          auditorLider: {
+            nombre: audProg.auditorLider.nombre,
+            cargo: audProg.auditorLider.cargo,
+            iniciales: audProg.auditorLider.iniciales,
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: '000000000'
+          },
+          auditorAsignado: {
+            nombre: 'Por asignar',
+            cargo: 'Auditor',
+            iniciales: 'PA',
+            tipoIdentificacion: 'CC',
+            numeroIdentificacion: '000000000'
+          },
+          fechaInicio: fechaInicio.toLocaleDateString('es-CO'),
+          fechaFin: fechaFin.toLocaleDateString('es-CO'),
+          progreso: 0,
+          hallazgos: 0,
+          diasRestantes: calcularDiasRestantes(audProg.fechaFin),
+          porcentajeTiempo: 0,
+          ultimaActuacion: new Date().toISOString(),
+          objetivos: [
+            {
+              id: 'obj-1',
+              descripcion: `Auditar ${audProg.areaObjetivo}`
+            }
+          ],
+          calificacionRiesgo: 'Medio',
+          documentos: 0,
+          informes: 0,
+          tareas: 0,
+          tipo: audProg.tipo,
+          prioridad: audProg.prioridad,
+          areaObjetivo: audProg.areaObjetivo,
+          permiteCambiarObjetivos: true,
+          equipoAuditores: [],
+          actividadesCompletas: false,
+          actividadesPendientes: 3
+        };
+      });
+
+      // Agregar al estado del Kanban (al inicio para que sean más visibles)
+      setAuditorias(prev => [...nuevasAuditorias, ...prev]);
+
+      // Limpiar del context
+      limpiarAuditoriasProgramadas();
+
+      // Notificación
+      toast.success(
+        `✅ ${nuevasAuditorias.length} auditoría${nuevasAuditorias.length > 1 ? 's' : ''} agregada${nuevasAuditorias.length > 1 ? 's' : ''} al Kanban`,
+        {
+          description: `Las auditorías están listas en la columna "Planeación" y puedes comenzar a trabajar en ellas.`,
+          duration: 7000
+        }
+      );
+    }
+  }, [auditoriasProgramadas, limpiarAuditoriasProgramadas]);
+
+  // Helper para calcular días restantes
+  const calcularDiasRestantes = (fechaFin: string): number => {
+    const hoy = new Date();
+    const fin = new Date(fechaFin);
+    const diff = fin.getTime() - hoy.getTime();
+    const dias = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return dias > 0 ? dias : 0;
+  };
 
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
@@ -2023,8 +2117,6 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
-  
-  const { agregarAuditoriaConHallazgos, seleccionarAuditoria } = useIntegracionAuditoriaPlanes();
   
   const handleCrearPlan = (auditoria: Auditoria) => {
     // 1. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
@@ -2831,9 +2923,9 @@ export function GestionAuditoriasKanbanSimple() {
           mode="create"
         />
 
-        {/* MODAL DE FORMULARIO - EDITAR */}
+        {/* MODAL DE FORMULARIO - EDITAR - WORLD CLASS */}
         {auditoriaParaEditar && (
-          <ModalFormularioAuditoria
+          <ModalFormularioAuditoriaWorldClass
             open={modalEdicionOpen}
             onClose={() => {
               setModalEdicionOpen(false);
@@ -2857,40 +2949,35 @@ export function GestionAuditoriasKanbanSimple() {
           />
         )}
 
-        {/* MODAL INICIO DE AUDITORÍA - RF004 */}
-        {modalInicioAuditoriaOpen && auditoriaSeleccionada && (() => {
-          // Convertir fecha formato DD/MM/YYYY a Date object
-          const [dia, mes, anio] = auditoriaSeleccionada.fechaInicio.split('/');
-          const fechaInicioDate = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
-          
-          return (
-          <InicioAuditoriaWizard
+        {/* MODAL INICIO DE AUDITORÍA - WORLD CLASS */}
+        {modalInicioAuditoriaOpen && auditoriaSeleccionada && (
+          <InicioAuditoriaWizardWorldClass
+            isOpen={modalInicioAuditoriaOpen}
             auditoria={{
               id: auditoriaSeleccionada.id,
               codigo: auditoriaSeleccionada.codigo,
-              nombre: auditoriaSeleccionada.titulo,
-              tipo: auditoriaSeleccionada.riesgo === 'Alto' ? 'Sede' : 'Territorial',
+              titulo: auditoriaSeleccionada.titulo,
+              descripcion: auditoriaSeleccionada.descripcion || 'Auditoría de Gestión Administrativa',
+              territorial: auditoriaSeleccionada.territorial,
               areaAuditable: 'SEDE-001',
               procesoNombre: auditoriaSeleccionada.titulo,
               responsableArea: {
-                id: 'resp-001',
                 nombre: 'Dr. Carlos Andrés Pérez',
                 cargo: 'Director Administrativo y Financiero',
                 email: 'carlos.perez@esap.edu.co'
               },
               auditorLider: {
-                id: auditoriaSeleccionada.id + '-lider',
                 nombre: auditoriaSeleccionada.auditorLider.nombre,
+                cargo: auditoriaSeleccionada.auditorLider.cargo,
                 email: auditoriaSeleccionada.auditorLider.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co'
               },
               equipoAuditores: [
                 {
-                  id: auditoriaSeleccionada.id + '-eq1',
                   nombre: auditoriaSeleccionada.auditorAsignado.nombre,
-                  email: auditoriaSeleccionada.auditorAsignado.nombre.toLowerCase().replace(' ', '.') + '@esap.edu.co'
+                  cargo: auditoriaSeleccionada.auditorAsignado.cargo
                 }
               ],
-              fechaInicio: fechaInicioDate,
+              fechaInicio: auditoriaSeleccionada.fechaInicio,
               duracionDias: {
                 planeacion: 7,
                 ejecucion: 20,
@@ -2901,23 +2988,22 @@ export function GestionAuditoriasKanbanSimple() {
               setModalInicioAuditoriaOpen(false);
               setAuditoriaSeleccionada(null);
             }}
-            onComplete={(auditoriaId) => {
+            onIniciar={(auditoria) => {
               setModalInicioAuditoriaOpen(false);
               setAuditoriaSeleccionada(null);
               toast.success('Auditoría iniciada exitosamente');
               // Actualizar el estado de la auditoría a Ejecución
               setAuditorias(prev => prev.map(aud =>
-                aud.id === auditoriaSeleccionada.id
+                aud.id === auditoria.id
                   ? { ...aud, estado: 'Ejecución' }
                   : aud
               ));
             }}
           />
-          );
-        })()}
+        )}
 
         {/* MODAL DE ASIGNACIÓN DE AUDITORES */}
-        <ModalAsignarAuditorIndividual
+        <ModalAsignarAuditorWorldClass
           isOpen={modalAsignarAuditorOpen}
           onClose={() => {
             setModalAsignarAuditorOpen(false);
