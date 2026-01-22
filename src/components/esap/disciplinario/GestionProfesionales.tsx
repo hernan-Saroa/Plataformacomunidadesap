@@ -15,8 +15,8 @@ import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner';
-
-
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
@@ -335,7 +335,7 @@ function ModalDetalleProfesional({
 
 
         {/* Estadísticas de Carga */}
-        <div>
+        <div className="p-6 space-y-6">
           <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
             Carga de Trabajo
           </h3>
@@ -403,7 +403,7 @@ function ModalDetalleProfesional({
         </div>
 
         {/* Indicadores de Desempeño */}
-        <div>
+        <div className="p-6 space-y-6">
           <h3 className="text-lg font-extrabold mb-4" style={{ color: '#1F2937' }}>
             Indicadores de Desempeño
           </h3>
@@ -972,6 +972,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
               Equipo disciplinario y asignación de carga de trabajo
             </p>
           </div>
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE) && (
           <button
             onClick={() => {
               setProfesionalEditar(undefined);
@@ -983,6 +984,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
             <Plus className="w-4 h-4" />
             Asignar Profesional
           </button>
+          )}
         </div>
 
         {/* Alerta informativa */}
@@ -1225,6 +1227,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                         <Eye className="w-4 h-4" />
                         Ver
                       </button>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_EDIT) && (
                       <button
                         onClick={() => {
                           setProfesionalEditar(profesional);
@@ -1235,6 +1238,8 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                       >
                         <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
                       </button>
+                      )}
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_DELETE) && (
                       <button
                         onClick={() => handleDesasignar(profesional.id)}
                         className="p-2 rounded-lg hover:bg-red-50 transition-colors"
@@ -1242,6 +1247,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                       >
                         <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
                       </button>
+                      )}
                     </div>
                   </div>
                 );

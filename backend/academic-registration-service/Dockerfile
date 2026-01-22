@@ -9,6 +9,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1
 # Copy package files
 COPY package*.json ./
 
+
 # Install all dependencies (including dev dependencies for building)
 RUN npm install --legacy-peer-deps
 

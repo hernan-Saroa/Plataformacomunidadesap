@@ -9,13 +9,16 @@ import { motion } from 'motion/react';
 import { FileSearch, Award, AlertCircle } from 'lucide-react';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 interface GraduateCertificatesWrapperProps {
   onPendingCountChange?: (count: number) => void;
 }
 
 export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCertificatesWrapperProps) {
-  const [activeTab, setActiveTab] = useState<'requests' | 'certificates'>('certificates');
+  const initial = authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_VIEW) ? 'certificates' : 'requests';
+  const [activeTab, setActiveTab] = useState<'requests' | 'certificates'>(initial);
 
   const tabs = [
     {
@@ -23,14 +26,16 @@ export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCe
       label: 'Certificados Generados',
       subtitle: 'Con QR único',
       icon: Award,
-      color: '#10B981'
+      color: '#10B981',
+      hasPermission: authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_VIEW)
     },
     {
       id: 'requests' as const,
       label: 'Solicitudes de Revisión',
       subtitle: 'Casos no encontrados',
       icon: AlertCircle,
-      color: '#F59E0B'
+      color: '#F59E0B',
+      hasPermission: authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_VIEW)
     }
   ];
 
@@ -67,7 +72,7 @@ export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCe
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
-              
+              if(!tab.hasPermission) return null;
               return (
                 <button
                   key={tab.id}

@@ -18,41 +18,41 @@ const SERVICE_PREFIX = '/control-disciplinario/api/v1';
 // ============================================================================
 
 export interface DisciplinaryNews {
-     id: string;
-     radicado: string;
-     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
-     fechaQueja?: string;
-     fechaRecepcion?: string;
-     territorial: string;
-     dependenciaDenunciado: string;
-     hechos: string;
-     conductas?: string[];
-     adjuntos?: string[];
-     denunciante?: {
-         nombre: string;
-         email?: string;
-         telefono?: string;
-         direccion?: string;
-         cargo?: string;
-         cedula?: string;
-         documento?: string;
-         dependencia?: string;
-         entidad?: string;
-     };
-     disciplinable?: {
-         nombre: string;
-         cargo: string;
-         cedula?: string;
-         documento?: string;
-         email?: string;
-         telefono?: string;
-         dependencia?: string;
-     };
-     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
-     kanbanStage?: string;
-     createdAt: string;
-     updatedAt: string;
- }
+    id: string;
+    radicado: string;
+    origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
+    fechaQueja?: string;
+    fechaRecepcion?: string;
+    territorial: string;
+    dependenciaDenunciado: string;
+    hechos: string;
+    conductas?: string[];
+    adjuntos?: string[];
+    denunciante?: {
+        nombre: string;
+        email?: string;
+        telefono?: string;
+        direccion?: string;
+        cargo?: string;
+        cedula?: string;
+        documento?: string;
+        dependencia?: string;
+        entidad?: string;
+    };
+    disciplinable?: {
+        nombre: string;
+        cargo: string;
+        cedula?: string;
+        documento?: string;
+        email?: string;
+        telefono?: string;
+        dependencia?: string;
+    };
+    estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
+    kanbanStage?: string;
+    createdAt: string;
+    updatedAt: string;
+}
 
 // ... (other interfaces remain similar, can refine DisciplinaryProcess if needed)
 
@@ -401,17 +401,32 @@ class DisciplinaryService {
     }
 
     /**
-     * Obtener URL completa para archivos adjuntos de noticias
+     * Obtener URL completa para archivos adjuntos
+     * SIMPLIFICADO: Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
      */
     getFileUrl(urlRelativa: string): string {
         if (!urlRelativa) return '';
+
+        // Si ya es una URL completa, devolverla tal cual
         if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
 
-        const normalized = urlRelativa.startsWith('/') ? urlRelativa : `/${urlRelativa}`;
-        if (API_MODE === 'direct') {
-            return `${MICROSERVICE_URLS['control-disciplinario']}${normalized}`;
+        // Extraer solo el nombre del archivo (última parte del path)
+        let filename = urlRelativa;
+        if (urlRelativa.includes('/')) {
+            filename = urlRelativa.split('/').pop() || urlRelativa;
         }
-        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}${normalized}`;
+        // Limpiar prefijo /files/ si existe
+        if (filename.startsWith('/files/')) {
+            filename = filename.substring(7);
+        } else if (filename.startsWith('files/')) {
+            filename = filename.substring(6);
+        }
+
+        // Construir URL simple: /files/{filename}
+        if (API_MODE === 'direct') {
+            return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+        }
+        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}/files/${filename}`;
     }
 
     // --- AUTOS ---

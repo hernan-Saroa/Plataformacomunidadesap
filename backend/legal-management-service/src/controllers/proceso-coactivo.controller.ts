@@ -1,9 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, Res, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ProcesoCoactivoService } from '../services/proceso-coactivo.service';
-import type { CreateProcesoCoactivoDto, UpdateProcesoCoactivoDto } from '../services/proceso-coactivo.service';
+import type { CreateProcesoCoactivoDto, UpdateProcesoCoactivoDto, CreatePagoCoactivoDto } from '../services/proceso-coactivo.service';
 
 @Controller('procesos-coactivos')
 export class ProcesoCoactivoController {
@@ -72,6 +72,52 @@ export class ProcesoCoactivoController {
         } catch (error) {
             if (error instanceof HttpException) throw error;
             throw new HttpException('Error al eliminar proceso', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // ============ PAGOS Y AUDITORÍA ============
+
+    @Post(':id/pagos')
+    async registrarPago(@Param('id') id: string, @Body() dto: CreatePagoCoactivoDto) {
+        try {
+            return await this.procesoCoactivoService.registrarPago(id, dto);
+        } catch (error) {
+            console.error('Error registrando pago:', error);
+            throw new HttpException('Error al registrar pago', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Get(':id/pagos')
+    async getPagos(@Param('id') id: string) {
+        try {
+            return await this.procesoCoactivoService.getPagos(id);
+        } catch (error) {
+            console.error('Error obteniendo pagos:', error);
+            throw new HttpException('Error al obtener pagos', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Get(':id/historial')
+    async getHistorial(@Param('id') id: string) {
+        try {
+            return await this.procesoCoactivoService.getHistorial(id);
+        } catch (error) {
+            console.error('Error obteniendo historial:', error);
+            throw new HttpException('Error al obtener historial', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Delete('pagos/:pagoId')
+    async deletePago(@Param('pagoId') pagoId: string) {
+        try {
+            await this.procesoCoactivoService.deletePago(pagoId);
+            return { success: true, message: 'Pago eliminado correctamente' };
+        } catch (error) {
+            console.error('Error eliminando pago:', error);
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new HttpException('Error al eliminar pago', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -147,6 +193,22 @@ export class ProcesoCoactivoController {
             if (!res.headersSent) {
                 res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Error al generar la descarga' });
             }
+        }
+    }
+
+    @Get('pagos/soporte/:filename')
+    async getSoportePago(@Param('filename') filename: string, @Res() res: any) {
+        try {
+            const fileStream = await this.procesoCoactivoService.getSoportePagoStream(filename);
+            res.set({
+                'Content-Type': 'application/octet-stream',
+                'Content-Disposition': `attachment; filename="${filename}"`
+            });
+            fileStream.pipe(res);
+        } catch (error) {
+            console.error('Error descargando soporte:', error);
+            if (error instanceof HttpException) throw error;
+            throw new HttpException('Error al descargar archivo', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

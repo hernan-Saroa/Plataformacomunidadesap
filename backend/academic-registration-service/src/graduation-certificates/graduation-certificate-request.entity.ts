@@ -40,6 +40,15 @@ export class GraduationCertificateRequest {
   @Column({ name: 'full_name', length: 255 })
   fullName: string;
 
+  @Column({ name: 'graduate_last_name', length: 255, nullable: true })
+  graduateLastName: string;
+
+  @Column({ name: 'graduate_email', length: 255, nullable: true })
+  graduateEmail: string;
+
+  @Column({ name: 'graduate_phone', length: 50, nullable: true })
+  graduatePhone: string;
+
   // Información del programa
   @Column({ name: 'program_name', length: 255 })
   programName: string;

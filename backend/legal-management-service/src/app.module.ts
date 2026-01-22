@@ -37,6 +37,8 @@ import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
 import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
+import { PagoCoactivo } from './entities/pago-coactivo.entity';
+import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 
@@ -146,6 +148,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Procesos Coactivos
       ProcesoCoactivo,
       ProcesoCoactivoAdjunto,
+      PagoCoactivo,
+      CoactivoHistorial,
       // Historial Consultas
       ConsultaJuridicaHistorial,
       // System Configurations

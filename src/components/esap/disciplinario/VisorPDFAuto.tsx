@@ -127,7 +127,7 @@ export function VisorPDFAuto({
 
     const reemplazos: Record<string, string> = {
       '[RADICADO]': radicado,
-      '[FECHA_QUEJA]': fechaQueja ? new Date(fechaQueja).toLocaleDateString('es-CO') : '',
+      '[FECHA_QUEJA]': fechaQueja ? new Date(fechaQueja).toLocaleDateString('es-CO') : (auto.createdAt ? new Date(auto.createdAt).toLocaleDateString('es-CO') : ''),
       '[HECHOS]': hechos,
       '[DENUNCIANTE_NOMBRE]': denunciante.nombre || '',
       '[DENUNCIANTE_DOCUMENTO]': denunciante.cedula || denunciante.documento || '',
@@ -413,6 +413,7 @@ export function VisorPDFAuto({
               animate={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
               exit={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 20 }}
               className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] sm:max-h-[92vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
             >
             {/* Header */}
             <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-6 py-4">

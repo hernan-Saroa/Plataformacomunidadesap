@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { existsSync, mkdirSync } from 'fs';
 
 interface FileData {
   buffer: Buffer;
@@ -9,35 +10,37 @@ interface FileData {
 
 @Injectable()
 export class StorageService {
-  private readonly uploadDir = './uploads/expedientes';
+  private readonly uploadDir = './uploads';
+
+  constructor() {
+    // Asegurar que el directorio existe
+    if (!existsSync(this.uploadDir)) {
+      mkdirSync(this.uploadDir, { recursive: true });
+    }
+  }
 
   /**
    * Guarda un archivo en disco local.
-   * Renombra el archivo con formato YYYYMMDD_Tipo.ext
+   * Usa el nombre original del archivo con un prefijo de timestamp para evitar colisiones.
+   * SIMPLIFICADO: Guarda en ./uploads/ directamente (igual que otros módulos)
    */
   async saveFile(
-    radicado: string,
+    _radicado: string, // Ya no se usa para carpetas
     file: FileData,
-    tipoDocumento: string,
+    _tipoDocumento: string, // Ya no se usa para renombrar
   ): Promise<string> {
     try {
-      const direccionExpediente = path.join(this.uploadDir, radicado);
-
-      // Crear directorios si no existen
-      await fs.mkdir(direccionExpediente, { recursive: true });
-
-      // Generar nombre con formato YYYYMMDD_Tipo.ext
-      const now = new Date();
-      const fecha = now.toISOString().split('T')[0].replace(/-/g, '');
-      const extension = path.extname(file.originalname);
-      const nuevoNombre = `${fecha}_${tipoDocumento}${extension}`;
-      const rutaCompleta = path.join(direccionExpediente, nuevoNombre);
+      // Generar nombre único: timestamp + nombre original
+      const timestamp = Date.now();
+      const safeOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const nuevoNombre = `${timestamp}_${safeOriginalName}`;
+      const rutaCompleta = path.join(this.uploadDir, nuevoNombre);
 
       // Guardar archivo
       await fs.writeFile(rutaCompleta, file.buffer);
 
-      // Retornar ruta relativa para almacenar en BD
-      return path.join(radicado, nuevoNombre);
+      // Retornar SOLO el nombre del archivo (para URL simple /files/{filename})
+      return nuevoNombre;
     } catch (error) {
       throw new Error(`Error al guardar archivo: ${error.message}`);
     }
@@ -50,29 +53,29 @@ export class StorageService {
     radicado: string,
     files: FileData[],
   ): Promise<string[]> {
-    const rutas: string[] = [];
+    const nombres: string[] = [];
 
     for (let i = 0; i < files.length; i++) {
-      const ruta = await this.saveFile(radicado, files[i], `DOCUMENTO_${i + 1}`);
-      rutas.push(ruta);
+      const nombre = await this.saveFile(radicado, files[i], `DOC_${i + 1}`);
+      nombres.push(nombre);
     }
 
-    return rutas;
+    return nombres;
   }
 
   /**
    * Obtiene la ruta completa de un archivo
    */
-  getFullPath(rutaRelativa: string): string {
-    return path.join(this.uploadDir, rutaRelativa);
+  getFullPath(filename: string): string {
+    return path.join(this.uploadDir, filename);
   }
 
   /**
    * Elimina un archivo
    */
-  async deleteFile(rutaRelativa: string): Promise<void> {
+  async deleteFile(filename: string): Promise<void> {
     try {
-      const rutaCompleta = this.getFullPath(rutaRelativa);
+      const rutaCompleta = this.getFullPath(filename);
       await fs.unlink(rutaCompleta);
     } catch (error) {
       throw new Error(`Error al eliminar archivo: ${error.message}`);
@@ -80,16 +83,11 @@ export class StorageService {
   }
 
   /**
-   * Elimina un directorio completo (expediente)
+   * Elimina archivos por patrón (para limpiar archivos de un expediente)
    */
-  async deleteExpediente(radicado: string): Promise<void> {
-    try {
-      const rutaCompleta = path.join(this.uploadDir, radicado);
-      await fs.rm(rutaCompleta, { recursive: true, force: true });
-    } catch (error) {
-      throw new Error(
-        `Error al eliminar expediente: ${error.message}`,
-      );
-    }
+  async deleteExpediente(_radicado: string): Promise<void> {
+    // Ya no usamos carpetas de expediente, así que este método no hace nada
+    // Los archivos se mantienen en ./uploads/
+    console.log('deleteExpediente: Ya no se usa sistema de carpetas por radicado');
   }
 }

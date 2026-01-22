@@ -156,6 +156,8 @@ export class GraduationCertificatesService {
       idNumber: graduate.idNumber,
       idIssueDate: graduate.idIssueDate,
       fullName: graduate.fullName,
+      graduateEmail: graduate.email,
+      graduatePhone: graduate.phone,
       programName: graduate.programName,
       graduationDate: graduate.graduationDate,
       requesterName: graduate.fullName,
@@ -194,6 +196,7 @@ export class GraduationCertificatesService {
     const lastNameNormalized = dto.lastName ? this.normalizeName(dto.lastName) : '';
     const requesterName = (dto.requesterName || '').trim();
     const requesterEmail = (dto.requesterEmail || '').trim();
+    const graduateLastName = (dto.lastName || '').trim();
 
     if (dto.idIssueDate && !issueDate) {
       throw new BadRequestException('Fecha de expedici?n inv?lida');
@@ -242,6 +245,9 @@ export class GraduationCertificatesService {
       idNumber: dto.idNumber,
       idIssueDate,
       fullName: graduate?.fullName || requesterName || dto.requesterName,
+      graduateLastName: graduateLastName || undefined,
+      graduateEmail: graduate?.email,
+      graduatePhone: graduate?.phone,
       programName: graduate?.programName || dto.programName || 'No disponible',
       graduationDate:
         graduate?.graduationDate ||
@@ -389,13 +395,9 @@ export class GraduationCertificatesService {
     const verificationCode = await this.generateVerificationCode();
 
     const diplomaNumber =
-      graduate?.diplomaNumber ||
-      requestExtras.diplomaNumber ||
-      (await this.generateDiplomaNumber());
+      requestExtras.diplomaNumber || (await this.generateDiplomaNumber());
     const actaNumber =
-      graduate?.actaNumber ||
-      requestExtras.actaNumber ||
-      (await this.generateActaNumber());
+      requestExtras.actaNumber || (await this.generateActaNumber());
 
     // Crear certificado
     const certificate = this.certificateRepository.create({
@@ -767,8 +769,14 @@ export class GraduationCertificatesService {
     email: string,
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
+    reviewNotes?: string,
   ): Promise<void> {
-    return this.sendCertificateEmail(email, certificate, frontendBaseUrl);
+    return this.sendCertificateEmail(
+      email,
+      certificate,
+      frontendBaseUrl,
+      reviewNotes,
+    );
   }
 
   private getMailTransporter() {
@@ -835,6 +843,7 @@ export class GraduationCertificatesService {
     email: string,
     certificate: GraduationCertificate,
     frontendBaseUrl?: string,
+    reviewNotes?: string,
   ): Promise<void> {
     this.logger.log(
       `Preparando reenvio del certificado ${certificate.certificateNumber} a ${email}`,
@@ -854,6 +863,17 @@ export class GraduationCertificatesService {
       'https://certificados.esap.edu.co'
     }/verificar-certificado/${certificate.verificationCode}`;
 
+    const trimmedReviewNotes = (reviewNotes || '').trim();
+    const reviewNotesText = trimmedReviewNotes
+      ? `\nNotas de revision: ${trimmedReviewNotes}`
+      : '';
+    const safeReviewNotes = trimmedReviewNotes
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     const attachment = await this.resolveCertificatePdf(
       certificate,
       frontendBaseUrl,
@@ -861,7 +881,7 @@ export class GraduationCertificatesService {
     const payload = {
       to: email,
       subject: `Certificado de verificacion de titulo - ${certificate.certificateNumber}`,
-      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}`,
+      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}${reviewNotesText}`,
       html: `
         <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
           <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
@@ -890,6 +910,16 @@ export class GraduationCertificatesService {
                 <strong>URL de validacion:</strong> <a href="${validationUrl}" style="color: #0b68d1;">${validationUrl}</a>
               </td>
             </tr>
+            ${
+              trimmedReviewNotes
+                ? `<tr>
+              <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
+                <strong>Notas de revision:</strong>
+                <div style="margin-top: 6px; white-space: pre-line;">${safeReviewNotes}</div>
+              </td>
+            </tr>`
+                : ''
+            }
             <tr>
               <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
                 Archivo adjunto: <strong>${attachment.filename}</strong>
@@ -1038,7 +1068,24 @@ export class GraduationCertificatesService {
     }
 
     const update: Partial<Graduate> = {};
-    if (payload.fullName !== undefined) {
+    const hasNameParts =
+      payload.firstName !== undefined || payload.lastName !== undefined;
+    if (hasNameParts) {
+      if (payload.firstName !== undefined) {
+        update.firstName = payload.firstName.trim();
+      }
+      if (payload.lastName !== undefined) {
+        update.lastName = payload.lastName.trim();
+      }
+      const nextFirstName =
+        update.firstName !== undefined ? update.firstName : graduate.firstName || '';
+      const nextLastName =
+        update.lastName !== undefined ? update.lastName : graduate.lastName || '';
+      const combinedName = `${nextFirstName} ${nextLastName}`.trim();
+      if (combinedName) {
+        update.fullName = combinedName;
+      }
+    } else if (payload.fullName !== undefined) {
       update.fullName = payload.fullName.trim();
     }
     if (payload.idNumber !== undefined) {
@@ -1175,6 +1222,12 @@ export class GraduationCertificatesService {
         if (payload.requesterPhone !== undefined) {
           request.requesterPhone = payload.requesterPhone.trim();
         }
+        if (payload.graduateEmail !== undefined) {
+          request.graduateEmail = payload.graduateEmail.trim();
+        }
+        if (payload.graduatePhone !== undefined) {
+          request.graduatePhone = payload.graduatePhone.trim();
+        }
         if (payload.graduationDate !== undefined) {
           request.graduationDate =
             this.parseDate(payload.graduationDate) ?? request.graduationDate;
@@ -1275,6 +1328,12 @@ export class GraduationCertificatesService {
     if (payload?.programName) {
       request.programName = payload.programName;
     }
+    if (payload?.email !== undefined) {
+      request.graduateEmail = payload.email.trim();
+    }
+    if (payload?.phone !== undefined) {
+      request.graduatePhone = payload.phone.trim();
+    }
     if (payload?.graduationDate !== undefined) {
       request.graduationDate =
         this.parseDate(payload.graduationDate) ?? request.graduationDate;
@@ -1352,6 +1411,7 @@ export class GraduationCertificatesService {
           deliveryEmail,
           certificate,
           frontendBaseUrl,
+          reviewNotes,
         );
       } catch (error) {
         this.logger.warn(

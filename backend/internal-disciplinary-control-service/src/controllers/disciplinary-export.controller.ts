@@ -2,7 +2,7 @@ import { Controller, Get, Res, Header } from '@nestjs/common';
 import type { Response } from 'express';
 import { DisciplinaryExportService } from '../services/disciplinary-export.service';
 
-@Controller('api/v1/configuration/export')
+@Controller('configuration/export')
 export class DisciplinaryExportController {
     constructor(private readonly exportService: DisciplinaryExportService) { }
 

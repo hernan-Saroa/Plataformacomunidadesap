@@ -40,14 +40,12 @@ export class PdfGeneratorService {
     const headerImg = this.loadImageDataUrl('img_primera.png');
     const footerImg = this.loadImageDataUrl('img_segunda.png');
 
-    // Generar código QR
-    const qrCodeDataUrl = await this.generateQRCode(
-      certificate.verificationCode,
-    );
-
     // URL de validación pública
     const baseUrl = frontendBaseUrl || process.env.FRONTEND_URL || 'https://certificados.esap.edu.co';
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
+
+    // Generar código QR con la URL completa
+    const qrCodeDataUrl = await this.generateQRCode(validationUrl);
 
     // Formatear fecha de expedición
     const fechaExpedicion = this.formatDate(certificate.issueDate || new Date());
