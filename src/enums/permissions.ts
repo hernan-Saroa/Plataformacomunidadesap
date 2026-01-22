@@ -98,4 +98,20 @@ export enum Permissions {
   GESTION_LEGAL_CONFIGURACIONES_EDIT = 'gestion-legal.configuraciones.edit',
   GESTION_LEGAL_CONFIGURACIONES_DELETE = 'gestion-legal.configuraciones.delete',
 
+  // Registro Académico - Graduados
+  GRADUATES_EDIT = 'graduates.edit',
+  GRADUATES_VERIFY_CERTIFICATE = 'graduates.verify_certificate',
+  GRADUATES_EXPORT = 'graduates.export',
+
+  // Registro Académico - Certificados
+  GRADUATES_CERTIFICATES_VIEW = 'graduates-certificates.certificates.view',
+  GRADUATES_CERTIFICATES_EXPORT = 'graduates-certificates.certificates.export',
+  GRADUATES_CERTIFICATES_EDIT = 'graduates-certificates.certificates.edit',
+  GRADUATES_CERTIFICATES_REENVIAR = 'graduates-certificates.certificates.reenviar',
+  GRADUATES_SOLICITUDE_VIEW = 'graduates-certificates.solicitude.view',
+  GRADUATES_SOLICITUDE_REVIEW = 'graduates-certificates.solicitude.review',
+  GRADUATES_SOLICITUDE_APROBAR = 'graduates-certificates.solicitude.aprobar',
+  GRADUATES_SOLICITUDE_RECHAZAR = 'graduates-certificates.solicitude.rechazar',
+
+
 }

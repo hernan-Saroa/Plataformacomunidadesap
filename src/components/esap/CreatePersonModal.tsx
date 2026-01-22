@@ -135,6 +135,8 @@ export function CreatePersonModal({
         newErrors.email = 'El email es requerido';
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
         newErrors.email = 'Email inválido';
+      } else if (!formData.email.toLowerCase().endsWith('@esap.edu.co')) {
+        newErrors.email = 'Solo se permiten correos institucionales @esap.edu.co';
       }
       if (!formData.phone.trim()) newErrors.phone = 'El teléfono es requerido';
       if (!formData.city.trim()) newErrors.city = 'La ciudad es requerida';
@@ -471,6 +473,7 @@ export function CreatePersonModal({
                           : 'border-gray-300 focus:border-[#003DA5]'
                       } rounded-lg focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all text-gray-900`}
                       placeholder="Ej: juan.perez@esap.edu.co"
+                      style={{ textTransform: 'lowercase' }}
                     />
                     {errors.email && (
                       <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">

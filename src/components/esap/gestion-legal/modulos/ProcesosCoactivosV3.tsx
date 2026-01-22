@@ -10,7 +10,7 @@ import {
   User, Eye, ChevronDown, DollarSign, TrendingUp, X,
   AlertCircle, CheckCircle, Search, Download, Upload,
   Edit, Trash2, Filter, MoreVertical, Phone, Mail as MailIcon,
-  MapPin, Building, CreditCard, FileCheck, Send
+  MapPin, Building, CreditCard, FileCheck, Send, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Badge } from '../../../ui/badge';
@@ -26,8 +26,11 @@ import {
   procesosCoactivosService,
   ProcesoCoactivo as ProcesoCoactivoAPI,
   ProcesoCoactivoStats,
+  ProcesoCoactivoStats,
   ProcesoCoactivoAdjunto
 } from '../../../../services/api/legal.service';
+import { ModalGestionarPagos } from '../procesos-coactivos/ModalGestionarPagos';
+import { ModalHistorialCoactivo } from '../procesos-coactivos/ModalHistorialCoactivo';
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -45,6 +48,8 @@ interface ProcesoCoactivo {
     valor: number;
     fechaVencimiento: Date;
     diasVencidos: number;
+    valorPagado: number;
+    saldoPendiente: number;
   };
   estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
   fechaCreacion: Date;
@@ -74,6 +79,8 @@ const mapApiToLocal = (apiProceso: ProcesoCoactivoAPI): ProcesoCoactivo => {
     obligacion: {
       concepto: apiProceso.obligacion.concepto || '',
       valor: apiProceso.obligacion.valor || 0,
+      valorPagado: apiProceso.valorPagado || 0,
+      saldoPendiente: apiProceso.saldoPendiente ?? apiProceso.obligacion.valor ?? 0,
       fechaVencimiento: fechaVencimiento,
       diasVencidos: diasVencidos
     },
@@ -99,6 +106,12 @@ export function ModuloProcesosCoactivosV3() {
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoCoactivo | null>(null);
   const [procesoEditar, setProcesoEditar] = useState<ProcesoCoactivo | null>(null);
   const [ordenamiento, setOrdenamiento] = useState<'reciente' | 'antiguo' | 'monto-mayor' | 'monto-menor'>('reciente');
+
+  // Estados para modales de Pagos e Historial desde las tarjetas
+  const [modalPagos, setModalPagos] = useState(false);
+  const [modalHistorial, setModalHistorial] = useState(false);
+  const [procesoParaPago, setProcesoParaPago] = useState<ProcesoCoactivo | null>(null);
+  const [procesoParaHistorial, setProcesoParaHistorial] = useState<ProcesoCoactivo | null>(null);
 
   // Detectar tamaño de pantalla
   const [isMobile, setIsMobile] = useState(false);
@@ -200,16 +213,16 @@ export function ModuloProcesosCoactivosV3() {
             </p>
           </div>
           {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
-          <ButtonSIGL
-            onClick={() => {
-              setProcesoEditar(null);
-              setModalNuevoProceso(true);
-            }}
-            className="flex-shrink-0"
-            icon={<Plus className="w-4 h-4" />}
-          >
-            {!isMobile && 'Nuevo Proceso'}
-          </ButtonSIGL>
+            <ButtonSIGL
+              onClick={() => {
+                setProcesoEditar(null);
+                setModalNuevoProceso(true);
+              }}
+              className="flex-shrink-0"
+              icon={<Plus className="w-4 h-4" />}
+            >
+              {!isMobile && 'Nuevo Proceso'}
+            </ButtonSIGL>
           )}
         </div>
 
@@ -257,7 +270,7 @@ export function ModuloProcesosCoactivosV3() {
                 <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm text-gray-500">Monto Total</p>
+                <p className="text-xs sm:text-sm text-gray-500">Saldo Pendiente</p>
                 <p className="text-base sm:text-lg font-bold text-gray-900">
                   ${(stats.totalMonto / 1000000).toFixed(1)}M
                 </p>
@@ -327,6 +340,14 @@ export function ModuloProcesosCoactivosV3() {
                 onVerDetalle={handleVerDetalle}
                 onEditar={handleEditarProceso}
                 onEliminar={handleEliminarProceso}
+                onGestionarPagos={(p) => {
+                  setProcesoParaPago(p);
+                  setModalPagos(true);
+                }}
+                onVerHistorial={(p) => {
+                  setProcesoParaHistorial(p);
+                  setModalHistorial(true);
+                }}
               />
             </motion.div>
           ))}
@@ -369,6 +390,42 @@ export function ModuloProcesosCoactivosV3() {
           onUpdate={loadProcesos}
         />
       )}
+
+      {/* Modal Gestionar Pagos (desde tarjeta) */}
+      {procesoParaPago && (
+        <ModalGestionarPagos
+          isOpen={modalPagos}
+          onClose={() => {
+            setModalPagos(false);
+            setProcesoParaPago(null);
+          }}
+          proceso={{
+            id: procesoParaPago.id,
+            radicado: procesoParaPago.radicado,
+            deudor: procesoParaPago.deudor.nombre,
+            valorTotal: procesoParaPago.obligacion.valor,
+            valorPagado: procesoParaPago.obligacion.valorPagado || 0
+          }}
+          onRegistrarPago={() => {
+            loadProcesos();
+            setModalPagos(false);
+            setProcesoParaPago(null);
+          }}
+        />
+      )}
+
+      {/* Modal Historial (desde tarjeta) */}
+      {procesoParaHistorial && (
+        <ModalHistorialCoactivo
+          isOpen={modalHistorial}
+          onClose={() => {
+            setModalHistorial(false);
+            setProcesoParaHistorial(null);
+          }}
+          procesoId={procesoParaHistorial.id}
+          radicado={procesoParaHistorial.radicado}
+        />
+      )}
     </div>
   );
 }
@@ -380,12 +437,16 @@ function TarjetaProceso({
   proceso,
   onVerDetalle,
   onEditar,
-  onEliminar
+  onEliminar,
+  onGestionarPagos,
+  onVerHistorial
 }: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
   onEditar: (proceso: ProcesoCoactivo) => void;
   onEliminar: (id: string) => void;
+  onGestionarPagos: (proceso: ProcesoCoactivo) => void;
+  onVerHistorial: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -434,9 +495,15 @@ function TarjetaProceso({
             <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1">Valor</p>
-            <p className="text-lg font-bold text-[#003DA5]">
+            <p className="text-xs text-gray-500 mb-1">Valor Original</p>
+            <p className="text-sm font-semibold text-gray-700">
               ${proceso.obligacion.valor.toLocaleString('es-CO')}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Saldo Pendiente</p>
+            <p className="text-lg font-bold text-[#003DA5]">
+              ${proceso.obligacion.saldoPendiente.toLocaleString('es-CO')}
             </p>
           </div>
           <div>
@@ -494,32 +561,50 @@ function TarjetaProceso({
             variant="primary"
             size="md"
             onClick={() => onVerDetalle(proceso)}
-            className="flex-none min-w-[110px]"
+            className="flex-none"
             icon={<Eye className="w-4 h-4" />}
           >
             Ver Detalle
           </ButtonSIGL>
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
           <ButtonSIGL
             variant="secondary"
             size="md"
-            onClick={() => onEditar(proceso)}
-            className="flex-none min-w-[110px]"
-            icon={<Edit className="w-4 h-4" />}
+            onClick={() => onGestionarPagos(proceso)}
+            className="flex-none"
+            icon={<CreditCard className="w-4 h-4" />}
           >
-            Editar
+            Pagos
           </ButtonSIGL>
+          <ButtonSIGL
+            variant="secondary"
+            size="md"
+            onClick={() => onVerHistorial(proceso)}
+            className="flex-none"
+            icon={<History className="w-4 h-4" />}
+          >
+            Historial
+          </ButtonSIGL>
+          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
+            <ButtonSIGL
+              variant="secondary"
+              size="md"
+              onClick={() => onEditar(proceso)}
+              className="flex-none"
+              icon={<Edit className="w-4 h-4" />}
+            >
+              Editar
+            </ButtonSIGL>
           )}
           {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-          <ButtonSIGL
-            variant="danger"
-            size="md"
-            onClick={() => onEliminar(proceso.id)}
-            className="flex-none min-w-[110px]"
-            icon={<Trash2 className="w-4 h-4" />}
-          >
-            Eliminar
-          </ButtonSIGL>
+            <ButtonSIGL
+              variant="danger"
+              size="md"
+              onClick={() => onEliminar(proceso.id)}
+              className="flex-none"
+              icon={<Trash2 className="w-4 h-4" />}
+            >
+              Eliminar
+            </ButtonSIGL>
           )}
         </div>
       </div>
@@ -989,6 +1074,8 @@ function ModalDetalleProceso({
 
   const [adjuntos, setAdjuntos] = useState<ProcesoCoactivoAdjunto[]>([]);
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
+  const [modalPagos, setModalPagos] = useState(false);
+  const [modalHistorial, setModalHistorial] = useState(false);
 
   // Cargar adjuntos al abrir
   useEffect(() => {
@@ -1039,8 +1126,29 @@ function ModalDetalleProceso({
       title={`Proceso ${proceso.radicado}`}
       size="large"
     >
+      {/* Sub-Modales */}
+      <ModalGestionarPagos
+        isOpen={modalPagos}
+        onClose={() => setModalPagos(false)}
+        proceso={{
+          id: proceso.id,
+          deudor: proceso.deudor.nombre,
+          valorTotal: proceso.obligacion.valor,
+          valorPagado: proceso.obligacion.valorPagado || 0
+        }}
+        onRegistrarPago={() => {
+          if (onUpdate) onUpdate();
+        }}
+      />
+      <ModalHistorialCoactivo
+        isOpen={modalHistorial}
+        onClose={() => setModalHistorial(false)}
+        procesoId={proceso.id}
+        radicado={proceso.radicado}
+      />
+
       <div className="space-y-4">
-        {/* Header con Estado */}
+        {/* Header con Estado y Botones */}
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
           <div>
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado Actual</p>
@@ -1048,15 +1156,17 @@ function ModalDetalleProceso({
               {estadoConfig.label}
             </span>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Fecha creación</p>
-            <p className="text-sm font-medium text-gray-900">
-              {proceso.fechaCreacion.toLocaleDateString('es-CO', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })}
-            </p>
+          <div className="flex items-center gap-2">
+            <ButtonSIGL size="sm" variant="secondary" onClick={() => setModalHistorial(true)}>
+              <History className="w-4 h-4 mr-2" />
+              Trazabilidad
+            </ButtonSIGL>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
+              <ButtonSIGL size="sm" onClick={() => setModalPagos(true)} className="bg-green-600 hover:bg-green-700 text-white border-none">
+                <CreditCard className="w-4 h-4 mr-2" />
+                Gestionar Pagos
+              </ButtonSIGL>
+            )}
           </div>
         </div>
 
@@ -1109,6 +1219,20 @@ function ModalDetalleProceso({
                   <p className="text-xs text-gray-500">Días en Mora</p>
                   <p className={`text-lg font-bold ${proceso.obligacion.diasVencidos > 180 ? 'text-red-600' : 'text-orange-600'}`}>
                     {proceso.obligacion.diasVencidos}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                <div>
+                  <p className="text-xs text-gray-500">Pagado</p>
+                  <p className="text-sm font-bold text-green-600">
+                    ${(proceso.obligacion.valorPagado || 0).toLocaleString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Saldo Pendiente</p>
+                  <p className="text-sm font-bold text-orange-600">
+                    ${(proceso.obligacion.saldoPendiente || 0).toLocaleString('es-CO')}
                   </p>
                 </div>
               </div>
@@ -1199,13 +1323,13 @@ function ModalDetalleProceso({
                       <Download className="w-4 h-4" />
                     </button>
                     {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-                    <button
-                      onClick={() => handleDeleteAdjunto(adjunto.id)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <button
+                        onClick={() => handleDeleteAdjunto(adjunto.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 </div>

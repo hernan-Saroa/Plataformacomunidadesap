@@ -1,5 +1,7 @@
 export interface UpdateGraduateDto {
   fullName?: string;
+  firstName?: string;
+  lastName?: string;
   idNumber?: string;
   idIssueDate?: string | Date;
   email?: string;
