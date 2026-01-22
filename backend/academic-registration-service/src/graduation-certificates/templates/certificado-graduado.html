@@ -55,6 +55,17 @@
             margin-top: 0.2cm;
         }
 
+        .qr-code {
+            text-align: right;
+            margin-top: 0.2cm;
+        }
+
+        .qr-code img {
+            width: 1.5cm;
+            height: 1.5cm;
+            object-fit: contain;
+        }
+
         .fecha-ciudad {
             text-align: left;
             margin-bottom: 0.7cm;
@@ -213,14 +224,24 @@
             </tr>
         </table>
 
-        <!-- Cordialmente -->
-        <div class="contenido" style="margin-bottom: 0.2cm;">
-            <p>Cordialmente,</p>
-        </div>
+        <!-- Sección de firma y QR -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 0.6cm;">
+            <div style="flex: 1;">
+                <!-- Cordialmente -->
+                <div class="contenido" style="margin-bottom: 0.2cm;">
+                    <p>Cordialmente,</p>
+                </div>
 
-        <!-- Firma -->
-        <div class="firma-seccion">
-            <div class="firma-nombre">Direcci&oacute;n T&eacute;cnica Registro y Control</div>
+                <!-- Firma -->
+                <div class="firma-seccion">
+                    <div class="firma-nombre">Direcci&oacute;n T&eacute;cnica Registro y Control</div>
+                </div>
+            </div>
+
+            <!-- Código QR -->
+            <div class="qr-code" style="margin-left: 1cm;">
+                <img src="{{QR_CODE_URL}}" alt="C&oacute;digo QR de validaci&oacute;n" />
+            </div>
         </div>
 
         <!-- URL de Validaci&oacute;n -->

@@ -44,6 +44,9 @@ export class EmailsService {
           user: config.user,
           pass: config.pass,
         },
+        tls: {
+          rejectUnauthorized: false,
+        },
       };
 
       this.transporter = nodemailer.createTransport(transportConfig);
@@ -125,6 +128,7 @@ export class EmailsService {
     let contentBuffer: Buffer;
     try {
       contentBuffer = Buffer.from(data.attachmentBase64, 'base64');
+      this.logger.log(`Attachment decoded: ${contentBuffer.length} bytes for ${data.attachmentName}`);
     } catch (error) {
       throw new BadRequestException('El adjunto no es un base64 válido');
     }
@@ -151,7 +155,7 @@ export class EmailsService {
       this.logger.log(`Email con adjunto enviado a ${data.to} (${data.attachmentName})`);
       return { sent: true };
     } catch (error) {
-      this.logger.error(`Error al enviar email con adjunto a ${data.to}: ${error?.message || error}`);
+      this.logger.error(`Error al enviar email con adjunto a ${data.to}: ${error?.message || error}`, error?.stack || '');
       throw new InternalServerErrorException('No se pudo enviar el email con adjunto');
     }
   }
