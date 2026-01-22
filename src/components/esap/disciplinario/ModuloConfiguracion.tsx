@@ -13,6 +13,8 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
@@ -428,6 +430,7 @@ export function ModuloConfiguracion() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={handleRestablecer}
             className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
@@ -435,6 +438,8 @@ export function ModuloConfiguracion() {
           >
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
           <button
             onClick={handleGuardar}
             className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
@@ -443,6 +448,7 @@ export function ModuloConfiguracion() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 
@@ -469,6 +475,7 @@ export function ModuloConfiguracion() {
                 <span className="text-sm font-bold uppercase mb-2 block" style={{ color: '#4B5563' }}>
                   {editandoEtapa === etapa.id ? (
                     <input
+                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
                       type="text"
                       value={nombreEditando}
                       onChange={(e) => setNombreEditando(e.target.value)}
@@ -483,6 +490,7 @@ export function ModuloConfiguracion() {
                 <div className="flex items-center gap-3">
                   {editandoEtapa === etapa.id ? (
                     <input
+                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
                       type="number"
                       min="1"
                       max="365"
@@ -521,6 +529,7 @@ export function ModuloConfiguracion() {
                   </button>
                 ) : (
                   <>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT) && (
                     <button
                       onClick={() => handleEditarEtapa(etapa.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -529,6 +538,8 @@ export function ModuloConfiguracion() {
                       <Edit2 className="w-4 h-4" />
                       Editar
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_DELETE) && (
                     <button
                       onClick={() => handleEliminarEtapa(etapa.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -537,12 +548,14 @@ export function ModuloConfiguracion() {
                       <Trash2 className="w-4 h-4" />
                       Eliminar
                     </button>
+                    )}
                   </>
                 )}
               </div>
             </div>
           ))}
           <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE) && (
             <button
               onClick={handleAgregarEtapa}
               className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -551,6 +564,7 @@ export function ModuloConfiguracion() {
               <Plus className="w-4 h-4" />
               Agregar Etapa
             </button>
+            )}
           </div>
         </div>
 
@@ -597,6 +611,7 @@ export function ModuloConfiguracion() {
               </div>
               <div className="flex items-center gap-3">
                 <input
+                  disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT)}
                   type="number"
                   min="1"
                   max="30"
@@ -621,6 +636,7 @@ export function ModuloConfiguracion() {
                   </button>
                 ) : (
                   <>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT) && (
                     <button
                       onClick={() => handleEditarCargo(cargo.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -629,6 +645,8 @@ export function ModuloConfiguracion() {
                       <Edit2 className="w-4 h-4" />
                       Editar
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE) && (
                     <button
                       onClick={() => handleEliminarCargo(cargo.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -637,12 +655,14 @@ export function ModuloConfiguracion() {
                       <Trash2 className="w-4 h-4" />
                       Eliminar
                     </button>
+                    )}
                   </>
                 )}
               </div>
             </div>
           ))}
           <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE) && (
             <button
               onClick={() => setMostrarModalAgregarCargo(true)}
               className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -651,6 +671,7 @@ export function ModuloConfiguracion() {
               <Plus className="w-4 h-4" />
               Agregar Cargo
             </button>
+            )}
           </div>
         </div>
 
@@ -1109,6 +1130,7 @@ export function ModuloConfiguracion() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={handleRestablecer}
             className="px-6 py-2.5 rounded-xl font-semibold"
@@ -1116,6 +1138,8 @@ export function ModuloConfiguracion() {
           >
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
           <button
             onClick={handleGuardar}
             className="px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2"
@@ -1124,6 +1148,7 @@ export function ModuloConfiguracion() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -1232,7 +1257,7 @@ function ConfiguracionFirmaPersonal() {
               )}
             </div>
           </div>
-
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD) && (
           <div className="flex flex-col items-end gap-2">
             <input
               type="file"
@@ -1260,6 +1285,7 @@ function ConfiguracionFirmaPersonal() {
               Formato admitido: .PDF (Max 5MB)
             </p>
           </div>
+          )}
         </div>
 
         {firmaUrl && (
