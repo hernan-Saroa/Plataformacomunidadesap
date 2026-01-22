@@ -24,7 +24,7 @@ export default function CartaRepresentacionOCI() {
   const handleDownload = () => {
     // Descargar el archivo Word desde public
     const link = document.createElement('a')
-    link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02 (2).docx'
+    link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02.docx'
     link.download = 'EM-FO-010FormatocartaderepresentacinOCI_V02.docx'
     document.body.appendChild(link)
     link.click()

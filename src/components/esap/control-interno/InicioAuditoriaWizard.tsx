@@ -274,7 +274,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       toast.loading('Descargando PDF original...', { id: 'descargar-pdf' });
       
       const link = document.createElement('a');
-      link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02 (2).pdf';
+      link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
       link.download = 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
       document.body.appendChild(link);
       link.click();
@@ -293,7 +293,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       toast.loading('Descargando PDF...', { id: 'descargar-pdf' });
       
       const link = document.createElement('a');
-      link.href = '/EM-FO-009FormatocartadecompromisoOCI (2).pdf';
+      link.href = '/EM-FO-009FormatocartadecompromisoOCI.pdf';
       link.download = 'EM-FO-009FormatocartadecompromisoOCI.pdf';
       document.body.appendChild(link);
       link.click();
@@ -353,7 +353,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
         // Logo
         try {
           const logoImg = new Image();
-          logoImg.src = '/Logo-Esap-2.jpg';
+          logoImg.src = '/ESAP.jpg';
           doc.addImage(logoImg, 'JPEG', logoX + 5, headerY + 3, logoWidth - 10, headerHeight - 6);
         } catch (error) {
           doc.setFontSize(8);
