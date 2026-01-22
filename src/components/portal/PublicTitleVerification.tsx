@@ -805,7 +805,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                           setShowDataPolicyError(false);
                         }
                       }}
-                      className="mt-1"
+                      className="mt-1 h-5 w-5 flex-shrink-0 rounded-[2px] border-2 border-gray-300 bg-white shadow-[0_0_0_2px_rgba(30,93,168,0.18)] md:h-4 md:w-4"
                       aria-invalid={showDataPolicyError}
                     />
                     <Label
