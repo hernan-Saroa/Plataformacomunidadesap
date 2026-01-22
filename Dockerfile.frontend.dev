@@ -9,8 +9,9 @@ WORKDIR /app
 # Copiar archivos de dependencias primero (para aprovechar cache de Docker)
 COPY package.json package-lock.json* ./
 
-# Instalar dependencias
-RUN npm install --legacy-peer-deps
+# Instalar dependencias con cache mount (BuildKit) para mejor rendimiento
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
@@ -28,9 +29,7 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)
-RUN npm run build && \
-    echo "Verificando build..." && \
-    grep -r "4.156.71.181" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+RUN npm run build
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production

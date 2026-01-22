@@ -6,8 +6,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including dev dependencies for building)
-RUN npm install --legacy-peer-deps
+# Install all dependencies (including dev dependencies for building) with cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
@@ -23,8 +24,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm install --legacy-peer-deps --omit=dev && npm cache clean --force
+# Install only production dependencies with cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --omit=dev && \
+    npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
