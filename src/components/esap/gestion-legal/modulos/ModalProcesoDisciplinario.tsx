@@ -769,7 +769,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                     Excepciones Procesales ({excepciones.length})
                   </h3>
                 </div>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
+                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EXCEPCION) && (
                 <Button
                   onClick={() => setMostrarFormularioExcepcion(true)}
                   style={{ background: '#F97316', color: '#FFFFFF' }}
@@ -851,17 +851,21 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <CheckCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="font-black text-xl mb-2 text-gray-600">Sin Decisiones Registradas</h3>
                 <p className="text-gray-500 mb-4">El proceso aún se encuentra en etapa de investigación</p>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
                 <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
                   <Plus className="w-4 h-4 mr-2" /> Registrar Decisión
                 </Button>
+                )}
               </Card>
             ) : (
               <div className="space-y-4">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Decisiones Registradas ({decisiones.length})</h3>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
                   <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
                     <Plus className="w-4 h-4 mr-2" /> Nueva Decisión
                   </Button>
+                  )}
                 </div>
                 {decisiones.map((decision, index) => (
                   <Card key={index} className="p-6 border-2 border-blue-200">
@@ -931,10 +935,12 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                           <Download className="w-3.5 h-3.5 mr-1.5" />
                           Descargar
                         </Button>
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION_NOTIFICAR) && (
                         <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setMostrarModalNotificar(true)}>
                           <Bell className="w-3.5 h-3.5 mr-1.5" />
                           Notificar
                         </Button>
+                        )}
                       </div>
                     </div>
                   </Card>

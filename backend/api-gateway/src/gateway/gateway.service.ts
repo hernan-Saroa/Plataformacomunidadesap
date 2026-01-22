@@ -43,18 +43,16 @@ export class GatewayService {
       );
     }
 
-    // Eliminar el prefijo /{service}/api/v{version} del path
-    // originalUrl: /auth/api/v1/users?page=1
-    // path a enviar: /users?page=1
+    // Eliminar el prefijo /{service} del path, pero mantener /api/v{version}
+    // originalUrl: /control-disciplinario/api/v1/configuration/export/zip
+    // path a enviar: /api/v1/configuration/export/zip
     const pathWithoutPrefix = req.originalUrl.replace(
-      new RegExp(`^/${serviceName}/api/v\\d+`),
+      new RegExp(`^/${serviceName}`),
       '',
     );
 
-    // Para v1, enviar directamente al microservicio
-    // Para otras versiones, incluir el prefijo de versión
-    const versionPrefix = version === '1' ? '' : `/v${version}`;
-    const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
+    // El path ya incluye /api/v{version}, no necesitamos agregarlo
+    const targetUrl = `${serviceUrl}${pathWithoutPrefix}`;
     
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
@@ -80,6 +78,16 @@ export class GatewayService {
     };
 
     try {
+      // Detectar si se espera un archivo binario basándose en el Accept header
+      const acceptHeader = (req.headers['accept'] as string) || '';
+      const expectsBinaryFile = acceptHeader.includes('application/zip') ||
+                                acceptHeader.includes('application/octet-stream') ||
+                                acceptHeader.includes('application/pdf');
+
+      console.log(`[Gateway] Forwarding to: ${targetUrl}`);
+      console.log(`[Gateway] Expects binary: ${expectsBinaryFile}`);
+      console.log(`[Gateway] Accept header: ${acceptHeader}`);
+
       const response = await lastValueFrom(
         this.http.request({
           method: req.method,
@@ -92,10 +100,28 @@ export class GatewayService {
               maxBodyLength: Infinity,
             }
             : {}),
+          // Si esperamos un archivo binario, usar responseType: 'stream' para no cargar todo en memoria
+          responseType: expectsBinaryFile ? 'stream' : 'arraybuffer',
           validateStatus: () => true,
-          responseType: 'arraybuffer', // Important for binary files (PDFs, images)
         }),
       );
+
+      console.log(`[Gateway] Response status: ${response.status}`);
+      console.log(`[Gateway] Response has pipe: ${typeof response.data?.pipe}`);
+
+      // Si la respuesta es un stream (archivo binario), hacer pipe directamente
+      if (expectsBinaryFile && response.data?.pipe) {
+        console.log(`[Gateway] Streaming binary file...`);
+        res.status(response.status);
+        // Copiar headers importantes del microservicio
+        Object.entries(response.headers || {}).forEach(([key, value]) => {
+          if (value && key.toLowerCase() !== 'transfer-encoding') {
+            res.setHeader(key, value as any);
+          }
+        });
+        response.data.pipe(res);
+        return;
+      }
 
       // Forward response headers (especially Content-Type for files)
       Object.entries(response.headers || {}).forEach(([key, value]) => {
@@ -119,6 +145,16 @@ export class GatewayService {
 
       return res.status(response.status).send(response.data);
     } catch (error: any) {
+      console.error(`[Gateway] Error caught:`, {
+        message: error.message,
+        code: error.code,
+        responseStatus: error.response?.status,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          responseType: error.config?.responseType,
+        }
+      });
       const status = error.response?.status || 500;
       
       // Intentar parsear el error si viene como arraybuffer

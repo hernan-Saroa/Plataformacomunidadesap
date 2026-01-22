@@ -64,6 +64,8 @@ import graduadosService, { GraduadoData } from '../../services/api/graduados.ser
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 type GraduateRow = {
   id: string;
@@ -243,7 +245,11 @@ export function GraduatesManagementModule() {
         });
 
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
-          const { firstName, lastName } = splitFullName(graduate.fullName);
+          const derivedName = splitFullName(graduate.fullName);
+          const firstName =
+            (graduate.firstName || '').trim() || derivedName.firstName;
+          const lastName =
+            (graduate.lastName || '').trim() || derivedName.lastName;
           const campus = graduate.campus || 'Sin sede';
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
@@ -655,6 +661,8 @@ export function GraduatesManagementModule() {
       const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         email: trimmedEmail,
         phone: phoneDigits,
         idNumber: trimmedDocument,
@@ -887,6 +895,7 @@ export function GraduatesManagementModule() {
 
         {/* Botones de Acción */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {authService.hasPermission(Permissions.GRADUATES_EXPORT) && (
           <button
             onClick={() => setIsExportModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 transition-all"
@@ -912,7 +921,8 @@ export function GraduatesManagementModule() {
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
           </button>
-
+          )}
+          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
           <button
             // onClick={() => {
             //   window.location.href = '/verificar-certificado-graduado';
@@ -943,6 +953,7 @@ export function GraduatesManagementModule() {
             <BadgeCheck className="w-5 h-5" strokeWidth={2} />
             <span>Verificar Certificado</span>
           </button>
+          )}
         </div>
       </motion.div>
 
@@ -1319,14 +1330,18 @@ export function GraduatesManagementModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
                           <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
                             <BadgeCheck className="w-4 h-4 mr-2" />
                             Verificar Certificado
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

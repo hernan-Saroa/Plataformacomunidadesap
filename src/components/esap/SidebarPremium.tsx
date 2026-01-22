@@ -43,7 +43,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -80,7 +80,7 @@ const contentTransition = {
 export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, onModuleChange, onClose, isCollapsed = false, onToggleCollapse, forceCollapse, userRole, userEmail, certificatesPendingCount = 0, restrictedMode, assignedModules = [] }: SidebarProps) {
   const hasAllModules = assignedModules.includes('all');
   const graduates = assignedModules.includes('graduates');
-  if (graduates) {
+  if (graduates && !assignedModules.includes('graduates-verification')) {
     assignedModules.push('graduates-verification');
   }
   restrictedMode = undefined; // Nuevo: No restringir módulos en modo de desarrollo
@@ -122,9 +122,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   const effectiveCollapsed = isCollapsed || forceCollapse;
 
   // Estado para controlar qué menús padre están expandidos
+  let moduleGraduate = false
+  if (assignedModules.includes('graduates-verification') || assignedModules.includes('graduates-certificates')) {
+    moduleGraduate = assignedModules[0] == 'graduates' || assignedModules[0] == 'graduates-certificates'
+  }
+  
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
     users: false,           // Menú Usuarios Admin cerrado por defecto
-    graduates: false,       // Menú Graduados cerrado por defecto
+    graduates: moduleGraduate,       // Menú Graduados cerrado por defecto
     'roles-security': false, // Menú Roles y Permisos cerrado por defecto
     'users-management-menu': false, // Menú Gestión Personas cerrado por defecto
   });
