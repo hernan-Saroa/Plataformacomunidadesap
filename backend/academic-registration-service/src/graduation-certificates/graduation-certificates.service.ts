@@ -395,13 +395,9 @@ export class GraduationCertificatesService {
     const verificationCode = await this.generateVerificationCode();
 
     const diplomaNumber =
-      graduate?.diplomaNumber ||
-      requestExtras.diplomaNumber ||
-      (await this.generateDiplomaNumber());
+      requestExtras.diplomaNumber || (await this.generateDiplomaNumber());
     const actaNumber =
-      graduate?.actaNumber ||
-      requestExtras.actaNumber ||
-      (await this.generateActaNumber());
+      requestExtras.actaNumber || (await this.generateActaNumber());
 
     // Crear certificado
     const certificate = this.certificateRepository.create({
