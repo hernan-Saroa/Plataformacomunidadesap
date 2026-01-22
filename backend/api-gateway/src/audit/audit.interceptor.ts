@@ -38,7 +38,7 @@ export class AuditInterceptor implements NestInterceptor {
     const version = urlMatch?.[2] || '1';
     const module = getModuleFromService(serviceName, url);
     const submodule = getSubmoduleFromUrl(url) || undefined;
-    const action = this.determineAction(method, path);
+    const action = this.determineAction(method, url);
     const clientIp = this.getClientIp(request);
     const userInfo = this.extractUserInfo(request);
 
@@ -263,33 +263,47 @@ export class AuditInterceptor implements NestInterceptor {
    * Determina la acción basándose en el método HTTP y la ruta
    * Retorna acciones legibles como "crear auditoria", "iniciar sesión", etc.
    */
-  private determineAction(method: string, path: string): string | undefined {
-    const pathLower = path.toLowerCase();
-    const hasId = /\/\d+/.test(path) || /\/[a-f0-9-]{36}/i.test(path);
+  private determineAction(method: string, urlOrPath: string): string | undefined {
+    // Normalizar: remover query params y prefijos de servicio
+    const normalizedPath = urlOrPath
+      .split('?')[0] // Remover query params
+      .replace(/^\/[^\/]+\/api\/v\d+\//, '/') // Remover prefijo /servicio/api/v1/
+      .replace(/^\/esap\//, '/') // Remover prefijo /esap/
+      .toLowerCase();
+    
+    const pathLower = normalizedPath;
 
     // ========== CASOS ESPECIALES DE AUTENTICACIÓN ==========
-    if (pathLower.includes('/login')) {
+    // Usar expresiones regulares más precisas para evitar falsos positivos
+    if (/^\/login(\/|$|\?)/.test(pathLower) || pathLower === 'login') {
       return 'iniciar sesión';
     }
-    if (pathLower.includes('/logout')) {
+    if (/^\/logout(\/|$|\?)/.test(pathLower) || pathLower === 'logout') {
       return 'cerrar sesión';
     }
-    if (pathLower.includes('/change-password') || pathLower.includes('/cambiar-contraseña')) {
+    if (/^\/change-password(\/|$|\?)/.test(pathLower) || 
+        /^\/cambiar-contraseña(\/|$|\?)/.test(pathLower)) {
       return 'cambiar contraseña';
     }
-    if (pathLower.includes('/forgot-password') || pathLower.includes('/recuperar-contraseña')) {
+    if (/^\/forgot-password(\/|$|\?)/.test(pathLower) || 
+        /^\/recuperar-contraseña(\/|$|\?)/.test(pathLower)) {
       return 'recuperar contraseña';
     }
-    if (pathLower.includes('/reset-password') || pathLower.includes('/restablecer-contraseña')) {
+    if (/^\/reset-password(\/|$|\?)/.test(pathLower) || 
+        /^\/restablecer-contraseña(\/|$|\?)/.test(pathLower)) {
       return 'restablecer contraseña';
     }
-    if (pathLower.includes('/verify') || pathLower.includes('/verificar')) {
+    if (/^\/verify(\/|$|\?)/.test(pathLower) || 
+        /^\/verificar(\/|$|\?)/.test(pathLower)) {
       return 'verificar sesión';
     }
-    if (pathLower.includes('/refresh')) {
+    if (/^\/refresh(\/|$|\?)/.test(pathLower) || 
+        /^\/refresh-token(\/|$|\?)/.test(pathLower)) {
       return 'renovar token';
     }
-    if (pathLower.includes('/new-person') || pathLower.includes('/registrar')) {
+    if (/^\/new-person(\/|$|\?)/.test(pathLower) || 
+        /^\/registrar(\/|$|\?)/.test(pathLower) ||
+        /^\/register(\/|$|\?)/.test(pathLower)) {
       return 'registrar usuario';
     }
 
@@ -320,31 +334,32 @@ export class AuditInterceptor implements NestInterceptor {
     };
 
     // ========== ACCIONES ESPECÍFICAS EN LA RUTA ==========
-    const specificActions: Record<string, string> = {
-      'aprobar': 'aprobar',
-      'rechazar': 'rechazar',
-      'enviar': 'enviar',
-      'aceptar': 'aceptar',
-      'importar': 'importar',
-      'generar': 'generar',
-      'validar': 'validar',
-      'ampliar-plazo': 'ampliar plazo',
-      'solicitar': 'solicitar',
-      'restore': 'restaurar',
-      'archivar': 'archivar',
-      'leida': 'marcar como leída',
-      'progreso': 'actualizar progreso',
-      'fase': 'cambiar fase',
-      'incrementar': 'incrementar',
-      'decrementar': 'decrementar',
-      'aplicar': 'aplicar',
-      'exportar': 'exportar',
-    };
+    // Usar expresiones regulares para coincidencias más precisas
+    const specificActions: Array<{ pattern: RegExp; action: string }> = [
+      { pattern: /\/aprobar(\/|$|\?)/, action: 'aprobar' },
+      { pattern: /\/rechazar(\/|$|\?)/, action: 'rechazar' },
+      { pattern: /\/enviar(\/|$|\?)/, action: 'enviar' },
+      { pattern: /\/aceptar(\/|$|\?)/, action: 'aceptar' },
+      { pattern: /\/importar(\/|$|\?)/, action: 'importar' },
+      { pattern: /\/generar(\/|$|\?)/, action: 'generar' },
+      { pattern: /\/validar(\/|$|\?)/, action: 'validar' },
+      { pattern: /\/ampliar-plazo(\/|$|\?)/, action: 'ampliar plazo' },
+      { pattern: /\/solicitar(\/|$|\?)/, action: 'solicitar' },
+      { pattern: /\/restore(\/|$|\?)/, action: 'restaurar' },
+      { pattern: /\/archivar(\/|$|\?)/, action: 'archivar' },
+      { pattern: /\/leida(\/|$|\?)/, action: 'marcar como leída' },
+      { pattern: /\/progreso(\/|$|\?)/, action: 'actualizar progreso' },
+      { pattern: /\/fase(\/|$|\?)/, action: 'cambiar fase' },
+      { pattern: /\/incrementar(\/|$|\?)/, action: 'incrementar' },
+      { pattern: /\/decrementar(\/|$|\?)/, action: 'decrementar' },
+      { pattern: /\/aplicar(\/|$|\?)/, action: 'aplicar' },
+      { pattern: /\/exportar(\/|$|\?)/, action: 'exportar' },
+    ];
 
     // Buscar acciones específicas en la ruta
-    for (const [key, action] of Object.entries(specificActions)) {
-      if (pathLower.includes(key)) {
-        const resource = this.extractResourceFromPath(path, resourceMap);
+    for (const { pattern, action } of specificActions) {
+      if (pattern.test(pathLower)) {
+        const resource = this.extractResourceFromPath(normalizedPath, resourceMap);
         if (resource) {
           return `${action} ${resource}`;
         }
@@ -364,8 +379,8 @@ export class AuditInterceptor implements NestInterceptor {
       return undefined;
     }
 
-    // Extraer recurso de la ruta
-    const resource = this.extractResourceFromPath(path, resourceMap);
+    // Extraer recurso de la ruta (ya normalizada)
+    const resource = this.extractResourceFromPath(normalizedPath, resourceMap);
     
     if (resource) {
       return `${baseAction} ${resource}`;
@@ -376,15 +391,14 @@ export class AuditInterceptor implements NestInterceptor {
 
   /**
    * Extrae el nombre del recurso de la ruta usando el mapeo de recursos
+   * Nota: El path ya debe estar normalizado (sin prefijos de servicio ni query params)
    */
   private extractResourceFromPath(
     path: string,
     resourceMap: Record<string, string>
   ): string | null {
-    // Remover prefijos comunes (servicio/api/v1/)
+    // El path ya viene normalizado, solo remover la barra inicial si existe
     const cleanPath = path
-      .replace(/^\/[^\/]+\/api\/v\d+\//, '')
-      .replace(/^\/esap\//, '')
       .replace(/^\//, '')
       .toLowerCase();
 
