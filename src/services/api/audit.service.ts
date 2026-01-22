@@ -10,6 +10,7 @@ export interface AuditLog {
   queryParams?: any;
   module?: string;
   submodule?: string;
+  action?: string;
   version?: string;
   ipAddress?: string;
   userAgent?: string;

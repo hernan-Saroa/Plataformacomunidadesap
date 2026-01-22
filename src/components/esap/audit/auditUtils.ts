@@ -12,12 +12,15 @@ export const mapLogToEvent = (log: AuditLog): AuditEvent => {
   // Usar submódulo si existe, sino usar módulo como fallback
   const displayModule = log.submodule || log.module || 'Desconocido';
   
+  // Usar la acción del backend si existe, sino construir desde method y path
+  const displayAction = log.action || `${log.method} ${log.path}`;
+  
   return {
     id: log.id,
     timestamp: new Date(log.timestamp).toLocaleString('es-CO'),
     user: log.userEmail || log.userId?.toString() || 'Desconocido',
     userId: log.userId?.toString() || 'N/A',
-    action: `${log.method} ${log.path}`,
+    action: displayAction,
     module: displayModule,
     severity,
     status,
@@ -26,7 +29,7 @@ export const mapLogToEvent = (log: AuditLog): AuditEvent => {
     browser: log.userAgent || 'N/A',
     location: 'N/A',
     duration: `${(log.responseTimeMs / 1000).toFixed(2)}s`,
-    details: log.errorMessage || `${log.method} ${log.path} - ${log.statusCode}`,
+    details: log.errorMessage || displayAction + ` - ${log.statusCode}`,
   };
 };
 
