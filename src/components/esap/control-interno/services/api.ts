@@ -307,10 +307,19 @@ export const auditoriasApi = {
   /**
    * Aprobar una auditoría
    */
-  aprobar: async (auditoriaId: string, comentarios?: string): Promise<ApiResponse<Auditoria>> => {
+  aprobar: async (
+    auditoriaId: string, 
+    comentarios?: string,
+    usuarioId?: number,
+    usuarioNombre?: string
+  ): Promise<ApiResponse<Auditoria>> => {
     return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/aprobar`, {
       method: 'POST',
-      body: JSON.stringify({ comentarios }),
+      body: JSON.stringify({ 
+        comentarios,
+        usuarioId,
+        usuarioNombre 
+      }),
     });
   },
 

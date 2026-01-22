@@ -152,9 +152,9 @@ export function PlanificacionModuleRediseno() {
       // Procesos seleccionados (prioridad = 1)
       const procesosSeleccionados = procesos.filter((p: any) => p.prioridad === 1);
       
-      // Auditorías aprobadas (estado aprobado o en ejecución)
+      // ✅ Auditorías aprobadas = Auditorías con campo aprobada = true
       const auditoriasAprobadas = auditoriasAnoActual.filter((aud: any) => 
-        aud.estado === 'aprobado' || aud.estado === 'en-ejecucion' || aud.estadoKanban
+        aud.aprobada === true
       );
 
       // Auditorías calendarizadas = auditorías del año filtrado
@@ -176,12 +176,12 @@ export function PlanificacionModuleRediseno() {
         }
       });
 
-      // Calcular cumplimiento (auditorías completadas / total)
+      // ✅ Calcular cumplimiento (auditorías finalizadas / auditorías aprobadas)
       const auditoriasCompletadas = auditoriasAnoActual.filter((aud: any) => 
-        aud.estado === 'cerrada' || aud.fase === 'completada'
+        aud.estado === 'Finalizada' || aud.estado === 'cerrada' || aud.estado === 'finalizada'
       );
-      const cumplimientoPrograma = auditoriasAnoActual.length > 0
-        ? Math.round((auditoriasCompletadas.length / auditoriasAnoActual.length) * 100)
+      const cumplimientoPrograma = auditoriasAprobadas.length > 0
+        ? Math.round((auditoriasCompletadas.length / auditoriasAprobadas.length) * 100)
         : 0;
 
       const nuevasEstadisticas: EstadisticasGlobales = {
