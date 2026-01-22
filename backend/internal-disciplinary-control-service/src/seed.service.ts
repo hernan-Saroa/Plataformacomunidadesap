@@ -73,31 +73,31 @@ export class SeedService {
   }
 
   private async seedConfigurations(): Promise<void> {
-    const stages = [
-      { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-      { etapa: ProcessStage.VALORACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-      { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-      { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
-      { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
-      { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-      { etapa: ProcessStage.SEGUNDA_INSTANCIA, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
-    ];
+    // IMPORTANTE: Solo sembrar etapas si la tabla está COMPLETAMENTE vacía
+    // Esto evita duplicados cuando hay etapas con nombres diferentes (con/sin acentos)
+    const existingStagesCount = await this.stageConfigRepository.count();
 
-    for (const stage of stages) {
-      try {
-        const exists = await this.stageConfigRepository.findOne({ where: { etapa: stage.etapa } });
-        if (!exists) {
-          await this.stageConfigRepository.save(stage);
-        }
-      } catch (error) {
-        // Si el enum no existe en la BD, intentar crearlo directamente
-        console.warn(`⚠️ No se pudo verificar si existe la etapa ${stage.etapa}, intentando crear...`);
+    if (existingStagesCount === 0) {
+      const stages = [
+        { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+        { etapa: ProcessStage.VALORACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+        { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+        { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+        { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
+        { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+        { etapa: ProcessStage.SEGUNDA_INSTANCIA, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
+      ];
+
+      for (const stage of stages) {
         try {
           await this.stageConfigRepository.save(stage);
-        } catch (saveError) {
-          console.error(`❌ Error guardando etapa ${stage.etapa}:`, saveError.message);
+        } catch (error) {
+          console.warn(`⚠️ No se pudo crear la etapa ${stage.etapa}:`, error.message);
         }
       }
+      console.log('✅ Etapas de configuración sembradas');
+    } else {
+      console.log(`ℹ️ Ya existen ${existingStagesCount} etapas configuradas, saltando seed de etapas`);
     }
 
     const systemCount = await this.systemConfigRepository.count();

@@ -2120,48 +2120,23 @@ export function DashboardKanbanOperativo({
   useEffect(() => {
     const cargarProfesionales = async () => {
       try {
-        // const profesionales = await disciplinaryService.getProfesionales();
-        // console.log('👥 Profesionales cargados desde el backend:', profesionales);
+        // Cargar SOLO los profesionales del equipo disciplinario (submódulo Profesionales)
+        const profesionales = await disciplinaryService.getProfesionales();
+        const equipoDisciplinario = Array.isArray(profesionales)
+          ? profesionales
+            .filter((p: any) => p.estado === 'ACTIVO')
+            .map((p: any) => ({
+              id: p.id,
+              nombre: p.nombreCompleto || p.nombre || 'Profesional',
+              cargo: p.cargo,
+              email: p.email
+            }))
+          : [];
 
-        // const mapped = Array.isArray(profesionales)
-        //   ? profesionales.map((p: any) => ({
-        //       id: p.id,
-        //       nombre: p.nombreCompleto,
-        //       cargo: p.cargo,
-        //       email: p.email
-        //     }))
-        //   : [];
-
-        // console.log('👥 Profesionales mapeados para el dropdown:', mapped);
-        const candidatos = await disciplinaryService.getCandidates();
-        const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
-          // 1. Check Active Status (defensive)
-          const isActive = !c.estado || c.estado === 'ACTIVO';
-
-          // 2. Check Role
-          const cargo = (c.cargo || '').toLowerCase().trim();
-
-          // Precise Filtering based on user request: "menos sin cargo, admin o estudiante"
-          // - Estudiante: includes (covers 'Estudiante Tesista', etc.)
-          // - Sin Cargo: exact or includes? 'Sin Cargo' is usually distinct. Using includes to be safe.
-          // - Admin: MUST be strict or careful to not exclude 'Auxiliar Administrativo'
-
-          if (cargo.includes('estudiante')) return false;
-          if (cargo.includes('sin cargo')) return false;
-          if (cargo === 'admin') return false;
-          if (cargo === 'administrador') return false;
-          if (cargo.includes('super administrador')) return false;
-
-          return isActive;
-        }) : [];
-
-        const mapped = filtered.map((c: any, index: number) => ({
-          id: c.id || c.uuid || c.userId || String(index + 1),
-          nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
-        }));
-        setProfesionalesDisponibles(mapped);
+        console.log('👥 Profesionales del equipo disciplinario:', equipoDisciplinario.length);
+        setProfesionalesDisponibles(equipoDisciplinario);
       } catch (error) {
-        console.error('❌ Error cargando profesionales', error);
+        console.error('❌ Error cargando profesionales del equipo:', error);
         setProfesionalesDisponibles([]);
       }
     };

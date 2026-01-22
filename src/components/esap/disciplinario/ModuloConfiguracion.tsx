@@ -144,12 +144,13 @@ export function ModuloConfiguracion() {
       } else {
         // Fallback defaults if empty
         setEtapas([
-          { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
-          { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
-          { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
-          { id: '4', nombre: 'INVESTIGACIÓN', dias: 60, orden: 4 },
-          { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
-          { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
+          { id: '1', nombre: 'RECEPCION', dias: 3, orden: 1 },
+          { id: '2', nombre: 'VALORACION', dias: 10, orden: 2 },
+          { id: '3', nombre: 'INDAGACION_PREVIA', dias: 40, orden: 3 },
+          { id: '4', nombre: 'INVESTIGACION', dias: 60, orden: 4 },
+          { id: '5', nombre: 'EVALUACION', dias: 10, orden: 5 },
+          { id: '6', nombre: 'JUZGAMIENTO', dias: 50, orden: 6 },
+          { id: '7', nombre: 'SEGUNDA_INSTANCIA', dias: 10, orden: 7 }
         ]);
       }
 
@@ -220,9 +221,67 @@ export function ModuloConfiguracion() {
     }
   };
 
-  const handleRestablecer = () => {
-    if (confirm('¿Está seguro de restablecer la configuración a valores por defecto?')) {
-      toast.info('Configuración restablecida');
+  const handleRestablecer = async () => {
+    if (!confirm('¿Está seguro de restablecer la configuración a valores por defecto?')) return;
+
+    try {
+      // 1. Restablecer capacidades de todos los cargos a 10
+      const cargosRestablecidos = cargos.map(c => ({ ...c, capacidad: 10 }));
+      setCargos(cargosRestablecidos);
+
+      // 2. Restablecer notificaciones a valores por defecto
+      const notificacionesDefault = {
+        vencimiento7dias: true,
+        vencimiento3dias: true,
+        vencimiento1dia: true,
+        procesoVencido: true,
+        asignacionProceso: true,
+        cambioEtapa: true,
+        aprobacionRequerida: false,
+        resumenDiario: true,
+        resumenSemanal: true,
+        emailMasterSwitch: true // Notificaciones por email activadas
+      };
+      setNotificaciones(notificacionesDefault);
+
+      // 3. Restablecer parámetros de alerta
+      const alertasDefault = {
+        porcentajeRiesgo: 85,
+        porcentajeCritico: 95,
+        capacidadAlerta: 90,
+        diasAnticipacion: 7
+      };
+      setAlertas(alertasDefault);
+
+      // 4. Preparar payload con roleCapacities restablecidas
+      const roleCapacities: Record<string, number> = {};
+      cargosRestablecidos.forEach(c => {
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = 10; // Todos a 10
+      });
+
+      // 5. Guardar en backend
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: notificacionesDefault,
+        alertSettings: alertasDefault,
+        securitySettings: {
+          auditEnabled: true,       // Registro de auditoría
+          digitalSignature: true,   // Firma digital requerida
+          backupEnabled: true,      // Backup automático
+          emailNotifications: true  // Notificaciones por email
+        }
+      };
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      toast.success('Configuración restablecida', {
+        description: 'Todos los valores han sido restaurados a sus valores por defecto'
+      });
+
+    } catch (error) {
+      console.error('Error restableciendo configuración:', error);
+      toast.error('Error al restablecer la configuración');
     }
   };
 
