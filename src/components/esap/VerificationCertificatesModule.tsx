@@ -68,6 +68,8 @@ import graduadosService, {
   ValidacionCertificado,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -80,6 +82,8 @@ interface CertificateRequest {
     fullName: string;
     document: string;
     program: string;
+    email?: string;
+    phone?: string;
     graduationDate: string;
     campus?: string;
     seccionalName?: string;
@@ -92,6 +96,7 @@ interface CertificateRequest {
   requester: {
     name: string;
     email: string;
+    phone?: string;
     type: 'entidad' | 'graduado'; // Quién solicitó el certificado
     logo?: string;
   };
@@ -289,6 +294,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const requestDate = mainRequest?.requestDate;
           const normalizedRequestDate = requestDate ? normalizeDate(requestDate) : '';
           const fallbackIssueDate = normalizeDate(certificate.issueDate);
+          const isGraduateRequester = mainRequest?.requesterType === 'GRADUATE';
+          const graduateEmail =
+            mainRequest?.graduateEmail ||
+            (isGraduateRequester ? mainRequest?.requesterEmail : '') ||
+            '';
+          const graduatePhone =
+            mainRequest?.graduatePhone ||
+            (isGraduateRequester ? mainRequest?.requesterPhone : '') ||
+            '';
 
           const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
           const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
@@ -326,6 +340,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               fullName: certificate.fullName,
               document: certificate.idNumber,
               program: certificate.programName,
+              email: graduateEmail,
+              phone: graduatePhone,
               graduationDate: certificate.graduationDate,
               campus: certificate.campus || (certificate as any)?.graduate?.campus || '',
               seccionalName:
@@ -411,8 +427,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setEditCertificateForm({
       fullName: cert.graduate.fullName || '',
       idNumber: cert.graduate.document || '',
-      email: cert.requester.email || '',
-      phone: normalizePhone(cert.requester.phone || ''),
+      email: cert.graduate.email || '',
+      phone: normalizePhone(cert.graduate.phone || ''),
       programName: cert.graduate.program || '',
       programType: cert.programType || '',
       degreeTitle: cert.degreeTitle || '',
@@ -557,11 +573,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       };
       setEditCertificateForm(nextForm);
 
+      const isGraduateRequester = selectedCertificate.requester.type === 'graduado';
       const requesterName = (
-        selectedCertificate.requester.type === 'graduado'
-          ? nextForm.fullName
-          : selectedCertificate.requester.name
+        isGraduateRequester ? nextForm.fullName : selectedCertificate.requester.name
       ).trim();
+      const requesterEmail = (
+        isGraduateRequester ? nextForm.email : selectedCertificate.requester.email || ''
+      ).trim();
+      const requesterPhone = isGraduateRequester
+        ? nextForm.phone
+        : selectedCertificate.requester.phone || '';
       const certificatePayload: UpdateCertificadoPayload = isExistingGraduate
         ? {
             fullName: nextForm.fullName,
@@ -573,8 +594,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             diplomaNumber,
             actaNumber,
             requesterName,
-            requesterEmail: nextForm.email,
-            requesterPhone: nextForm.phone,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
+            graduatePhone: nextForm.phone,
           }
         : {
             fullName: nextForm.fullName,
@@ -588,8 +611,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             campus: nextForm.campus,
             seccionalName: nextForm.seccionalName,
             requesterName,
-            requesterEmail: nextForm.email,
-            requesterPhone: nextForm.phone,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
+            graduatePhone: nextForm.phone,
           };
 
       await graduadosService.certificados.actualizar(
@@ -653,6 +678,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   graduationDate: nextForm.graduationDate,
                   campus: nextForm.campus,
                   seccionalName: nextForm.seccionalName,
+                  email: nextForm.email,
+                  phone: nextForm.phone,
                 },
                 programType: nextForm.programType,
                 degreeTitle: nextForm.degreeTitle,
@@ -662,8 +689,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 requester: {
                   ...cert.requester,
                   name: requesterName,
-                  email: nextForm.email,
-                  phone: nextForm.phone,
+                  email: requesterEmail,
+                  phone: requesterPhone,
                 },
               }
             : cert
@@ -1076,7 +1103,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillStyle = '#F9FAFB';
       ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
-      ctx.strokeStyle = qrPreviewCertificate.status === 'active' ? '#10B981' : '#9CA3AF';
+      ctx.strokeStyle = '#9CA3AF';
       ctx.lineWidth = 4;
       ctx.strokeRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
@@ -1105,15 +1132,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText(`Programa: ${qrPreviewCertificate.graduate.program}`, leftMargin, infoY + 60);
       ctx.fillText(`N? Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
   
-      const statusY = infoY + 140;
-      ctx.font = 'bold 18px Arial';
-      if (qrPreviewCertificate.status === 'active') {
-        ctx.fillStyle = '#10B981';
-        ctx.fillText('CERTIFICADO ACTIVO Y VALIDO', leftMargin, statusY);
-      } else {
-        ctx.fillStyle = '#EF4444';
-        ctx.fillText('CERTIFICADO REVOCADO', leftMargin, statusY);
-      }
   
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
@@ -1201,6 +1219,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       </motion.div>
 
           <div className="flex justify-end">
+            {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all"
@@ -1226,6 +1245,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <Download className="w-5 h-5" strokeWidth={2} />
               <span>Exportar</span>
             </button>
+            )}
           </div>
 
       {/* Info Banner */}
@@ -1310,7 +1330,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -1333,7 +1353,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <option value="active">Activos</option>
               <option value="revoked">Revocados</option>
               <option value="expired">Expirados</option>
-            </select>
+            </select> */}
 
             {/* Filtro Tipo Solicitante */}
             <select
@@ -1435,8 +1455,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div className="col-span-2">SOLICITADO POR</div>
                 <div className="col-span-2">QR ÚNICO / ESCANEOS</div>
                 <div className="col-span-2">N° CERTIFICADO</div>
-                <div className="col-span-2">ESTADO / VALIDACIÓN</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1495,7 +1514,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <button
                           onClick={() => handleViewQR(cert)}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
-                          style={{ background: cert.status === 'active' ? '#FEF3C7' : '#F3F4F6', cursor: 'pointer' }}
+                          style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
                         >
                           <QrCode className="w-5 h-5" style={{ color: cert.status === 'active' ? '#F59E0B' : '#9CA3AF' }} />
@@ -1505,9 +1524,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {cert.qrScanCount} escaneos
                             </p>
-                            {cert.status === 'active' && (
-                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="QR Activo para Validación"></div>
-                            )}
                           </div>
                           <p className="text-xs truncate font-mono" style={{ color: '#6B7280' }}>
                             {cert.qrCode}
@@ -1533,12 +1549,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(cert.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(cert)}
                         className="p-2 rounded-lg transition-all"
@@ -1575,10 +1591,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar certificado
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_REENVIAR) && (
                           <DropdownMenuItem
                             onClick={() => handleResendCertificate(cert)}
                             disabled={resendingCertificateId === cert.id}
@@ -1590,6 +1609,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             )}
                             {resendingCertificateId === cert.id ? 'Reenviando...' : 'Reenviar certificado'}
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -2380,9 +2400,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 {/* QR real */}
                 <div 
                   className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{ 
-                    background: qrPreviewCertificate?.status === 'active' ? '#FFFFFF' : '#F3F4F6',
-                    border: `2px solid ${qrPreviewCertificate?.status === 'active' ? '#10B981' : '#D1D5DB'}`
+                  style={{
+                    background: '#FFFFFF',
+                    border: '2px solid #D1D5DB'
                   }}
                 >
                   <div className="text-center p-2">
@@ -2568,8 +2588,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <div className="text-xs text-amber-800">
                     <p className="font-semibold mb-2">¿Qué sucede cuando alguien escanea este QR para validar?</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado está ACTIVO y es válido</li>
-                      <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li>
+                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado es válido</li>
+                      {/* <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li> */}
                       <li><strong>Datos del Graduado:</strong> Nombre completo, documento, programa y fecha de graduación</li>
                       <li><strong>Datos del Certificado:</strong> Número único, fecha de emisión y solicitante</li>
                       <li><strong>Registro de Validación:</strong> El escaneo queda registrado con IP, ubicación, dispositivo y fecha/hora</li>

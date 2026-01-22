@@ -64,6 +64,8 @@ import graduadosService, { GraduadoData } from '../../services/api/graduados.ser
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
 import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 type GraduateRow = {
   id: string;
@@ -243,7 +245,11 @@ export function GraduatesManagementModule() {
         });
 
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
-          const { firstName, lastName } = splitFullName(graduate.fullName);
+          const derivedName = splitFullName(graduate.fullName);
+          const firstName =
+            (graduate.firstName || '').trim() || derivedName.firstName;
+          const lastName =
+            (graduate.lastName || '').trim() || derivedName.lastName;
           const campus = graduate.campus || 'Sin sede';
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
@@ -655,6 +661,8 @@ export function GraduatesManagementModule() {
       const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         email: trimmedEmail,
         phone: phoneDigits,
         idNumber: trimmedDocument,
@@ -887,6 +895,7 @@ export function GraduatesManagementModule() {
 
         {/* Botones de Acción */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {authService.hasPermission(Permissions.GRADUATES_EXPORT) && (
           <button
             onClick={() => setIsExportModalOpen(true)}
             className="inline-flex items-center justify-center gap-2 transition-all"
@@ -912,7 +921,8 @@ export function GraduatesManagementModule() {
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
           </button>
-
+          )}
+          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
           <button
             // onClick={() => {
             //   window.location.href = '/verificar-certificado-graduado';
@@ -943,6 +953,7 @@ export function GraduatesManagementModule() {
             <BadgeCheck className="w-5 h-5" strokeWidth={2} />
             <span>Verificar Certificado</span>
           </button>
+          )}
         </div>
       </motion.div>
 
@@ -1004,7 +1015,7 @@ export function GraduatesManagementModule() {
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -1027,7 +1038,7 @@ export function GraduatesManagementModule() {
               <option value="active">Activos</option>
               <option value="blocked">Bloqueados</option>
               <option value="inactive">Inactivos</option>
-            </select>
+            </select> */}
 
             {/* Filtro Programa */}
             <select
@@ -1182,8 +1193,7 @@ export function GraduatesManagementModule() {
                 <div className="col-span-2">FECHA DE GRADO</div>
                 <div className="col-span-2">CERTIFICADOS</div>
                 <div className="col-span-2">PROGRAMA</div>
-                <div className="col-span-2">ESTADO</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1277,12 +1287,12 @@ export function GraduatesManagementModule() {
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(user.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(user)}
                         className="p-2 rounded-lg transition-all"
@@ -1319,14 +1329,18 @@ export function GraduatesManagementModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
                           <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
                             <BadgeCheck className="w-4 h-4 mr-2" />
                             Verificar Certificado
                           </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1437,7 +1451,7 @@ export function GraduatesManagementModule() {
                           </div>
                         </div>
 
-                        <div>
+                        {/* <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Documentos en Carpeta
                           </p>
@@ -1447,7 +1461,7 @@ export function GraduatesManagementModule() {
                               {user.documentsCount} archivos
                             </p>
                           </div>
-                        </div>
+                        </div> */}
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>

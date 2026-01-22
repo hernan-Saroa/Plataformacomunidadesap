@@ -418,7 +418,7 @@ export default function PublicCertificateValidation({ qrCodeParam }: PublicCerti
                   minute: '2-digit',
                   second: '2-digit'
                 })}</p>
-                <p><strong>Estado:</strong> {isValid ? 'ACTIVO Y VÁLIDO' : 'INVÁLIDO'}</p>
+                <p><strong>Estado:</strong> {isValid ? 'VÁLIDO' : 'INVÁLIDO'}</p>
                 <p className="text-xs text-blue-700 mt-2">
                   🔒 Esta validación ha sido registrada en el sistema ESAP con fines de trazabilidad y seguridad.
                 </p>

@@ -10,6 +10,7 @@ import {
 @Index(['timestamp'])
 @Index(['method'])
 @Index(['module'])
+@Index(['action'])
 @Index(['userId'])
 @Index(['ipAddress'])
 @Index(['statusCode'])
@@ -34,6 +35,9 @@ export class RequestLog {
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   submodule?: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  action?: string;
 
   @Column({ type: 'varchar', length: 10, nullable: true })
   version?: string;

@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { ProcesoCoactivo, DeudorInfo, ObligacionInfo, EstadoProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { ProcesoCoactivoAdjunto } from '../entities/proceso-coactivo-adjunto.entity';
+import { PagoCoactivo } from '../entities/pago-coactivo.entity';
+import { CoactivoHistorial } from '../entities/coactivo-historial.entity';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,6 +23,16 @@ export interface UpdateProcesoCoactivoDto {
     observaciones?: string;
     documentosAdjuntos?: number;
     notificacionesEnviadas?: number;
+    usuario?: string; // Para auditoría
+}
+
+export interface CreatePagoCoactivoDto {
+    valor: number;
+    fechaPago: Date;
+    origen: string;
+    observaciones?: string;
+    soporteUrl?: string;
+    usuario?: string; // Para auditoría
 }
 
 export interface ProcesoCoactivoStats {
@@ -38,6 +50,10 @@ export class ProcesoCoactivoService {
         private readonly procesoCoactivoRepository: Repository<ProcesoCoactivo>,
         @InjectRepository(ProcesoCoactivoAdjunto)
         private readonly adjuntoRepository: Repository<ProcesoCoactivoAdjunto>,
+        @InjectRepository(PagoCoactivo)
+        private readonly pagoRepository: Repository<PagoCoactivo>,
+        @InjectRepository(CoactivoHistorial)
+        private readonly historialRepository: Repository<CoactivoHistorial>,
     ) { }
 
     async findAll(): Promise<ProcesoCoactivo[]> {
@@ -55,10 +71,22 @@ export class ProcesoCoactivoService {
     }
 
     async create(dto: CreateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
-        // Generar radicado automático
-        const count = await this.procesoCoactivoRepository.count();
+        // Generar radicado automático basado en secuencia anual
         const year = new Date().getFullYear();
-        const radicado = `COA-${year}-${String(count + 1).padStart(5, '0')}`;
+        const lastProceso = await this.procesoCoactivoRepository.findOne({
+            where: { radicado: Like(`COA-${year}-%`) },
+            order: { radicado: 'DESC' }
+        });
+
+        let sequence = 1;
+        if (lastProceso && lastProceso.radicado) {
+            const parts = lastProceso.radicado.split('-');
+            if (parts.length === 3) {
+                sequence = parseInt(parts[2], 10) + 1;
+            }
+        }
+
+        const radicado = `COA-${year}-${String(sequence).padStart(5, '0')}`;
 
         const proceso = this.procesoCoactivoRepository.create({
             radicado,
@@ -69,19 +97,50 @@ export class ProcesoCoactivoService {
             observaciones: dto.observaciones,
             ultimaActuacion: new Date(),
             documentosAdjuntos: 0,
-            notificacionesEnviadas: 0
+            notificacionesEnviadas: 0,
+            valorPagado: 0,
+            saldoPendiente: Number(dto.obligacion.valor)
         });
 
-        return this.procesoCoactivoRepository.save(proceso);
+        const savedProceso = await this.procesoCoactivoRepository.save(proceso);
+
+        // Registrar historial de creación
+        await this.registrarHistorial(savedProceso.id, 'CREACION', null, null, null, 'Sistema', 'Proceso creado automáticamente o manualmente');
+
+        return savedProceso;
     }
 
     async update(id: string, dto: UpdateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
         const proceso = await this.findOne(id);
+        const usuario = dto.usuario || 'Sistema';
 
-        if (dto.deudor) proceso.deudor = dto.deudor;
-        if (dto.obligacion) proceso.obligacion = dto.obligacion;
-        if (dto.estado) proceso.estado = dto.estado;
-        if (dto.responsable !== undefined) proceso.responsable = dto.responsable;
+        // Detectar cambios y registrar auditoría
+        if (dto.deudor) {
+            // Simplificación: registrar que cambió el deudor sin detalle profundo JSON
+            await this.registrarHistorial(id, 'ACTUALIZACION', 'deudor', JSON.stringify(proceso.deudor), JSON.stringify(dto.deudor), usuario, 'Actualización de datos del deudor');
+            proceso.deudor = dto.deudor;
+        }
+
+        if (dto.obligacion) {
+            if (dto.obligacion.valor !== proceso.obligacion.valor) {
+                await this.registrarHistorial(id, 'ACTUALIZACION', 'obligacion.valor', proceso.obligacion.valor.toString(), dto.obligacion.valor.toString(), usuario, 'Cambio en valor de obligación');
+                // Recalcular saldo si cambia la obligación
+                const valorPagado = proceso.valorPagado || 0;
+                proceso.saldoPendiente = dto.obligacion.valor - valorPagado;
+            }
+            proceso.obligacion = dto.obligacion;
+        }
+
+        if (dto.estado && dto.estado !== proceso.estado) {
+            await this.registrarHistorial(id, 'CAMBIO_ETAPA', 'estado', proceso.estado, dto.estado, usuario, `Cambio de etapa a ${dto.estado}`);
+            proceso.estado = dto.estado;
+        }
+
+        if (dto.responsable !== undefined && dto.responsable !== proceso.responsable) {
+            await this.registrarHistorial(id, 'ACTUALIZACION', 'responsable', proceso.responsable, dto.responsable, usuario, 'Cambio de responsable');
+            proceso.responsable = dto.responsable;
+        }
+
         if (dto.observaciones !== undefined) proceso.observaciones = dto.observaciones;
         if (dto.documentosAdjuntos !== undefined) proceso.documentosAdjuntos = dto.documentosAdjuntos;
         if (dto.notificacionesEnviadas !== undefined) proceso.notificacionesEnviadas = dto.notificacionesEnviadas;
@@ -100,14 +159,18 @@ export class ProcesoCoactivoService {
         const procesos = await this.procesoCoactivoRepository.find();
 
         const hoy = new Date();
-        let totalMonto = 0;
+        let totalMonto = 0; // Ahora representa saldo pendiente total
+        let totalOriginal = 0; // Monto original de todas las obligaciones
         let activos = 0;
         let criticos = 0;
         const porEstado: Record<string, number> = {};
 
         for (const proceso of procesos) {
-            // Sumar monto
-            totalMonto += proceso.obligacion?.valor || 0;
+            // Sumar monto original
+            totalOriginal += proceso.obligacion?.valor || 0;
+
+            // Sumar saldo pendiente (si no hay saldoPendiente, usar el valor original)
+            totalMonto += proceso.saldoPendiente ?? proceso.obligacion?.valor ?? 0;
 
             // Contar activos (no finalizados)
             if (proceso.estado !== 'FINALIZADO') {
@@ -134,12 +197,126 @@ export class ProcesoCoactivoService {
             total: procesos.length,
             activos,
             criticos,
-            totalMonto,
+            totalMonto, // Ahora es saldo pendiente
             porEstado
         };
     }
 
-    // ============ GESTIÓN DE DOCUMENTOS ============
+    // ============ GESTIÓN DE PAGOS Y AUDITORÍA ============
+
+    async registrarPago(procesoId: string, dto: CreatePagoCoactivoDto): Promise<PagoCoactivo> {
+        const proceso = await this.findOne(procesoId);
+
+        // Crear registro de pago
+        const pago = this.pagoRepository.create({
+            proceso,
+            valor: dto.valor,
+            fechaPago: dto.fechaPago,
+            origen: dto.origen,
+            observaciones: dto.observaciones,
+            soporteUrl: dto.soporteUrl
+        });
+        const savedPago = await this.pagoRepository.save(pago);
+
+        // Actualizar acumulados en proceso
+        const totalPagado = Number(proceso.valorPagado || 0) + Number(dto.valor);
+        const nuevoSaldo = Number(proceso.obligacion.valor) - totalPagado;
+
+        proceso.valorPagado = totalPagado;
+        proceso.saldoPendiente = nuevoSaldo;
+        proceso.ultimaActuacion = new Date();
+
+        await this.procesoCoactivoRepository.save(proceso);
+
+        // Registrar en historial
+        await this.registrarHistorial(
+            procesoId,
+            'PAGO',
+            'valorPagado',
+            (totalPagado - Number(dto.valor)).toString(),
+            totalPagado.toString(),
+            dto.usuario || 'Sistema',
+            `Pago registrado por $${dto.valor}`
+        );
+
+        return savedPago;
+    }
+
+    async getPagos(procesoId: string): Promise<PagoCoactivo[]> {
+        return this.pagoRepository.find({
+            where: { proceso: { id: procesoId } },
+            order: { fechaPago: 'DESC' }
+        });
+    }
+
+    async deletePago(pagoId: string): Promise<void> {
+        // Buscar el pago con su proceso
+        const pago = await this.pagoRepository.findOne({
+            where: { id: pagoId },
+            relations: ['proceso']
+        });
+
+        if (!pago) {
+            throw new NotFoundException(`Pago ${pagoId} no encontrado`);
+        }
+
+        const proceso = await this.findOne(pago.proceso.id);
+        const valorPago = Number(pago.valor);
+
+        // Recalcular balance
+        const nuevoValorPagado = Number(proceso.valorPagado || 0) - valorPago;
+        const nuevoSaldo = Number(proceso.obligacion.valor) - nuevoValorPagado;
+
+        proceso.valorPagado = Math.max(0, nuevoValorPagado);
+        proceso.saldoPendiente = nuevoSaldo;
+        proceso.ultimaActuacion = new Date();
+
+        // Eliminar el pago
+        await this.pagoRepository.delete(pagoId);
+
+        // Guardar proceso actualizado
+        await this.procesoCoactivoRepository.save(proceso);
+
+        // Registrar en historial
+        await this.registrarHistorial(
+            proceso.id,
+            'ELIMINACION_PAGO',
+            'valorPagado',
+            (nuevoValorPagado + valorPago).toString(),
+            nuevoValorPagado.toString(),
+            'Sistema',
+            `Pago eliminado por $${valorPago}. Nuevo saldo pendiente: $${nuevoSaldo}`
+        );
+    }
+
+    async getHistorial(procesoId: string): Promise<CoactivoHistorial[]> {
+        return this.historialRepository.find({
+            where: { proceso: { id: procesoId } },
+            order: { fechaEvento: 'DESC' }
+        });
+    }
+
+    private async registrarHistorial(
+        procesoId: string,
+        tipoEvento: string,
+        campoModificado: string | null,
+        valorAnterior: string | null,
+        valorNuevo: string | null,
+        usuario: string,
+        detalles: string
+    ): Promise<void> {
+        const historial = this.historialRepository.create({
+            procesoId: procesoId,
+            tipoEvento,
+            campoModificado,
+            valorAnterior,
+            valorNuevo,
+            usuario,
+            detalles,
+            fechaEvento: new Date()
+        } as any);
+        await this.historialRepository.save(historial);
+    }
 
     async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO'): Promise<ProcesoCoactivoAdjunto> {
         const proceso = await this.findOne(procesoId);
@@ -282,5 +459,14 @@ export class ProcesoCoactivoService {
 
         archive.finalize();
         return archive;
+    }
+
+    // ============ SERVIR ARCHIVOS DE PAGOS ============
+    async getSoportePagoStream(filename: string): Promise<fs.ReadStream> {
+        const filePath = path.join(process.cwd(), 'uploads', filename);
+        if (!fs.existsSync(filePath)) {
+            throw new NotFoundException('Archivo de soporte no encontrado');
+        }
+        return fs.createReadStream(filePath);
     }
 }

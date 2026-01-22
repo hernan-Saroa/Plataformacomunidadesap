@@ -13,6 +13,8 @@ import {
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
@@ -144,12 +146,13 @@ export function ModuloConfiguracion() {
       } else {
         // Fallback defaults if empty
         setEtapas([
-          { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
-          { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
-          { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
-          { id: '4', nombre: 'INVESTIGACIÓN', dias: 60, orden: 4 },
-          { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
-          { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
+          { id: '1', nombre: 'RECEPCION', dias: 3, orden: 1 },
+          { id: '2', nombre: 'VALORACION', dias: 10, orden: 2 },
+          { id: '3', nombre: 'INDAGACION_PREVIA', dias: 40, orden: 3 },
+          { id: '4', nombre: 'INVESTIGACION', dias: 60, orden: 4 },
+          { id: '5', nombre: 'EVALUACION', dias: 10, orden: 5 },
+          { id: '6', nombre: 'JUZGAMIENTO', dias: 50, orden: 6 },
+          { id: '7', nombre: 'SEGUNDA_INSTANCIA', dias: 10, orden: 7 }
         ]);
       }
 
@@ -220,9 +223,67 @@ export function ModuloConfiguracion() {
     }
   };
 
-  const handleRestablecer = () => {
-    if (confirm('¿Está seguro de restablecer la configuración a valores por defecto?')) {
-      toast.info('Configuración restablecida');
+  const handleRestablecer = async () => {
+    if (!confirm('¿Está seguro de restablecer la configuración a valores por defecto?')) return;
+
+    try {
+      // 1. Restablecer capacidades de todos los cargos a 10
+      const cargosRestablecidos = cargos.map(c => ({ ...c, capacidad: 10 }));
+      setCargos(cargosRestablecidos);
+
+      // 2. Restablecer notificaciones a valores por defecto
+      const notificacionesDefault = {
+        vencimiento7dias: true,
+        vencimiento3dias: true,
+        vencimiento1dia: true,
+        procesoVencido: true,
+        asignacionProceso: true,
+        cambioEtapa: true,
+        aprobacionRequerida: false,
+        resumenDiario: true,
+        resumenSemanal: true,
+        emailMasterSwitch: true // Notificaciones por email activadas
+      };
+      setNotificaciones(notificacionesDefault);
+
+      // 3. Restablecer parámetros de alerta
+      const alertasDefault = {
+        porcentajeRiesgo: 85,
+        porcentajeCritico: 95,
+        capacidadAlerta: 90,
+        diasAnticipacion: 7
+      };
+      setAlertas(alertasDefault);
+
+      // 4. Preparar payload con roleCapacities restablecidas
+      const roleCapacities: Record<string, number> = {};
+      cargosRestablecidos.forEach(c => {
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = 10; // Todos a 10
+      });
+
+      // 5. Guardar en backend
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: notificacionesDefault,
+        alertSettings: alertasDefault,
+        securitySettings: {
+          auditEnabled: true,       // Registro de auditoría
+          digitalSignature: true,   // Firma digital requerida
+          backupEnabled: true,      // Backup automático
+          emailNotifications: true  // Notificaciones por email
+        }
+      };
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      toast.success('Configuración restablecida', {
+        description: 'Todos los valores han sido restaurados a sus valores por defecto'
+      });
+
+    } catch (error) {
+      console.error('Error restableciendo configuración:', error);
+      toast.error('Error al restablecer la configuración');
     }
   };
 
@@ -428,6 +489,7 @@ export function ModuloConfiguracion() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={handleRestablecer}
             className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
@@ -435,6 +497,8 @@ export function ModuloConfiguracion() {
           >
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
           <button
             onClick={handleGuardar}
             className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
@@ -443,6 +507,7 @@ export function ModuloConfiguracion() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 
@@ -469,6 +534,7 @@ export function ModuloConfiguracion() {
                 <span className="text-sm font-bold uppercase mb-2 block" style={{ color: '#4B5563' }}>
                   {editandoEtapa === etapa.id ? (
                     <input
+                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
                       type="text"
                       value={nombreEditando}
                       onChange={(e) => setNombreEditando(e.target.value)}
@@ -483,6 +549,7 @@ export function ModuloConfiguracion() {
                 <div className="flex items-center gap-3">
                   {editandoEtapa === etapa.id ? (
                     <input
+                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
                       type="number"
                       min="1"
                       max="365"
@@ -521,6 +588,7 @@ export function ModuloConfiguracion() {
                   </button>
                 ) : (
                   <>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT) && (
                     <button
                       onClick={() => handleEditarEtapa(etapa.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -529,6 +597,8 @@ export function ModuloConfiguracion() {
                       <Edit2 className="w-4 h-4" />
                       Editar
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_DELETE) && (
                     <button
                       onClick={() => handleEliminarEtapa(etapa.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -537,12 +607,14 @@ export function ModuloConfiguracion() {
                       <Trash2 className="w-4 h-4" />
                       Eliminar
                     </button>
+                    )}
                   </>
                 )}
               </div>
             </div>
           ))}
           <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE) && (
             <button
               onClick={handleAgregarEtapa}
               className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -551,6 +623,7 @@ export function ModuloConfiguracion() {
               <Plus className="w-4 h-4" />
               Agregar Etapa
             </button>
+            )}
           </div>
         </div>
 
@@ -597,6 +670,7 @@ export function ModuloConfiguracion() {
               </div>
               <div className="flex items-center gap-3">
                 <input
+                  disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT)}
                   type="number"
                   min="1"
                   max="30"
@@ -621,6 +695,7 @@ export function ModuloConfiguracion() {
                   </button>
                 ) : (
                   <>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT) && (
                     <button
                       onClick={() => handleEditarCargo(cargo.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -629,6 +704,8 @@ export function ModuloConfiguracion() {
                       <Edit2 className="w-4 h-4" />
                       Editar
                     </button>
+                    )}
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE) && (
                     <button
                       onClick={() => handleEliminarCargo(cargo.id)}
                       className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -637,12 +714,14 @@ export function ModuloConfiguracion() {
                       <Trash2 className="w-4 h-4" />
                       Eliminar
                     </button>
+                    )}
                   </>
                 )}
               </div>
             </div>
           ))}
           <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE) && (
             <button
               onClick={() => setMostrarModalAgregarCargo(true)}
               className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
@@ -651,6 +730,7 @@ export function ModuloConfiguracion() {
               <Plus className="w-4 h-4" />
               Agregar Cargo
             </button>
+            )}
           </div>
         </div>
 
@@ -1109,6 +1189,7 @@ export function ModuloConfiguracion() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={handleRestablecer}
             className="px-6 py-2.5 rounded-xl font-semibold"
@@ -1116,6 +1197,8 @@ export function ModuloConfiguracion() {
           >
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
           <button
             onClick={handleGuardar}
             className="px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2"
@@ -1124,6 +1207,7 @@ export function ModuloConfiguracion() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -1232,7 +1316,7 @@ function ConfiguracionFirmaPersonal() {
               )}
             </div>
           </div>
-
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD) && (
           <div className="flex flex-col items-end gap-2">
             <input
               type="file"
@@ -1260,6 +1344,7 @@ function ConfiguracionFirmaPersonal() {
               Formato admitido: .PDF (Max 5MB)
             </p>
           </div>
+          )}
         </div>
 
         {firmaUrl && (

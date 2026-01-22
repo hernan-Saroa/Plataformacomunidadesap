@@ -15,6 +15,8 @@ export interface GraduadoData {
   id: string;
   personId: string;
   fullName: string;
+  firstName?: string;
+  lastName?: string;
   idNumber: string;
   email: string;
   phone: string;
@@ -45,6 +47,9 @@ export interface SolicitudCertificadoGraduado {
   idNumber: string;
   idIssueDate?: string;
   fullName: string;
+  graduateLastName?: string;
+  graduateEmail?: string;
+  graduatePhone?: string;
   programName: string;
   graduationDate: string;
   requesterName: string;
@@ -104,6 +109,8 @@ export interface UpdateCertificadoPayload extends Partial<CertificadoGraduado> {
   requesterName?: string;
   requesterEmail?: string;
   requesterPhone?: string;
+  graduateEmail?: string;
+  graduatePhone?: string;
 }
 
 
