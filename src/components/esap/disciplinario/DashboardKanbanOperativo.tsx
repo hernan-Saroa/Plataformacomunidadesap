@@ -41,6 +41,8 @@ import { SistemaComentarios } from './SistemaComentarios';
 import { ModalCambiarEtapaProcesoDisciplinario } from './ModalCambiarEtapaProcesoDisciplinario';
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { useConfiguration } from '../../../hooks/useConfiguration';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ==================== TIPOS ====================
 interface Persona {
@@ -604,7 +606,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Acciones */}
           <div className="space-y-1.5 mt-auto pt-2">
-            {noticia.estado === 'pendiente' && (
+            {noticia.estado === 'pendiente' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR) && (
               <Button
                 onClick={() => onConvertir(noticia)}
                 size="sm"
@@ -616,6 +618,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               </Button>
             )}
             <div className={`grid grid-cols-3 gap-1`}>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER) && (
               <Button
                 onClick={() => onDevolver(noticia)}
                 size="sm"
@@ -626,6 +629,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <ArrowLeft className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Devolver</span>}
               </Button>
+              )}
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_REDIMIR) && (
               <Button
                 onClick={() => onDevolverCompetencia(noticia)}
                 size="sm"
@@ -636,6 +641,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Compet.</span>}
               </Button>
+              )}
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
               <Button
                 onClick={() => onArchivar(noticia)}
                 size="sm"
@@ -646,6 +653,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Archivar</span>}
               </Button>
+              )}
             </div>
           </div>
         </div>
@@ -868,6 +876,7 @@ function TarjetaProceso({
           {/* Acciones Principales - Siempre Visibles */}
           <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
             {/* Acción Principal: Ver Expediente */}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EXPIDIENTE) && (
             <Button
               onClick={(e) => {
                 e.stopPropagation();
@@ -880,7 +889,7 @@ function TarjetaProceso({
               <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
               <span className="truncate">Expediente</span>
             </Button>
-
+            )}
             {/* Gestión Documental - Grid compacto - SIEMPRE VISIBLE */}
             <div className="space-y-1">
               {/* Primera fila: Autos y Evidencias */}
@@ -3656,7 +3665,7 @@ export function DashboardKanbanOperativo({
                 </button>
               </div>
             )}
-
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
             <Button
               onClick={() => setModalActivo('crear-noticia')}
               size="sm"
@@ -3665,6 +3674,7 @@ export function DashboardKanbanOperativo({
               <Plus className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} mr-1.5`} />
               {isMobile ? 'Nueva' : 'Nueva Noticia'}
             </Button>
+            )}
           </div>
         </div>
 

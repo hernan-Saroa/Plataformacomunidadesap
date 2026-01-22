@@ -29,6 +29,8 @@ import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios } from './ModalesGestionDocumental';
 import { EditorDocumentos } from './EditorDocumentos';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Modal de Selección de Tipo de Documento
 interface ModalSeleccionProps {
@@ -2326,6 +2328,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
               <option value="acta">Actas</option>
               <option value="otro">Otros</option>
             </select>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
             <button
               onClick={() => setShowModalSeleccion(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
@@ -2334,6 +2337,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
               <Upload className="w-4 h-4" />
               Cargar Documento
             </button>
+            )}
           </div>
         )}
       </div>

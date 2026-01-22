@@ -11,6 +11,8 @@ import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/enviro
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { legalService } from '../../../services/api/legal.service';
 import { OnlyOfficeEditor } from './OnlyOfficeEditor';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
 const isUuidLike = (value: string) =>
@@ -886,6 +888,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         >
                           <Download className="w-3.5 h-3.5" />
                         </Button>
+                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_EDIT) && (
                         <Button
                           type="button"
                           size="sm"
@@ -899,6 +902,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -935,6 +939,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
                         )}
+                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_DELETE) && (
                         <Button
                           type="button"
                           size="sm"
@@ -948,6 +953,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -1104,7 +1110,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
-          {vistaActual === 'lista' && (
+          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
             <Button
               onClick={() => setVistaActual('crear')}
               style={{ background: '#8B5CF6', color: '#FFFFFF' }}
@@ -1675,7 +1681,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       </div>
                     </div>
                     <div className="flex gap-1 flex-col sm:flex-row">
-                      {evidencia.estado === 'En Revisión' && (
+                      {evidencia.estado === 'En Revisión' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR) && (
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700 text-white"
@@ -1703,7 +1709,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
-
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE) && (
                       <Button
                         type="button"
                         size="sm"
@@ -1717,6 +1723,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -1773,6 +1780,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 />
               </div>
             </div>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
             <div>
               <input
                 type="file"
@@ -1800,6 +1808,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                 </Card>
               </label>
             </div>
+            )}
           </div>
         </div>
 
@@ -1807,6 +1816,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
           <Button
             onClick={handleSubirEvidencia}
             style={{ background: '#F59E0B', color: '#FFFFFF' }}
@@ -1815,6 +1825,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
             <Upload className="w-4 h-4 mr-2" />
             {cargando ? 'Cargando...' : 'Subir Evidencia'}
           </Button>
+          )}
         </div>
       </motion.div>
 
@@ -2143,6 +2154,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                       >
                         <Download className="w-3.5 h-3.5" />
                       </Button>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_DELETE) && (
                       <Button
                         type="button"
                         size="sm"
@@ -2156,6 +2168,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -2187,6 +2200,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                 />
               </div>
             </div>
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
             <div>
               <input
                 type="file"
@@ -2218,6 +2232,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                 </Card>
               </label>
             </div>
+            )}
           </div>
         </div>
 
@@ -2225,6 +2240,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
           <Button
             onClick={handleCrearOficio}
             style={{ background: '#06B6D4', color: '#FFFFFF' }}
@@ -2233,6 +2249,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
             <Upload className="w-4 h-4 mr-2" />
             {cargando ? 'Cargando...' : 'Crear Oficio'}
           </Button>
+          )}
         </div>
       </motion.div>
 
@@ -2589,6 +2606,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
 
   return (
     <motion.div
+      style={{zIndex: 999}}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -2628,6 +2646,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 120px)' }}>
 
           {/* Create Buttons */}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_CREATE) && (
           <div className="mb-8">
             <p className="text-sm font-bold text-gray-700 mb-3">Crear Nueva Acta:</p>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -2655,6 +2674,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
               ))}
             </div>
           </div>
+          )}
 
           <div className="space-y-4">
             <h3 className="font-bold text-lg text-gray-800">Actas Registradas</h3>
@@ -2727,6 +2747,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                             >
                               <Download className="w-4 h-4" />
                             </Button>
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_DELETE) && (
                             <Button
                               size="sm" variant="outline"
                               className="text-red-600 hover:bg-red-50 border-red-200"
@@ -2735,6 +2756,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
+                            )}
                           </div>
                           {acta.estado !== 'Firmada' && (
                             <Button
