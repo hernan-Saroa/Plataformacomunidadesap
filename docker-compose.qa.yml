@@ -14,11 +14,28 @@ services:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
         VITE_API_URL: "http://135.237.81.133:3000"
+        VITE_ONLYOFFICE_URL: "http://135.237.81.133:9000"
     container_name: superapp-frontend-qa
     ports:
       - "80:80"
     depends_on:
       - api-gateway
+      - onlyoffice
+    networks:
+      - superapp-net-qa
+    restart: unless-stopped
+
+  # ============ ONLYOFFICE DOCUMENT SERVER ============
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-server-qa
+    ports:
+      - "9000:80"
+    environment:
+      - JWT_ENABLED=false
+    volumes:
+      - onlyoffice-data-qa:/var/www/onlyoffice/Data
+      - onlyoffice-logs-qa:/var/log/onlyoffice
     networks:
       - superapp-net-qa
     restart: unless-stopped
@@ -461,3 +478,7 @@ volumes:
     name: esap-pgdata-qa
   redisdata-qa:
     name: esap-redisdata-qa
+  onlyoffice-data-qa:
+    name: esap-onlyoffice-data-qa
+  onlyoffice-logs-qa:
+    name: esap-onlyoffice-logs-qa

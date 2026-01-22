@@ -2588,8 +2588,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <div className="text-xs text-amber-800">
                     <p className="font-semibold mb-2">¿Qué sucede cuando alguien escanea este QR para validar?</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado está ACTIVO y es válido</li>
-                      <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li>
+                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado es válido</li>
+                      {/* <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li> */}
                       <li><strong>Datos del Graduado:</strong> Nombre completo, documento, programa y fecha de graduación</li>
                       <li><strong>Datos del Certificado:</strong> Número único, fecha de emisión y solicitante</li>
                       <li><strong>Registro de Validación:</strong> El escaneo queda registrado con IP, ubicación, dispositivo y fecha/hora</li>

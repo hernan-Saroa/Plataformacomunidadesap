@@ -691,7 +691,7 @@ export function UsersPersonsModulePremium() {
         last_name: userData.lastName,
         identification_number: userData.documentNumber || userData.document || userData.identification_number,
         identification_type: userData.documentType || userData.identificationType || 'CC',
-        email: userData.email,
+        email: userData.email.toLowerCase(),
         phone: userData.phone || '',
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
