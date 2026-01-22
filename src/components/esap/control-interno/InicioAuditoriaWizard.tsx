@@ -152,28 +152,161 @@ function generarActividadesDinamicas(nombreFase: string, duracionDias: number, a
   
   // Si no hay actividades en BD, usar mensaje informativo
   if (actividades.length === 0) {
-    return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
-□ (No se han configurado actividades para esta fase en el sistema)`;
+    return `FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)
+- (No se han configurado actividades para esta fase en el sistema)`;
   }
   
   // Generar lista de actividades ordenadas por orden
   const actividadesOrdenadas = [...actividades].sort((a, b) => (a.orden || 0) - (b.orden || 0));
   const listaActividades = actividadesOrdenadas
-    .map(act => `□ ${act.nombre || act.titulo}${act.esObligatoria ? ' (*)' : ''}`)
+    .map(act => `- ${act.nombre || act.titulo}${act.esObligatoria ? ' (*)' : ''}`)
     .join('\n');
   
-  return `**FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)**
+  return `FASE ${numeroFase}: ${nombreFase.toUpperCase()} (${duracionDias} días)
 ${listaActividades}
 ${actividades.some(a => a.esObligatoria) ? '\n(*) Actividades obligatorias' : ''}`;
 }
 
 // ============ FUNCIÓN HELPER PARA DESCARGAR PDF ============
 
+// Contenido original de la carta de representante para comparación
+const CARTA_REPRESENTANTE_ORIGINAL = `Fecha:\t\t(día – mes – año)
+Para:\t\tnombre del jefe de la Oficina de Control Interno
+Cargo:            Jefe de la Oficina de Control Interno
+
+
+Asunto: \tCarta de representación de la auditoría interna basada en riesgos al (se menciona unidad auditable)
+
+
+Cordial saludo
+
+Mediante la presente carta de representación me permito comunicar que, para el desarrollo de la auditoria interna basada en riesgos al (se menciona unidad auditable), que será adelantada por parte de la Oficina de Control Interno - OCI, declaramos lo siguiente:
+
+1.\tSomos responsables de la oportuna preparación, presentación y consistencia de la información que será entregada en el marco de la auditoría a la OCI para su revisión.
+
+2.\tSe hará entrega oficialmente de toda la información relacionada con la gestión del proceso a evaluar, atendiendo los requerimientos hechos por la Oficina de Control Interno y en los plazos que así sean establecidos.
+
+3.\tLa información a suministrar será válida, integral (suficiente y pertinente) y completa para los propósitos del proceso auditor. 
+
+
+
+Cordialmente,
+
+
+
+(firma)
+______________________________________
+(nombre del responsable de la unidad a auditar)
+Cargo del responsable de la unidad a auditar
+
+Elaboró:
+`;
+
+/**
+ * Dibuja una tabla en el PDF
+ */
+function dibujarTabla(doc: any, filas: string[][], x: number, y: number, maxWidth: number) {
+  if (filas.length === 0) return 0;
+  
+  const numColumnas = Math.max(...filas.map(f => f.length));
+  const anchoColumna = maxWidth / numColumnas;
+  
+  doc.setLineWidth(0.2);
+  doc.setDrawColor(0, 0, 0);
+  
+  let yActual = y;
+  
+  filas.forEach((fila, indexFila) => {
+    const esEncabezado = indexFila === 0;
+    
+    // Calcular la altura necesaria para esta fila basada en el contenido
+    let alturaMaxima = 6; // Altura mínima reducida
+    
+    fila.forEach((celda, indexColumna) => {
+      doc.setFontSize(9);
+      const textoProcesado = doc.splitTextToSize(celda.trim(), anchoColumna - 3);
+      const alturaTexto = textoProcesado.length * 4 + 2; // Reducido el espaciado entre líneas
+      if (alturaTexto > alturaMaxima) {
+        alturaMaxima = alturaTexto;
+      }
+    });
+    
+    // Dibujar cada celda de la fila
+    fila.forEach((celda, indexColumna) => {
+      const xCelda = x + (indexColumna * anchoColumna);
+      
+      // Fondo para encabezados
+      if (esEncabezado) {
+        doc.setFillColor(240, 240, 240);
+        doc.rect(xCelda, yActual, anchoColumna, alturaMaxima, 'F');
+      }
+      
+      // Dibujar borde de celda
+      doc.rect(xCelda, yActual, anchoColumna, alturaMaxima);
+      
+      // Texto
+      doc.setFontSize(9);
+      doc.setFont('helvetica', esEncabezado ? 'bold' : 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      const textoProcesado = doc.splitTextToSize(celda.trim(), anchoColumna - 3);
+      const yTexto = yActual + 3; // Reducido el padding superior
+      
+      textoProcesado.forEach((linea: string, idx: number) => {
+        doc.text(linea, xCelda + 1.5, yTexto + (idx * 4)); // Reducido padding y espaciado entre líneas
+      });
+    });
+    
+    yActual += alturaMaxima;
+  });
+  
+  // Retornar la altura total de la tabla
+  return yActual - y;
+}
+
 /**
  * Genera y descarga un PDF a partir del contenido de un documento
  */
 function descargarDocumentoPDF(documento: DocumentoGenerado): void {
   try {
+    // Si es la Carta de Representante Y NO ha sido editada, descargar el PDF específico
+    if (documento.tipo === 'carta-representante' && documento.contenido === CARTA_REPRESENTANTE_ORIGINAL) {
+      toast.loading('Descargando PDF original...', { id: 'descargar-pdf' });
+      
+      const link = document.createElement('a');
+      link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02 (2).pdf';
+      link.download = 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('PDF descargado exitosamente', { 
+        id: 'descargar-pdf',
+        description: 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf'
+      });
+      return;
+    }
+    
+    // Si es la Carta de Compromiso Y NO ha sido editada, descargar el PDF específico
+    const CARTA_COMPROMISO_ORIGINAL_START = 'Fecha:\t\t(día – mes – año)\nPara:\t\tNombre del responsable de la unidad auditada\nCargo:\n\nAsunto:';
+    if (documento.tipo === 'carta-compromiso' && documento.contenido.startsWith(CARTA_COMPROMISO_ORIGINAL_START)) {
+      toast.loading('Descargando PDF...', { id: 'descargar-pdf' });
+      
+      const link = document.createElement('a');
+      link.href = '/EM-FO-009FormatocartadecompromisoOCI (2).pdf';
+      link.download = 'EM-FO-009FormatocartadecompromisoOCI.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('PDF descargado exitosamente', { 
+        id: 'descargar-pdf',
+        description: 'EM-FO-009FormatocartadecompromisoOCI.pdf'
+      });
+      return;
+    }
+    
+    // Para otros documentos o si fue editado, generar PDF dinámicamente
     toast.loading('Generando PDF...', { id: 'generar-pdf' });
     
     const doc = new jsPDF({
@@ -184,95 +317,399 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20;
-    const maxWidth = pageWidth - 2 * margin;
-    let yPos = margin;
-
-    // Encabezado con color
-    doc.setFillColor(59, 130, 246); // Azul #3B82F6
-    doc.rect(0, 0, pageWidth, 40, 'F');
+    let yPos = 20;
     
-    // Título del documento en el encabezado
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    const tituloLines = doc.splitTextToSize(documento.titulo, maxWidth);
-    doc.text(tituloLines, pageWidth / 2, 20, { align: 'center' });
-    
-    // Información adicional en el encabezado
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const fechaGeneracion = documento.generadoEn.toLocaleDateString('es-CO', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    doc.text(`Generado el: ${fechaGeneracion}`, pageWidth / 2, 32, { align: 'center' });
-
-    // Contenido del documento
-    yPos = 50;
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-
-    // Procesar el contenido línea por línea
-    const lineas = documento.contenido.split('\n');
-    
-    for (let i = 0; i < lineas.length; i++) {
-      let linea = lineas[i];
+    // Si es Carta de Representante, Carta de Compromiso, Oficio de Anuncio o Programa Individual, usar formato oficial
+    if (documento.tipo === 'carta-representante' || documento.tipo === 'carta-compromiso' || 
+        documento.tipo === 'oficio' || documento.tipo === 'programa-individual') {
+      const margin = 15;
+      const maxWidth = pageWidth - 2 * margin;
+      const headerHeight = 25;
+      const headerY = 15;
+      const footerHeight = 20;
+      const contentStartY = headerY + headerHeight + 7;
+      const contentEndY = pageHeight - footerHeight;
       
-      // Limpiar caracteres especiales de formato markdown y tablas
-      linea = linea
-        .replace(/\*\*/g, '') // Eliminar **
-        .replace(/═+/g, '') // Eliminar líneas de tabla
-        .replace(/╔|╗|╠|╣|╚|╝|║/g, '') // Eliminar bordes de tabla
-        .replace(/^[-*•]\s*/, '') // Eliminar viñetas
-        .trim();
-      
-      // Si la línea está vacía, agregar espacio
-      if (linea === '') {
-        yPos += 5;
-        continue;
-      }
-
-      // Detectar títulos (líneas que son cortas y están en mayúsculas o tienen formato especial)
-      const esTitulo = (linea.length < 60 && /^[A-ZÁÉÍÓÚÑ0-9]/.test(linea) && !linea.includes(':')) ||
-                      /^\d+\.\s+[A-Z]/.test(linea) || // Números seguidos de mayúscula
-                      linea === linea.toUpperCase() && linea.length < 80;
-
-      if (esTitulo && linea.length > 0) {
-        // Si hay poco espacio, crear nueva página
-        if (yPos > pageHeight - 30) {
-          doc.addPage();
-          yPos = margin;
+      // Función para dibujar el encabezado
+      const dibujarEncabezado = () => {
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        
+        const logoWidth = 35;
+        const logoX = margin;
+        const tituloWidth = 100;
+        const tituloX = logoX + logoWidth;
+        const infoWidth = 45;
+        const infoX = tituloX + tituloWidth;
+        const rowHeight = headerHeight / 3;
+        
+        // Dibujar celdas del encabezado
+        doc.rect(logoX, headerY, logoWidth, headerHeight);
+        doc.rect(tituloX, headerY, tituloWidth, headerHeight);
+        doc.rect(infoX, headerY, infoWidth, rowHeight);
+        doc.rect(infoX, headerY + rowHeight, infoWidth, rowHeight);
+        doc.rect(infoX, headerY + (rowHeight * 2), infoWidth, rowHeight);
+        
+        // Logo
+        try {
+          const logoImg = new Image();
+          logoImg.src = '/Logo-Esap-2.jpg';
+          doc.addImage(logoImg, 'JPEG', logoX + 5, headerY + 3, logoWidth - 10, headerHeight - 6);
+        } catch (error) {
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.text('LOGO', logoX + (logoWidth / 2), headerY + 12, { align: 'center' });
+          doc.text('ESAP', logoX + (logoWidth / 2), headerY + 17, { align: 'center' });
         }
         
-        // Formatear título
-        doc.setFontSize(12);
+        // Título
+        doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        const tituloLines = doc.splitTextToSize(linea, maxWidth);
-        doc.text(tituloLines, margin, yPos);
-        yPos += tituloLines.length * 7 + 3;
+        doc.text('FORMATO', tituloX + (tituloWidth / 2), headerY + 10, { align: 'center' });
         doc.setFontSize(10);
+        let tituloTexto = '';
+        let codigo = '';
+        
+        if (documento.tipo === 'carta-representante') {
+          tituloTexto = 'CARTA DE REPRESENTACIÓN OCI';
+          codigo = 'EM-FO-010';
+        } else if (documento.tipo === 'carta-compromiso') {
+          tituloTexto = 'CARTA DE COMPROMISO OCI';
+          codigo = 'EM-FO-009';
+        } else if (documento.tipo === 'oficio') {
+          tituloTexto = 'OFICIO DE ANUNCIO';
+          codigo = 'EM-FO-XXX'; // Ajustar según corresponda
+        } else if (documento.tipo === 'programa-individual') {
+          tituloTexto = 'PROGRAMA INDIVIDUAL DE AUDITORÍA';
+          codigo = 'EM-FO-XXX'; // Ajustar según corresponda
+        }
+        
+        doc.text(tituloTexto, tituloX + (tituloWidth / 2), headerY + 16, { align: 'center' });
+        
+        // Info derecha
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text('CÓDIGO: ', infoX + 2, headerY + 5);
         doc.setFont('helvetica', 'normal');
-      } else {
-        // Texto normal
-        if (yPos > pageHeight - 20) {
-          doc.addPage();
-          yPos = margin;
+        doc.text(codigo, infoX + 18, headerY + 5);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('VERSIÓN: ', infoX + 2, headerY + rowHeight + 5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('02', infoX + 20, headerY + rowHeight + 5);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text('FECHA: ', infoX + 2, headerY + (rowHeight * 2) + 5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('24/02/2025', infoX + 16, headerY + (rowHeight * 2) + 5);
+      };
+      
+      // Función para dibujar pie de página
+      const dibujarPiePagina = (numeroPagina: number) => {
+        const yPie = pageHeight - 15;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        doc.text('Sede Nacional - Bogotá - Calle 44 No. 53 - 37 CAN', margin, yPie);
+        doc.text('PBX: (+57 601) 7956110', margin, yPie + 4);
+        doc.text('Correo Electrónico: ventanillaunica@esap.edu.co', margin, yPie + 8);
+        
+        // Número de página a la derecha
+        doc.text(`Página ${numeroPagina}`, pageWidth - margin - 20, yPie + 8);
+      };
+      
+      // Dibujar encabezado y pie de la primera página
+      dibujarEncabezado();
+      dibujarPiePagina(1);
+      
+      yPos = contentStartY;
+      
+      // Proceso info
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Proceso: ', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Evaluación Control y Mejora', margin + 18, yPos);
+      
+      yPos += 5;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Documento de referencia: ', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      const refText = 'Procedimiento de Auditorías internas basadas en riesgos EM-PT-004';
+      const refLines = doc.splitTextToSize(refText, maxWidth - 48);
+      doc.text(refLines, margin + 48, yPos);
+      yPos += refLines.length * 4 + 8;
+      
+      // Contador de páginas
+      let numeroPagina = 1;
+      
+      // Función para agregar nueva página con encabezado y pie
+      const agregarNuevaPagina = () => {
+        doc.addPage();
+        numeroPagina++;
+        dibujarEncabezado();
+        dibujarPiePagina(numeroPagina);
+        yPos = contentStartY;
+      };
+      
+      // Función para dibujar tabla con manejo de saltos de página
+      const dibujarTablaConPaginacion = (filas: string[][]) => {
+        if (filas.length === 0) return;
+        
+        const encabezado = filas[0];
+        let filasProcesadas = 0;
+        
+        while (filasProcesadas < filas.length) {
+          const espacioDisponible = contentEndY - yPos;
+          
+          // Calcular cuántas filas caben en el espacio disponible
+          let filasPorDibujar = [encabezado];
+          let alturaAcumulada = 0;
+          
+          // Empezar desde la siguiente fila después de las ya procesadas, pero saltando el encabezado
+          const inicioFilas = filasProcesadas === 0 ? 1 : filasProcesadas;
+          
+          for (let i = inicioFilas; i < filas.length; i++) {
+            const fila = filas[i];
+            if (!fila) break;
+            
+            // Estimar altura de esta fila
+            let alturaFila = 6;
+            fila.forEach((celda) => {
+              const textoProcesado = doc.splitTextToSize(celda.trim(), (maxWidth / fila.length) - 3);
+              const alturaTexto = textoProcesado.length * 4 + 2;
+              if (alturaTexto > alturaFila) {
+                alturaFila = alturaTexto;
+              }
+            });
+            
+            if (alturaAcumulada + alturaFila > espacioDisponible - 10) {
+              // No cabe más, dibujar lo que tenemos
+              break;
+            }
+            
+            filasPorDibujar.push(fila);
+            alturaAcumulada += alturaFila;
+            filasProcesadas++;
+          }
+          
+          // Dibujar las filas que caben
+          if (filasPorDibujar.length > 1) {
+            const alturaTabla = dibujarTabla(doc, filasPorDibujar, margin, yPos, maxWidth);
+            yPos += alturaTabla + 3;
+          }
+          
+          // Si quedan filas, ir a la siguiente página
+          if (filasProcesadas < filas.length - 1) {
+            agregarNuevaPagina();
+          } else {
+            break;
+          }
+        }
+      };
+      
+      // Contenido del documento
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const lineas = documento.contenido.split('\n');
+      
+      // Detectar si estamos en una tabla
+      let enTabla = false;
+      let filasTabla: string[][] = [];
+      
+      for (let i = 0; i < lineas.length; i++) {
+        const linea = lineas[i];
+        
+        // Control de salto de página mejorado
+        if (yPos > contentEndY - 15) {
+          agregarNuevaPagina();
         }
         
-        // Procesar texto normal, manejando listas
-        let textoFinal = linea;
-        if (linea.startsWith('□')) {
-          textoFinal = '☐ ' + linea.substring(1).trim();
+        if (linea.trim() === '') {
+          // Si estábamos en una tabla, dibujarla
+          if (enTabla && filasTabla.length > 0) {
+            dibujarTablaConPaginacion(filasTabla);
+            filasTabla = [];
+            enTabla = false;
+          }
+          yPos += 3;
+          continue;
         }
         
-        const textoLines = doc.splitTextToSize(textoFinal, maxWidth);
-        doc.text(textoLines, margin, yPos);
-        yPos += textoLines.length * 5 + 2;
+        // Detectar inicio de tabla (línea con al menos un tab y parece encabezado de tabla)
+        if (linea.includes('\t') && (linea.startsWith('Actividad') || linea.startsWith('FASE') || enTabla)) {
+          enTabla = true;
+          const columnas = linea.split('\t').filter(c => c.trim());
+          filasTabla.push(columnas);
+          continue;
+        }
+        
+        // Si estábamos en tabla pero esta línea no tiene tabs, dibujar la tabla primero
+        if (enTabla && !linea.includes('\t')) {
+          if (filasTabla.length > 0) {
+            dibujarTablaConPaginacion(filasTabla);
+            filasTabla = [];
+            enTabla = false;
+          }
+        }
+        
+        // Detectar campos importantes
+        if (linea.startsWith('Fecha:') || linea.startsWith('Para:') || linea.startsWith('Cargo:')) {
+          doc.setFont('helvetica', 'bold');
+          const partes = linea.split('\t\t');
+          if (partes.length >= 2) {
+            doc.text(partes[0], margin, yPos);
+            doc.setFont('helvetica', 'normal');
+            const valorLines = doc.splitTextToSize(partes[1], maxWidth - 30);
+            doc.text(valorLines, margin + 28, yPos);
+            yPos += valorLines.length * 5 + 1;
+          } else {
+            doc.text(linea, margin, yPos);
+            doc.setFont('helvetica', 'normal');
+            yPos += 5;
+          }
+        } else if (linea.startsWith('Asunto:')) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Asunto:', margin, yPos);
+          doc.setFont('helvetica', 'normal');
+          const textoAsunto = linea.replace('Asunto:', '').replace(/\t/g, ' ').trim();
+          const asuntoLines = doc.splitTextToSize(textoAsunto, maxWidth - 28);
+          doc.text(asuntoLines, margin + 28, yPos);
+          yPos += asuntoLines.length * 5 + 3;
+        } else if (linea.match(/^\d+\.\t/)) {
+          // Listas numeradas - alineadas al margen
+          doc.setFont('helvetica', 'normal');
+          const textoLines = doc.splitTextToSize(linea.replace(/\t/g, '  '), maxWidth);
+          doc.text(textoLines, margin, yPos);
+          yPos += textoLines.length * 5 + 2;
+        } else if (linea.includes('______')) {
+          // Línea de firma
+          doc.line(margin + 10, yPos, margin + 80, yPos);
+          yPos += 5;
+        } else if (linea.startsWith('Elaboró:') || linea.startsWith('Revisó:') || linea.startsWith('Aprobó:')) {
+          // Elaboró/Revisó/Aprobó - darle formato
+          if (yPos > contentEndY - 10) {
+            agregarNuevaPagina();
+          }
+          doc.setFont('helvetica', 'bold');
+          const textoLines = doc.splitTextToSize(linea, maxWidth);
+          doc.text(textoLines, margin, yPos);
+          yPos += textoLines.length * 5;
+        } else {
+          // Detectar texto en negrita (palabras importantes, títulos)
+          const esNegrita = linea.match(/^[A-ZÁÉÍÓÚÑ][a-záéíóúñA-ZÁÉÍÓÚÑ\s]+:/) || // "Objetivo:", "Alcance:"
+                          (linea.toUpperCase() === linea && linea.length > 5 && linea.length < 80); // Texto en mayúsculas
+          
+          if (esNegrita) {
+            doc.setFont('helvetica', 'bold');
+          } else {
+            doc.setFont('helvetica', 'normal');
+          }
+          
+          const textoLines = doc.splitTextToSize(linea, maxWidth);
+          if (yPos + (textoLines.length * 5) > contentEndY) {
+            agregarNuevaPagina();
+          }
+          doc.text(textoLines, margin, yPos);
+          yPos += textoLines.length * 5;
+          doc.setFont('helvetica', 'normal'); // Resetear a normal
+        }
+      }
+      
+      // Si terminamos y había una tabla pendiente, dibujarla
+      if (enTabla && filasTabla.length > 0) {
+        dibujarTablaConPaginacion(filasTabla);
+      }
+      
+    } else {
+      // Formato genérico para otros documentos
+      const margin = 20;
+      const maxWidth = pageWidth - 2 * margin;
+      
+      // Encabezado con color
+      doc.setFillColor(59, 130, 246);
+      doc.rect(0, 0, pageWidth, 40, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      const tituloLines = doc.splitTextToSize(documento.titulo, maxWidth);
+      doc.text(tituloLines, pageWidth / 2, 20, { align: 'center' });
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const fechaGeneracion = documento.generadoEn.toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      doc.text(`Generado el: ${fechaGeneracion}`, pageWidth / 2, 32, { align: 'center' });
+
+      yPos = 50;
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+
+      // Procesar el contenido línea por línea
+      const lineas = documento.contenido.split('\n');
+      
+      for (let i = 0; i < lineas.length; i++) {
+        let linea = lineas[i];
+        
+        // Limpiar caracteres especiales de formato markdown y tablas
+        linea = linea
+          .replace(/\*\*/g, '') // Eliminar **
+          .replace(/═+/g, '') // Eliminar líneas de tabla
+          .replace(/╔|╗|╠|╣|╚|╝|║/g, '') // Eliminar bordes de tabla
+          .replace(/^[-*•]\s*/, '') // Eliminar viñetas
+          .trim();
+        
+        // Si la línea está vacía, agregar espacio
+        if (linea === '') {
+          yPos += 5;
+          continue;
+        }
+
+        // Detectar títulos (líneas que son cortas y están en mayúsculas o tienen formato especial)
+        const esTitulo = (linea.length < 60 && /^[A-ZÁÉÍÓÚÑ0-9]/.test(linea) && !linea.includes(':')) ||
+                        /^\d+\.\s+[A-Z]/.test(linea) || // Números seguidos de mayúscula
+                        linea === linea.toUpperCase() && linea.length < 80;
+
+        if (esTitulo && linea.length > 0) {
+          // Si hay poco espacio, crear nueva página
+          if (yPos > pageHeight - 30) {
+            doc.addPage();
+            yPos = margin;
+          }
+          
+          // Formatear título
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          const tituloLines = doc.splitTextToSize(linea, maxWidth);
+          doc.text(tituloLines, margin, yPos);
+          yPos += tituloLines.length * 7 + 3;
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+        } else {
+          // Texto normal
+          if (yPos > pageHeight - 20) {
+            doc.addPage();
+            yPos = margin;
+          }
+          
+          // Procesar texto normal, manejando listas
+          let textoFinal = linea;
+          if (linea.startsWith('□')) {
+            textoFinal = '☐ ' + linea.substring(1).trim();
+          }
+          
+          const textoLines = doc.splitTextToSize(textoFinal, maxWidth);
+          doc.text(textoLines, margin, yPos);
+          yPos += textoLines.length * 5 + 2;
+        }
       }
     }
 
@@ -385,106 +822,97 @@ Anexos:
 }
 
 function generarCartaRepresentante(auditoria: AuditoriaProgramada): string {
-  const fechaHoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-  
-  return `
-ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
-OFICINA DE CONTROL INTERNO
+  return `Fecha:\t\t(día – mes – año)
+Para:\t\tnombre del jefe de la Oficina de Control Interno
+Cargo:            Jefe de la Oficina de Control Interno
 
-${auditoria.codigo} - CARTA DE DESIGNACIÓN DE REPRESENTANTE
 
-Bogotá D.C., ${fechaHoy}
+Asunto: \tCarta de representación de la auditoría interna basada en riesgos al (se menciona unidad auditable)
 
-Yo, ${auditoria.responsableArea.nombre}, identificado(a) con cédula de ciudadanía _____________, en mi calidad de ${auditoria.responsableArea.cargo}, designo como representante del área ante la Oficina de Control Interno para el desarrollo de la auditoría "${auditoria.nombre}" (${auditoria.codigo}) a:
 
-NOMBRE: _____________________________________________
-CARGO: ______________________________________________
-CÉDULA: _____________________________________________
-TELÉFONO: ___________________________________________
-EMAIL: ______________________________________________
+Cordial saludo
 
-El representante designado tendrá las siguientes responsabilidades:
+Mediante la presente carta de representación me permito comunicar que, para el desarrollo de la auditoria interna basada en riesgos al (se menciona unidad auditable), que será adelantada por parte de la Oficina de Control Interno - OCI, declaramos lo siguiente:
 
-1. Actuar como enlace entre el área auditada y el equipo auditor
-2. Coordinar la disponibilidad de información y documentación requerida
-3. Facilitar el acceso a instalaciones, sistemas y personal necesario
-4. Participar en las reuniones de apertura y cierre de la auditoría
-5. Recibir comunicaciones oficiales relacionadas con la auditoría
-6. Coordinar la implementación de acciones derivadas de hallazgos
+1.\tSomos responsables de la oportuna preparación, presentación y consistencia de la información que será entregada en el marco de la auditoría a la OCI para su revisión.
 
-Esta designación tiene vigencia durante todo el desarrollo de la auditoría y sus actividades de seguimiento.
+2.\tSe hará entrega oficialmente de toda la información relacionada con la gestión del proceso a evaluar, atendiendo los requerimientos hechos por la Oficina de Control Interno y en los plazos que así sean establecidos.
 
-Atentamente,
+3.\tLa información a suministrar será válida, integral (suficiente y pertinente) y completa para los propósitos del proceso auditor. 
 
-____________________________________
-${auditoria.responsableArea.nombre}
-${auditoria.responsableArea.cargo}
 
-Acepto la designación:
 
-____________________________________
-Representante designado
-Fecha: _____________________________
+Cordialmente,
+
+
+
+(firma)
+______________________________________
+(nombre del responsable de la unidad a auditar)
+Cargo del responsable de la unidad a auditar
+
+Elaboró:
 `;
 }
 
 function generarCartaCompromiso(auditoria: AuditoriaProgramada): string {
-  const fechaHoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-  
-  return `
-ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
-OFICINA DE CONTROL INTERNO
+  return `Fecha:\t\t(día – mes – año)
+Para:\t\tNombre del responsable de la unidad auditada
+Cargo:
 
-${auditoria.codigo} - CARTA DE COMPROMISO DE CONFIDENCIALIDAD
+Asunto: \tAnuncio de auditoría interna basada en riesgos (unidad auditable) 
 
-Bogotá D.C., ${fechaHoy}
+Cordial saludo
 
-**ACUERDO DE CONFIDENCIALIDAD Y ÉTICA PROFESIONAL**
+De acuerdo con el plan anual de auditorías de evaluación y seguimiento de la Oficina de Control Interno de la vigencia 202X, aprobado por el Comité Institucional de Coordinación de Control Interno, comunicamos el inicio del trabajo de auditoría al (Nombre del proceso, plan, programa, proyecto, área funcional, sistema, unidad de negocio, unidad desconcentrada, o temática).
 
-Yo, __________________________________, identificado(a) con cédula de ciudadanía _____________, en mi calidad de representante del área auditada en el proceso "${auditoria.nombre}", me comprometo a:
+Objetivo: (Debe surgir como resultado de la revisión preliminar de riesgos.)
 
-**1. CONFIDENCIALIDAD:**
-- Mantener la confidencialidad de toda la información sensible, documentos y datos a los que tenga acceso durante el desarrollo de la auditoría.
-- No divulgar información relacionada con hallazgos preliminares hasta que se emita el informe final.
-- Proteger la información de acuerdo con las políticas de seguridad de la información de ESAP.
+Alcance: (Periodo de tiempo que se va a evaluar, lugar de trabajo, proceso, área y criterios).
 
-**2. OBJETIVIDAD Y TRANSPARENCIA:**
-- Proporcionar información veraz, completa y oportuna al equipo auditor.
-- No ocultar, alterar o manipular información o documentos solicitados.
-- Facilitar el acceso a todas las fuentes de información necesarias para la auditoría.
+Equipo auditor: (Se comunica quien es el equipo auditor y el líder de la auditoría).
 
-**3. COLABORACIÓN:**
-- Atender oportunamente los requerimientos del equipo auditor.
-- Participar activamente en reuniones y actividades programadas.
-- Mantener una actitud profesional y colaborativa durante todo el proceso.
+Metodología: Las técnicas de auditoría que se utilizarán durante la auditoría son: Consulta (Entrevistas, encuestas, y cuestionarios), observación (procesos, y procedimientos), inspección (se estudian documentos y registros).
 
-**4. CUMPLIMIENTO NORMATIVO:**
-- Acatar las disposiciones del Manual de Procesos EM-PT-004.
-- Cumplir con los plazos establecidos para entrega de información.
-- Implementar oportunamente las acciones derivadas de hallazgos.
+Cronograma: Las actividades y fechas estimadas para el desarrollo de este trabajo son las siguientes: Tener en cuenta cada uno de los plazos establecidos en el procedimiento EM-PT-002, con el fin de cumplir con la fecha de publicación y envío a la DN.
 
-**5. PROTECCIÓN DE DATOS PERSONALES:**
-De conformidad con la Ley 1581 de 2012, me comprometo a proteger los datos personales a los que tenga acceso y a utilizarlos únicamente para los fines de la auditoría.
+Actividad\tFecha inicio
+Anuncio de auditoría (Entrega carta de representación, carta de compromiso, plantilla de presentación por parte del auditado).\t(día – mes – año)
+Socialización aspectos claves por parte del auditado. \t(día – mes – año)
+Solicitud información.\t(día – mes – año)
+Entrega información por parte del auditado. \t(día – mes – año)
+Reunión apertura auditoría ejecución. \t(día – mes – año)
+Reunión cierre auditoría.\t(día – mes – año)
+Envío informe preliminar al auditado. \t(día – mes – año)
+Respuesta por parte del responsable de la unidad auditada sobre el informe preliminar de auditoría. \t(día – mes – año)
+Envío al auditado del informe final de auditoría. \t(día – mes – año)
+Entrega por parte del responsable de la unidad auditada de la suscripción del plan de mejoramiento. \t(día – mes – año)
+Verificación del plan de mejoramiento por parte de la OCI. Tener en cuenta que de acuerdo con procedimiento EM-PT-002 la unidad auditada cuenta con tres días hábiles siguientes para realizar los ajustes al plan si el mismo fue devuelto por el grupo auditor. \t(día – mes – año)
+Solicitud publicación informe final de auditoría. \t(día – mes – año)
+Envío al director nacional del informe ejecutivo y plan de mejora.\t(día – mes – año)
 
-**CONSECUENCIAS DEL INCUMPLIMIENTO:**
-El incumplimiento de este compromiso puede dar lugar a las acciones disciplinarias establecidas en el Código Disciplinario Único (Ley 734 de 2002) y demás normas aplicables.
+La socialización debe ser llevada a cabo por el auditado (acorde al cronograma establecido) para dar a conocer los aspectos claves del proceso de la unidad a auditar. Se adjunta a esta carta de compromiso la plantilla en PowerPoint, que debe ser diligenciada, en la cual se indica cada uno de los puntos a desarrollar. Igualmente es el auditado quien programa la reunión de socialización a través de la plataforma TEAMS.
 
-Manifiesto que he leído, entendido y acepto los términos de este compromiso.
+Durante la ejecución de la auditoría y antes de la reunión de cierre, se llevarán a cabo por parte del equipo auditor y de los auditados, mesas de trabajo con el fin de aclarar información de ser necesario.
 
-____________________________________
-Firma del representante del área
+Es importante que el responsable del proceso a auditar conozca claramente los objetivos de la revisión, el alcance definido, y el cronograma de trabajo, así como el cumplimiento del protocolo de comunicaciones, que aseguren la oportunidad y calidad de los resultados.
 
-Nombre: _____________________________
-Cédula: _____________________________
-Cargo: ______________________________
-Fecha: ______________________________
+La información suministrada por el auditado será tratada de conformidad con el formato "Declaración de independencia y confidencialidad OCI".
 
-**TESTIGOS:**
+Agradecemos comunicar cualquier inquietud con respecto al contenido de este documento.
 
-____________________________________     ____________________________________
-Auditor Líder                           Jefe Oficina de Control Interno
-${auditoria.auditorLider.nombre}
+Cordialmente,
 
+
+
+(Firma)
+______________________________________
+(Nombre del jefe de la Oficina de Control Interno)
+Jefe Oficina de Control Interno
+
+Elaboró:
+Revisó:
+Aprobó:
 `;
 }
 
@@ -498,9 +926,7 @@ OFICINA DE CONTROL INTERNO
 PROGRAMA INDIVIDUAL DE AUDITORÍA
 ${auditoria.codigo}
 
-═══════════════════════════════════════════════════════════════
-
-**1. INFORMACIÓN GENERAL**
+1. INFORMACIÓN GENERAL
 
 Código: ${auditoria.codigo}
 Nombre: ${auditoria.nombre}
@@ -508,19 +934,19 @@ Tipo: Auditoría ${auditoria.tipo}
 Proceso auditado: ${auditoria.procesoNombre}
 Fecha de elaboración: ${fechaHoy}
 
-**2. OBJETIVO DE LA AUDITORÍA**
+2. OBJETIVO DE LA AUDITORÍA
 
 ${config.objetivo}
 
-**3. ALCANCE**
+3. ALCANCE
 
 ${config.alcance}
 
-**4. CRITERIOS DE AUDITORÍA**
+4. CRITERIOS DE AUDITORÍA
 
 ${config.criterios}
 
-**5. EQUIPO AUDITOR**
+5. EQUIPO AUDITOR
 
 Auditor Líder: ${auditoria.auditorLider.nombre}
 Email: ${auditoria.auditorLider.email}
@@ -528,23 +954,20 @@ Email: ${auditoria.auditorLider.email}
 Equipo de apoyo:
 ${auditoria.equipoAuditores.map(a => `- ${a.nombre} (${a.email})`).join('\n')}
 
-**6. ÁREA AUDITADA**
+6. ÁREA AUDITADA
 
 Responsable: ${auditoria.responsableArea.nombre}
 Cargo: ${auditoria.responsableArea.cargo}
 Email: ${auditoria.responsableArea.email}
 
-**7. CRONOGRAMA**
+7. CRONOGRAMA
 
-╔════════════════════╦═══════════════════╦═══════════════╗
-║ FASE               ║ DURACIÓN          ║ ACTIVIDADES   ║
-╠════════════════════╬═══════════════════╬═══════════════╣
-║ PLANEACIÓN         ║ ${auditoria.duracionDias.planeacion} días           ║ ${auditoria.duracionDias.planeacion}             ║
-║ EJECUCIÓN          ║ ${auditoria.duracionDias.ejecucion} días          ║ ${auditoria.duracionDias.ejecucion}             ║
-║ COMUNICACIÓN       ║ ${auditoria.duracionDias.comunicacion} días          ║ ${auditoria.duracionDias.comunicacion}             ║
-╚════════════════════╩═══════════════════╩═══════════════╝
+FASE	DURACIÓN	ACTIVIDADES
+PLANEACIÓN	${auditoria.duracionDias.planeacion} días	${auditoria.duracionDias.planeacion}
+EJECUCIÓN	${auditoria.duracionDias.ejecucion} días	${auditoria.duracionDias.ejecucion}
+COMUNICACIÓN	${auditoria.duracionDias.comunicacion} días	${auditoria.duracionDias.comunicacion}
 
-**8. ACTIVIDADES POR FASE**
+8. ACTIVIDADES POR FASE
 
 ${generarActividadesDinamicas('Planeación', auditoria.duracionDias.planeacion, actividadesPorFase)}
 
@@ -553,34 +976,34 @@ ${generarActividadesDinamicas('Ejecución', auditoria.duracionDias.ejecucion, ac
 ${generarActividadesDinamicas('Comunicación', auditoria.duracionDias.comunicacion, actividadesPorFase)}
 
 /* ACTIVIDADES HARDCODEADAS ORIGINALES (COMENTADAS - AHORA SE USAN LAS DE BD)
-**FASE 1: PLANEACIÓN**
-□ Revisión de documentación del proceso
-□ Análisis de riesgos del área auditada
-□ Solicitud de información preliminar
-□ Preparación de listas de chequeo
-□ Reunión de apertura con el área
-□ Definición de muestras y pruebas
+FASE 1: PLANEACIÓN
+- Revisión de documentación del proceso
+- Análisis de riesgos del área auditada
+- Solicitud de información preliminar
+- Preparación de listas de chequeo
+- Reunión de apertura con el área
+- Definición de muestras y pruebas
 
-**FASE 2: EJECUCIÓN**
-□ Aplicación de listas de chequeo
-□ Revisión de documentos y registros
-□ Entrevistas con personal clave
-□ Observación directa de procesos
-□ Pruebas de cumplimiento normativo
-□ Identificación y documentación de hallazgos
-□ Recopilación de evidencias
-□ Reunión de cierre con el área
+FASE 2: EJECUCIÓN
+- Aplicación de listas de chequeo
+- Revisión de documentos y registros
+- Entrevistas con personal clave
+- Observación directa de procesos
+- Pruebas de cumplimiento normativo
+- Identificación y documentación de hallazgos
+- Recopilación de evidencias
+- Reunión de cierre con el área
 
-**FASE 3: COMUNICACIÓN**
-□ Elaboración de informe preliminar
-□ Socialización con el área auditada
-□ Atención de controversias (si aplica)
-□ Elaboración de informe final
-□ Generación de informe ejecutivo
-□ Formalización de plan de mejoramiento
+FASE 3: COMUNICACIÓN
+- Elaboración de informe preliminar
+- Socialización con el área auditada
+- Atención de controversias (si aplica)
+- Elaboración de informe final
+- Generación de informe ejecutivo
+- Formalización de plan de mejoramiento
 */
 
-**9. RECURSOS NECESARIOS**
+9. RECURSOS NECESARIOS
 
 - Acceso a sistemas de información del proceso
 - Documentación de procesos y procedimientos
@@ -588,20 +1011,19 @@ ${generarActividadesDinamicas('Comunicación', auditoria.duracionDias.comunicaci
 - Disponibilidad de personal para entrevistas
 - Espacio físico para trabajo del equipo auditor
 
-**10. RESULTADOS ESPERADOS**
+10. RESULTADOS ESPERADOS
 
 - Informe de auditoría con hallazgos identificados
 - Plan de mejoramiento con acciones correctivas
 - Recomendaciones para fortalecimiento del proceso
 - Evaluación del nivel de riesgo del proceso
 
-**11. OBSERVACIONES**
+11. OBSERVACIONES
 
 ${config.observaciones || 'N/A'}
 
-═══════════════════════════════════════════════════════════════
 
-**APROBACIONES:**
+APROBACIONES:
 
 ____________________________________
 Auditor Líder
@@ -612,7 +1034,7 @@ ____________________________________
 Jefe Oficina de Control Interno
 Fecha: _____________________________
 
-═══════════════════════════════════════════════════════════════
+
 Documento generado automáticamente por SIGL - Sistema Integrado de Gestión Legal ESAP
 Fecha de generación: ${fechaHoy}
 `;
@@ -633,7 +1055,7 @@ export function InicioAuditoriaWizard({
 }: InicioAuditoriaWizardProps) {
   const [pasoActual, setPasoActual] = useState<PasoWizard>(1);
   const [configuracion, setConfiguracion] = useState<ConfiguracionAuditoria>({
-    objetivo: 'Evaluar el cumplimiento de los controles establecidos en el proceso de Gestión Financiera y verificar la adecuada aplicaci��n de la normatividad vigente.',
+    objetivo: 'Evaluar el cumplimiento de los controles establecidos en el proceso de Gestión Financiera y verificar la adecuada aplicación de la normatividad vigente.',
     alcance: 'Revisión de las operaciones financieras del período enero a diciembre 2024, incluyendo presupuesto, tesorería, contabilidad y gestión de cartera.',
     criterios: 'Decreto 648 de 2017, Manual de Contratación, Estatuto Anticorrupción, Régimen de Contabilidad Pública, políticas internas de ESAP.',
     fechaReunionApertura: new Date('2025-01-15T10:00:00'),
