@@ -63,6 +63,8 @@ import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { universoAuditoriasApi } from './services/api';
 import { useEffect } from 'react';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -846,6 +848,7 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
           </div>
 
           {/* Acción principal */}
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_CREATE) && (
           <Button 
             style={{ background: '#003DA5' }}
             className="gap-2"
@@ -855,6 +858,7 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Nueva Área</span>
           </Button>
+          )}
         </div>
       </div>
 
@@ -1424,6 +1428,7 @@ function CardAreaAuditable({
       )}
 
       <div className="flex gap-2">
+        {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_STATE_CHANGE) && (
         <select
           value={area.estado}
           onChange={(e) => onCambiarEstado(area.id, e.target.value as EstadoSeleccion)}
@@ -1437,8 +1442,8 @@ function CardAreaAuditable({
           <option value="pendiente">⏳ Pendiente</option>
           <option value="no-aplica">❌ No Aplica</option>
         </select>
-
-        {!editando && (
+        )}
+        {!editando && authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_EDIT) && (
           <Button
             size="sm"
             variant="outline"

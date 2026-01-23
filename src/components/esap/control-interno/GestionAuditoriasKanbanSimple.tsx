@@ -318,6 +318,8 @@ import { controlInternoService } from '../../../services/api/controlInternoServi
 import { auditoriasApi, hallazgosApi } from './services/api';
 import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
 import type { EtapaKanban } from '../../../services/tableros-kanban.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ DATOS DE PRUEBA (ELIMINADOS - AHORA SE OBTIENEN DE LA BD) ============
 /*
@@ -1474,6 +1476,7 @@ function TarjetaAuditoria({
                 <Eye className="w-3 h-3 mr-1 flex-shrink-0" />
                 <span className="truncate">Ver</span>
               </Button>
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1487,6 +1490,7 @@ function TarjetaAuditoria({
                 <Edit className="w-3 h-3 mr-1 shrink-0" />
                 <span className="truncate">Editar</span>
               </Button>
+              )}
             </div>
 
             {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
@@ -1511,7 +1515,7 @@ function TarjetaAuditoria({
             )}
 
             {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
-            {auditoria.estado === 'Ejecución' && onSolicitarAmpliacion && (
+            {auditoria.estado === 'Ejecución' && onSolicitarAmpliacion && authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION) && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1529,6 +1533,7 @@ function TarjetaAuditoria({
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1551,8 +1556,9 @@ function TarjetaAuditoria({
                 <RefreshCw className="w-3.5 h-3.5 text-gray-600" />
                 <span className="text-[9px] text-gray-600 font-medium">Estado</span>
               </button>
-
+              )}
               {/* Asignar auditor - SIEMPRE DISPONIBLE excepto Finalizada */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_AUDIT) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1575,8 +1581,9 @@ function TarjetaAuditoria({
                 <UserPlus className="w-3.5 h-3.5 text-gray-600" />
                 <span className="text-[9px] text-gray-600 font-medium">Auditor</span>
               </button>
-
+              )}
               {/* Enviar a aprobación - SOLO en Comunicación y Seguimiento */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_APPROVE) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1607,8 +1614,9 @@ function TarjetaAuditoria({
                     : 'text-gray-400'
                 }`}>Aprobar</span>
               </button>
-
+              )}
               {/* Exportar - SOLO disponible desde Ejecución en adelante */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EXPORT) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1635,8 +1643,9 @@ function TarjetaAuditoria({
                   auditoria.estado !== 'Planeación' ? 'text-blue-600' : 'text-gray-400'
                 }`}>Export</span>
               </button>
-
+              )}
               {/* Archivar - SOLO en Finalizada */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_ARCHIVE) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1663,8 +1672,9 @@ function TarjetaAuditoria({
                   auditoria.estado === 'Finalizada' ? 'text-orange-600' : 'text-gray-400'
                 }`}>Archiv</span>
               </button>
-
+              )}
               {/* Eliminar - SOLO en Planeación (no iniciada) */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_DELETE) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1691,6 +1701,7 @@ function TarjetaAuditoria({
                   auditoria.estado === 'Planeación' ? 'text-red-600' : 'text-gray-400'
                 }`}>Elim</span>
               </button>
+              )}
             </div>
 
             {/* Botones Notas y Auditoría */}
