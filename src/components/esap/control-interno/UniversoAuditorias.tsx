@@ -1431,12 +1431,14 @@ function CardAreaAuditable({
             <span className="text-gray-600">Auditorías:</span>
             <span className="font-bold text-gray-900">{area.numeroAuditorias}</span>
           </div>
-          {area.ultimaAuditoria && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600">Última:</span>
-              <span className="text-gray-900">{area.ultimaAuditoria}</span>
-            </div>
-          )}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Última:</span>
+            <span className="text-gray-900">
+              {area.ultimaAuditoria || (
+                <span className="text-gray-400 italic text-xs">No ha sido auditado</span>
+              )}
+            </span>
+          </div>
         </div>
       )}
 
@@ -2054,13 +2056,19 @@ function ModalDetalleArea({ area, onClose }: ModalDetalleAreaProps) {
               <div className="text-center">
                 <p className="text-xs text-gray-600 mb-1">Última Auditoría</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {area.ultimaAuditoria || 'N/A'}
+                  {area.ultimaAuditoria || (
+                    <span className="text-gray-400 italic">No ha sido auditado</span>
+                  )}
                 </p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-gray-600 mb-1">Próxima Auditoría</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {area.proximaAuditoria || 'N/A'}
+                  {area.proximaAuditoria || (
+                    <span className="text-gray-400 italic">
+                      {area.ultimaAuditoria ? 'N/A' : 'No ha sido auditado'}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
