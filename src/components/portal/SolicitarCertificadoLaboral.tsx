@@ -394,6 +394,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
   };
 
+
+
+  const handleCodigoCompletoChange = (valor: string) => {
+    const limpio = valor.replace(/\D/g, '').slice(0, 6);
+    const nuevosDigitos = Array.from({ length: 6 }, (_, index) => limpio[index] || '');
+    setDigitosCodigo(nuevosDigitos);
+  };
+
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
@@ -666,12 +674,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
     setAutoPDFAction('download');
     setShowPDFViewer(true);
-
-    // Cerrar el visor después de que se ejecute la descarga
-    setTimeout(() => {
-      setShowPDFViewer(false);
-      setAutoPDFAction(null);
-    }, 1000);
   };
 
   const handleImprimir = () => {
@@ -681,12 +683,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
     setAutoPDFAction('print');
     setShowPDFViewer(true);
-
-    // Cerrar el visor después de que se ejecute la impresión
-    setTimeout(() => {
-      setShowPDFViewer(false);
-      setAutoPDFAction(null);
-    }, 1000);
   };
 
   const handleNuevaSolicitud = () => {
@@ -737,6 +733,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setAutoPDFAction(null);
       setShowPDFViewer(false);
     }
+  };
+
+
+
+  const handleAutoActionComplete = () => {
+    setShowPDFViewer(false);
+    setAutoPDFAction(null);
   };
 
   // Asegurar que el paso activo se mantenga en "certificado" cuando ya hay certificado listo
@@ -953,6 +956,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           <Input
                             id="numero-documento"
                             type="text"
+                            inputMode="numeric"
                             placeholder="Ej: 1234567890"
                             value={numeroDocumento}
                             onChange={(e) => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
@@ -1093,23 +1097,39 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       <Label className="text-sm font-semibold text-gray-700 mb-3 block">
                         Código de Validación *
                       </Label>
-                      <div className="flex gap-2 sm:gap-3 justify-center">
-                        {digitosCodigo.map((digito, index) => (
+                      {isMobile ? (
+                        <div className="flex justify-center">
                           <Input
-                            key={index}
-                            id={`digito-${index}`}
+                            id="codigo-validacion"
                             type="text"
                             inputMode="numeric"
-                            placeholder="0"
-                            value={digito}
-                            onChange={(e) => handleDigitoChange(index, e.target.value)}
-                            onKeyDown={(e) => handleDigitoKeyDown(index, e)}
-                            className="h-14 w-12 sm:h-16 sm:w-14 border-2 text-center text-2xl sm:text-3xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-                            maxLength={1}
-                            autoFocus={index === 0}
+                            autoComplete="one-time-code"
+                            placeholder="Ingresa el código"
+                            value={digitosCodigo.join('')}
+                            onChange={(e) => handleCodigoCompletoChange(e.target.value)}
+                            className="h-14 w-full max-w-[240px] border-2 text-center text-2xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+                            maxLength={6}
                           />
-                        ))}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 sm:gap-3 justify-center">
+                          {digitosCodigo.map((digito, index) => (
+                            <Input
+                              key={index}
+                              id={`digito-${index}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={digito}
+                              onChange={(e) => handleDigitoChange(index, e.target.value)}
+                              onKeyDown={(e) => handleDigitoKeyDown(index, e)}
+                              className="h-14 w-12 sm:h-16 sm:w-14 border-2 text-center text-2xl sm:text-3xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+                              maxLength={1}
+                              autoFocus={index === 0}
+                            />
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-center text-gray-500 mt-2">
                         Ingresa el código de 6 dígitos enviado a tu correo
                       </p>
@@ -1435,6 +1455,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           onClose={() => setShowPDFViewer(false)}
           autoAction={autoPDFAction || undefined}
           hiddenMode={!!autoPDFAction}
+          onAutoActionComplete={handleAutoActionComplete}
           certificado={certificadoGenerado.certificado_completo}
         />
       )}
