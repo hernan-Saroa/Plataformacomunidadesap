@@ -36,6 +36,7 @@ import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertificado';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
+import { useIsMobile } from '../ui/use-mobile';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface SolicitarCertificadoLaboralProps {
@@ -283,6 +284,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const emailDestinoRef = useRef<string | null>(null);
   const lastEmailSentRef = useRef<string | null>(null);
+  const isMobile = useIsMobile();
 
   const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
@@ -910,17 +912,35 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <Label htmlFor="tipo-documento" className="text-sm font-semibold text-gray-700 mb-2 block">
                           Tipo de Documento *
                         </Label>
-                        <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
-                          <SelectTrigger className="h-12 border-2">
-                            <SelectValue placeholder="Selecciona el tipo de documento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
-                            <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
-                            <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
-                            <SelectItem value="PP">Pasaporte (PP)</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {isMobile ? (
+                          <select
+                            id="tipo-documento"
+                            name="tipo-documento"
+                            value={tipoDocumento}
+                            onChange={(event) => setTipoDocumento(event.target.value)}
+                            className="h-12 w-full rounded-md border-2 border-input bg-input-background px-3 text-sm text-gray-700 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                          >
+                            <option value="" disabled>
+                              Selecciona el tipo de documento
+                            </option>
+                            <option value="CC">Cédula de Ciudadanía (CC)</option>
+                            <option value="CE">Cédula de Extranjería (CE)</option>
+                            <option value="TI">Tarjeta de Identidad (TI)</option>
+                            <option value="PP">Pasaporte (PP)</option>
+                          </select>
+                        ) : (
+                          <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
+                            <SelectTrigger id="tipo-documento" className="h-12 border-2">
+                              <SelectValue placeholder="Selecciona el tipo de documento" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
+                              <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
+                              <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
+                              <SelectItem value="PP">Pasaporte (PP)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
 
                       {/* Número de Documento */}
