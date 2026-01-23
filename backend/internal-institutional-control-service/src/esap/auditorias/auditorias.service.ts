@@ -990,6 +990,17 @@ export class AuditoriasService {
         order: { createdAt: 'DESC' },
       });
 
+      // 🔍 LOG: Verificar si campos de aprobación están en la entidad
+      console.log('🔍 [findAllKanban] Auditorías cargadas:', auditorias.length);
+      if (auditorias.length > 0) {
+        console.log('🔍 [findAllKanban] Primera auditoría - campos aprobación:', {
+          aprobada: auditorias[0].aprobada,
+          fechaAprobacion: auditorias[0].fechaAprobacion,
+          aprobadaPor: auditorias[0].aprobadaPor,
+          aprobadaPorId: auditorias[0].aprobadaPorId,
+        });
+      }
+
       // Si no hay auditorías, retornar array vacío
       if (!auditorias || auditorias.length === 0) {
         return [];
@@ -1167,6 +1178,11 @@ export class AuditoriasService {
               alcance: auditoria.alcance || '',
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO
               programaAnualMetadata: auditoria.programaAnualMetadata || undefined, // Incluir metadata del programa anual
+              // ✅ CAMPOS DE APROBACIÓN
+              aprobada: auditoria.aprobada ?? false,
+              fechaAprobacion: auditoria.fechaAprobacion ? this.serializeDate(auditoria.fechaAprobacion) : undefined,
+              aprobadaPor: auditoria.aprobadaPor,
+              aprobadaPorId: auditoria.aprobadaPorId ? Number(auditoria.aprobadaPorId) : undefined,
             };
           } catch (error) {
             console.error(`Error al procesar auditoría ${auditoria.id}:`, error);
@@ -1206,10 +1222,24 @@ export class AuditoriasService {
               actividadesPendientes: 0,
               alcance: '',
               observacionesAdicionales: auditoria.observacionesAdicionales || '', // ✅ CAMPO AGREGADO EN FALLBACK
+              // ✅ CAMPOS DE APROBACIÓN EN FALLBACK
+              aprobada: auditoria.aprobada ?? false,
+              fechaAprobacion: auditoria.fechaAprobacion ? this.serializeDate(auditoria.fechaAprobacion) : undefined,
+              aprobadaPor: auditoria.aprobadaPor,
+              aprobadaPorId: auditoria.aprobadaPorId ? Number(auditoria.aprobadaPorId) : undefined,
             };
           }
         })
       );
+
+      // 🔍 LOG: Verificar si campos llegaron al DTO
+      console.log('🔍 [findAllKanban] DTO generado - primera auditoría:', {
+        id: auditoriasConPersonas[0]?.id,
+        aprobada: auditoriasConPersonas[0]?.['aprobada'],
+        fechaAprobacion: auditoriasConPersonas[0]?.['fechaAprobacion'],
+        aprobadaPor: auditoriasConPersonas[0]?.['aprobadaPor'],
+        aprobadaPorId: auditoriasConPersonas[0]?.['aprobadaPorId'],
+      });
 
       return auditoriasConPersonas;
     } catch (error) {
@@ -1381,6 +1411,11 @@ export class AuditoriasService {
           actividadesCompletas: auditoria.actividadesCompletas,
           actividadesPendientes: auditoria.actividadesPendientes,
           alcance: auditoria.alcance || '',
+          // ✅ CAMPOS DE APROBACIÓN
+          aprobada: auditoria.aprobada ?? false,
+          fechaAprobacion: auditoria.fechaAprobacion ? this.serializeDate(auditoria.fechaAprobacion) : undefined,
+          aprobadaPor: auditoria.aprobadaPor,
+          aprobadaPorId: auditoria.aprobadaPorId ? Number(auditoria.aprobadaPorId) : undefined,
         };
       })
     );
@@ -1722,6 +1757,7 @@ export class AuditoriasService {
     auditoriaId: string,
     comentarios?: string,
     usuarioId?: number,
+    usuarioNombre?: string,
   ): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id: auditoriaId },
@@ -1746,6 +1782,12 @@ export class AuditoriasService {
       auditoria.estadoKanban = EstadoKanban.FINALIZADA;
       auditoria.progreso = 100; // Marcar como completada
     }
+
+    // ✅ MARCAR COMO APROBADA
+    auditoria.aprobada = true;
+    auditoria.fechaAprobacion = new Date();
+    auditoria.aprobadaPor = usuarioNombre || `Usuario ${usuarioId || 'Sistema'}`;
+    auditoria.aprobadaPorId = usuarioId || undefined;
 
     // Guardar cambios en la auditoría
     await this.auditoriaRepository.save(auditoria);

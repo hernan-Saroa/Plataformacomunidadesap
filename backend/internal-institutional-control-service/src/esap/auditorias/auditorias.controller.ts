@@ -126,8 +126,20 @@ export class AuditoriasController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
-  aprobar(@Param('id') id: string, @Body() body: { comentarios?: string }) {
-    return this.auditoriasService.aprobarAuditoria(id, body.comentarios);
+  aprobar(
+    @Param('id') id: string, 
+    @Body() body: { 
+      comentarios?: string;
+      usuarioId?: number;
+      usuarioNombre?: string;
+    }
+  ) {
+    return this.auditoriasService.aprobarAuditoria(
+      id, 
+      body.comentarios,
+      body.usuarioId,
+      body.usuarioNombre
+    );
   }
 
   /**

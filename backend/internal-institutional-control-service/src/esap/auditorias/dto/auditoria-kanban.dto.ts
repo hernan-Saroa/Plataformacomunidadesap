@@ -62,6 +62,11 @@ export interface AuditoriaKanbanDto {
   alcance?: string; // Alcance de la auditoría
   observacionesAdicionales?: string; // ✅ Observaciones adicionales de la auditoría
   programaAnualMetadata?: any; // Metadata del programa anual (mesInicio, semanaInicio, duraciones)
+  // ✅ CAMPOS DE APROBACIÓN
+  aprobada?: boolean; // Si la auditoría fue aprobada
+  fechaAprobacion?: string; // Fecha de aprobación (DD/MM/YYYY)
+  aprobadaPor?: string; // Nombre del usuario que aprobó
+  aprobadaPorId?: number; // ID del usuario que aprobó
 }
 
 
