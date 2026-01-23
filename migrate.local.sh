@@ -14,16 +14,21 @@ ENV_FILE="backend/auth-service/.env"
 
 if [ -f "$ENV_FILE" ]; then
   # Cargar variables del .env (ignorar comentarios y lineas vacias)
-  export $(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | xargs)
+  export $(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | sed 's/\r$//' | xargs)
 else
   echo "Error: No se encontro $ENV_FILE"
   exit 1
 fi
 
 if ! command -v psql >/dev/null 2>&1; then
+  # Fallback para macOS
   PSQL_FALLBACK="/Applications/Postgres.app/Contents/Versions/16/bin/psql"
+  # Fallback para Windows (Git Bash)
+  PSQL_WINDOWS="/c/Program Files/PostgreSQL/18/bin/psql"
   if [ -x "$PSQL_FALLBACK" ]; then
     export PATH="/Applications/Postgres.app/Contents/Versions/16/bin:$PATH"
+  elif [ -x "$PSQL_WINDOWS" ]; then
+    export PATH="/c/Program Files/PostgreSQL/18/bin:$PATH"
   else
     echo "Error: psql no encontrado. Instala Postgres CLI o agrega psql al PATH."
     exit 1
