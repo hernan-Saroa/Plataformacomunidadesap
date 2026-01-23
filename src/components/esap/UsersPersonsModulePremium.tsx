@@ -1226,32 +1226,34 @@ export function UsersPersonsModulePremium() {
                 </tr>
               </thead>
               <tbody style={{ background: "#FFFFFF" }}>
-                <AnimatePresence mode="popLayout">
-                  {paginatedUsers.map((user, index) => (
-                    <React.Fragment key={user.id}>
-                      <motion.tr
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{
-                          duration: 0.2,
-                          delay: index * 0.05,
-                        }}
-                        className="group cursor-pointer"
-                        style={{
-                          borderBottom: "1px solid #E5E7EB",
-                          transition: "background 150ms ease",
-                        }}
-                        onClick={() => handleViewDetails(user)}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background =
-                            "#F9FAFB";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background =
-                            "#FFFFFF";
-                        }}
-                      >
+                {paginatedUsers.flatMap((user, index) => {
+                  const isExpanded = expandedUserId === user.id;
+                  
+                  const mainRow = (
+                    <motion.tr
+                      key={`user-row-${user.id}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{
+                        duration: 0.2,
+                        delay: index * 0.05,
+                      }}
+                      className="group cursor-pointer"
+                      style={{
+                        borderBottom: "1px solid #E5E7EB",
+                        transition: "background 150ms ease",
+                      }}
+                      onClick={() => handleViewDetails(user)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background =
+                          "#F9FAFB";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background =
+                          "#FFFFFF";
+                      }}
+                    >
                         {/* Celda Usuario */}
                         <td
                           style={{
@@ -1646,31 +1648,35 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
+                  );
 
-                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
-                      {expandedUserId === user.id && (
-                        <motion.tr
-                          key={`${user.id}-expanded`}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                        >
-                          <td colSpan={8} className="p-0">
-                            <UserExpandedView
-                              user={user}
-                              getStatusBadge={getStatusBadge}
-                              getRoleBadge={getRoleBadge}
-                              onOpenDigitalFolder={() => {
-                                setSelectedUser(user);
-                                setViewMode("digital-folder");
-                              }}
-                            />
-                          </td>
-                        </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
+                  // Return array with main row and conditionally expanded row
+                  if (isExpanded) {
+                    const expandedRow = (
+                      <motion.tr
+                        key={`user-expanded-${user.id}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        <td colSpan={8} className="p-0">
+                          <UserExpandedView
+                            user={user}
+                            getStatusBadge={getStatusBadge}
+                            getRoleBadge={getRoleBadge}
+                            onOpenDigitalFolder={() => {
+                              setSelectedUser(user);
+                              setViewMode("digital-folder");
+                            }}
+                          />
+                        </td>
+                      </motion.tr>
+                    );
+                    return [mainRow, expandedRow];
+                  }
+                  
+                  return [mainRow];
+                })}
               </tbody>
             </table>
           </div>

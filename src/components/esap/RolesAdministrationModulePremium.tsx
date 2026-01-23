@@ -769,9 +769,9 @@ export function RolesAdministrationModulePremium() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 <AnimatePresence mode="popLayout">
                   {paginatedRoles.map((role, index) => (
-                    <React.Fragment key={`role-fragment-${role.id}`}>
+                    <>
                       <motion.tr
-                        key={`role-row-${role.id}`}
+                        key={`role-${role.id}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -920,84 +920,82 @@ export function RolesAdministrationModulePremium() {
                       </motion.tr>
 
                       {/* Detalle Expandido */}
-                      <AnimatePresence>
-                        {expandedRoleId === role.id && (
-                          <motion.tr
-                            key={`${role.id}-expanded`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <td colSpan={6} className="px-0 py-0">
-                              <motion.div
-                                initial={{ height: 0 }}
-                                animate={{ height: 'auto' }}
-                                exit={{ height: 0 }}
-                                transition={{ duration: 0.3 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
-                                  <div className="grid md:grid-cols-2 gap-4">
-                                    {/* Información */}
-                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                      <h4 className="font-black text-gray-900 text-sm mb-3">Información del Rol</h4>
-                                      <div className="space-y-2 text-sm">
+                      {expandedRoleId === role.id && (
+                        <motion.tr
+                          key={`role-expanded-${role.id}`}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <td colSpan={6} className="px-0 py-0">
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: 'auto' }}
+                              exit={{ height: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
+                                <div className="grid md:grid-cols-2 gap-4">
+                                  {/* Información */}
+                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                    <h4 className="font-black text-gray-900 text-sm mb-3">Información del Rol</h4>
+                                    <div className="space-y-2 text-sm">
+                                      <div>
+                                        <span className="text-gray-600">Descripción:</span>
+                                        <p className="text-gray-900 font-medium">{role.descripcion}</p>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                          <span className="text-gray-600">Descripción:</span>
-                                          <p className="text-gray-900 font-medium">{role.descripcion}</p>
+                                          <span className="text-gray-600 text-xs">Creado:</span>
+                                          <p className="text-gray-900 font-medium text-xs">
+                                            {new Date(role.fecha_creacion).toLocaleDateString('es-CO')}
+                                          </p>
+                                          <p className="text-gray-600 text-xs">por {role.creado_por}</p>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        {role.ultima_modificacion && (
                                           <div>
-                                            <span className="text-gray-600 text-xs">Creado:</span>
+                                            <span className="text-gray-600 text-xs">Modificado:</span>
                                             <p className="text-gray-900 font-medium text-xs">
-                                              {new Date(role.fecha_creacion).toLocaleDateString('es-CO')}
+                                              {new Date(role.ultima_modificacion).toLocaleDateString('es-CO')}
                                             </p>
-                                            <p className="text-gray-600 text-xs">por {role.creado_por}</p>
+                                            <p className="text-gray-600 text-xs">por {role.modificado_por}</p>
                                           </div>
-                                          {role.ultima_modificacion && (
-                                            <div>
-                                              <span className="text-gray-600 text-xs">Modificado:</span>
-                                              <p className="text-gray-900 font-medium text-xs">
-                                                {new Date(role.ultima_modificacion).toLocaleDateString('es-CO')}
-                                              </p>
-                                              <p className="text-gray-600 text-xs">por {role.modificado_por}</p>
-                                            </div>
-                                          )}
-                                        </div>
+                                        )}
                                       </div>
                                     </div>
+                                  </div>
 
-                                    {/* Configuración */}
-                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                      <h4 className="font-black text-gray-900 text-sm mb-3">Configuración</h4>
-                                      <div className="space-y-3">
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Estado</span>
-                                          {getStatusBadge(role)}
-                                        </div>
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Autenticación 2FA</span>
-                                          <Badge className={role.requiere_2fa ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
-                                            {role.requiere_2fa ? 'Activa' : 'Inactiva'}
-                                          </Badge>
-                                        </div>
-                                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                          <span className="text-sm text-gray-700">Tipo de rol</span>
-                                          <Badge className={role.tipo === 'sistema' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
-                                            {role.tipo === 'sistema' ? 'Sistema' : 'Personalizado'}
-                                          </Badge>
-                                        </div>
+                                  {/* Configuración */}
+                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                    <h4 className="font-black text-gray-900 text-sm mb-3">Configuración</h4>
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                        <span className="text-sm text-gray-700">Estado</span>
+                                        {getStatusBadge(role)}
+                                      </div>
+                                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                        <span className="text-sm text-gray-700">Autenticación 2FA</span>
+                                        <Badge className={role.requiere_2fa ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
+                                          {role.requiere_2fa ? 'Activa' : 'Inactiva'}
+                                        </Badge>
+                                      </div>
+                                      <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                        <span className="text-sm text-gray-700">Tipo de rol</span>
+                                        <Badge className={role.tipo === 'sistema' ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-blue-100 text-blue-700 border-blue-300'}>
+                                          {role.tipo === 'sistema' ? 'Sistema' : 'Personalizado'}
+                                        </Badge>
                                       </div>
                                     </div>
                                   </div>
                                 </div>
-                              </motion.div>
-                            </td>
-                          </motion.tr>
-                        )}
-                      </AnimatePresence>
-                    </React.Fragment>
+                              </div>
+                            </motion.div>
+                          </td>
+                        </motion.tr>
+                      )}
+                    </>
                   ))}
                 </AnimatePresence>
               </tbody>

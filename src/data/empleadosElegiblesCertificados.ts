@@ -1,161 +1,111 @@
 /**
- * DATOS COMPARTIDOS - EMPLEADOS ELEGIBLES PARA CERTIFICADOS LABORALES
- * 
- * Esta lista contiene TODOS los usuarios EXCEPTO:
- * - Estudiantes
- * - Graduados
- * 
- * INCLUYE todos los demás roles:
- * - Docentes
- * - Administrativos
- * - Directivos
- * - Coordinadores
- * - Investigadores
- * - etc.
- * 
- * IMPORTANTE: Esta es la fuente de verdad única para ambos módulos:
- * - Módulo de Usuarios (lista completa)
- * - Módulo de Certificados Laborales (solo elegibles)
+ * EMPLEADOS ELEGIBLES PARA CERTIFICADOS
+ * Datos de ejemplo para demostración
  */
 
-import { MOCK_USERS_WITH_SEDES } from './mockUsersWithSedes';
-
-// Roles que NO son elegibles para certificados laborales
-const ROLES_EXCLUIDOS = ['estudiante', 'graduado'];
-
-// Filtramos TODOS los usuarios EXCEPTO estudiantes y graduados
-export const EMPLEADOS_ELEGIBLES = MOCK_USERS_WITH_SEDES.filter(user => 
-  // Usuario debe estar activo
-  user.status === 'active' &&
-  // NO debe tener rol de Estudiante ni Graduado
-  !user.roles?.some(role => 
-    ROLES_EXCLUIDOS.includes(role.name.toLowerCase()) || 
-    ROLES_EXCLUIDOS.includes(role.code.toLowerCase())
-  )
-).map(user => ({
-  id: user.id,
-  firstName: user.firstName,
-  lastName: user.lastName,
-  email: user.email,
-  phone: user.phone,
-  document: user.documentNumber,
-  documentType: user.documentType,
-  status: user.status,
-  roles: user.roles,
-  location: user.location,
-  sedes: user.sedes
-}));
-
-// Función para verificar si un usuario es elegible
-export function esEmpleadoElegible(userId: string): boolean {
-  return EMPLEADOS_ELEGIBLES.some(emp => emp.id === userId);
+export interface EmpleadoElegible {
+  id: string;
+  firstName: string;
+  lastName: string;
+  document: string;
+  email: string;
+  location: string;
+  status?: 'active' | 'inactive';
+  roles?: Array<{ name: string; id: string }>;
 }
 
-// Función para obtener datos de empleado por ID
-export function getEmpleadoById(userId: string) {
-  return EMPLEADOS_ELEGIBLES.find(emp => emp.id === userId);
-}
-
-// Datos adicionales de empleado para certificados laborales
-export interface DatosLaboralesEmpleado {
-  userId: string;
+export interface DatosLaborales {
   cargo: string;
-  tipoVinculacion: 'Planta' | 'Tiempo Completo' | 'Hora Cátedra' | 'Prestación de Servicios' | 'Contrato';
-  fechaVinculacion: string;
-  grado: string;
   dependencia: string;
+  tipoVinculacion: string;
+  fechaVinculacion: string;
+  grado?: string;
   salario: number;
+  sede: string;
+  funciones?: string[];
 }
 
-// Datos laborales complementarios (esto iría en una base de datos real)
-export const DATOS_LABORALES: Record<string, DatosLaboralesEmpleado> = {
-  // ============================================================================
-  // DOCENTES (usuarios con rol DOCENTE)
-  // ============================================================================
-  'user-001': {
-    userId: 'user-001',
-    cargo: 'Docente Tiempo Completo - Coordinador Académico',
-    tipoVinculacion: 'Tiempo Completo',
-    fechaVinculacion: '2019-03-15',
-    grado: 'Maestría en Administración Pública',
-    dependencia: 'Sede Nacional - Bogotá D.C.',
-    salario: 4800000
+// Datos de ejemplo para demostración
+export const EMPLEADOS_ELEGIBLES: EmpleadoElegible[] = [
+  {
+    id: 'EMP-001',
+    firstName: 'Carlos Eduardo',
+    lastName: 'Martínez Sánchez',
+    document: '79234567',
+    email: 'carlos.martinez@esap.edu.co',
+    location: 'Bogotá D.C.',
+    status: 'active',
+    roles: [{ id: 'ROL-001', name: 'Coordinador Académico' }]
   },
-  'user-005': {
-    userId: 'user-005',
-    cargo: 'Docente de Planta',
+  {
+    id: 'EMP-002',
+    firstName: 'María Isabel',
+    lastName: 'Rodríguez Gómez',
+    document: '52678901',
+    email: 'maria.rodriguez@esap.edu.co',
+    location: 'Bogotá D.C.',
+    status: 'active',
+    roles: [{ id: 'ROL-002', name: 'Directora de Investigación' }]
+  },
+  {
+    id: 'EMP-003',
+    firstName: 'Jorge Andrés',
+    lastName: 'López Vargas',
+    document: '1015234567',
+    email: 'jorge.lopez@esap.edu.co',
+    location: 'Antioquia',
+    status: 'active',
+    roles: [{ id: 'ROL-003', name: 'Profesional Administrativo' }]
+  }
+];
+
+export const DATOS_LABORALES: Record<string, DatosLaborales> = {
+  'EMP-001': {
+    cargo: 'Coordinador Académico',
+    dependencia: 'Vicerrectoría Académica',
     tipoVinculacion: 'Planta',
-    fechaVinculacion: '2020-05-10',
-    grado: 'Especialización en Gestión Pública',
-    dependencia: 'Territorial Santander - Bucaramanga',
-    salario: 4200000
+    fechaVinculacion: '2018-03-15',
+    grado: '15',
+    salario: 6500000,
+    sede: 'Sede Central Bogotá',
+    funciones: [
+      'Coordinar actividades académicas de la Vicerrectoría',
+      'Supervisar procesos de registro académico',
+      'Gestionar cronogramas académicos institucionales',
+      'Apoyar procesos de autoevaluación y acreditación'
+    ]
   },
-  'user-009': {
-    userId: 'user-009',
-    cargo: 'Docente Investigador',
-    tipoVinculacion: 'Tiempo Completo',
-    fechaVinculacion: '2018-11-08',
-    grado: 'Doctorado en Ciencias Políticas',
-    dependencia: 'Territorial Nariño - Pasto',
-    salario: 5200000
-  },
-  
-  // ============================================================================
-  // DIRECTIVOS (usuarios con rol DIRECTIVO / DIRECTOR TERRITORIAL)
-  // ============================================================================
-  'user-003': {
-    userId: 'user-003',
-    cargo: 'Director Territorial Valle del Cauca',
+  'EMP-002': {
+    cargo: 'Directora de Investigación',
+    dependencia: 'Dirección de Investigaciones',
     tipoVinculacion: 'Planta',
-    fechaVinculacion: '2017-08-20',
-    grado: 'Maestría en Alta Gerencia',
-    dependencia: 'Territorial Valle del Cauca - Cali',
-    salario: 6500000
+    fechaVinculacion: '2015-08-01',
+    grado: '18',
+    salario: 8200000,
+    sede: 'Sede Central Bogotá',
+    funciones: [
+      'Dirigir la política institucional de investigación',
+      'Coordinar grupos de investigación',
+      'Gestionar convocatorias internas de investigación',
+      'Representar a ESAP en eventos académicos nacionales e internacionales'
+    ]
   },
-  'user-011': {
-    userId: 'user-011',
-    cargo: 'Directivo Regional',
-    tipoVinculacion: 'Planta',
-    fechaVinculacion: '2019-04-12',
-    grado: 'Especialización en Administración Pública',
-    dependencia: 'Territorial Huila - Neiva',
-    salario: 5800000
-  },
-  
-  // ============================================================================
-  // ADMINISTRATIVOS (usuarios con rol ADMINISTRATIVO)
-  // ============================================================================
-  'user-007': {
-    userId: 'user-007',
-    cargo: 'Secretario Académico',
-    tipoVinculacion: 'Planta',
-    fechaVinculacion: '2018-10-05',
-    grado: 'Maestría en Gestión de Recursos Humanos',
-    dependencia: 'Territorial Caldas - Manizales',
-    salario: 4500000
-  },
-  'user-015': {
-    userId: 'user-015',
-    cargo: 'Coordinador Administrativo',
-    tipoVinculacion: 'Planta',
-    fechaVinculacion: '2020-07-22',
-    grado: 'Especialización en Gestión Pública',
-    dependencia: 'Territorial Chocó - Quibdó',
-    salario: 4000000
+  'EMP-003': {
+    cargo: 'Profesional Administrativo',
+    dependencia: 'Territorial Antioquia',
+    tipoVinculacion: 'Contrato',
+    fechaVinculacion: '2020-02-10',
+    salario: 3500000,
+    sede: 'Territorial Antioquia',
+    funciones: [
+      'Apoyar procesos administrativos de la Territorial',
+      'Gestionar trámites académicos',
+      'Atender consultas de estudiantes y docentes'
+    ]
   }
 };
 
-// Función para obtener datos laborales completos de un empleado
-export function getDatosLaboralesCompletos(userId: string) {
-  const empleado = getEmpleadoById(userId);
-  const datosLaborales = DATOS_LABORALES[userId];
-  
-  if (!empleado || !datosLaborales) {
-    return null;
-  }
-  
-  return {
-    ...empleado,
-    ...datosLaborales
-  };
+// Función helper
+export function getDatosLaboralesCompletos(empleadoId: string): DatosLaborales | null {
+  return DATOS_LABORALES[empleadoId] || null;
 }

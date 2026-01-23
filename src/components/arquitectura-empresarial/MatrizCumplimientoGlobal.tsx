@@ -1,6 +1,6 @@
 /**
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- * MATRIZ DE CUMPLIMIENTO GLOBAL MRAE v3.0
+ * MATRIZ DE CUMPLIMIENTO GLOBAL MRAE v3.0 - ACTUALIZADO
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
  * Vista consolidada de los 106 lineamientos oficiales del MRAE MinTIC

@@ -1,6 +1,6 @@
 /**
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- * VISTA COMPLETA: TODOS LOS LINEAMIENTOS MRAE v3.0
+ * VISTA COMPLETA: TODOS LOS LINEAMIENTOS MRAE v3.0 - ACTUALIZADO
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
  * Tabla consolidada de 106 lineamientos oficiales MinTIC

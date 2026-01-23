@@ -11,6 +11,9 @@ import {
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
+import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
+import { HallazgosProvider } from "./HallazgosContext";
+import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
@@ -20,10 +23,12 @@ import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  //
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
+import { ListasChequeoModule } from "./listas-chequeo/ListasChequeoModuleComplete";  // RF007 - LISTAS DE CHEQUEO DIGITALES - VERSIÓN COMPLETA
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
   | "planificacion"                  // RF001-004 (4 tabs)
+  | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
@@ -36,12 +41,18 @@ export function ControlInternoFull() {
   return (
     <ControlInternoProvider>
       <IntegracionAuditoriasPlanesProvider>
-        <ControlInternoContent
-          seccionActiva={seccionActiva}
-          setSeccionActiva={setSeccionActiva}
-          navegacionManual={navegacionManual}
-          setNavegacionManual={setNavegacionManual}
-        />
+        <ListasChequeoProvider>
+          <HallazgosProvider>
+            <TareasProvider>
+              <ControlInternoContent
+                seccionActiva={seccionActiva}
+                setSeccionActiva={setSeccionActiva}
+                navegacionManual={navegacionManual}
+                setNavegacionManual={setNavegacionManual}
+              />
+            </TareasProvider>
+          </HallazgosProvider>
+        </ListasChequeoProvider>
       </IntegracionAuditoriasPlanesProvider>
     </ControlInternoProvider>
   );
@@ -84,7 +95,16 @@ function ControlInternoContent({
       color: "#003DA5", // Azul ESAP
     },
     
-    // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 3. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
+    {
+      id: "listas-chequeo",
+      label: "Listas de Chequeo",
+      subtitle: "Digitales • Requisitos • Cumplimiento",
+      icon: <FileText className="w-5 h-5" />,
+      color: "#6366F1", // Azul claro - Requisitos
+    },
+    
+    // ━━━━━━━━━━━ 4. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
       id: "planes-mejoramiento",
       label: "Planes de Mejoramiento",
@@ -94,7 +114,7 @@ function ControlInternoContent({
       badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
     },
     
-    // ━━━━━━━━━━━ 4. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
@@ -103,7 +123,7 @@ function ControlInternoContent({
       color: "#0891B2", // Cyan - Documental
     },
     
-    // ━━━━━━━━━━━ 5. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 6. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -120,6 +140,9 @@ function ControlInternoContent({
       
       case "planificacion":
         return <PlanificacionModuleRediseno />;
+      
+      case "listas-chequeo":
+        return <ListasChequeoModule />;
       
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;

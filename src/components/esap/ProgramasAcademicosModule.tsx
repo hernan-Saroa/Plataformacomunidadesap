@@ -727,8 +727,9 @@ export function ProgramasAcademicosModule() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 <AnimatePresence mode="popLayout">
                   {paginatedProgramas.map((programa, index) => (
-                    <React.Fragment key={programa.id}>
+                    <>
                       <motion.tr
+                        key={`programa-${programa.id}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -811,6 +812,7 @@ export function ProgramasAcademicosModule() {
 
                       {expandedProgramaId === programa.id && (
                         <motion.tr
+                          key={`programa-expanded-${programa.id}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -866,7 +868,7 @@ export function ProgramasAcademicosModule() {
                           </td>
                         </motion.tr>
                       )}
-                    </React.Fragment>
+                    </>
                   ))}
                 </AnimatePresence>
               </tbody>

@@ -50,8 +50,8 @@ interface EmpleadoElegible {
 }
 
 // Transformar datos de MOCK_USERS a formato de empleados elegibles
-const empleadosElegibles: EmpleadoElegible[] = EMPLEADOS_ELEGIBLES.map(user => {
-  const datosLaborales = DATOS_LABORALES[user.id];
+const empleadosElegibles: EmpleadoElegible[] = (EMPLEADOS_ELEGIBLES || []).map(user => {
+  const datosLaborales = DATOS_LABORALES ? DATOS_LABORALES[user.id] : undefined;
   const datosCompletos = !!datosLaborales && datosLaborales.salario > 0;
   
   return {

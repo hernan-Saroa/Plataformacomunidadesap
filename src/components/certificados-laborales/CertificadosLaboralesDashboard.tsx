@@ -81,8 +81,8 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
   // Mock data: Certificados laborales - Solo autoservicio
   // SINCRONIZADO con usuarios reales del módulo de usuarios
   // Generamos certificados para TODOS los empleados elegibles
-  const mockCertificados: CertificadoLaboral[] = EMPLEADOS_ELEGIBLES
-    .filter(empleado => DATOS_LABORALES[empleado.id]) // Solo empleados con datos laborales
+  const mockCertificados: CertificadoLaboral[] = (EMPLEADOS_ELEGIBLES || [])
+    .filter(empleado => DATOS_LABORALES && DATOS_LABORALES[empleado.id]) // Solo empleados con datos laborales
     .map((empleado, index) => {
       const datosLaborales = DATOS_LABORALES[empleado.id];
       const fechaSolicitud = new Date(2025, 0, 8 + index); // Fechas escalonadas desde enero 8
@@ -343,7 +343,7 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Empleados Elegibles</p>
-                  <p className="text-lg font-bold text-gray-900">{EMPLEADOS_ELEGIBLES.length}</p>
+                  <p className="text-lg font-bold text-gray-900">{(EMPLEADOS_ELEGIBLES || []).length}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -353,8 +353,8 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Docentes Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {EMPLEADOS_ELEGIBLES.filter(emp => 
-                      emp.roles.some(role => role.name === 'Docente')
+                    {(EMPLEADOS_ELEGIBLES || []).filter(emp => 
+                      emp.roles?.some(role => role.name === 'Docente')
                     ).length}
                   </p>
                 </div>
@@ -366,9 +366,9 @@ export function CertificadosLaboralesDashboard({ onNavigate }: { onNavigate?: (v
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Administrativos Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {EMPLEADOS_ELEGIBLES.filter(emp => 
-                      emp.roles.some(role => role.name === 'Administrativo') &&
-                      !emp.roles.some(role => role.name === 'Docente')
+                    {(EMPLEADOS_ELEGIBLES || []).filter(emp => 
+                      emp.roles?.some(role => role.name === 'Administrativo') &&
+                      !emp.roles?.some(role => role.name === 'Docente')
                     ).length}
                   </p>
                 </div>
