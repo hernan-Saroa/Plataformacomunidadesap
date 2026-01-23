@@ -30,9 +30,9 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   descripcion?: string;
 
-  @IsEnum(TipoAuditoria)
+  @IsString()
   @IsOptional()
-  tipo?: TipoAuditoria;
+  tipo?: string; // Cambiado de TipoAuditoria a string para permitir tipos personalizados
 
   @IsEnum(FaseAuditoria)
   @IsOptional()

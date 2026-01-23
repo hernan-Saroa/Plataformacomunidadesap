@@ -603,7 +603,7 @@ export class AuditoriasService {
     if (updateDto.descripcion !== undefined) {
       auditoria.descripcion = updateDto.descripcion;
     }
-    if (updateDto.tipo) auditoria.tipo = updateDto.tipo as TipoAuditoria;
+    if (updateDto.tipo) auditoria.tipo = updateDto.tipo; // Acepta cualquier string
     if (updateDto.fase) auditoria.fase = updateDto.fase as FaseAuditoria;
     if (updateDto.territorial) auditoria.territorial = updateDto.territorial;
     if (updateDto.sede) auditoria.sede = updateDto.sede;

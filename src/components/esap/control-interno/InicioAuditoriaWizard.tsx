@@ -54,6 +54,7 @@ import { auditoriasApi } from './services/api';
 import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { API_MODE, MICROSERVICE_URLS } from '../../../config/environment';
 
 // ============ TIPOS ============
 
@@ -169,6 +170,38 @@ ${listaActividades}
 ${actividades.some(a => a.esObligatoria) ? '\n(*) Actividades obligatorias' : ''}`;
 }
 
+// ============ FUNCIÓN HELPER PARA OBTENER URL BASE DE API ============
+
+/**
+ * Obtiene la URL base de la API para hacer requests al servidor
+ * Usa la misma lógica que services/api.ts para mantener consistencia
+ */
+const getApiBaseUrl = () => {
+  // Si está en modo directo (local), apuntar directamente al microservicio
+  if (API_MODE === 'direct') {
+    return MICROSERVICE_URLS['control-institucional'] || 'http://localhost:3007';
+  }
+  
+  // Modo gateway: usar la configuración de VITE_API_URL o fallback
+  // @ts-ignore - Vite inyecta import.meta.env en build time
+  if (import.meta.env.VITE_API_URL) {
+    // @ts-ignore
+    const base = import.meta.env.VITE_API_URL;
+    // Si ya incluye /auditorias o /esap, usarla tal cual
+    if (base.includes('/auditorias') || base.includes('/esap')) {
+      return base.replace(/\/esap.*$/, ''); // Remover /esap si existe
+    }
+    // Si incluye /control-institucional, agregar /api/v1
+    if (base.includes('/control-institucional')) {
+      return `${base}/api/v1`;
+    }
+    // Si es solo el gateway base, agregar el prefijo completo
+    return `${base}/control-institucional/api/v1`;
+  }
+  // Fallback: gateway por defecto
+  return 'http://localhost:3000/control-institucional/api/v1';
+};
+
 // ============ FUNCIÓN HELPER PARA DESCARGAR PDF ============
 
 // Contenido original de la carta de representante para comparación
@@ -275,17 +308,47 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
     if (documento.tipo === 'carta-representante' && documento.contenido === CARTA_REPRESENTANTE_ORIGINAL) {
       toast.loading('Descargando PDF original...', { id: 'descargar-pdf' });
       
-      const link = document.createElement('a');
-      link.href = '/EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
-      link.download = 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Usar endpoint del servidor en lugar de archivo estático
+      const apiBaseUrl = getApiBaseUrl();
+      const token = localStorage.getItem('esap_auth_token');
+      const url = `${apiBaseUrl}/templates/EM-FO-010`;
       
-      toast.success('PDF descargado exitosamente', { 
-        id: 'descargar-pdf',
-        description: 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf'
-      });
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
+        },
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.blob();
+        })
+        .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          toast.success('PDF descargado exitosamente', { 
+            id: 'descargar-pdf',
+            description: 'EM-FO-010FormatocartaderepresentacinOCI_V02.pdf'
+          });
+        })
+        .catch(error => {
+          console.error('Error al descargar PDF:', error);
+          toast.error('Error al descargar el PDF', {
+            id: 'descargar-pdf',
+            description: error.message || 'Error desconocido'
+          });
+        });
+      
       return;
     }
     
@@ -294,17 +357,47 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
     if (documento.tipo === 'carta-compromiso' && documento.contenido.startsWith(CARTA_COMPROMISO_ORIGINAL_START)) {
       toast.loading('Descargando PDF...', { id: 'descargar-pdf' });
       
-      const link = document.createElement('a');
-      link.href = '/EM-FO-009FormatocartadecompromisoOCI.pdf';
-      link.download = 'EM-FO-009FormatocartadecompromisoOCI.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Usar endpoint del servidor en lugar de archivo estático
+      const apiBaseUrl = getApiBaseUrl();
+      const token = localStorage.getItem('esap_auth_token');
+      const url = `${apiBaseUrl}/templates/EM-FO-009`;
       
-      toast.success('PDF descargado exitosamente', { 
-        id: 'descargar-pdf',
-        description: 'EM-FO-009FormatocartadecompromisoOCI.pdf'
-      });
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
+        },
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.blob();
+        })
+        .then(blob => {
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'EM-FO-009FormatocartadecompromisoOCI.pdf';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          toast.success('PDF descargado exitosamente', { 
+            id: 'descargar-pdf',
+            description: 'EM-FO-009FormatocartadecompromisoOCI.pdf'
+          });
+        })
+        .catch(error => {
+          console.error('Error al descargar PDF:', error);
+          toast.error('Error al descargar el PDF', {
+            id: 'descargar-pdf',
+            description: error.message || 'Error desconocido'
+          });
+        });
+      
       return;
     }
     

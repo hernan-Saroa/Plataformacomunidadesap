@@ -437,6 +437,24 @@ export const auditoriasApi = {
   }>>> => {
     return apiRequest(`/auditorias/ampliar-plazo/pendientes`);
   },
+
+  /**
+   * ==================== PERSONAS DISPONIBLES ====================
+   */
+
+  /**
+   * Obtiene todas las personas disponibles para ser auditores
+   */
+  getPersonasDisponibles: async (): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/personas/disponibles`);
+  },
+
+  /**
+   * Busca una persona por número de identificación
+   */
+  buscarPersona: async (numeroIdentificacion: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/personas/buscar?numeroIdentificacion=${encodeURIComponent(numeroIdentificacion)}`);
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================
