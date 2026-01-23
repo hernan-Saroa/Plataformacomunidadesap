@@ -209,6 +209,8 @@ services:
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
       - "3004:3004"
+    volumes:
+      - ./backend/certification-service/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
