@@ -16,6 +16,7 @@ import { HallazgosModule } from '../hallazgos/hallazgos.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { AuthModule } from '../../auth/auth.module';
+import { TemplatesController } from './templates.controller';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import { AuthModule } from '../../auth/auth.module';
     NotificacionesModule,
     AuthModule, // Para tener acceso a JwtService
   ],
-  controllers: [AuditoriasController],
+  controllers: [AuditoriasController, TemplatesController],
   providers: [AuditoriasService, RolesGuard],
   exports: [AuditoriasService, TypeOrmModule],
 })
