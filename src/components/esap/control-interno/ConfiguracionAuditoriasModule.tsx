@@ -966,7 +966,7 @@ function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAudit
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {listas.map((lista) => {
+          {listas.filter(lista => lista.tipo === TipoListaChequeo.EJECUCION).map((lista) => {
             const tipoInfo = TIPOS_LISTA_CHEQUEO.find(t => t.valor === lista.tipo);
             
             return (
@@ -1113,7 +1113,13 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: Modal
       return;
     }
 
-    onGuardar(formData);
+    // Asegurar que siempre se guarde 'ejecucion' como tipo
+    const formDataConEjecucion = {
+      ...formData,
+      tipo: TipoListaChequeo.EJECUCION
+    };
+
+    onGuardar(formDataConEjecucion);
   };
 
   const handleChange = (field: keyof ListaChequeo, value: any) => {
@@ -1194,44 +1200,8 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar, tiposAuditoria }: Modal
             />
           </div>
 
-          {/* SELECTOR DE TIPO DE LISTA */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tipo de Lista *
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {TIPOS_LISTA_CHEQUEO.map((tipoLista) => (
-                <button
-                  key={tipoLista.valor}
-                  type="button"
-                  onClick={() => handleChange('tipo', tipoLista.valor)}
-                  className={`
-                    flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all
-                    ${formData.tipo === tipoLista.valor 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                    }
-                  `}
-                  style={{
-                    borderColor: formData.tipo === tipoLista.valor ? tipoLista.color : undefined,
-                    backgroundColor: formData.tipo === tipoLista.valor ? tipoLista.color + '15' : undefined
-                  }}
-                >
-                  <span className="text-2xl">{tipoLista.icono}</span>
-                  <span 
-                    className={`text-sm font-semibold ${
-                      formData.tipo === tipoLista.valor ? 'text-blue-700' : 'text-gray-700'
-                    }`}
-                  >
-                    {tipoLista.nombre}
-                  </span>
-                  {formData.tipo === tipoLista.valor && (
-                    <Check className="w-4 h-4 text-blue-600" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* SELECTOR DE TIPO DE LISTA - OCULTO (siempre se guarda 'ejecucion') */}
+          {/* El campo está oculto porque siempre se guarda 'ejecucion' */}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

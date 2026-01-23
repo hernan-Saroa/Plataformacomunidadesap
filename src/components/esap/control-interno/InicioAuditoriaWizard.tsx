@@ -52,6 +52,8 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 // Servicios API
 import { auditoriasApi } from './services/api';
 import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -1407,16 +1409,31 @@ function Paso1Informacion({ auditoria }: { auditoria: AuditoriaProgramada }) {
               <h4 className="text-sm sm:text-lg text-gray-900 font-bold truncate">{auditoria.codigo}</h4>
             </div>
           </div>
-          <BadgeSIGL variant="info" size="sm" className="flex-shrink-0">
-            <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="ml-1 hidden sm:inline">Seleccionada</span>
+          <BadgeSIGL 
+            variant="info" 
+            size="sm" 
+            className="flex-shrink-0" 
+            icon={<CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: 'white' }} />}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px' }}
+          >
+            Seleccionada
           </BadgeSIGL>
         </div>
         <p className="text-xs sm:text-sm text-gray-900 font-medium mb-1">{auditoria.nombre}</p>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mt-3">
-          <BadgeSIGL variant={auditoria.tipo === 'Sede' ? 'info' : 'success'} size="sm">
-            {auditoria.tipo === 'Sede' ? <Building2 className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
-            <span className="ml-1">{auditoria.tipo}</span>
+          <BadgeSIGL 
+            variant={auditoria.tipo === 'Sede' ? 'info' : 'success'} 
+            size="sm" 
+            icon={
+              auditoria.tipo === 'Sede' ? (
+                <Building2 className="w-3.5 h-3.5" style={{ color: 'white' }} />
+              ) : (
+                <MapPin className="w-3.5 h-3.5" style={{ color: 'white' }} />
+              )
+            }
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px' }}
+          >
+            {auditoria.tipo}
           </BadgeSIGL>
           <span className="text-xs text-gray-600 hidden sm:inline">•</span>
           <span className="text-xs text-gray-600">Inicio: {auditoria.fechaInicio.toLocaleDateString('es-CO')}</span>
@@ -1727,6 +1744,7 @@ function Paso3Documentos({
                       <span>{doc.generadoEn.toLocaleTimeString('es-CO')}</span>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                      {/* Botón Ver - Siempre visible (solo lectura) */}
                       <ButtonSIGL
                         variant="secondary"
                         size="sm"
@@ -1736,22 +1754,28 @@ function Paso3Documentos({
                       >
                         Ver
                       </ButtonSIGL>
-                      <ButtonSIGL
-                        variant="secondary"
-                        size="sm"
-                        icon={<Edit className="w-3 h-3" />}
-                        onClick={() => setDocumentoEditar(doc)}
-                      >
-                        Editar
-                      </ButtonSIGL>
-                      <ButtonSIGL
-                        variant="secondary"
-                        size="sm"
-                        icon={<Upload className="w-3 h-3" />}
-                        onClick={() => setDocumentoCargar(doc.tipo)}
-                      >
-                        Cargar
-                      </ButtonSIGL>
+                      {/* Botón Editar - Requiere permiso de edición */}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                        <ButtonSIGL
+                          variant="secondary"
+                          size="sm"
+                          icon={<Edit className="w-3 h-3" />}
+                          onClick={() => setDocumentoEditar(doc)}
+                        >
+                          Editar
+                        </ButtonSIGL>
+                      )}
+                      {/* Botón Cargar - Requiere permiso de edición */}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                        <ButtonSIGL
+                          variant="secondary"
+                          size="sm"
+                          icon={<Upload className="w-3 h-3" />}
+                          onClick={() => setDocumentoCargar(doc.tipo)}
+                        >
+                          Cargar
+                        </ButtonSIGL>
+                      )}
                     </div>
                   </div>
                 </div>

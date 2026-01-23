@@ -233,8 +233,8 @@ function ControlInternoContent({
       case "expedientes":
         return <ExpedientesModulePremium />;
       
-      // case "roles-permisos":
-      //   return <RolesYPermisosModulePremium />;
+      case "roles-permisos":
+        return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;

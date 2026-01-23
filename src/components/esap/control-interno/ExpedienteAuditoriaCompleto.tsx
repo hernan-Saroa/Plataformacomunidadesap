@@ -71,7 +71,11 @@ import {
   Building2, User, Award, ClipboardCheck, MessageSquare,
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
-  BarChart3, PieChart, LineChart, Loader2, CheckCircle2
+  BarChart3, PieChart, LineChart, Loader2, CheckCircle2,
+  // Iconos adicionales para actividades mapeadas
+  ClipboardList, FileCheck, Shield, Zap, Settings, Database,
+  Network, Layers, Box, Package, Grid, List, BookOpen,
+  Briefcase, Folder, FileCode, Terminal, Cpu, HardDrive
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -79,6 +83,8 @@ import { auditoriasApi, notificacionesApi, listasChequeoApi } from './services/a
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../../config/environment';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -94,7 +100,81 @@ import {
   ACTIVIDADES_PLANEACION,
   ACTIVIDADES_EJECUCION,
   ACTIVIDADES_COMUNICACION,
+  type ActividadAuditoria,
+  type ItemChecklist,
 } from './ActividadesAuditoriaIntegradas';
+
+// ============ FUNCIÓN HELPER: MAPEAR LISTAS DE CHEQUEO A ACTIVIDADES ============
+
+/**
+ * Mapea listas de chequeo de tipo 'ejecucion' a actividades con iconos y colores aleatorios
+ */
+function mapearListasChequeoAActividades(listasChequeo: any[]): ActividadAuditoria[] {
+  // Filtrar solo listas de tipo 'ejecucion'
+  const listasEjecucion = listasChequeo.filter(lc => lc.tipo === 'ejecucion' && lc.activa !== false);
+  
+  // Iconos disponibles
+  const iconos = [
+    <Target className="w-5 h-5" />,
+    <ClipboardList className="w-5 h-5" />,
+    <FileText className="w-5 h-5" />,
+    <FileCheck className="w-5 h-5" />,
+    <Shield className="w-5 h-5" />,
+    <Zap className="w-5 h-5" />,
+    <Settings className="w-5 h-5" />,
+    <Database className="w-5 h-5" />,
+    <Network className="w-5 h-5" />,
+    <Layers className="w-5 h-5" />,
+    <Box className="w-5 h-5" />,
+    <Package className="w-5 h-5" />,
+    <Grid className="w-5 h-5" />,
+    <List className="w-5 h-5" />,
+    <BookOpen className="w-5 h-5" />,
+    <Briefcase className="w-5 h-5" />,
+    <Folder className="w-5 h-5" />,
+    <FileCode className="w-5 h-5" />,
+    <Terminal className="w-5 h-5" />,
+    <Cpu className="w-5 h-5" />,
+    <HardDrive className="w-5 h-5" />,
+  ];
+
+  // Colores disponibles
+  const colores = [
+    'amber', 'red', 'indigo', 'blue', 'purple', 'green', 'cyan', 'orange',
+    'emerald', 'teal', 'pink', 'rose', 'violet', 'fuchsia', 'sky', 'lime',
+    'yellow', 'slate', 'gray', 'zinc', 'stone', 'neutral'
+  ];
+
+  // Función para generar un índice determinístico basado en el ID
+  const obtenerIndice = (id: string, max: number): number => {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+      hash = ((hash << 5) - hash) + id.charCodeAt(i);
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash) % max;
+  };
+
+  return listasEjecucion.map((lista) => {
+    const iconoIndex = obtenerIndice(lista.id, iconos.length);
+    const colorIndex = obtenerIndice(lista.id + 'color', colores.length);
+    
+    // Mapear items de la lista a ItemChecklist
+    const checklist: ItemChecklist[] = (lista.items || []).map((item: any, index: number) => ({
+      id: item.id || `${lista.id}-item-${index}`,
+      texto: item.texto || item.criterio || `Item ${index + 1}`,
+    }));
+
+    return {
+      id: lista.id,
+      titulo: lista.nombre || 'Lista de Chequeo',
+      descripcion: lista.descripcion || 'Lista de chequeo de ejecución',
+      icono: iconos[iconoIndex],
+      color: colores[colorIndex],
+      checklist: checklist,
+    };
+  });
+}
 
 // ============ TIPOS ============
 
@@ -965,7 +1045,11 @@ export function ExpedienteAuditoriaCompleto({
       ? Math.round((progresoPlaneacionActividades + progresoPlaneacionListas) / 2)
       : progresoPlaneacionActividades;
 
-    const progresoEjecucionActividades = contarCompletadas(ACTIVIDADES_EJECUCION);
+    // Para ejecución, solo usamos las listas de chequeo mapeadas (no ACTIVIDADES_EJECUCION hardcoded)
+    const actividadesEjecucionMapeadas = mapearListasChequeoAActividades(listasChequeo);
+    const progresoEjecucionActividades = actividadesEjecucionMapeadas.length > 0 
+      ? contarCompletadas(actividadesEjecucionMapeadas)
+      : 0;
     const progresoEjecucionListas = contarListasChequeo('ejecucion');
     const progresoEjecucion = listasChequeo.filter(lc => lc.tipo === 'ejecucion').length > 0
       ? Math.round((progresoEjecucionActividades + progresoEjecucionListas) / 2)
@@ -1752,52 +1836,8 @@ function TabPlaneacion({
   listasChequeo: any[];
   loadingListasChequeo: boolean;
 }) {
-  const [guardando, setGuardando] = useState(false);
-
-  const toggleChecklist = async (itemId: string) => {
-    if (!checklistCompletados || !onChecklistChange || guardando) return;
-
-    const estadoAnterior = { ...checklistCompletados };
-    const nuevoEstado = !checklistCompletados[itemId];
-    
-    const nuevoChecklist = {
-      ...checklistCompletados,
-      [itemId]: nuevoEstado,
-    };
-
-    // Actualizar estado local inmediatamente
-    onChecklistChange(nuevoChecklist);
-
-    // Guardar en la base de datos
-    if (auditoriaId) {
-      setGuardando(true);
-      try {
-        const response = await auditoriasApi.update(auditoriaId, {
-          checklistCompletados: nuevoChecklist,
-        });
-
-        if (response.success) {
-          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
-            description: 'Cambio guardado en la base de datos',
-            duration: 3000,
-          });
-        } else {
-          // Revertir cambio si falla
-          onChecklistChange(estadoAnterior);
-          throw new Error(response.error || 'Error al guardar');
-        }
-      } catch (error) {
-        // Revertir cambio local
-        onChecklistChange(estadoAnterior);
-        console.error('Error al guardar checkbox:', error);
-        toast.error('Error al guardar', {
-          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
-        });
-      } finally {
-        setGuardando(false);
-      }
-    }
-  };
+  // Verificar si la fase está enviada/completada y no se puede editar
+  const puedeEditar = auditoria.estado !== 'ejecucion' && auditoria.estado !== 'comunicacion' && auditoria.estado !== 'seguimiento' && auditoria.estado !== 'finalizada';
 
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
@@ -1806,98 +1846,25 @@ function TabPlaneacion({
           <Info className="w-5 h-5 text-purple-600" />
           <div>
             <p className="text-sm text-purple-900">
-              <strong>Fase de Planeación</strong> - Listas de Chequeo
+              <strong>Fase de Planeación</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-purple-700 mt-1">
-              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
+              Completa las 3 actividades para avanzar a la fase de Ejecución
             </p>
           </div>
         </div>
       </div>
 
-      {/* Renderizar solo listas de chequeo del backend para planeación */}
-      <div className="mb-6">
-        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
-        {loadingListasChequeo ? (
-          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
-        ) : (
-          <div className="space-y-4">
-            {listasChequeo.filter(lc => lc.tipo === 'planeacion').length === 0 && (
-              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
-            )}
-            {listasChequeo.filter(lc => lc.tipo === 'planeacion').map(lista => (
-              <CardSIGL key={lista.id} className="!p-4">
-                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
-                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
-                <div className="space-y-2">
-                  {lista.items && lista.items.length > 0 ? (
-                    (() => {
-                      // Filtrar items no deseados
-                      const itemsFiltrados = lista.items.filter((item: any) => {
-                        const categoria = (item.categoria || '').toLowerCase();
-                        const texto = (item.texto || '').toLowerCase();
-                        return !categoria.includes('informes') && 
-                               !categoria.includes('socialización') && 
-                               !categoria.includes('socializacion') &&
-                               !texto.includes('informe preliminar') &&
-                               !texto.includes('informe final') &&
-                               !texto.includes('socializado') &&
-                               !texto.includes('socialización');
-                      });
-
-                      if (itemsFiltrados.length === 0) {
-                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
-                      }
-
-                      return itemsFiltrados.map((item: any) => {
-                        const isCompletado = checklistCompletados?.[item.id] || false;
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={() => !guardando && toggleChecklist(item.id)}
-                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
-                              guardando ? 'opacity-50 cursor-wait' : ''
-                            }`}
-                          >
-                            <div className="mt-0.5 relative">
-                              {isCompletado ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                              ) : (
-                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {item.categoria && (
-                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
-                                )}
-                                <p
-                                  className={`text-sm flex-1 ${
-                                    isCompletado
-                                      ? 'text-gray-500 line-through'
-                                      : 'text-gray-900'
-                                  }`}
-                                >
-                                  {item.texto}
-                                </p>
-                                {item.obligatorio && (
-                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()
-                  ) : (
-                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
-                  )}
-                </div>
-              </CardSIGL>
-            ))}
-          </div>
-        )}
-      </div>
+      <ActividadesIntegradas
+        actividades={ACTIVIDADES_PLANEACION}
+        faseTitulo="Planeación"
+        faseColor="purple"
+        estadoRequerido="Planeación"
+        estadoActual={auditoria.estado}
+        auditoriaId={puedeEditar ? auditoriaId : undefined}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={puedeEditar ? onChecklistChange : undefined}
+      />
     </div>
   );
 }
@@ -1918,52 +1885,48 @@ function TabEjecucion({
   listasChequeo: any[];
   loadingListasChequeo: boolean;
 }) {
-  const [guardando, setGuardando] = useState(false);
+  // Verificar si la fase está enviada/completada y no se puede editar
+  const puedeEditar = auditoria.estado !== 'comunicacion' && auditoria.estado !== 'seguimiento' && auditoria.estado !== 'finalizada';
 
-  const toggleChecklist = async (itemId: string) => {
-    if (!checklistCompletados || !onChecklistChange || guardando) return;
-
-    const estadoAnterior = { ...checklistCompletados };
-    const nuevoEstado = !checklistCompletados[itemId];
-    
-    const nuevoChecklist = {
-      ...checklistCompletados,
-      [itemId]: nuevoEstado,
-    };
-
-    // Actualizar estado local inmediatamente
-    onChecklistChange(nuevoChecklist);
-
-    // Guardar en la base de datos
-    if (auditoriaId) {
-      setGuardando(true);
-      try {
-        const response = await auditoriasApi.update(auditoriaId, {
-          checklistCompletados: nuevoChecklist,
-        });
-
-        if (response.success) {
-          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
-            description: 'Cambio guardado en la base de datos',
-            duration: 3000,
-          });
-        } else {
-          // Revertir cambio si falla
-          onChecklistChange(estadoAnterior);
-          throw new Error(response.error || 'Error al guardar');
-        }
-      } catch (error) {
-        // Revertir cambio local
-        onChecklistChange(estadoAnterior);
-        console.error('Error al guardar checkbox:', error);
-        toast.error('Error al guardar', {
-          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
-        });
-      } finally {
-        setGuardando(false);
-      }
+  // Mapear listas de chequeo a actividades
+  const actividadesEjecucion = useMemo(() => {
+    if (loadingListasChequeo || !listasChequeo || listasChequeo.length === 0) {
+      return [];
     }
-  };
+    return mapearListasChequeoAActividades(listasChequeo);
+  }, [listasChequeo, loadingListasChequeo]);
+
+  // Si no hay actividades mapeadas, mostrar mensaje de carga o vacío
+  if (loadingListasChequeo) {
+    return (
+      <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+          <span className="ml-3 text-gray-600">Cargando actividades de ejecución...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (actividadesEjecucion.length === 0) {
+    return (
+      <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <Info className="w-5 h-5 text-amber-600" />
+            <div>
+              <p className="text-sm text-amber-900">
+                <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                No hay listas de chequeo de ejecución disponibles. Crea listas de chequeo en la configuración.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
@@ -1972,98 +1935,25 @@ function TabEjecucion({
           <Info className="w-5 h-5 text-amber-600" />
           <div>
             <p className="text-sm text-amber-900">
-              <strong>Fase de Ejecución</strong> - Listas de Chequeo
+              <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-amber-700 mt-1">
-              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
+              Completa las {actividadesEjecucion.length} actividades para avanzar a la fase de Comunicación
             </p>
           </div>
         </div>
       </div>
 
-      {/* Renderizar solo listas de chequeo del backend */}
-      <div className="mb-6">
-        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
-        {loadingListasChequeo ? (
-          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
-        ) : (
-          <div className="space-y-4">
-            {listasChequeo.filter(lc => lc.tipo === 'ejecucion').length === 0 && (
-              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
-            )}
-            {listasChequeo.filter(lc => lc.tipo === 'ejecucion').map(lista => (
-              <CardSIGL key={lista.id} className="!p-4">
-                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
-                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
-                <div className="space-y-2">
-                  {lista.items && lista.items.length > 0 ? (
-                    (() => {
-                      // Filtrar items no deseados
-                      const itemsFiltrados = lista.items.filter((item: any) => {
-                        const categoria = (item.categoria || '').toLowerCase();
-                        const texto = (item.texto || '').toLowerCase();
-                        return !categoria.includes('informes') && 
-                               !categoria.includes('socialización') && 
-                               !categoria.includes('socializacion') &&
-                               !texto.includes('informe preliminar') &&
-                               !texto.includes('informe final') &&
-                               !texto.includes('socializado') &&
-                               !texto.includes('socialización');
-                      });
-
-                      if (itemsFiltrados.length === 0) {
-                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
-                      }
-
-                      return itemsFiltrados.map((item: any) => {
-                        const isCompletado = checklistCompletados?.[item.id] || false;
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={() => !guardando && toggleChecklist(item.id)}
-                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
-                              guardando ? 'opacity-50 cursor-wait' : ''
-                            }`}
-                          >
-                            <div className="mt-0.5 relative">
-                              {isCompletado ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                              ) : (
-                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {item.categoria && (
-                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
-                                )}
-                                <p
-                                  className={`text-sm flex-1 ${
-                                    isCompletado
-                                      ? 'text-gray-500 line-through'
-                                      : 'text-gray-900'
-                                  }`}
-                                >
-                                  {item.texto}
-                                </p>
-                                {item.obligatorio && (
-                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()
-                  ) : (
-                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
-                  )}
-                </div>
-              </CardSIGL>
-            ))}
-          </div>
-        )}
-      </div>
+      <ActividadesIntegradas
+        actividades={actividadesEjecucion}
+        faseTitulo="Ejecución"
+        faseColor="amber"
+        estadoRequerido="Ejecución"
+        estadoActual={auditoria.estado}
+        auditoriaId={puedeEditar ? auditoriaId : undefined}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={puedeEditar ? onChecklistChange : undefined}
+      />
     </div>
   );
 }
@@ -2084,52 +1974,8 @@ function TabComunicacion({
   listasChequeo: any[];
   loadingListasChequeo: boolean;
 }) {
-  const [guardando, setGuardando] = useState(false);
-
-  const toggleChecklist = async (itemId: string) => {
-    if (!checklistCompletados || !onChecklistChange || guardando) return;
-
-    const estadoAnterior = { ...checklistCompletados };
-    const nuevoEstado = !checklistCompletados[itemId];
-    
-    const nuevoChecklist = {
-      ...checklistCompletados,
-      [itemId]: nuevoEstado,
-    };
-
-    // Actualizar estado local inmediatamente
-    onChecklistChange(nuevoChecklist);
-
-    // Guardar en la base de datos
-    if (auditoriaId) {
-      setGuardando(true);
-      try {
-        const response = await auditoriasApi.update(auditoriaId, {
-          checklistCompletados: nuevoChecklist,
-        });
-
-        if (response.success) {
-          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
-            description: 'Cambio guardado en la base de datos',
-            duration: 3000,
-          });
-        } else {
-          // Revertir cambio si falla
-          onChecklistChange(estadoAnterior);
-          throw new Error(response.error || 'Error al guardar');
-        }
-      } catch (error) {
-        // Revertir cambio local
-        onChecklistChange(estadoAnterior);
-        console.error('Error al guardar checkbox:', error);
-        toast.error('Error al guardar', {
-          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
-        });
-      } finally {
-        setGuardando(false);
-      }
-    }
-  };
+  // Verificar si la fase está enviada/completada y no se puede editar
+  const puedeEditar = auditoria.estado !== 'seguimiento' && auditoria.estado !== 'finalizada';
 
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
@@ -2138,98 +1984,25 @@ function TabComunicacion({
           <Info className="w-5 h-5 text-green-600" />
           <div>
             <p className="text-sm text-green-900">
-              <strong>Fase de Comunicación</strong> - Listas de Chequeo
+              <strong>Fase de Comunicación</strong> - Gestión integrada de actividades
             </p>
             <p className="text-xs text-green-700 mt-1">
-              Verifica y completa los ítems de las listas de chequeo obtenidas del backend.
+              Completa las 3 actividades para finalizar la auditoría
             </p>
           </div>
         </div>
       </div>
 
-      {/* Renderizar solo listas de chequeo del backend para comunicación */}
-      <div className="mb-6">
-        <h4 className="text-md font-semibold text-gray-900 mb-2">Listas de Chequeo</h4>
-        {loadingListasChequeo ? (
-          <div className="text-sm text-gray-500">Cargando listas de chequeo...</div>
-        ) : (
-          <div className="space-y-4">
-            {listasChequeo.filter(lc => lc.tipo === 'comunicacion').length === 0 && (
-              <div className="text-xs text-gray-400">No hay listas de chequeo para esta fase.</div>
-            )}
-            {listasChequeo.filter(lc => lc.tipo === 'comunicacion').map(lista => (
-              <CardSIGL key={lista.id} className="!p-4">
-                <div className="font-semibold text-blue-700 mb-1">{lista.nombre}</div>
-                <div className="text-xs text-gray-500 mb-3">{lista.descripcion}</div>
-                <div className="space-y-2">
-                  {lista.items && lista.items.length > 0 ? (
-                    (() => {
-                      // Filtrar items no deseados
-                      const itemsFiltrados = lista.items.filter((item: any) => {
-                        const categoria = (item.categoria || '').toLowerCase();
-                        const texto = (item.texto || '').toLowerCase();
-                        return !categoria.includes('informes') && 
-                               !categoria.includes('socialización') && 
-                               !categoria.includes('socializacion') &&
-                               !texto.includes('informe preliminar') &&
-                               !texto.includes('informe final') &&
-                               !texto.includes('socializado') &&
-                               !texto.includes('socialización');
-                      });
-
-                      if (itemsFiltrados.length === 0) {
-                        return <div className="text-xs text-gray-400">No hay items en esta lista.</div>;
-                      }
-
-                      return itemsFiltrados.map((item: any) => {
-                        const isCompletado = checklistCompletados?.[item.id] || false;
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={() => !guardando && toggleChecklist(item.id)}
-                            className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
-                              guardando ? 'opacity-50 cursor-wait' : ''
-                            }`}
-                          >
-                            <div className="mt-0.5 relative">
-                              {isCompletado ? (
-                                <CheckCircle2 className="w-5 h-5 text-green-600" />
-                              ) : (
-                                <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {item.categoria && (
-                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">{item.categoria}</span>
-                                )}
-                                <p
-                                  className={`text-sm flex-1 ${
-                                    isCompletado
-                                      ? 'text-gray-500 line-through'
-                                      : 'text-gray-900'
-                                  }`}
-                                >
-                                  {item.texto}
-                                </p>
-                                {item.obligatorio && (
-                                  <span className="text-xs text-red-600 font-medium">Obligatorio</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()
-                  ) : (
-                    <div className="text-xs text-gray-400">No hay items en esta lista.</div>
-                  )}
-                </div>
-              </CardSIGL>
-            ))}
-          </div>
-        )}
-      </div>
+      <ActividadesIntegradas
+        actividades={ACTIVIDADES_COMUNICACION}
+        faseTitulo="Comunicación"
+        faseColor="green"
+        estadoRequerido="Comunicación"
+        estadoActual={auditoria.estado}
+        auditoriaId={puedeEditar ? auditoriaId : undefined}
+        checklistInicial={checklistCompletados}
+        onChecklistChange={puedeEditar ? onChecklistChange : undefined}
+      />
     </div>
   );
 }
@@ -2453,15 +2226,18 @@ function TabDocumentacion({
             </div>
           </div>
 
-          <ButtonSIGL 
-            variant="primary" 
-            size="sm"
-            icon={<Upload className="w-4 h-4" />}
-            iconPosition="left"
-            onClick={() => setModalCargarDocumento(true)}
-          >
-            Cargar Documento
-          </ButtonSIGL>
+          {/* Botón Cargar Documento - Requiere permiso de edición */}
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+            <ButtonSIGL 
+              variant="primary" 
+              size="sm"
+              icon={<Upload className="w-4 h-4" />}
+              iconPosition="left"
+              onClick={() => setModalCargarDocumento(true)}
+            >
+              Cargar Documento
+            </ButtonSIGL>
+          )}
         </div>
 
         {/* Lista de documentos */}
@@ -2492,6 +2268,7 @@ function TabDocumentacion({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {/* Botón Ver - Siempre visible (solo lectura) */}
                   <button 
                     onClick={() => handleVerDocumento(doc)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -2499,6 +2276,7 @@ function TabDocumentacion({
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
                   </button>
+                  {/* Botón Descargar - Siempre visible (solo lectura) */}
                   <button 
                     onClick={() => handleDescargarDocumento(doc)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -2506,13 +2284,16 @@ function TabDocumentacion({
                   >
                     <Download className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button 
-                    onClick={() => handleEliminarDocumento(doc)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors hover:bg-red-50"
-                    title="Eliminar documento"
-                  >
-                    <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
-                  </button>
+                  {/* Botón Eliminar - Requiere permiso de edición */}
+                  {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                    <button 
+                      onClick={() => handleEliminarDocumento(doc)}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors hover:bg-red-50"
+                      title="Eliminar documento"
+                    >
+                      <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
+                    </button>
+                  )}
                 </div>
               </div>
             </CardSIGL>
