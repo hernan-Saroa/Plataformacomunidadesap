@@ -92,6 +92,7 @@ export class ListasChequeoService {
       codigo: createDto.codigo.toUpperCase(),
       nombre: createDto.nombre,
       descripcion: createDto.descripcion || '',
+      categoria: createDto.categoria || 'General', // Valor por defecto 'General' si no viene
       tipo: createDto.tipo || TipoListaChequeo.EJECUCION, // Valor por defecto si no viene
       tipoAuditoriaId: createDto.tipoAuditoriaId,
       activa: createDto.activa !== undefined ? createDto.activa : true,
@@ -106,7 +107,7 @@ export class ListasChequeoService {
         this.itemRepository.create({
           listaChequeoId: listaGuardada.id,
           texto: itemDto.texto,
-          categoria: itemDto.categoria,
+          categoria: itemDto.categoria || 'General', // Valor por defecto 'General' si no viene
           obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
           orden: itemDto.orden !== undefined ? itemDto.orden : index,
         }),
@@ -137,6 +138,7 @@ export class ListasChequeoService {
     // Actualizar campos básicos
     if (updateDto.nombre !== undefined) lista.nombre = updateDto.nombre;
     if (updateDto.descripcion !== undefined) lista.descripcion = updateDto.descripcion;
+    if (updateDto.categoria !== undefined) lista.categoria = updateDto.categoria;
     if (updateDto.tipo !== undefined) lista.tipo = updateDto.tipo;
     if (updateDto.tipoAuditoriaId !== undefined) lista.tipoAuditoriaId = updateDto.tipoAuditoriaId;
     if (updateDto.activa !== undefined) lista.activa = updateDto.activa;
@@ -159,7 +161,7 @@ export class ListasChequeoService {
           this.itemRepository.create({
             listaChequeoId: id,
             texto: itemDto.texto,
-            categoria: itemDto.categoria,
+            categoria: itemDto.categoria || 'General', // Valor por defecto 'General' si no viene
             obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
             orden: itemDto.orden !== undefined ? itemDto.orden : index,
           }),

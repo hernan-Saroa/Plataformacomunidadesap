@@ -558,6 +558,7 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoSeleccion>('Todos');
   const [areaEditando, setAreaEditando] = useState<string | null>(null);
   const [modalNuevaArea, setModalNuevaArea] = useState(false);
+  const [areaViendoDetalle, setAreaViendoDetalle] = useState<AreaAuditable | null>(null);
 
   // Función para normalizar nivel de riesgo (BD puede venir en minúsculas)
   const normalizarNivelRiesgo = (nivel: string | undefined): NivelRiesgo => {
@@ -974,6 +975,7 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
                     editando={areaEditando === area.id}
                     onGuardarRiesgo={handleActualizarRiesgo}
                     onCancelarEdicion={() => setAreaEditando(null)}
+                    onVerDetalle={(area) => setAreaViendoDetalle(area)}
                   />
                 ))}
               </div>
@@ -981,6 +983,7 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
               <TablaAreasAuditables
                 areas={areasFiltradas}
                 onCambiarEstado={handleCambiarEstado}
+                onVerDetalle={(area) => setAreaViendoDetalle(area)}
               />
             )}
 
@@ -1101,6 +1104,14 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
                 }))
               : 0
           }}
+        />
+      )}
+
+      {/* MODAL DETALLE ÁREA */}
+      {areaViendoDetalle && (
+        <ModalDetalleArea
+          area={areaViendoDetalle}
+          onClose={() => setAreaViendoDetalle(null)}
         />
       )}
     </div>
@@ -1304,6 +1315,7 @@ interface CardAreaAuditableProps {
   editando: boolean;
   onGuardarRiesgo: (areaId: string, criticidad: CriticidadNivel, exposicion: ExposicionNivel, mitigantes: number) => void;
   onCancelarEdicion: () => void;
+  onVerDetalle?: (area: AreaAuditable) => void;
 }
 
 function CardAreaAuditable({ 
@@ -1312,7 +1324,8 @@ function CardAreaAuditable({
   onEditarRiesgo, 
   editando, 
   onGuardarRiesgo,
-  onCancelarEdicion 
+  onCancelarEdicion,
+  onVerDetalle
 }: CardAreaAuditableProps) {
   const [criticidad, setCriticidad] = useState<CriticidadNivel>(area.criticidad);
   const [exposicion, setExposicion] = useState<ExposicionNivel>(area.factorExposicion);
@@ -1418,12 +1431,14 @@ function CardAreaAuditable({
             <span className="text-gray-600">Auditorías:</span>
             <span className="font-bold text-gray-900">{area.numeroAuditorias}</span>
           </div>
-          {area.ultimaAuditoria && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600">Última:</span>
-              <span className="text-gray-900">{area.ultimaAuditoria}</span>
-            </div>
-          )}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Última:</span>
+            <span className="text-gray-900">
+              {area.ultimaAuditoria || (
+                <span className="text-gray-400 italic text-xs">No ha sido auditado</span>
+              )}
+            </span>
+          </div>
         </div>
       )}
 
@@ -1462,9 +1477,10 @@ function CardAreaAuditable({
 interface TablaAreasAuditablesProps {
   areas: AreaAuditable[];
   onCambiarEstado: (areaId: string, estado: EstadoSeleccion) => void;
+  onVerDetalle: (area: AreaAuditable) => void;
 }
 
-function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesProps) {
+function TablaAreasAuditables({ areas, onCambiarEstado, onVerDetalle }: TablaAreasAuditablesProps) {
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
@@ -1530,7 +1546,11 @@ function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesPr
                     </select>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Button size="sm" variant="outline">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => onVerDetalle(area)}
+                    >
                       <Eye className="w-3 h-3" />
                     </Button>
                   </td>
@@ -1826,6 +1846,246 @@ function ModalNuevaArea({ onClose, onGuardar, ultimoCodigoPorTipo }: ModalNuevaA
           </Button>
         </div>
       </Card>
+      </motion.div>
+    </div>
+  );
+}
+
+// ============ MODAL DETALLE ÁREA ============
+
+interface ModalDetalleAreaProps {
+  area: AreaAuditable;
+  onClose: () => void;
+}
+
+function ModalDetalleArea({ area, onClose }: ModalDetalleAreaProps) {
+  const estadoInfo = getEstadoInfo(area.estado);
+  
+  return (
+    <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+      >
+        <Card className="p-6 shadow-2xl">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                {area.tipo === 'Sede' ? (
+                  <Building2 className="w-6 h-6 text-purple-600" />
+                ) : (
+                  <MapPin className="w-6 h-6 text-green-600" />
+                )}
+                <Badge variant="outline" className="text-sm">
+                  {area.codigo}
+                </Badge>
+                <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
+                  {area.nivelRiesgo}
+                </Badge>
+              </div>
+              <h2 className="font-black text-gray-900 text-2xl mb-1">
+                {area.nombre}
+              </h2>
+              <p className="text-sm text-gray-600">
+                {area.descripcion}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          {/* Información General */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <Card className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Target className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-gray-900">Información General</h3>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-gray-600">Tipo de Área</p>
+                  <p className="font-bold text-gray-900">{area.tipo}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Responsable</p>
+                  <p className="font-bold text-gray-900">{area.responsable}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Estado</p>
+                  <Badge style={{ 
+                    background: estadoInfo.color,
+                    color: 'white'
+                  }}>
+                    {estadoInfo.label}
+                  </Badge>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-200">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-orange-600" />
+                <h3 className="font-bold text-gray-900">Evaluación de Riesgo DAFP</h3>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Score de Riesgo</p>
+                  <div className="flex items-center gap-2">
+                    <code 
+                      className="text-3xl font-black"
+                      style={{ color: getRiesgoColor(area.nivelRiesgo) }}
+                    >
+                      {area.scoreRiesgo}
+                    </code>
+                    <Badge 
+                      style={{ 
+                        background: getRiesgoColor(area.nivelRiesgo),
+                        color: 'white'
+                      }}
+                      className="text-sm"
+                    >
+                      {area.nivelRiesgo}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  <p className="font-bold mb-1">Cálculo:</p>
+                  <code className="bg-white px-2 py-1 rounded border">
+                    ({area.criticidad} × {area.factorExposicion}) ÷ {area.factoresMitigantes} = {area.scoreRiesgo}
+                  </code>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Parámetros de Riesgo */}
+          <Card className="p-4 mb-6 bg-gray-50">
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Parámetros de Evaluación DAFP
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-lg border-2 border-orange-200">
+                <p className="text-xs font-bold text-gray-700 mb-2">📊 Criticidad (Impacto)</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <div 
+                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
+                    style={{ background: '#F59E0B' }}
+                  >
+                    {area.criticidad}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">
+                      {area.criticidad === 5 ? 'Alta' : area.criticidad === 3 ? 'Media' : 'Baja'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {area.criticidad === 5 ? 'Crítico/Financiero' : 
+                       area.criticidad === 3 ? 'Apoyo importante' : 
+                       'Secundario'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
+                <p className="text-xs font-bold text-gray-700 mb-2">👥 Factor Exposición</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <div 
+                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
+                    style={{ background: '#3B82F6' }}
+                  >
+                    {area.factorExposicion}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">
+                      {area.factorExposicion === 5 ? 'Alta' : area.factorExposicion === 3 ? 'Media' : 'Baja'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {area.factorExposicion === 5 ? '>100 personas' : 
+                       area.factorExposicion === 3 ? '50-100 personas' : 
+                       '<50 personas'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg border-2 border-green-200">
+                <p className="text-xs font-bold text-gray-700 mb-2">🛡️ Factores Mitigantes</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <div 
+                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
+                    style={{ background: '#10B981' }}
+                  >
+                    {area.factoresMitigantes}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">
+                      {area.factoresMitigantes >= 7 ? 'Alto' : 
+                       area.factoresMitigantes >= 4 ? 'Medio' : 
+                       'Bajo'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      Controles existentes
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Historial de Auditorías */}
+          <Card className="p-4 mb-6">
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Historial de Auditorías
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-xs text-gray-600 mb-1">Total de Auditorías</p>
+                <p className="text-3xl font-black" style={{ color: '#003DA5' }}>
+                  {area.numeroAuditorias}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-600 mb-1">Última Auditoría</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {area.ultimaAuditoria || (
+                    <span className="text-gray-400 italic">No ha sido auditado</span>
+                  )}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-600 mb-1">Próxima Auditoría</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {area.proximaAuditoria || (
+                    <span className="text-gray-400 italic">
+                      {area.ultimaAuditoria ? 'N/A' : 'No ha sido auditado'}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Botones de Acción */}
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onClose}
+            >
+              <X className="w-4 h-4 mr-1" />
+              Cerrar
+            </Button>
+          </div>
+        </Card>
       </motion.div>
     </div>
   );
