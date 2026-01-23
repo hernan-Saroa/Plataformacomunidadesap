@@ -81,14 +81,15 @@ export function VisorPDFCertificado({
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
 
-  const normalizarTexto = (value: string) =>
-    (value || '')
-      .toLowerCase()
-      .normalize('NFD')
+  const normalizarTexto = (value: string) => {
+    const baseTexto = String(value || '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    return textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  };
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 

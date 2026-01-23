@@ -82,7 +82,7 @@ interface CertificadoGenerado {
 // Función para enmascarar correo (Habeas Data)
 // Muestra: 2 caracteres iniciales + asteriscos + 6 caracteres finales
 const enmascararCorreo = (correo: string): string => {
-  if (!correo || correo.length < 10) return correo;
+  if (typeof correo !== 'string' || !correo || correo.length < 10) return correo || '';
   
   const [usuario, dominio] = correo.split('@');
   
@@ -161,9 +161,9 @@ type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
   const resolverTemplateType = (data?: { position_category?: string; career_category?: string }) => {
-    const texto = (data?.career_category || '')
-      .toLowerCase()
-      .normalize('NFD')
+    const baseTexto = String(data?.career_category ?? '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    const texto = textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -405,6 +405,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
+    if (buscandoEmpleado) return;
+
+    if (!tipoDocumento) {
+      toast.error('Por favor selecciona el tipo de documento');
+      return;
+    }
     if (!numeroDocumento) {
       toast.error('Por favor ingresa tu número de documento');
       return;
@@ -420,6 +426,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
       const verificacion = await certificadosService.autoservicio.verificarDocumento(numeroDocumento);
+      if (!verificacion || typeof verificacion !== 'object' || !('existe' in verificacion)) {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos validar tu documento en este momento. Intenta nuevamente.');
+        return;
+      }
+
       if (!verificacion.existe) {
         setBuscandoEmpleado(false);
         toast.error('No encontramos tu documento en la base de datos de ESAP');
@@ -428,6 +440,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
       // Llamar al backend para verificar documento y generar código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+      if (!response || typeof response !== 'object') {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos generar el codigo en este momento. Intenta nuevamente.');
+        return;
+      }
+
 
       const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
       if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
@@ -445,7 +463,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setCodigoEnviado(codigo);
 
       // Crear objeto empleado desde la respuesta del backend
-      const solicitud = response.solicitud || {};
+      const solicitud = response.solicitud && typeof response.solicitud === 'object' ? response.solicitud : {};
       const templateType = resolverTemplateType(solicitud);
       const cargoNormalizado = solicitud.position_category || solicitud.career_category || 'N/A';
       const vinculoNormalizado =
