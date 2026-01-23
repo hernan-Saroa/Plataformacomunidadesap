@@ -30,6 +30,10 @@ export class CreateListaChequeoDto {
   descripcion?: string;
 
   @IsOptional()
+  @IsString()
+  categoria?: string;
+
+  @IsOptional()
   @IsEnum(TipoListaChequeo)
   tipo?: TipoListaChequeo;
 

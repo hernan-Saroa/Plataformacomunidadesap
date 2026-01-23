@@ -93,10 +93,10 @@ export class Auditoria {
 
   @Column({
     type: 'varchar',
-    length: 50,
+    length: 255, // Aumentar longitud para permitir tipos personalizados
     nullable: false,
   })
-  tipo: TipoAuditoria;
+  tipo: string; // Cambiado de TipoAuditoria a string para permitir tipos personalizados
 
   @Column({
     type: 'varchar',
@@ -245,6 +245,20 @@ export class Auditoria {
 
   @Column({ name: 'fecha_eliminacion', type: 'timestamp', nullable: true })
   fechaEliminacion?: Date;
+
+  // ============ CAMPOS DE APROBACIÓN ============
+  
+  @Column({ type: 'boolean', default: false })
+  aprobada: boolean;
+
+  @Column({ name: 'fecha_aprobacion', type: 'timestamp', nullable: true })
+  fechaAprobacion?: Date;
+
+  @Column({ name: 'aprobada_por', type: 'varchar', length: 255, nullable: true })
+  aprobadaPor?: string; // Nombre del usuario que aprobó
+
+  @Column({ name: 'aprobada_por_id', type: 'bigint', nullable: true })
+  aprobadaPorId?: number; // ID del usuario que aprobó
 
   // Relaciones
   @OneToMany(() => ObjetivoAuditoria, (objetivo) => objetivo.auditoria)

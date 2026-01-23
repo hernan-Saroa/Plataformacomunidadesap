@@ -52,6 +52,8 @@ import type { EtapaKanban } from '../../../services/tableros-kanban.service';
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -381,7 +383,7 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
   return {
     id: planBD.id,
     codigo: planBD.codigo,
-    auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
+    auditoria: (planBD.auditoria as any)?.codigo || planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
     area: areaResponsable,
     responsable: responsableArea,
     cargoResponsable: cargoResponsable,
@@ -1334,6 +1336,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
           
           <div className="flex items-center gap-3">
             {/* Botón Crear Plan */}
+            {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE) && (
             <button
               onClick={onAbrirCrearPlan}
               className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
@@ -1346,7 +1349,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
                 </span>
               )}
             </button>
-
+            )}
             {/* Toggle Vista */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
               <button
