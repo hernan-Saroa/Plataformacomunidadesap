@@ -174,7 +174,7 @@ ${actividades.some(a => a.esObligatoria) ? '\n(*) Actividades obligatorias' : ''
 
 /**
  * Obtiene la URL base de la API para hacer requests al servidor
- * Usa la misma lógica que en services/api.ts
+ * Usa la misma lógica que services/api.ts para mantener consistencia
  */
 const getApiBaseUrl = () => {
   // Si está en modo directo (local), apuntar directamente al microservicio
@@ -184,10 +184,9 @@ const getApiBaseUrl = () => {
   
   // Modo gateway: usar la configuración de VITE_API_URL o fallback
   // @ts-ignore - Vite inyecta import.meta.env en build time
-  const apiUrl = import.meta.env?.VITE_API_URL;
-  
-  if (apiUrl) {
-    const base = apiUrl;
+  if (import.meta.env.VITE_API_URL) {
+    // @ts-ignore
+    const base = import.meta.env.VITE_API_URL;
     // Si ya incluye /auditorias o /esap, usarla tal cual
     if (base.includes('/auditorias') || base.includes('/esap')) {
       return base.replace(/\/esap.*$/, ''); // Remover /esap si existe
@@ -318,6 +317,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
         method: 'GET',
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
+          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
         },
       })
         .then(response => {
@@ -366,6 +366,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
         method: 'GET',
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
+          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
         },
       })
         .then(response => {
