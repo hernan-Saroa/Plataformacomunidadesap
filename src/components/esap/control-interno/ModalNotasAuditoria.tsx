@@ -29,6 +29,8 @@ import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
 import { ConfirmationDialog } from '../../ui/confirmation-dialog';
 import { auditoriasApi } from './services/api';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -450,6 +452,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                   </Button>
 
                   {/* Botón nueva nota */}
+                  {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_NOTAS_CREATE) && (
                   <Button
                     onClick={() => {
                       setModoEdicion(true);
@@ -463,6 +466,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                     <Plus className="w-4 h-4" />
                     {modoEdicion ? 'Agregando nota...' : 'Nueva Nota'}
                   </Button>
+                  )}
                 </div>
 
                 {/* Contador de resultados */}

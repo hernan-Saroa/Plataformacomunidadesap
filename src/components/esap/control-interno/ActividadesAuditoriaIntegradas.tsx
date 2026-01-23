@@ -23,6 +23,8 @@ import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
 import { auditoriasApi } from './services/api';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -212,6 +214,9 @@ export function ActividadesIntegradas({
   const [actividadExpandida, setActividadExpandida] = useState<string | null>(actividades[0]?.id || null);
   const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>(checklistInicial || {});
   const [guardando, setGuardando] = useState(false);
+  
+  // Verificar permisos de edición
+  const puedeEditar = authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && onChecklistChange !== undefined;
 
   // Cargar estado inicial desde la BD
   useEffect(() => {
@@ -223,6 +228,14 @@ export function ActividadesIntegradas({
   }, [checklistInicial]);
 
   const toggleChecklist = async (id: string) => {
+    // Verificar permisos antes de permitir modificación
+    if (!puedeEditar) {
+      toast.info('Solo lectura', {
+        description: 'No tienes permisos para modificar esta lista de chequeo',
+      });
+      return;
+    }
+    
     // Guardar el estado anterior antes de hacer el cambio optimista
     const estadoAnterior = { ...checklistCompletados };
     const nuevoEstado = !checklistCompletados[id];
@@ -386,16 +399,24 @@ export function ActividadesIntegradas({
                       {actividad.checklist.map((item) => (
                         <div
                           key={item.id}
-                          onClick={() => !guardando && toggleChecklist(item.id)}
-                          className={`flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group ${
+                          onClick={() => !guardando && puedeEditar && toggleChecklist(item.id)}
+                          className={`flex items-start gap-3 p-2 rounded transition-colors group ${
+                            puedeEditar 
+                              ? 'hover:bg-gray-50 cursor-pointer' 
+                              : 'cursor-default opacity-90'
+                          } ${
                             guardando ? 'opacity-50 cursor-wait' : ''
                           }`}
                         >
                           <div className="mt-0.5 relative">
                             {checklistCompletados[item.id] ? (
-                              <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              <CheckCircle2 className={`w-5 h-5 ${puedeEditar ? 'text-green-600' : 'text-green-500'}`} />
                             ) : (
-                              <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
+                              <div className={`w-5 h-5 border-2 rounded transition-colors ${
+                                puedeEditar 
+                                  ? 'border-gray-300 group-hover:border-blue-400' 
+                                  : 'border-gray-200'
+                              }`} />
                             )}
                           </div>
                           <p

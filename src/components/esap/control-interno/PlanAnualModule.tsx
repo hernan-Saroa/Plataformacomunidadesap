@@ -40,6 +40,8 @@ import { planAnual5RolesApi } from './services/api';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
@@ -1402,6 +1404,7 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
   return (
     <div className="space-y-4 md:space-y-6">
       {/* ACCIÓN PRINCIPAL */}
+      {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_PLAN_CREATE) && (
       <div className="flex justify-end">
         <Button
           onClick={onCrearNuevo}
@@ -1413,6 +1416,7 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
           Crear Plan Anual
         </Button>
       </div>
+      )}
 
       {/* INFORMACIÓN DEL DECRETO */}
       <Card className="p-4 sm:p-5 md:p-6 border-l-4 border-l-blue-500 bg-blue-50/50">
@@ -2636,10 +2640,12 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
           <FileSpreadsheet className="w-4 h-4" />
           Excel
         </Button>
+        {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_PLAN_EDIT) && (
         <Button variant="outline" onClick={onEditar} className="gap-2" size="sm">
           <Edit className="w-4 h-4" />
           Editar
         </Button>
+        )}
         {puedeAprobar && (
         <Button
           variant="outline"

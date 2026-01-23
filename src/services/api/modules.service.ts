@@ -122,7 +122,7 @@ export const modulesService = {
         permissions: flatPermissions,
         // Solo agrupamos permisos por segundo segmento del code para gestión legal
         permissionGroups:
-          module.code === 'gestion-legal' || module.code === 'control-disciplinario'
+          module.code === 'gestion-legal' || module.code === 'control-disciplinario' || module.code === 'control-interno'
             ? Object.entries(
                 flatPermissions.reduce<Record<string, typeof flatPermissions>>((acc, permission) => {
                   const [, group] = permission.code.split('.');
