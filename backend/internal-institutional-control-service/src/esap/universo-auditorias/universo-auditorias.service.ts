@@ -265,7 +265,7 @@ export class UniversoAuditoriasService {
     
     // Manejar actualización de ultimaAuditoria y calcular proximaAuditoria automáticamente
     if (updateDto.ultimaAuditoria !== undefined) {
-      proceso.ultimaAuditoria = updateDto.ultimaAuditoria ? new Date(updateDto.ultimaAuditoria) : null;
+      proceso.ultimaAuditoria = updateDto.ultimaAuditoria ? new Date(updateDto.ultimaAuditoria) : undefined;
       
       // Si se establece ultimaAuditoria, calcular proximaAuditoria automáticamente
       if (proceso.ultimaAuditoria) {
@@ -273,7 +273,7 @@ export class UniversoAuditoriasService {
         proceso.proximaAuditoria = this.calcularProximaAuditoria(proceso.ultimaAuditoria, frecuencia);
       } else {
         // Si se elimina ultimaAuditoria, también eliminar proximaAuditoria
-        proceso.proximaAuditoria = null;
+        proceso.proximaAuditoria = undefined;
       }
     }
     
@@ -287,7 +287,7 @@ export class UniversoAuditoriasService {
     
     // Solo actualizar proximaAuditoria manualmente si se envía explícitamente y no hay ultimaAuditoria
     if (updateDto.proximaAuditoria !== undefined && !proceso.ultimaAuditoria) {
-      proceso.proximaAuditoria = updateDto.proximaAuditoria ? new Date(updateDto.proximaAuditoria) : null;
+      proceso.proximaAuditoria = updateDto.proximaAuditoria ? new Date(updateDto.proximaAuditoria) : undefined;
     }
 
     // Si se actualiza la evaluación de riesgo, recalcular todo

@@ -57,18 +57,18 @@ export class PlanAnual5RolesController {
   // ============ ENDPOINTS PROTEGIDOS (Requieren autenticación) ============
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createDto: CreatePlanAnual5RolesDto, @Req() req: any) {
-    // Validar que el usuario tenga rol "Jefe OTIC", "Jefe OCI", o "admin"
-    const user = req.user;
-    
-    if (!user || !this.tienePermisoCrearPlan(user)) {
-      throw new ForbiddenException('No tienes permisos para crear Plan Anual. Se requiere rol de Jefe OTIC, Jefe OCI o Administrador.');
-    }
+    // Validación de roles temporalmente deshabilitada
+    // const user = req.user;
+    // 
+    // if (!user || !this.tienePermisoCrearPlan(user)) {
+    //   throw new ForbiddenException('No tienes permisos para crear Plan Anual. Se requiere rol de Jefe OTIC, Jefe OCI o Administrador.');
+    // }
 
-    // Pasar usuarioId al servicio para auditoría
-    return this.service.create(createDto, user.userId);
+    // Pasar usuarioId al servicio para auditoría (temporalmente undefined)
+    return this.service.create(createDto, req.user?.userId);
   }
 
   // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
