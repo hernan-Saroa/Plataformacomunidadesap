@@ -669,18 +669,48 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
     cargarProcesos();
   }, []);
 
+  // Sincronizar filtros externos con estados locales
+  useEffect(() => {
+    if (filtros) {
+      if (filtros.busqueda !== undefined && filtros.busqueda !== busqueda) {
+        setBusqueda(filtros.busqueda);
+      }
+    }
+  }, [filtros]);
+
   // Filtrado de áreas
   const areasFiltradas = useMemo(() => {
     return areas.filter(area => {
-      const matchBusqueda = area.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          area.codigo.toLowerCase().includes(busqueda.toLowerCase());
+      // Usar búsqueda de filtros externos si está disponible
+      const busquedaActual = filtros?.busqueda || busqueda;
+      const matchBusqueda = area.nombre.toLowerCase().includes(busquedaActual.toLowerCase()) ||
+                          area.codigo.toLowerCase().includes(busquedaActual.toLowerCase());
       const matchTipo = filtroTipo === 'Todos' || area.tipo === filtroTipo;
       const matchRiesgo = filtroRiesgo === 'Todos' || area.nivelRiesgo === filtroRiesgo;
-      const matchEstado = filtroEstado === 'Todos' || area.estado === filtroEstado;
+      
+      // Usar filtro de estado externo si está disponible
+      const estadoFiltro = filtros?.estado && filtros.estado !== 'TODOS' ? filtros.estado : filtroEstado;
+      
+      // Mapear estados del padre (BORRADOR, EN_REVISION, etc.) a estados del universo (seleccionada, pendiente, no-aplica)
+      let matchEstado = true;
+      if (estadoFiltro !== 'Todos' && estadoFiltro !== 'TODOS') {
+        // Mapeo de estados del filtro padre a estados del universo
+        // BORRADOR -> pendiente, EN_REVISION -> pendiente, APROBADO -> seleccionada, PUBLICADO -> seleccionada
+        if (estadoFiltro === 'BORRADOR' || estadoFiltro === 'EN_REVISION') {
+          matchEstado = area.estado === 'pendiente';
+        } else if (estadoFiltro === 'APROBADO' || estadoFiltro === 'PUBLICADO') {
+          matchEstado = area.estado === 'seleccionada';
+        } else {
+          // Si es un estado del universo directamente
+          matchEstado = area.estado === estadoFiltro;
+        }
+      } else {
+        matchEstado = filtroEstado === 'Todos' || area.estado === filtroEstado;
+      }
       
       return matchBusqueda && matchTipo && matchRiesgo && matchEstado;
     });
-  }, [areas, busqueda, filtroTipo, filtroRiesgo, filtroEstado]);
+  }, [areas, busqueda, filtroTipo, filtroRiesgo, filtroEstado, filtros]);
 
   // Métricas
   const metricas = useMemo(() => {

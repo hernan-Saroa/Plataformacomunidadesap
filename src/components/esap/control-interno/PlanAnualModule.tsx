@@ -23,12 +23,13 @@
  * ÚLTIMA ACTUALIZACIÓN: 20 Diciembre 2025
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, CheckCircle, AlertCircle, ChevronRight, ChevronLeft,
   Plus, Trash2, User, Clock, Target, Shield, Eye, Edit, Save,
-  Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet
+  Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet,
+  BarChart3, Activity
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -277,6 +278,40 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
   const [loading, setLoading] = useState(true);
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
   const [mostrarModalAprobacion, setMostrarModalAprobacion] = useState(false);
+
+  // Filtrar planes según filtros externos
+  const planesFiltrados = useMemo(() => {
+    return planes.filter(plan => {
+      // Filtrar por año
+      const matchAño = !filtros?.año || plan.año === filtros.año;
+      
+      // Filtrar por estado
+      let matchEstado = true;
+      if (filtros?.estado && filtros.estado !== 'TODOS') {
+        // Mapear estados del filtro padre a estados del plan
+        if (filtros.estado === 'BORRADOR') {
+          matchEstado = plan.estado === 'Borrador';
+        } else if (filtros.estado === 'EN_REVISION') {
+          matchEstado = plan.estado === 'En Revisión';
+        } else if (filtros.estado === 'APROBADO') {
+          matchEstado = plan.estado === 'Aprobado';
+        } else if (filtros.estado === 'PUBLICADO') {
+          matchEstado = plan.estado === 'Vigente' || plan.estado === 'Cerrado';
+        }
+      }
+      
+      // Filtrar por búsqueda
+      let matchBusqueda = true;
+      if (filtros?.busqueda) {
+        const busquedaLower = filtros.busqueda.toLowerCase();
+        matchBusqueda = plan.año.toString().includes(busquedaLower) ||
+                       plan.jefeOCI.nombre.toLowerCase().includes(busquedaLower) ||
+                       plan.estado.toLowerCase().includes(busquedaLower);
+      }
+      
+      return matchAño && matchEstado && matchBusqueda;
+    });
+  }, [planes, filtros]);
 
   // Función para mapear PlanAnual5Roles (backend) a PlanAnual (frontend)
   const mapearPlanAnualDesdeBD = (planBD: any): PlanAnual => {
@@ -1315,7 +1350,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
             transition={{ duration: 0.2 }}
           >
             <ListaPlanesAnuales
-              planes={planes}
+              planes={planesFiltrados}
               onCrearNuevo={handleCrearNuevo}
               onVerDetalle={handleVerDetalle}
               onEditar={handleEditar}
@@ -2607,6 +2642,11 @@ interface DetallePlanAnualProps {
 }
 
 function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, onExportarExcel }: DetallePlanAnualProps) {
+  // Estado para las pestañas
+  const [tabActiva, setTabActiva] = useState<'detalle' | 'indicadores'>('detalle');
+  const [indicadores, setIndicadores] = useState<any>(null);
+  const [loadingIndicadores, setLoadingIndicadores] = useState(false);
+  
   // Obtener datos del usuario actual
   const userData = localStorage.getItem('esap_user_data');
   const currentUser = userData ? JSON.parse(userData) : null;
@@ -2623,6 +2663,30 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
       roleCode === 'administrator'
     );
   }) || false;
+
+  // Cargar indicadores cuando se activa la tab
+  useEffect(() => {
+    if (tabActiva === 'indicadores' && !indicadores) {
+      cargarIndicadores();
+    }
+  }, [tabActiva]);
+
+  const cargarIndicadores = async () => {
+    setLoadingIndicadores(true);
+    try {
+      const response = await planAnual5RolesApi.getIndicadores(plan.id);
+      if (response.success && response.data) {
+        setIndicadores(response.data);
+      } else {
+        toast.error('Error al cargar indicadores');
+      }
+    } catch (error) {
+      console.error('Error cargando indicadores:', error);
+      toast.error('Error al cargar indicadores');
+    } finally {
+      setLoadingIndicadores(false);
+    }
+  };
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -2660,47 +2724,82 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
         )}
       </div>
 
-      {/* ESTADO Y JEFE OCI */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
-          <Badge
-            className={`text-sm px-3 py-1 ${
-              plan.estado === 'Aprobado'
-                ? 'bg-green-100 text-green-800'
-                : plan.estado === 'En Revisión'
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-800'
+      {/* TABS DE NAVEGACIÓN */}
+      <Card className="p-1">
+        <div className="flex gap-1">
+          <button
+            onClick={() => setTabActiva('detalle')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              tabActiva === 'detalle'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            {plan.estado}
-          </Badge>
-        </Card>
-
-        <Card className="p-6">
-          <h3 className="font-bold text-sm text-gray-900 mb-4">Jefe OCI Responsable</h3>
-          <div className="flex items-center gap-3">
-            <Avatar>
-              <AvatarFallback style={{ background: '#003DA5', color: 'white' }}>
-                {plan.jefeOCI.nombre.split(' ').map(n => n[0]).join('')}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-bold text-sm text-gray-900">{plan.jefeOCI.nombre}</p>
-              <p className="text-xs text-gray-600">{plan.jefeOCI.cargo}</p>
+            <div className="flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4" />
+              <span>Detalle</span>
             </div>
+          </button>
+          <button
+            onClick={() => setTabActiva('indicadores')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              tabActiva === 'indicadores'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              <span>Indicadores</span>
+            </div>
+          </button>
+        </div>
+      </Card>
+
+      {/* CONTENIDO DE LAS TABS */}
+      {tabActiva === 'detalle' && (
+        <div className="space-y-4 md:space-y-6">
+          {/* ESTADO Y JEFE OCI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
+              <Badge
+                className={`text-sm px-3 py-1 ${
+                  plan.estado === 'Aprobado'
+                    ? 'bg-green-100 text-green-800'
+                    : plan.estado === 'En Revisión'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}
+              >
+                {plan.estado}
+              </Badge>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="font-bold text-sm text-gray-900 mb-4">Jefe OCI Responsable</h3>
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarFallback style={{ background: '#003DA5', color: 'white' }}>
+                    {plan.jefeOCI.nombre.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-bold text-sm text-gray-900">{plan.jefeOCI.nombre}</p>
+                  <p className="text-xs text-gray-600">{plan.jefeOCI.cargo}</p>
+                </div>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
 
-      {/* ROLES Y ACTIVIDADES */}
-      <Card className="p-6">
-        <h3 className="font-bold text-lg text-gray-900 mb-6">
-          Roles del Decreto 648/2017
-        </h3>
+          {/* ROLES Y ACTIVIDADES */}
+          <Card className="p-6">
+            <h3 className="font-bold text-lg text-gray-900 mb-6">
+              Roles del Decreto 648/2017
+            </h3>
 
-        <div className="space-y-6">
-          {plan.roles.map((rol) => (
+            <div className="space-y-6">
+              {plan.roles.map((rol) => (
             <div key={rol.id} className="border-l-4 pl-4" style={{ borderLeftColor: rol.color }}>
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{rol.icono}</span>
@@ -2861,6 +2960,230 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
           ))}
         </div>
       </Card>
+        </div>
+      )}
+
+      {/* TAB DE INDICADORES (US-003) */}
+      {tabActiva === 'indicadores' && plan.id && (
+        <div className="space-y-4 md:space-y-6">
+          {loadingIndicadores ? (
+            <Card className="p-6">
+              <div className="text-center py-8">
+                <div className="w-16 h-16 mx-auto border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-600">Cargando indicadores...</p>
+              </div>
+            </Card>
+          ) : indicadores ? (
+            <>
+              {/* INDICADORES GENERALES */}
+              <Card className="p-6">
+                <h3 className="font-bold text-lg text-gray-900 mb-6 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Indicadores Generales del Plan Anual {plan.año}
+                </h3>
+                
+                {/* Actividades del Plan */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">📋 Actividades del Plan</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.actividades.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.actividades.completadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Completadas</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.actividades.enProgreso}
+                      </div>
+                      <div className="text-xs text-gray-600">En Progreso</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.actividades.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-red-600 mb-1">
+                        {indicadores.actividades.retrasadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Retrasadas</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auditorías */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">🔍 Auditorías</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.auditorias.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.auditorias.completadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Completadas</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.auditorias.enEjecucion}
+                      </div>
+                      <div className="text-xs text-gray-600">En Ejecución</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.auditorias.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informes */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">📄 Informes de Ley</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.informes.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.informes.aprobados}
+                      </div>
+                      <div className="text-xs text-gray-600">Aprobados</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.informes.enProceso}
+                      </div>
+                      <div className="text-xs text-gray-600">En Proceso</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.informes.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hallazgos */}
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">⚠️ Hallazgos</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.hallazgos.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.hallazgos.abiertos}
+                      </div>
+                      <div className="text-xs text-gray-600">Abiertos</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.hallazgos.cerrados}
+                      </div>
+                      <div className="text-xs text-gray-600">Cerrados</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* INDICADORES POR ROL */}
+              <Card className="p-6">
+                <h3 className="font-bold text-lg text-gray-900 mb-6 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  Indicadores por Rol del Decreto 648
+                </h3>
+                <div className="space-y-4">
+                  {indicadores.indicadoresPorRol.map((rolIndicador: any) => {
+                    const rolTemplate = ROLES_DECRETO_648.find(r => r.id === rolIndicador.rolNumero);
+                    return (
+                      <Card key={rolIndicador.rolId} className="p-4 bg-gray-50">
+                        <div className="flex items-center gap-3 mb-4">
+                          <span className="text-2xl">{rolTemplate?.icono}</span>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-sm text-gray-900">{rolIndicador.rolNombre}</h4>
+                            <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                                <span className="text-gray-600">Total: <span className="font-bold">{rolIndicador.totalActividades}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                                <span className="text-gray-600">Completadas: <span className="font-bold">{rolIndicador.actividadesCompletadas}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
+                                <span className="text-gray-600">En Progreso: <span className="font-bold">{rolIndicador.actividadesEnProgreso}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-gray-600"></div>
+                                <span className="text-gray-600">Pendientes: <span className="font-bold">{rolIndicador.actividadesPendientes}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-red-600"></div>
+                                <span className="text-gray-600">Retrasadas: <span className="font-bold">{rolIndicador.actividadesRetrasadas}</span></span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              {/* INFORMACIÓN ADICIONAL */}
+              <Card className="p-4 bg-blue-50 border-l-4 border-l-blue-600">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-700">
+                    <p className="font-semibold mb-1">US-003: Cálculo Automático de Indicadores</p>
+                    <p>Los indicadores se calculan automáticamente basándose en el estado de las actividades del Plan Anual. Los datos se actualizan en tiempo real.</p>
+                    <p className="mt-2 text-gray-500">Última actualización: {new Date(indicadores.fechaConsulta).toLocaleString('es-CO')}</p>
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <Card className="p-6">
+              <div className="text-center py-8">
+                <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  No se pudieron cargar los indicadores
+                </h3>
+                <Button
+                  onClick={cargarIndicadores}
+                  className="gap-2 mt-4"
+                  style={{ background: '#003DA5' }}
+                >
+                  <Activity className="w-4 h-4" />
+                  Reintentar
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }
