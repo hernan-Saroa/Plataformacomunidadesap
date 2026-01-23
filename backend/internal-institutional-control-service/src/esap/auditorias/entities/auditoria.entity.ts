@@ -93,10 +93,10 @@ export class Auditoria {
 
   @Column({
     type: 'varchar',
-    length: 50,
+    length: 255, // Aumentar longitud para permitir tipos personalizados
     nullable: false,
   })
-  tipo: TipoAuditoria;
+  tipo: string; // Cambiado de TipoAuditoria a string para permitir tipos personalizados
 
   @Column({
     type: 'varchar',

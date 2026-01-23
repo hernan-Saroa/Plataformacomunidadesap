@@ -811,13 +811,20 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
 
     try {
       // Actualizar en el backend
-      await planesMejoramientoApi.update(plan.id, {
+      // IMPORTANTE: Solo enviar 'estado' porque el DTO del backend solo acepta ese campo
+      // Los hallazgosIds se mantienen automáticamente en el backend
+      const updateData: any = {
         estado: datosActualizacion.estado === 'FORMULACION' ? 'borrador' :
                 datosActualizacion.estado === 'APROBACION' ? 'aprobado' :
                 datosActualizacion.estado === 'EN_EJECUCION' ? 'en-ejecucion' :
-                datosActualizacion.estado === 'CUMPLIDO' ? 'cerrado' : 'borrador',
-        observaciones: datosActualizacion.observaciones
-      });
+                datosActualizacion.estado === 'CUMPLIDO' ? 'cerrado' : 'borrador'
+      };
+
+      console.log('[ModalDetallePlan] Actualizando plan con datos:', updateData);
+      
+      const updateResponse = await planesMejoramientoApi.update(plan.id, updateData);
+      
+      console.log('[ModalDetallePlan] Respuesta del update:', updateResponse);
 
       toast.success('Plan de Mejoramiento Actualizado', {
         description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
@@ -826,27 +833,65 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
 
       setModalActualizacion(false);
       
-      // Recargar datos del plan
+      // Recargar datos del plan completo
+      console.log('[ModalDetallePlan] Recargando plan:', planId);
       const response = await planesMejoramientoApi.getById(planId);
+      console.log('[ModalDetallePlan] Respuesta del getById:', response);
+      
       if (response.success && response.data) {
+        // El backend puede devolver hallazgosIds (array) o hallazgoId (singular) y hallazgo (objeto)
+        const planData = response.data;
+        let hallazgosIdsArray: string[] = [];
+        
+        // Caso 1: hallazgosIds como array
+        if (planData.hallazgosIds && Array.isArray(planData.hallazgosIds) && planData.hallazgosIds.length > 0) {
+          hallazgosIdsArray = planData.hallazgosIds;
+          console.log('[ModalDetallePlan] Plan usa hallazgosIds (array):', hallazgosIdsArray);
+        }
+        // Caso 2: hallazgoId (singular)
+        else if (planData.hallazgoId) {
+          hallazgosIdsArray = [planData.hallazgoId];
+          console.log('[ModalDetallePlan] Plan usa hallazgoId (singular):', planData.hallazgoId);
+        }
+        // Caso 3: hallazgo (objeto completo)
+        else if (planData.hallazgo?.id) {
+          hallazgosIdsArray = [planData.hallazgo.id];
+          console.log('[ModalDetallePlan] Plan tiene hallazgo (objeto):', planData.hallazgo.id);
+        }
+        
+        console.log('[ModalDetallePlan] IDs de hallazgos a cargar:', hallazgosIdsArray);
+        
         // Recargar también hallazgos si es necesario
         let hallazgosCargados: HallazgoBD[] = [];
-        if (response.data.hallazgosIds && response.data.hallazgosIds.length > 0) {
+        
+        if (hallazgosIdsArray.length > 0) {
           try {
-            const hallazgosPromises = response.data.hallazgosIds.map((id: string) => 
-              hallazgosApi.getById(id).then(r => r.data)
+            console.log('[ModalDetallePlan] Cargando', hallazgosIdsArray.length, 'hallazgos');
+            const hallazgosPromises = hallazgosIdsArray.map((id: string) => 
+              hallazgosApi.getById(id).then(r => {
+                console.log('[ModalDetallePlan] Hallazgo cargado:', id, r.data);
+                return r.data;
+              })
             );
             const hallazgosResults = await Promise.all(hallazgosPromises);
             hallazgosCargados = hallazgosResults.filter((h): h is HallazgoBD => h !== undefined);
+            console.log('[ModalDetallePlan] Hallazgos cargados exitosamente:', hallazgosCargados.length);
           } catch (errorHallazgos) {
-            console.warn('[ModalDetallePlan] Error al recargar hallazgos:', errorHallazgos);
+            console.error('[ModalDetallePlan] Error al recargar hallazgos:', errorHallazgos);
           }
+        } else {
+          console.warn('[ModalDetallePlan] No hay hallazgosIds en la respuesta del plan');
         }
+        
         const planMapeado = await mapearPlanDetalleDesdeBD(response.data, hallazgosCargados);
+        console.log('[ModalDetallePlan] Plan mapeado - hallazgos:', planMapeado.hallazgos?.length);
         setPlan(planMapeado);
+      } else {
+        console.error('[ModalDetallePlan] Error al recargar plan - respuesta no exitosa');
       }
     } catch (err: any) {
       console.error('[ModalDetallePlan] Error al actualizar plan:', err);
+      console.error('[ModalDetallePlan] Error completo:', JSON.stringify(err, null, 2));
       toast.error('Error al actualizar el plan', {
         description: err.message || 'No se pudo actualizar el plan'
       });

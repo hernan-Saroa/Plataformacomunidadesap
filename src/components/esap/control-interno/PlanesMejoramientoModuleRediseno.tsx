@@ -380,10 +380,44 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
 
   const estadoMapeado = mapearEstadoBD(planBD.estado, fechaFinISO, porcentajeAvance);
   
+  // Obtener código de auditoría desde múltiples fuentes
+  let codigoAuditoria = (planBD.auditoria as any)?.codigo || planBD.auditoriaCodigo;
+  
+  // Si no hay código en el plan, intentar obtenerlo desde el hallazgo
+  if (!codigoAuditoria && (planBD as any).hallazgo?.auditoria) {
+    codigoAuditoria = (planBD as any).hallazgo.auditoria;
+  }
+  
+  // Si aún no hay código, intentar desde hallazgosIds
+  if (!codigoAuditoria && Array.isArray((planBD as any).hallazgos) && (planBD as any).hallazgos.length > 0) {
+    const primerHallazgo = (planBD as any).hallazgos[0];
+    if (primerHallazgo?.auditoria) {
+      codigoAuditoria = primerHallazgo.auditoria;
+    }
+  }
+  
+  // Obtener título de la auditoría
+  let tituloAuditoria = (planBD.auditoria as any)?.nombre || (planBD.auditoria as any)?.titulo;
+  
+  // Si no hay título en el plan, intentar obtenerlo desde el hallazgo
+  if (!tituloAuditoria && (planBD as any).hallazgo?.auditoriaEntity) {
+    tituloAuditoria = (planBD as any).hallazgo.auditoriaEntity.nombre || (planBD as any).hallazgo.auditoriaEntity.titulo;
+  }
+  
+  // Construir texto de auditoría: "CÓDIGO - Título" o solo código o solo título
+  let textoAuditoria = 'Auditoría sin código';
+  if (codigoAuditoria && tituloAuditoria) {
+    textoAuditoria = `${codigoAuditoria} - ${tituloAuditoria}`;
+  } else if (codigoAuditoria) {
+    textoAuditoria = codigoAuditoria;
+  } else if (tituloAuditoria) {
+    textoAuditoria = tituloAuditoria;
+  }
+  
   return {
     id: planBD.id,
     codigo: planBD.codigo,
-    auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
+    auditoria: textoAuditoria,
     area: areaResponsable,
     responsable: responsableArea,
     cargoResponsable: cargoResponsable,

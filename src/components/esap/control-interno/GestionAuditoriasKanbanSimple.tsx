@@ -54,7 +54,7 @@ import {
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
-  ChevronsDown, ChevronsUp, Building2, ListChecks
+  ChevronsDown, ChevronsUp, Building2, ListChecks, AlertTriangle
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -70,6 +70,7 @@ import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { ModalSolicitarAmpliacionPlazo } from './ModalSolicitarAmpliacionPlazo';
 import { BandejaAmpliacionesPendientes } from './BandejaAmpliacionesPendientes';
+import { ModalAgregarHallazgoRapido } from './ModalAgregarHallazgoRapido';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
@@ -236,7 +237,7 @@ function mapearEtapaAEstadoKanban(
   return 'Planeación';
 }
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
-type TipoAuditoria = 'regular' | 'territorial' | 'especial';
+type TipoAuditoria = 'regular' | 'territorial' | 'especial' | string; // Permite cualquier string para tipos personalizados
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
 
 interface Persona {
@@ -1028,6 +1029,7 @@ interface TarjetaAuditoriaProps {
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
   onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
+  onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
 }
@@ -1037,7 +1039,8 @@ function TarjetaAuditoria({
   onVerDetalle, 
   onVerNotas, 
   onVerHistorial,
-  onSolicitarAmpliacion, 
+  onSolicitarAmpliacion,
+  onRegistrarHallazgo,
   onAprobar,
   onCambiarEstado,
   onAsignarAuditor,
@@ -1308,13 +1311,13 @@ function TarjetaAuditoria({
               <p className="text-xs text-gray-500">🏷️ Tipo:</p>
               <Badge 
                 className={`text-xs font-semibold ${
-                  auditoria.tipo === 'regular' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                  auditoria.tipo === 'territorial' ? 'bg-green-100 text-green-800 border-green-200' :
-                  'bg-red-100 text-red-800 border-red-200'
+                  (auditoria.tipo?.toLowerCase() === 'regular' || auditoria.tipo === 'Regular') ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                  (auditoria.tipo?.toLowerCase() === 'territorial' || auditoria.tipo === 'Territorial') ? 'bg-green-100 text-green-800 border-green-200' :
+                  (auditoria.tipo?.toLowerCase() === 'especial' || auditoria.tipo === 'Especial') ? 'bg-red-100 text-red-800 border-red-200' :
+                  'bg-gray-100 text-gray-800 border-gray-200'
                 }`}
               >
-                {auditoria.tipo === 'regular' ? 'Regular' :
-                 auditoria.tipo === 'territorial' ? 'Territorial' : 'Especial'}
+                {auditoria.tipo || 'Regular'}
               </Badge>
             </div>
             <div className="flex items-center justify-between gap-2">
@@ -1560,6 +1563,27 @@ function TarjetaAuditoria({
               </Button>
             )}
 
+            {/* Botón Registrar Hallazgo - Solo para auditorías en Ejecución */}
+            {auditoria.estado === 'Ejecución' && onRegistrarHallazgo && authService.hasPermission(Permissions.CONTROL_INTERNO_HALLAZGOS_CREATE) && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegistrarHallazgo(auditoria);
+                }}
+                size="sm"
+                className="text-xs font-bold w-full mb-2"
+                style={{ background: '#F59E0B', color: '#FFFFFF' }}
+              >
+                <AlertTriangle className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Registrar Hallazgo</span>
+                {auditoria.hallazgos > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                    {auditoria.hallazgos}
+                  </span>
+                )}
+              </Button>
+            )}
+
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
@@ -1791,6 +1815,7 @@ interface ColumnaKanbanProps {
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
   onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
+  onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
 }
@@ -1813,6 +1838,7 @@ function ColumnaKanban({
   onEditar,
   onCrearPlan,
   onSolicitarAmpliacion,
+  onRegistrarHallazgo,
   tarjetasColapsadas,
   onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
@@ -1988,6 +2014,7 @@ function ColumnaKanban({
               onAsignarAuditor={onAsignarAuditor}
               onEnviarAprobacion={onEnviarAprobacion}
               onSolicitarAmpliacion={onSolicitarAmpliacion}
+              onRegistrarHallazgo={onRegistrarHallazgo}
               onExportar={onExportar}
               onArchivar={onArchivar}
               onEliminar={onEliminar}
@@ -2048,6 +2075,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
   const [modalSolicitarAmpliacionOpen, setModalSolicitarAmpliacionOpen] = useState(false);
   const [bandejaAmpliacionesOpen, setBandejaAmpliacionesOpen] = useState(false);
+  const [modalHallazgoOpen, setModalHallazgoOpen] = useState(false); // NUEVO: Modal de hallazgo
 
   // Función para mapear etapa a icono basado en el nombre
   const obtenerIconoEtapa = (nombre: string) => {
@@ -2136,28 +2164,6 @@ export function GestionAuditoriasKanbanSimple() {
       // Mapear datos del backend al formato esperado por el frontend
       const añoActual = new Date().getFullYear();
       
-      // Función auxiliar para mapear tipos antiguos a nuevos
-      const normalizarTipo = (tipo: string | undefined): string => {
-        if (!tipo) return 'Regular';
-        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-        if (tiposValidos.includes(tipo)) return tipo;
-        // Mapeo de tipos antiguos
-        const mapping: Record<string, string> = {
-          'gestión': 'Regular',
-          'cumplimiento': 'Regular',
-          'desempeño': 'Regular',
-          'sistemas': 'Regular',
-          'financiera': 'Regular',
-          'seguimiento': 'Regular',
-          'control interno': 'Regular',
-          'académica': 'Regular',
-          'rrhh': 'Regular',
-          'ti': 'Regular',
-          'operacional': 'Regular'
-        };
-        return mapping[tipo.toLowerCase()] || 'Regular';
-      };
-      
       const auditoriasMapeadas: Auditoria[] = auditoriasData.map((aud: any) => {
         // Generar código automático si no existe
         const codigoAuditoria = aud.codigo || `AUD-${añoActual}-${aud.id.substring(0, 6).toUpperCase()}`;
@@ -2193,7 +2199,8 @@ export function GestionAuditoriasKanbanSimple() {
           documentos: aud.documentos ?? 0,
           informes: aud.informes ?? 0,
           tareas: aud.tareas ?? 0,
-          tipo: normalizarTipo(aud.tipo),
+          tipo: aud.tipo || 'Regular', // Usar directamente el campo tipo del backend, sin transformaciones
+          // IMPORTANTE: usar aud.tipo (viene como "Territorial", "Regular", etc.) NO aud.tipoKanban (viene como "regular", "territorial", etc.)
           prioridad: aud.prioridad || 'media',
           areaObjetivo: aud.areaObjetivo,
           permiteCambiarObjetivos: aud.permiteCambiarObjetivos ?? true,
@@ -2424,6 +2431,22 @@ export function GestionAuditoriasKanbanSimple() {
     setModalSolicitarAmpliacionOpen(true);
   };
 
+  // Handler para registrar hallazgo
+  const handleRegistrarHallazgo = (auditoria: Auditoria) => {
+    // Validar que la auditoría esté en Ejecución
+    if (auditoria.estado !== 'Ejecución') {
+      toast.error('Solo se pueden registrar hallazgos durante la fase de Ejecución');
+      return;
+    }
+    setAuditoriaSeleccionada(auditoria);
+    setModalHallazgoOpen(true);
+  };
+
+  // Handler después de registrar hallazgo
+  const handleHallazgoCreado = async () => {
+    await cargarAuditorias();
+  };
+
   // Handler después de enviar solicitud de ampliación
   const handleSolicitudAmpliacionEnviada = async () => {
     await cargarAuditorias();
@@ -2448,35 +2471,12 @@ export function GestionAuditoriasKanbanSimple() {
         return;
       }
 
-      // Mapear tipo de auditoría del formulario al formato del backend
-      const mapTipoAuditoria = (tipo: string): string => {
-        // Si ya viene con el tipo correcto, devolverlo directamente
-        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-        if (tiposValidos.includes(tipo)) {
-          return tipo;
-        }
-        
-        // Mapeo para valores antiguos (por retrocompatibilidad)
-        const mapping: Record<string, string> = {
-          'regular': 'Regular',
-          'territorial': 'Territorial',
-          'especial': 'Especial',
-          'gestión': 'Regular',
-          'cumplimiento': 'Regular',
-          'desempeño': 'Regular',
-          'sistemas': 'Regular',
-          'financiera': 'Regular',
-          'seguimiento': 'Regular'
-        };
-        return mapping[tipo.toLowerCase()] || 'Regular';
-      };
-
-      // Mapear datos del formulario al formato del backend
+      // Usar el nombre del tipo directamente del formulario (permite tipos personalizados)
       const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria || 'Regular';
       const auditoriaData: any = {
         nombre: data.titulo,
         descripcion: data.descripcion || undefined,
-        tipo: mapTipoAuditoria(tipoAuditoriaValue),
+        tipo: tipoAuditoriaValue, // Enviar el nombre del tipo directamente sin mapear
         territorial: data.territorial,
         sede: data.territorial || 'Sede Principal',
         responsable: data.auditorLider || data.auditorAsignado || 'No asignado',
@@ -2730,21 +2730,10 @@ export function GestionAuditoriasKanbanSimple() {
         alcance: data.alcance !== undefined ? data.alcance : '',
       };
 
-      // Mapear tipo de auditoría - usar el valor directamente si es uno de los tipos válidos
-      // Los tipos válidos son: 'Regular', 'Territorial', 'Especial'
+      // Usar el tipo directamente del formulario (permite tipos personalizados)
       const tipoAuditoriaValue = (data as any).tipo || (data as any).tipoAuditoria;
       if (tipoAuditoriaValue) {
-        const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-        // Si el tipo es válido, usarlo directamente; si no, usar 'Regular' como default
-        if (tiposValidos.includes(tipoAuditoriaValue)) {
-          updateData.tipo = tipoAuditoriaValue;
-        } else {
-          // Si viene con un valor no reconocido, usar 'Regular' como default
-          updateData.tipo = 'Regular';
-        }
-      } else {
-        // Si no hay tipo, usar 'Regular' como default
-        updateData.tipo = 'Regular';
+        updateData.tipo = tipoAuditoriaValue; // Aceptar cualquier tipo personalizado
       }
 
       // Convertir fechas a formato ISO 8601 (YYYY-MM-DD)
@@ -4100,6 +4089,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onCrearPlan={handleCrearPlan}
                     onEditar={handleEditarAuditoria}
                     onSolicitarAmpliacion={handleSolicitarAmpliacion}
+                    onRegistrarHallazgo={handleRegistrarHallazgo}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
                   />
@@ -4264,14 +4254,15 @@ export function GestionAuditoriasKanbanSimple() {
                             <span className="text-xs text-gray-500">Tipo:</span>
                           </div>
                           <Badge style={{
-                            background: auditoria.tipo === 'territorial' ? '#D1FAE5' :
-                                       auditoria.tipo === 'especial' ? '#FEE2E2' : '#E0E7FF',
-                            color: auditoria.tipo === 'territorial' ? '#065F46' :
-                                   auditoria.tipo === 'especial' ? '#991B1B' : '#3730A3',
+                            background: (auditoria.tipo?.toLowerCase() === 'territorial' || auditoria.tipo === 'Territorial') ? '#D1FAE5' :
+                                       (auditoria.tipo?.toLowerCase() === 'especial' || auditoria.tipo === 'Especial') ? '#FEE2E2' :
+                                       (auditoria.tipo?.toLowerCase() === 'regular' || auditoria.tipo === 'Regular') ? '#E0E7FF' : '#F3F4F6',
+                            color: (auditoria.tipo?.toLowerCase() === 'territorial' || auditoria.tipo === 'Territorial') ? '#065F46' :
+                                   (auditoria.tipo?.toLowerCase() === 'especial' || auditoria.tipo === 'Especial') ? '#991B1B' :
+                                   (auditoria.tipo?.toLowerCase() === 'regular' || auditoria.tipo === 'Regular') ? '#3730A3' : '#374151',
                             border: 'none'
-                          }} className="text-xs capitalize">
-                            {auditoria.tipo === 'territorial' ? 'Territorial' :
-                             auditoria.tipo === 'especial' ? 'Especial' : 'Regular'}
+                          }} className="text-xs">
+                            {auditoria.tipo}
                           </Badge>
                         </div>
                       )}
@@ -4793,6 +4784,20 @@ export function GestionAuditoriasKanbanSimple() {
           onClose={() => setBandejaAmpliacionesOpen(false)}
           onSolicitudProcesada={handleSolicitudAmpliacionProcesada}
         />
+
+        {/* MODAL AGREGAR HALLAZGO RÁPIDO */}
+        {auditoriaSeleccionada && (
+          <ModalAgregarHallazgoRapido
+            isOpen={modalHallazgoOpen}
+            onClose={() => {
+              setModalHallazgoOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            codigoAuditoria={auditoriaSeleccionada.codigo}
+            onHallazgoCreado={handleHallazgoCreado}
+          />
+        )}
       </div>
     </DndProvider>
   );
