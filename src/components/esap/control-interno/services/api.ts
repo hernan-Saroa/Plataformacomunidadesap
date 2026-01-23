@@ -23,6 +23,7 @@ import {
   HallazgoFilters,
   PlanMejoramientoFilters
 } from './types';
+import { API_MODE, MICROSERVICE_URLS } from '../../../../config/environment';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -31,6 +32,12 @@ import {
 // Ruta del gateway: /control-institucional/api/v1/auditorias
 // Ruta directa: http://localhost:3007/auditorias
 const getApiBaseUrl = () => {
+  // Si está en modo directo (local), apuntar directamente al microservicio
+  if (API_MODE === 'direct') {
+    return MICROSERVICE_URLS['control-institucional'] || 'http://localhost:3007';
+  }
+  
+  // Modo gateway: usar la configuración de VITE_API_URL o fallback
   if (import.meta.env.VITE_API_URL) {
     const base = import.meta.env.VITE_API_URL;
     // Si ya incluye /auditorias o /esap, usarla tal cual
@@ -44,8 +51,8 @@ const getApiBaseUrl = () => {
     // Si es solo el gateway base, agregar el prefijo completo
     return `${base}/control-institucional/api/v1`;
   }
-  // Fallback: intentar directo al microservicio (sin prefijo)
-  return 'http://localhost:3007';
+  // Fallback: gateway por defecto
+  return 'http://localhost:3000/control-institucional/api/v1';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -307,10 +314,19 @@ export const auditoriasApi = {
   /**
    * Aprobar una auditoría
    */
-  aprobar: async (auditoriaId: string, comentarios?: string): Promise<ApiResponse<Auditoria>> => {
+  aprobar: async (
+    auditoriaId: string, 
+    comentarios?: string,
+    usuarioId?: number,
+    usuarioNombre?: string
+  ): Promise<ApiResponse<Auditoria>> => {
     return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/aprobar`, {
       method: 'POST',
-      body: JSON.stringify({ comentarios }),
+      body: JSON.stringify({ 
+        comentarios,
+        usuarioId,
+        usuarioNombre 
+      }),
     });
   },
 
@@ -420,6 +436,24 @@ export const auditoriasApi = {
     solicitanteId: number;
   }>>> => {
     return apiRequest(`/auditorias/ampliar-plazo/pendientes`);
+  },
+
+  /**
+   * ==================== PERSONAS DISPONIBLES ====================
+   */
+
+  /**
+   * Obtiene todas las personas disponibles para ser auditores
+   */
+  getPersonasDisponibles: async (): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/personas/disponibles`);
+  },
+
+  /**
+   * Busca una persona por número de identificación
+   */
+  buscarPersona: async (numeroIdentificacion: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/personas/buscar?numeroIdentificacion=${encodeURIComponent(numeroIdentificacion)}`);
   },
 };
 

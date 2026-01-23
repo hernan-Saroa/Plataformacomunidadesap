@@ -59,6 +59,43 @@ export class UniversoAuditoriasService {
   }
 
   /**
+   * Calcula la próxima auditoría basado en la última auditoría y la frecuencia
+   */
+  private calcularProximaAuditoria(
+    ultimaAuditoria: Date | undefined,
+    frecuenciaAuditoria: string
+  ): Date | undefined {
+    if (!ultimaAuditoria) {
+      return undefined;
+    }
+
+    const fechaUltima = new Date(ultimaAuditoria);
+    const proxima = new Date(fechaUltima);
+
+    // Calcular años a sumar según la frecuencia
+    let anosASumar = 1; // Por defecto anual
+
+    if (frecuenciaAuditoria.toLowerCase().includes('anual')) {
+      anosASumar = 1;
+    } else if (frecuenciaAuditoria.toLowerCase().includes('bienal')) {
+      anosASumar = 2;
+    } else if (frecuenciaAuditoria.toLowerCase().includes('trienal')) {
+      anosASumar = 3;
+    } else if (frecuenciaAuditoria.toLowerCase().includes('cuatrienal')) {
+      anosASumar = 4;
+    } else {
+      // Intentar extraer número de años del string (ej: "Cada 2 años")
+      const match = frecuenciaAuditoria.match(/\d+/);
+      if (match) {
+        anosASumar = parseInt(match[0], 10);
+      }
+    }
+
+    proxima.setFullYear(proxima.getFullYear() + anosASumar);
+    return proxima;
+  }
+
+  /**
    * Procesa y calcula todos los valores de riesgo automáticamente
    * Retorna tanto la evaluación de riesgo completa como los valores calculados para el proceso
    */
@@ -172,6 +209,15 @@ export class UniversoAuditoriasService {
     const { evaluacionRiesgo: evaluacionRiesgoCompleta, prioridad, priorizacionAnos } = 
       this.procesarEvaluacionRiesgo(createDto.evaluacionRiesgo);
 
+    // Calcular ultimaAuditoria y proximaAuditoria
+    const ultimaAuditoria = createDto.ultimaAuditoria ? new Date(createDto.ultimaAuditoria) : undefined;
+    let proximaAuditoria = createDto.proximaAuditoria ? new Date(createDto.proximaAuditoria) : undefined;
+
+    // Si hay ultimaAuditoria pero no proximaAuditoria, calcularla automáticamente
+    if (ultimaAuditoria && !proximaAuditoria) {
+      proximaAuditoria = this.calcularProximaAuditoria(ultimaAuditoria, createDto.frecuenciaAuditoria);
+    }
+
     const proceso = this.procesoRepository.create({
       codigo: createDto.codigo,
       nombre: createDto.nombre,
@@ -183,8 +229,8 @@ export class UniversoAuditoriasService {
       territorial: createDto.territorial,
       evaluacionRiesgo: evaluacionRiesgoCompleta,
       frecuenciaAuditoria: createDto.frecuenciaAuditoria,
-      ultimaAuditoria: createDto.ultimaAuditoria ? new Date(createDto.ultimaAuditoria) : undefined,
-      proximaAuditoria: createDto.proximaAuditoria ? new Date(createDto.proximaAuditoria) : undefined,
+      ultimaAuditoria,
+      proximaAuditoria,
       prioridad,
       priorizacionAnos,
     });
@@ -216,8 +262,33 @@ export class UniversoAuditoriasService {
     if (updateDto.dependencia) proceso.dependencia = updateDto.dependencia;
     if (updateDto.territorial !== undefined) proceso.territorial = updateDto.territorial;
     if (updateDto.frecuenciaAuditoria) proceso.frecuenciaAuditoria = updateDto.frecuenciaAuditoria;
-    if (updateDto.ultimaAuditoria) proceso.ultimaAuditoria = new Date(updateDto.ultimaAuditoria);
-    if (updateDto.proximaAuditoria) proceso.proximaAuditoria = new Date(updateDto.proximaAuditoria);
+    
+    // Manejar actualización de ultimaAuditoria y calcular proximaAuditoria automáticamente
+    if (updateDto.ultimaAuditoria !== undefined) {
+      proceso.ultimaAuditoria = updateDto.ultimaAuditoria ? new Date(updateDto.ultimaAuditoria) : undefined;
+      
+      // Si se establece ultimaAuditoria, calcular proximaAuditoria automáticamente
+      if (proceso.ultimaAuditoria) {
+        const frecuencia = updateDto.frecuenciaAuditoria || proceso.frecuenciaAuditoria;
+        proceso.proximaAuditoria = this.calcularProximaAuditoria(proceso.ultimaAuditoria, frecuencia);
+      } else {
+        // Si se elimina ultimaAuditoria, también eliminar proximaAuditoria
+        proceso.proximaAuditoria = undefined;
+      }
+    }
+    
+    // Si se actualiza frecuenciaAuditoria y hay ultimaAuditoria, recalcular proximaAuditoria
+    if (updateDto.frecuenciaAuditoria && proceso.ultimaAuditoria) {
+      proceso.proximaAuditoria = this.calcularProximaAuditoria(
+        proceso.ultimaAuditoria,
+        updateDto.frecuenciaAuditoria
+      );
+    }
+    
+    // Solo actualizar proximaAuditoria manualmente si se envía explícitamente y no hay ultimaAuditoria
+    if (updateDto.proximaAuditoria !== undefined && !proceso.ultimaAuditoria) {
+      proceso.proximaAuditoria = updateDto.proximaAuditoria ? new Date(updateDto.proximaAuditoria) : undefined;
+    }
 
     // Si se actualiza la evaluación de riesgo, recalcular todo
     if (updateDto.evaluacionRiesgo) {

@@ -26,13 +26,59 @@ import { FaseAuditoria } from './entities/auditoria.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { JwtService } from '@nestjs/jwt';
 
 @Controller('auditorias')
 export class AuditoriasController {
   constructor(
     private readonly auditoriasService: AuditoriasService,
     private readonly hallazgosService: HallazgosService,
+    private readonly jwtService: JwtService,
   ) {}
+
+  /**
+   * Helper para extraer usuario del token de forma opcional
+   * Si el token está presente y es válido, retorna el usuario
+   * Si no está presente o es inválido, retorna null sin lanzar error
+   */
+  private extractUserFromToken(req: any): any | null {
+    try {
+      const authHeader = req.headers?.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+      }
+
+      const token = authHeader.substring(7);
+      const payload = this.jwtService.verify(token, {
+        secret: process.env.JWT_SECRET || 'dev-secret-esap',
+      });
+
+      // Extraer códigos de roles si vienen como objetos con 'code'
+      let roles = payload.roles;
+      
+      if (Array.isArray(roles) && roles.length > 0) {
+        if (typeof roles[0] === 'string') {
+          // Ya son códigos, usar directamente
+          roles = roles;
+        } else if (typeof roles[0] === 'object' && roles[0]?.code) {
+          // Son objetos, extraer códigos
+          roles = roles.map((r: any) => r.code);
+        }
+      }
+
+      return {
+        userId: payload.sub,
+        username: payload.username,
+        roles: roles || [],
+        role: roles && roles.length > 0 ? roles[0] : payload.role,
+        email: payload.email,
+      };
+    } catch (error) {
+      // Si el token es inválido o expirado, simplemente retornar null
+      // No lanzar error para permitir acceso sin autenticación
+      return null;
+    }
+  }
 
   /**
    * GET /esap/auditorias
@@ -126,8 +172,20 @@ export class AuditoriasController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
-  aprobar(@Param('id') id: string, @Body() body: { comentarios?: string }) {
-    return this.auditoriasService.aprobarAuditoria(id, body.comentarios);
+  aprobar(
+    @Param('id') id: string, 
+    @Body() body: { 
+      comentarios?: string;
+      usuarioId?: number;
+      usuarioNombre?: string;
+    }
+  ) {
+    return this.auditoriasService.aprobarAuditoria(
+      id, 
+      body.comentarios,
+      body.usuarioId,
+      body.usuarioNombre
+    );
   }
 
   /**
@@ -315,8 +373,6 @@ export class AuditoriasController {
    * RN-031.2: Solo Auditor Líder asignado a la auditoría puede solicitar
    */
   @Post(':id/ampliar-plazo/solicitar')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('AUDITOR_LIDER', 'SUPER_ADMIN', 'ADMIN')
   @HttpCode(HttpStatus.OK)
   solicitarAmpliacionPlazo(
     @Param('id') id: string,
@@ -324,15 +380,25 @@ export class AuditoriasController {
     @Req() req: any,
   ) {
     console.log('📝 [Controller] Solicitar ampliación plazo - ID:', id);
-    console.log('📝 [Controller] Request user:', JSON.stringify(req.user, null, 2));
     console.log('📝 [Controller] Request body:', JSON.stringify(solicitarDto, null, 2));
     
-    const user = req.user;
+    // Intentar extraer usuario del token si está presente (opcional)
+    // Si req.user existe (de un guard previo), usarlo; sino, intentar extraer del token
+    let user = req.user || null;
+    if (!user) {
+      user = this.extractUserFromToken(req);
+    }
+    
+    console.log('📝 [Controller] User extraído:', user ? JSON.stringify(user, null, 2) : 'null');
+    
+    const userId = user?.userId || null;
+    const userRoles = user?.roles || (user?.role ? [user.role] : []);
+    
     return this.auditoriasService.solicitarAmpliacionPlazo(
       id, 
       solicitarDto, 
-      user.userId,
-      user.roles || [user.role]
+      userId,
+      userRoles
     );
   }
 

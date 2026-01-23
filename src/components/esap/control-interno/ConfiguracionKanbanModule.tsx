@@ -34,6 +34,8 @@ import {
   type EtapaKanban,
   type ConfiguracionTablero
 } from '@/services/tableros-kanban.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 type VistaConfig = 'etapas' | 'tiempos' | 'limites' | 'transiciones';
 
@@ -100,7 +102,7 @@ export function ConfiguracionKanbanModule() {
             <h2 className="text-xl text-gray-900 font-medium mb-1">Configuración de Tableros Kanban</h2>
             <p className="text-sm text-gray-600">Gestión de etapas, tiempos SLA y límites WIP</p>
           </div>
-
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_KANBAN_CREATE) && (
           <button
             onClick={() => setModalEtapa({ abierto: true, modo: 'crear' })}
             className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2"
@@ -108,6 +110,7 @@ export function ConfiguracionKanbanModule() {
             <Plus className="w-4 h-4" />
             Nueva Etapa
           </button>
+          )}
         </div>
 
         {/* Selector de Tablero */}
@@ -253,7 +256,7 @@ interface VistaGestionEtapasProps {
 function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEtapasProps) {
   const [etapas, setEtapas] = useState(tablero.etapas);
   const [arrastrando, setArrastrando] = useState<string | null>(null);
-
+  console.log(tablero)
   // Actualizar etapas cuando cambia el tablero
   useEffect(() => {
     setEtapas(tablero.etapas);
@@ -335,6 +338,16 @@ function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEt
       setEtapas(tablero.etapas);
     }
   };
+
+  const viewBtns = (tipo: string, action: string) => {
+    if (authService.isSuperAdmin()) return true
+    let permisions = 'NULL'
+    if (action == 'edit' && tipo == 'auditorias') permisions = Permissions.CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_EDIT
+    if (action == 'edit' && tipo == 'planes_mejoramiento') permisions = Permissions.CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT
+    if (action == 'delete' && tipo == 'auditorias') permisions = Permissions.CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE
+    if (action == 'delete' && tipo == 'planes_mejoramiento') permisions = Permissions.CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE
+    return authService.hasPermission(permisions);
+  }
 
   return (
     <div className="space-y-4">
@@ -451,6 +464,7 @@ function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEt
 
               {/* Acciones */}
               <div className="flex gap-2">
+                { viewBtns(tablero.tipo, 'edit') && (
                 <button
                   onClick={() => onEditarEtapa(etapa)}
                   className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded-lg transition-colors"
@@ -458,6 +472,8 @@ function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEt
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
+                )}
+                { viewBtns(tablero.tipo, 'delete') && (
                 <button
                   onClick={() => handleEliminarEtapa(etapa.id)}
                   className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -465,6 +481,7 @@ function VistaGestionEtapas({ tablero, onEditarEtapa, onReload }: VistaGestionEt
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
+                )}
               </div>
             </div>
           </div>

@@ -1573,7 +1573,27 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
             <Input
               type="number"
               value={formData.presupuestoEstimado}
-              onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Permitir campo vacío o valores numéricos no negativos
+                if (value === '') {
+                  onChange('presupuestoEstimado', '');
+                } else {
+                  const numValue = parseFloat(value);
+                  // Solo actualizar si el valor es un número válido y no negativo
+                  if (!isNaN(numValue) && numValue >= 0) {
+                    onChange('presupuestoEstimado', value);
+                  }
+                }
+              }}
+              onKeyDown={(e) => {
+                // Prevenir el ingreso del signo menos, 'e', 'E', '+'
+                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
+                  e.preventDefault();
+                }
+              }}
+              min="0"
+              step="1000"
               placeholder="Ej: $5,000,000 COP"
               className="border-gray-300"
             />

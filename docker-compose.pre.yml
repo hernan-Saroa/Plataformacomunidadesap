@@ -297,8 +297,12 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      TEMPLATES_PATH: /app/uploads/templates
     ports:
       - "3007:3007"
+    volumes:
+      - ./backend/internal-institutional-control-service/uploads:/app/uploads
+      - ./backend/internal-institutional-control-service/templates:/app/uploads/templates
     depends_on:
       db:
         condition: service_healthy

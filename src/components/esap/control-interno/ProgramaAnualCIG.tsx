@@ -415,10 +415,20 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
 
     // Mapear estado del backend al estado del programa
     let estadoPrograma: EstadoPrograma = 'Borrador';
-    if (aud.estado === 'aprobado' || aud.estadoKanban === 'aprobado') estadoPrograma = 'Aprobado';
-    else if (aud.estado === 'en-ejecucion' || aud.estadoKanban === 'en-ejecucion') estadoPrograma = 'En Ejecución';
-    else if (aud.estado === 'cerrada' || aud.estadoKanban === 'cerrada') estadoPrograma = 'Finalizado';
-    else if (aud.estado === 'pendiente-aprobacion' || aud.estadoKanban === 'pendiente-aprobacion') estadoPrograma = 'Pendiente Aprobación';
+    
+    // Mapear estados de ciclo de vida de auditoría (Planeación, Ejecución, etc.)
+    if (aud.estado === 'Finalizada' || aud.estado === 'cerrada' || aud.estadoKanban === 'cerrada') {
+      estadoPrograma = 'Finalizado'; // ✅ Auditoría completada
+    } else if (aud.estado === 'Ejecución' || aud.estado === 'Comunicación' || aud.estado === 'Seguimiento' || 
+               aud.estado === 'en-ejecucion' || aud.estadoKanban === 'en-ejecucion') {
+      estadoPrograma = 'En Ejecución'; // 🔄 Auditoría activa
+    } else if (aud.estado === 'Planeación' || aud.estado === 'planeacion') {
+      estadoPrograma = 'Aprobado'; // 📋 Auditoría programada/planeada = Aprobada para el programa anual
+    } else if (aud.estado === 'aprobado' || aud.estadoKanban === 'aprobado') {
+      estadoPrograma = 'Aprobado';
+    } else if (aud.estado === 'pendiente-aprobacion' || aud.estadoKanban === 'pendiente-aprobacion') {
+      estadoPrograma = 'Pendiente Aprobación';
+    }
 
     // Mapear auditor líder - manejar objeto completo o solo ID
     const auditorLider = aud.auditorLider ? {
@@ -586,8 +596,12 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
     const aprobadas = auditoriasPrograma.filter(a => a.estadoPrograma === 'Aprobado').length;
     const pendientes = auditoriasPrograma.filter(a => a.estadoPrograma === 'Pendiente Aprobación').length;
     const borradores = auditoriasPrograma.filter(a => a.estadoPrograma === 'Borrador').length;
+    const finalizadas = auditoriasPrograma.filter(a => a.estadoPrograma === 'Finalizado').length;
+    
+    // Calcular porcentaje de cumplimiento (auditorías finalizadas / total programadas)
+    const porcentajeCumplimiento = total > 0 ? Math.round((finalizadas / total) * 100) : 0;
 
-    return { total, sede, territoriales, aprobadas, pendientes, borradores };
+    return { total, sede, territoriales, aprobadas, pendientes, borradores, finalizadas, porcentajeCumplimiento };
   }, [auditoriasPrograma]);
 
   // Sincronizar filtros externos con estados locales
