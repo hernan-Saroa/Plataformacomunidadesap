@@ -46,6 +46,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [requesterEmail, setRequesterEmail] = useState('');
   const [requesterType, setRequesterType] = useState<'empresa' | 'graduado'>('graduado');
   const [isDataPolicyAccepted, setIsDataPolicyAccepted] = useState(false);
+  const [showDataPolicyError, setShowDataPolicyError] = useState(false);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
@@ -159,6 +160,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
     if (!isDataPolicyAccepted) {
+      setShowDataPolicyError(true);
       toast.error('Debes aceptar la politica de proteccion de datos para continuar');
       return;
     }
@@ -224,6 +226,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setRequesterEmail('');
     setRequesterType('graduado');
     setIsDataPolicyAccepted(false);
+    setShowDataPolicyError(false);
     setGeneratedCertificate(null);
     setReviewRequestCreated(false);
   };
@@ -648,7 +651,10 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         id="graduateDocument"
                         type="text"
                         value={graduateDocumentNumber}
-                        onChange={(e) => setGraduateDocumentNumber(e.target.value)}
+                        onChange={(e) =>
+                          setGraduateDocumentNumber(e.target.value.replace(/\D+/g, ''))
+                        }
+                        inputMode="numeric"
                         placeholder="Ej: 1234567890"
                         className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
                         required
@@ -777,50 +783,30 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   </div>
                 </motion.div>
 
-                {/* Important Notice */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6"
-                >
-                  <div className="flex gap-4">
-                    <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-gray-900 mb-2 text-lg">Importante</p>
-                      <ul className="space-y-2 text-gray-700">
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Verifica que el número de cédula, la fecha de grado y el apellido sean correctos</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Si el graduado está en nuestra base de datos, el certificado se generará <strong>instantáneamente</strong></span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Si NO está registrado, se creará una solicitud de revisión manual (48-72 horas)</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </motion.div>
-
                 {/* Data Policy Consent */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.55 }}
-                  className="border-2 border-gray-200 rounded-2xl p-4 bg-slate-50"
+                  className={`border-2 rounded-2xl p-4 ${
+                    showDataPolicyError
+                      ? 'border-red-300 bg-red-50'
+                      : 'border-gray-200 bg-slate-50'
+                  }`}
                 >
                   <div className="flex items-start gap-3">
                     <Checkbox
                       id="data-policy-consent"
                       checked={isDataPolicyAccepted}
-                      onCheckedChange={(checked) => setIsDataPolicyAccepted(checked === true)}
-                      className="mt-1"
+                      onCheckedChange={(checked) => {
+                        const nextValue = checked === true;
+                        setIsDataPolicyAccepted(nextValue);
+                        if (nextValue) {
+                          setShowDataPolicyError(false);
+                        }
+                      }}
+                      className="mt-1 h-5 w-5 flex-shrink-0 rounded-[2px] border-2 border-gray-300 bg-white shadow-[0_0_0_2px_rgba(30,93,168,0.18)] md:h-4 md:w-4"
+                      aria-invalid={showDataPolicyError}
                     />
                     <Label
                       htmlFor="data-policy-consent"
@@ -844,6 +830,11 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       </span>
                     </Label>
                   </div>
+                  {showDataPolicyError && (
+                    <p className="mt-2 text-xs font-semibold text-red-600">
+                      Debes aceptar la politica de proteccion de datos para continuar.
+                    </p>
+                  )}
                 </motion.div>
 
                 {/* Submit Button Premium */}
@@ -851,7 +842,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6 }}
-                  className="pt-4"
+                  className="pt-4 mb-6"
                 >
                   <Button
                     type="submit"
@@ -874,67 +865,37 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                 </motion.div>
               </form>
 
-              {/* Example Data Section */}
-              <motion.div 
+              {/* Important Notice */}
+              <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7 }}
-                className="mt-12 pt-8 border-t-2 border-gray-200"
+                className="mt-10 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6"
               >
-                <div className="space-y-4">
-                  {/* EJEMPLO EXITOSO */}
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-2xl p-6">
-                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-emerald-800">
-                      <Sparkles className="w-5 h-5 text-emerald-600" />
-                      ✅ Prueba con estos datos de ejemplo (CASO EXITOSO)
-                    </h4>
-                    <div className="grid sm:grid-cols-3 gap-4 mb-3">
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
-                        <p className="font-mono font-bold text-lg text-gray-900">52987654</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Grado</p>
-                        <p className="font-bold text-lg text-gray-900">2024-12-01</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Apellido</p>
-                        <p className="font-bold text-lg text-gray-900">Rodríguez Gutiérrez</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-emerald-700 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
-                      Laura Marcela Rodríguez Gutiérrez - Administración Pública Territorial
-                    </p>
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-6 h-6 text-white" />
                   </div>
-
-                  {/* EJEMPLO NO EXITOSO */}
-                  <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-2xl p-6">
-                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-orange-800">
-                      <AlertCircle className="w-5 h-5 text-orange-600" />
-                      ❌ Prueba con estos datos (CASO NO EXITOSO)
-                    </h4>
-                    <div className="grid sm:grid-cols-3 gap-4 mb-3">
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
-                        <p className="font-mono font-bold text-lg text-gray-900">9999999999</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Grado</p>
-                        <p className="font-bold text-lg text-gray-900">2015-12-10</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Apellido</p>
-                        <p className="font-bold text-lg text-gray-900">NoExiste</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-orange-700 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Este graduado NO está registrado - Se creará solicitud de revisión manual (48-72h)
-                    </p>
+                  <div className="flex-1">
+                    <p className="font-bold text-gray-900 mb-2 text-lg">Importante</p>
+                    <ul className="space-y-2 text-gray-700">
+                      <li className="flex items-start gap-2">
+                        <span className="text-amber-600 font-bold mt-0.5">&bull;</span>
+                        <span>Verifica que el numero de cedula, la fecha de grado y el apellido sean correctos</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-amber-600 font-bold mt-0.5">&bull;</span>
+                        <span>Si el graduado esta en nuestra base de datos, el certificado se generara <strong>instantaneamente</strong></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-amber-600 font-bold mt-0.5">&bull;</span>
+                        <span>Si NO esta registrado, se creara una solicitud de revision manual (48-72 horas)</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </motion.div>
+
             </CardContent>
           </Card>
         </motion.div>

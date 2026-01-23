@@ -36,7 +36,8 @@ import { GestionTerminosAlertas } from './GestionTerminosAlertas'; // ✅ RF006 
 import { DashboardEjecutivoIntegrado } from './DashboardEjecutivoIntegrado'; // ✅ Dashboard Hub Operativo
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
 import { ModelosSoporteDisciplinario } from './ModelosSoporteDisciplinario'; // ✅ Modelos de Soporte
-
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
 // TIPOS GLOBALES
@@ -739,13 +740,13 @@ export function ControlDisciplinarioFull() {
   }, [currentSection]);
 
   const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'noticias', label: 'Noticias Disciplinarias', icon: <FileText className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981' },
-    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6' },
-    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B' },
-    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280' }
+    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE) },
+    { id: 'noticias', label: 'Noticias Disciplinarias', icon: <FileText className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE) },
+    { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE) },
+    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE) },
+    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) },
+    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE) },
+    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE) }
   ];
 
   const getTitleForSection = () => {
@@ -778,6 +779,7 @@ export function ControlDisciplinarioFull() {
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
+      
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo
           onNavigateToExpediente={(procesoId: string) => {

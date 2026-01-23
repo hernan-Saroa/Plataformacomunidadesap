@@ -47,6 +47,8 @@ import { EntregaInforme, InformeLey } from './services/types';
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -501,6 +503,7 @@ function CardInforme({ informe, onVerDetalle, onGenerarInforme }: CardInformePro
                   <Eye className="w-4 h-4" />
                   Ver Detalle
                 </button>
+                {authService.hasPermission(Permissions.CONTROL_INTERNO_INFORMES_DE_LEY_GENERATE) && (
                 <button
                   onClick={onGenerarInforme}
                   className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
@@ -508,6 +511,7 @@ function CardInforme({ informe, onVerDetalle, onGenerarInforme }: CardInformePro
                   <Plus className="w-4 h-4" />
                   Generar Informe
                 </button>
+                )}
               </div>
             </div>
           </div>

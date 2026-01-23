@@ -23,6 +23,8 @@ import InformesLeyModulePremium from "./InformesLeyModulePremium";  // RF012 - M
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 // import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE - COMENTADO TEMPORALMENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
@@ -96,7 +98,7 @@ function ControlInternoContent({
       subtitle: "Centro de comando integrado",
       icon: <LayoutDashboard className="w-5 h-5" />,
       color: "#10B981", // Verde - Principal
-      visible: puedeAcceder('dashboard'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_MANAGE)
     },
     
     // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
@@ -106,7 +108,7 @@ function ControlInternoContent({
       subtitle: "Plan Anual • Universo • Programa",
       icon: <ClipboardList className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
-      visible: puedeAcceder('planificacion'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_MANAGE)
     },
     
     // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
@@ -117,7 +119,7 @@ function ControlInternoContent({
       icon: <AlertTriangle className="w-5 h-5" />,
       color: "#EF4444", // Rojo - Hallazgos
       badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0,
-      visible: puedeAcceder('planes-mejoramiento'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE)
     },
     
     // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
@@ -127,7 +129,7 @@ function ControlInternoContent({
       subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
       icon: <FileText className="w-5 h-5" />,
       color: "#8B5CF6", // Púrpura - Informes
-      visible: puedeAcceder('informes-ley'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE)
     },
     
     // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
@@ -137,7 +139,7 @@ function ControlInternoContent({
       subtitle: "Archivo • Búsqueda • Expedientes",
       icon: <FolderOpen className="w-5 h-5" />,
       color: "#0891B2", // Cyan - Documental
-      visible: puedeAcceder('expedientes'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_MANAGE)
     },
     
     // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
@@ -158,7 +160,7 @@ function ControlInternoContent({
       subtitle: "Notificaciones • Auditoría • Kanban • Config",
       icon: <Settings className="w-5 h-5" />,
       color: "#059669", // Verde oscuro - Config
-      visible: puedeAcceder('config-auditorias'),
+      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_MANAGE)
     },
   ].filter(item => item.visible !== false); // ✅ Filtrar opciones sin acceso
 

@@ -113,5 +113,112 @@ export enum Permissions {
   GRADUATES_SOLICITUDE_APROBAR = 'graduates-certificates.solicitude.aprobar',
   GRADUATES_SOLICITUDE_RECHAZAR = 'graduates-certificates.solicitude.rechazar',
 
+  //Control Disciplinario - Procesos
+  CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE = 'control-disciplinario.procesos.manage',
+  CONTROL_DISCIPLINARIO_PROCESSOS_CREATE = 'control-disciplinario.procesos.create',
+  CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR = 'control-disciplinario.procesos.convertir',
+  CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER = 'control-disciplinario.procesos.devolver',
+  CONTROL_DISCIPLINARIO_PROCESSOS_REDIMIR = 'control-disciplinario.procesos.redimir',
+  CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR = 'control-disciplinario.procesos.archivar',
+  CONTROL_DISCIPLINARIO_PROCESSOS_EXPIDIENTE = 'control-disciplinario.procesos.expidiente',
+  CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE = 'control-disciplinario.procesos.autos.create',
+  CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_EDIT = 'control-disciplinario.procesos.autos.edit',
+  CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_DELETE = 'control-disciplinario.procesos.autos.delete',
+  CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE = 'control-disciplinario.procesos.evidencia.create',
+  CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE = 'control-disciplinario.procesos.evidencia.delete',
+  CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR = 'control-disciplinario.procesos.evidencia.admitir',
+  CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE = 'control-disciplinario.procesos.oficio.create',
+  CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_DELETE = 'control-disciplinario.procesos.oficio.delete',
+  CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_CREATE = 'control-disciplinario.procesos.acta.create',
+  CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_DELETE = 'control-disciplinario.procesos.acta.delete',
+
+  //Control Disciplinario - Noticias Disciplinarias
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE = 'control-disciplinario.noticia-disciplinaria.manage',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE = 'control-disciplinario.noticia-disciplinaria.create',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT = 'control-disciplinario.noticia-disciplinaria.edit',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE = 'control-disciplinario.noticia-disciplinaria.delete',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR = 'control-disciplinario.noticia-disciplinaria.asignar',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER = 'control-disciplinario.noticia-disciplinaria.devolver',
+  CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR = 'control-disciplinario.noticia-disciplinaria.redimir',
+
+  //Control Disciplinario - Revisión y Aprobación
+  CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE = 'control-disciplinario.revision-aprobacion.manage',
+  CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER = 'control-disciplinario.revision-aprobacion.devolver',
+  CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR = 'control-disciplinario.revision-aprobacion.aprobar',
+
+  //Control Disciplinario - Expediente Electrónico
+  CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE = 'control-disciplinario.expediente-electronico.manage',
+  CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD = 'control-disciplinario.expediente-electronico.doc.upload',
+
+  //Control Disciplinario - Terminos y Alertas
+  CONTROL_DISCIPLINARIO_TERMINOS_MANAGE = 'control-disciplinario.terminos.manage',
+  CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_CREATE = 'control-disciplinario.terminos.termino.create',
+  CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_FINISH = 'control-disciplinario.terminos.termino.finish',
+  CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE = 'control-disciplinario.terminos.festivo.create',
+  CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_EDIT = 'control-disciplinario.terminos.festivo.edit',
+  CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_DELETE = 'control-disciplinario.terminos.festivo.delete',
+  CONTROL_DISCIPLINARIO_TERMINOS_REGLA_EDIT = 'control-disciplinario.terminos.regla.edit',
+  CONTROL_DISCIPLINARIO_TERMINOS_REGLA_DELETE = 'control-disciplinario.terminos.regla.delete',
+
+  //Control Disciplinario - Profesionales
+  CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE = 'control-disciplinario.profesionales.manage',
+  CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE = 'control-disciplinario.profesionales.create',
+  CONTROL_DISCIPLINARIO_PROFESIONALES_EDIT = 'control-disciplinario.profesionales.edit',
+  CONTROL_DISCIPLINARIO_PROFESIONALES_DELETE = 'control-disciplinario.profesionales.delete',
+  
+  //Control Disciplinario - Configuraciones
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE = 'control-disciplinario.configuraciones.manage',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT = 'control-disciplinario.configuraciones.edit',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET = 'control-disciplinario.configuraciones.reset',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE = 'control-disciplinario.configuraciones.etapa.create',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT = 'control-disciplinario.configuraciones.etapa.edit',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_DELETE = 'control-disciplinario.configuraciones.etapa.delete',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE = 'control-disciplinario.configuraciones.cargo.create',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT = 'control-disciplinario.configuraciones.cargo.edit',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE = 'control-disciplinario.configuraciones.cargo.delete',
+  CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD = 'control-disciplinario.configuraciones.firma.upload',
+
+  // Auditoría OCIG
+  CONTROL_INTERNO_AUDITORIA_MANAGE = 'control-interno.auditoria.manage',
+  CONTROL_INTERNO_AUDITORIA_EDIT = 'control-interno.auditoria.edit',
+  CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION = 'control-interno.auditoria.add.ampliacion',
+  CONTROL_INTERNO_AUDITORIA_STATE_CHANGE = 'control-interno.auditoria.state.change',
+  CONTROL_INTERNO_AUDITORIA_AUDIT = 'control-interno.auditoria.audit',
+  CONTROL_INTERNO_AUDITORIA_APPROVE = 'control-interno.auditoria.approve',
+  CONTROL_INTERNO_AUDITORIA_EXPORT = 'control-interno.auditoria.export',
+  CONTROL_INTERNO_AUDITORIA_ARCHIVE = 'control-interno.auditoria.archive',
+  CONTROL_INTERNO_AUDITORIA_DELETE = 'control-interno.auditoria.delete',
+  CONTROL_INTERNO_AUDITORIA_NOTAS_CREATE = 'control-interno.auditoria.notas.create',
+
+  // Planeación OCIG
+  CONTROL_INTERNO_PLANEACION_MANAGE = 'control-interno.planeacion.manage',
+  CONTROL_INTERNO_PLANEACION_CREATE = 'control-interno.planeacion.create',
+  CONTROL_INTERNO_PLANEACION_AREA_CREATE = 'control-interno.planeacion.area.create',
+  CONTROL_INTERNO_PLANEACION_AREA_STATE_CHANGE = 'control-interno.planeacion.area.state.change',
+  CONTROL_INTERNO_PLANEACION_AREA_EDIT = 'control-interno.planeacion.area.edit',
+  CONTROL_INTERNO_PLANEACION_PLAN_CREATE = 'control-interno.planeacion.plan.create',
+  CONTROL_INTERNO_PLANEACION_PLAN_EDIT = 'control-interno.planeacion.plan.edit',
+
+  // Planes de Mejoramiento
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE = 'control-interno.planes-mejoramiento.manage',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE = 'control-interno.planes-mejoramiento.create',
+
+  // Informes de Ley
+  CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE = 'control-interno.informes-de-ley.manage',
+  CONTROL_INTERNO_INFORMES_DE_LEY_GENERATE = 'control-interno.informes-de-ley.generate',
+
+  // Expidientes
+  CONTROL_INTERNO_EXPEDIENTES_MANAGE = 'control-interno.expedientes.manage',
+  CONTROL_INTERNO_EXPEDIENTES_UPLOAD = 'control-interno.expedientes.upload',
+
+  // Configuraciones
+  CONTROL_INTERNO_CONFIGURACIONES_MANAGE = 'control-interno.configuraciones.manage',
+  CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_TIPO_CREATE = 'control-interno.configuraciones.config-audit.tipo.create',
+  CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_LISTA_CREATE = 'control-interno.configuraciones.config-audit.lista.create',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_CREATE = 'control-interno.configuraciones.kanban.create',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_EDIT = 'control-interno.configuraciones.kanban.audit.edit',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE = 'control-interno.configuraciones.kanban.audit.delete',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT = 'control-interno.configuraciones.kanban.plan.edit',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE = 'control-interno.configuraciones.kanban.plan.delete',
 
 }

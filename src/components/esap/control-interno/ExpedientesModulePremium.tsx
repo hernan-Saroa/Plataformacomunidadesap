@@ -37,6 +37,8 @@ import { auditoriasApi } from './services/api';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { LoadingSpinner } from '../../ui/loading-spinner';
 import { EmptyState } from '../../ui/empty-state';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -645,6 +647,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
             </div>
 
             <div className="flex gap-2">
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_UPLOAD) && (
               <button 
                 onClick={handleCargarDocumento}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
@@ -652,6 +655,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
                 <Upload className="w-4 h-4" />
                 Cargar
               </button>
+              )}
               <button
                 onClick={onToggleExpand}
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"

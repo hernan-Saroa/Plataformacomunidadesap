@@ -127,7 +127,7 @@ export function VisorPDFAuto({
 
     const reemplazos: Record<string, string> = {
       '[RADICADO]': radicado,
-      '[FECHA_QUEJA]': fechaQueja ? new Date(fechaQueja).toLocaleDateString('es-CO') : '',
+      '[FECHA_QUEJA]': fechaQueja ? new Date(fechaQueja).toLocaleDateString('es-CO') : (auto.createdAt ? new Date(auto.createdAt).toLocaleDateString('es-CO') : ''),
       '[HECHOS]': hechos,
       '[DENUNCIANTE_NOMBRE]': denunciante.nombre || '',
       '[DENUNCIANTE_DOCUMENTO]': denunciante.cedula || denunciante.documento || '',
