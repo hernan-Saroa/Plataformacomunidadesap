@@ -383,7 +383,7 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
   return {
     id: planBD.id,
     codigo: planBD.codigo,
-    auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
+    auditoria: (planBD.auditoria as any)?.codigo || planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
     area: areaResponsable,
     responsable: responsableArea,
     cargoResponsable: cargoResponsable,

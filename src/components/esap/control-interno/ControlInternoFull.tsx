@@ -13,6 +13,7 @@ import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
 import { useControlInternoPermissions } from "./hooks/useControlInternoPermissions";
 import { toast } from "sonner";
+import { planesMejoramientoApi } from "./services/api";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
@@ -81,6 +82,7 @@ function ControlInternoContent({
   userRoles
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
+  const [totalPlanesMejoramiento, setTotalPlanesMejoramiento] = useState<number>(0);
   
   // ✅ Hook de validación de permisos
   const { 
@@ -88,6 +90,25 @@ function ControlInternoContent({
     submódulosAccesibles,
     rolDetectado 
   } = useControlInternoPermissions(userRoles, userData);
+
+  // Cargar el contador de planes de mejoramiento
+  useEffect(() => {
+    const cargarContadorPlanes = async () => {
+      try {
+        const response = await planesMejoramientoApi.getAll();
+        if (response.success && response.data) {
+          setTotalPlanesMejoramiento(response.data.length);
+        }
+      } catch (error) {
+        console.error('Error al cargar contador de planes de mejoramiento:', error);
+      }
+    };
+    
+    cargarContadorPlanes();
+    // Recargar cada 30 segundos para mantener el contador actualizado
+    const interval = setInterval(cargarContadorPlanes, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Calcular menuItems dinámicamente con badge y filtrado por permisos
   const menuItems: MenuItem[] = [
@@ -118,7 +139,7 @@ function ControlInternoContent({
       subtitle: "Formulación • Seguimiento",
       icon: <AlertTriangle className="w-5 h-5" />,
       color: "#EF4444", // Rojo - Hallazgos
-      badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0,
+      badge: totalPlanesMejoramiento > 0 ? totalPlanesMejoramiento : undefined,
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE)
     },
     
