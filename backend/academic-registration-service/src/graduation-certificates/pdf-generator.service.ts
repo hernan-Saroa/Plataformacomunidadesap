@@ -77,7 +77,8 @@ export class PdfGeneratorService {
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    // Usar 'load' o 'domcontentloaded' es mas rapido y evita timeouts si hay recursos externos lentos
+    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 60000 });
 
     const pdfOutput = await page.pdf({
       format: 'Letter',

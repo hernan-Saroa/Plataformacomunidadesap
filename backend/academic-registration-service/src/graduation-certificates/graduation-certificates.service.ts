@@ -40,7 +40,7 @@ export class GraduationCertificatesService {
     @InjectRepository(Signer)
     private signerRepository: Repository<Signer>,
     private pdfGeneratorService: PdfGeneratorService,
-  ) {}
+  ) { }
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
   private mailTransporter: nodemailer.Transporter | null = null;
@@ -813,6 +813,34 @@ export class GraduationCertificatesService {
           certificate,
           frontendBaseUrl,
         );
+
+      // Guardar el PDF regenerado con la URL correcta en disco para futuras descargas
+      try {
+        const storagePath =
+          process.env.STORAGE_PATH || './uploads/graduation-certificates';
+
+        // Crear directorio si no existe (por si acaso)
+        if (!fs.existsSync(storagePath)) {
+          fs.mkdirSync(storagePath, { recursive: true });
+        }
+
+        const pdfFilename = `${certificate.certificateNumber}.pdf`;
+        const pdfFilePath = path.join(storagePath, pdfFilename);
+
+        fs.writeFileSync(pdfFilePath, buffer);
+
+        // Actualizar registro si es necesario (aunque ya debería tener el nombre)
+        if (!certificate.pdfFilename) {
+          certificate.pdfFilename = pdfFilename;
+          certificate.pdfUrl = `/uploads/graduation-certificates/${pdfFilename}`;
+          await this.certificateRepository.save(certificate);
+        }
+
+        this.logger.log(`PDF regenerado y actualizado en disco: ${pdfFilePath}`);
+      } catch (err) {
+        this.logger.warn(`No se pudo guardar el PDF regenerado en disco: ${err}`);
+      }
+
       return {
         filename: `${certificate.certificateNumber}.pdf`,
         content: buffer,
@@ -857,11 +885,10 @@ export class GraduationCertificatesService {
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
 
-    const validationUrl = `${
-      frontendBaseUrl ||
+    const validationUrl = `${frontendBaseUrl ||
       process.env.FRONTEND_URL ||
       'https://certificados.esap.edu.co'
-    }/verificar-certificado/${certificate.verificationCode}`;
+      }/verificar-certificado/${certificate.verificationCode}`;
 
     const trimmedReviewNotes = (reviewNotes || '').trim();
     const reviewNotesText = trimmedReviewNotes
@@ -910,16 +937,15 @@ export class GraduationCertificatesService {
                 <strong>URL de validacion:</strong> <a href="${validationUrl}" style="color: #0b68d1;">${validationUrl}</a>
               </td>
             </tr>
-            ${
-              trimmedReviewNotes
-                ? `<tr>
+            ${trimmedReviewNotes
+          ? `<tr>
               <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
                 <strong>Notas de revision:</strong>
                 <div style="margin-top: 6px; white-space: pre-line;">${safeReviewNotes}</div>
               </td>
             </tr>`
-                : ''
-            }
+          : ''
+        }
             <tr>
               <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
                 Archivo adjunto: <strong>${attachment.filename}</strong>
@@ -1509,11 +1535,10 @@ export class GraduationCertificatesService {
               Tu solicitud <strong>${request.requestNumber}</strong> fue rechazada.
             </td>
           </tr>
-          ${
-            request.rejectionReason
-              ? `<tr><td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;"><strong>Motivo:</strong> ${request.rejectionReason}</td></tr>`
-              : ''
-          }
+          ${request.rejectionReason
+        ? `<tr><td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;"><strong>Motivo:</strong> ${request.rejectionReason}</td></tr>`
+        : ''
+      }
           <tr>
             <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
               Si deseas intentar de nuevo, puedes hacer una nueva solicitud desde <a href="${portalUrl}" style="color: #0b68d1;">${portalUrl}</a>.
