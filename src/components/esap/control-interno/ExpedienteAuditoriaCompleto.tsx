@@ -83,6 +83,8 @@ import { auditoriasApi, notificacionesApi, listasChequeoApi } from './services/a
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../../config/environment';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -2224,15 +2226,18 @@ function TabDocumentacion({
             </div>
           </div>
 
-          <ButtonSIGL 
-            variant="primary" 
-            size="sm"
-            icon={<Upload className="w-4 h-4" />}
-            iconPosition="left"
-            onClick={() => setModalCargarDocumento(true)}
-          >
-            Cargar Documento
-          </ButtonSIGL>
+          {/* Botón Cargar Documento - Requiere permiso de edición */}
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+            <ButtonSIGL 
+              variant="primary" 
+              size="sm"
+              icon={<Upload className="w-4 h-4" />}
+              iconPosition="left"
+              onClick={() => setModalCargarDocumento(true)}
+            >
+              Cargar Documento
+            </ButtonSIGL>
+          )}
         </div>
 
         {/* Lista de documentos */}
@@ -2263,6 +2268,7 @@ function TabDocumentacion({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {/* Botón Ver - Siempre visible (solo lectura) */}
                   <button 
                     onClick={() => handleVerDocumento(doc)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -2270,6 +2276,7 @@ function TabDocumentacion({
                   >
                     <Eye className="w-4 h-4 text-gray-600" />
                   </button>
+                  {/* Botón Descargar - Siempre visible (solo lectura) */}
                   <button 
                     onClick={() => handleDescargarDocumento(doc)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -2277,13 +2284,16 @@ function TabDocumentacion({
                   >
                     <Download className="w-4 h-4 text-gray-600" />
                   </button>
-                  <button 
-                    onClick={() => handleEliminarDocumento(doc)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors hover:bg-red-50"
-                    title="Eliminar documento"
-                  >
-                    <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
-                  </button>
+                  {/* Botón Eliminar - Requiere permiso de edición */}
+                  {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                    <button 
+                      onClick={() => handleEliminarDocumento(doc)}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors hover:bg-red-50"
+                      title="Eliminar documento"
+                    >
+                      <Trash2 className="w-4 h-4 text-gray-600 hover:text-red-600" />
+                    </button>
+                  )}
                 </div>
               </div>
             </CardSIGL>

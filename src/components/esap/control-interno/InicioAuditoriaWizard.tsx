@@ -52,6 +52,8 @@ import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 // Servicios API
 import { auditoriasApi } from './services/api';
 import * as tablerosKanbanService from '../../../services/tableros-kanban.service';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -1727,6 +1729,7 @@ function Paso3Documentos({
                       <span>{doc.generadoEn.toLocaleTimeString('es-CO')}</span>
                     </div>
                     <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                      {/* Botón Ver - Siempre visible (solo lectura) */}
                       <ButtonSIGL
                         variant="secondary"
                         size="sm"
@@ -1736,22 +1739,28 @@ function Paso3Documentos({
                       >
                         Ver
                       </ButtonSIGL>
-                      <ButtonSIGL
-                        variant="secondary"
-                        size="sm"
-                        icon={<Edit className="w-3 h-3" />}
-                        onClick={() => setDocumentoEditar(doc)}
-                      >
-                        Editar
-                      </ButtonSIGL>
-                      <ButtonSIGL
-                        variant="secondary"
-                        size="sm"
-                        icon={<Upload className="w-3 h-3" />}
-                        onClick={() => setDocumentoCargar(doc.tipo)}
-                      >
-                        Cargar
-                      </ButtonSIGL>
+                      {/* Botón Editar - Requiere permiso de edición */}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                        <ButtonSIGL
+                          variant="secondary"
+                          size="sm"
+                          icon={<Edit className="w-3 h-3" />}
+                          onClick={() => setDocumentoEditar(doc)}
+                        >
+                          Editar
+                        </ButtonSIGL>
+                      )}
+                      {/* Botón Cargar - Requiere permiso de edición */}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                        <ButtonSIGL
+                          variant="secondary"
+                          size="sm"
+                          icon={<Upload className="w-3 h-3" />}
+                          onClick={() => setDocumentoCargar(doc.tipo)}
+                        >
+                          Cargar
+                        </ButtonSIGL>
+                      )}
                     </div>
                   </div>
                 </div>

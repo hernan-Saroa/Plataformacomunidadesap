@@ -1054,11 +1054,14 @@ function TarjetaAuditoria({
   // - No está aprobada (puede moverse a cualquier estado)
   // - Está aprobada Y NO está en Finalizada (solo puede moverse a Finalizada)
   const canDrag = !auditoria.aprobada || auditoria.estado !== 'Finalizada';
+  // Verificar si tiene permiso para cambiar estado (drag & drop)
+  const puedeMover = authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE);
   
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'auditoria',
     item: auditoria,
     canDrag: () => canDrag,
+    canDrag: puedeMover, // Deshabilitar drag si no tiene permiso
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging()
     })
@@ -1076,10 +1079,10 @@ function TarjetaAuditoria({
   if (colapsada) {
     return (
       <motion.div
-        ref={drag}
+        ref={puedeMover ? drag : null}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-        className="cursor-move touch-none w-full relative"
+        className={puedeMover ? "cursor-move touch-none w-full relative" : "cursor-default w-full relative"}
       >
         <Card className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200">
           <div 
@@ -1180,10 +1183,10 @@ function TarjetaAuditoria({
   // VERSIÓN EXPANDIDA NORMAL
   return (
     <motion.div
-      ref={drag}
+      ref={puedeMover ? drag : null}
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: isDragging ? 0.5 : 1, scale: isDragging ? 0.95 : 1 }}
-      className="cursor-move touch-none w-full relative"
+      className={puedeMover ? "cursor-move touch-none w-full relative" : "cursor-default w-full relative"}
     >
       <Card 
         className="bg-white border-2 hover:shadow-md transition-all flex flex-col w-full border-gray-200"
@@ -1520,8 +1523,8 @@ function TarjetaAuditoria({
               )}
             </div>
 
-            {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
-            {auditoria.estado === 'Finalizada' && onCrearPlan && (
+            {/* Botón Crear Plan de Mejoramiento - Requiere permiso específico */}
+            {auditoria.estado === 'Finalizada' && onCrearPlan && authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE) && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1813,11 +1816,15 @@ function ColumnaKanban({
   tarjetasColapsadas,
   onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
+  // Verificar si tiene permiso para cambiar estado (drop)
+  const puedeRecibir = authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE);
+  
   const [{ isOver }, drop] = useDrop(() => ({
     accept: 'auditoria',
+    canDrop: () => puedeRecibir, // Deshabilitar drop si no tiene permiso
     drop: (item: Auditoria) => onDrop(item, columna.id as EstadoAuditoria),
     collect: (monitor) => ({
-      isOver: !!monitor.isOver()
+      isOver: !!monitor.isOver() && puedeRecibir
     })
   }));
 
@@ -2902,6 +2909,14 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
+    // Verificar permisos antes de permitir el movimiento
+    if (!authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE)) {
+      toast.error('No tiene permisos para mover auditorías', {
+        description: 'Se requiere el permiso de cambio de estado para mover auditorías en el tablero'
+      });
+      return;
+    }
+    
     if (item.estado === nuevoEstado) return;
 
     // ✅ RESTRICCIÓN: Si está aprobada, solo puede moverse a "Finalizada"
@@ -4472,8 +4487,8 @@ export function GestionAuditoriasKanbanSimple() {
                         Proceso de Auditoría
                       </Button>
                       
-                      {/* Botón Crear Plan de Mejoramiento - Aparece siempre en auditorías Finalizadas */}
-                      {auditoria.estado === 'Finalizada' && (
+                      {/* Botón Crear Plan de Mejoramiento - Requiere permiso específico */}
+                      {auditoria.estado === 'Finalizada' && authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE) && (
                         <Button 
                           size="sm" 
                           className="gap-2 flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white" 
@@ -4501,12 +4516,14 @@ export function GestionAuditoriasKanbanSimple() {
                         </Button>
                       )}
                       
-                      <Button size="sm" variant="outline" className="gap-2 flex-1 sm:flex-none" onClick={() => handleEditarAuditoria(auditoria)}>
-                        <Edit className="w-4 h-4" />
-                        Editar
-                      </Button>
-                      {/* Botón Solicitar Ampliación - Solo para auditorías en curso */}
-                      {auditoria.estado === 'Ejecución' && (
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && (
+                        <Button size="sm" variant="outline" className="gap-2 flex-1 sm:flex-none" onClick={() => handleEditarAuditoria(auditoria)}>
+                          <Edit className="w-4 h-4" />
+                          Editar
+                        </Button>
+                      )}
+                      {/* Botón Solicitar Ampliación - Solo para auditorías en curso y con permiso */}
+                      {auditoria.estado === 'Ejecución' && authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION) && (
                         <Button 
                           size="sm" 
                           variant="outline" 
@@ -4518,24 +4535,33 @@ export function GestionAuditoriasKanbanSimple() {
                           Ampliar Plazo
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleCambiarEstado(auditoria)} title="Cambiar estado">
-                        <RefreshCw className="w-4 h-4" />
-                      </Button>
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE) && (
+                        <Button size="sm" variant="outline" className="gap-2" onClick={() => handleCambiarEstado(auditoria)} title="Cambiar estado">
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {/* Notas y Historial siempre disponibles (solo lectura) */}
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => { setAuditoriaSeleccionada(auditoria); setModalNotasOpen(true); }} title="Notas">
                         <MessageSquare className="w-4 h-4" />
                       </Button>
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => handleVerHistorial(auditoria)} title="Historial">
                         <History className="w-4 h-4" />
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => { setAuditoriaSeleccionada(auditoria); setModalInicioAuditoriaOpen(true); }} title="Iniciar Auditoría">
-                        <Clock className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleAsignarAuditor(auditoria)} title="Asignar Auditor">
-                        <UserPlus className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-2 text-red-600 hover:text-red-700" onClick={() => handleEliminar(auditoria)} title="Eliminar">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE) && (
+                        <Button size="sm" variant="outline" className="gap-2" onClick={() => { setAuditoriaSeleccionada(auditoria); setModalInicioAuditoriaOpen(true); }} title="Iniciar Auditoría">
+                          <Clock className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_AUDIT) && (
+                        <Button size="sm" variant="outline" className="gap-2" onClick={() => handleAsignarAuditor(auditoria)} title="Asignar Auditor">
+                          <UserPlus className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_DELETE) && (
+                        <Button size="sm" variant="outline" className="gap-2 text-red-600 hover:text-red-700" onClick={() => handleEliminar(auditoria)} title="Eliminar">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                       </>
                     )}
