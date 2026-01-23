@@ -169,19 +169,17 @@ export function ModalAsignarAuditorIndividual({
     const cargarAuditoresDisponibles = async () => {
       try {
         setCargandoAuditores(true);
-        const baseURL = 'http://localhost:3007';
-        const response = await fetch(`${baseURL}/auditorias/personas/disponibles`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const { auditoriasApi } = await import('./services/api');
+        const response = await auditoriasApi.getPersonasDisponibles();
 
-        if (response.ok) {
-          const personas = await response.json();
+        if (response.success && response.data) {
+          const personas = response.data;
           setAuditoresDisponibles(personas);
         } else {
-          console.error('Error al cargar auditores disponibles');
+          console.error('Error al cargar auditores disponibles:', response.error);
+          toast.error('Error al cargar auditores disponibles', {
+            description: response.error || 'No se pudieron cargar los auditores'
+          });
           // Si falla, usar lista mock como fallback
           setAuditoresDisponibles(AUDITORES_DISPONIBLES);
         }

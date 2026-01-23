@@ -15,6 +15,7 @@ import { Documento } from '../documentos/entities/documento.entity';
 import { HallazgosModule } from '../hallazgos/hallazgos.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RolesGuard } from '../../auth/guards/roles.guard';
     ]),
     HallazgosModule,
     NotificacionesModule,
+    AuthModule, // Para tener acceso a JwtService
   ],
   controllers: [AuditoriasController],
   providers: [AuditoriasService, RolesGuard],
