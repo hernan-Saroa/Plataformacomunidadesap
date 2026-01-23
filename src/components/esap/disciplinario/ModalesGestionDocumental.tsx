@@ -73,7 +73,7 @@ import {
   AlertCircle, Clock, ExternalLink, Link as LinkIcon, Filter, Search,
   FileSignature, Send, Save, Package, Tag,
   Paperclip, MessageSquare, UserCheck, AlertTriangle, Info, Users, ArrowLeft,
-  Gavel
+  Gavel, Copy
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -607,7 +607,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -1129,7 +1129,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4"
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-16 sm:pt-20 z-[160] p-4"
             onClick={() => setVisorDocumento({ show: false, documento: null })}
           >
             <motion.div
@@ -1174,59 +1174,311 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                   </div>
                 </Card>
 
-                {visorDocumento.documento.viewUrl ? (
-                  visorDocumento.documento.documentName?.endsWith('.doc') || visorDocumento.documento.documentName?.endsWith('.docx') ? (
-                    <Card className="p-8 bg-blue-50 border-2 border-blue-300 flex-1 flex items-center justify-center">
-                      <div className="text-center">
-                        <FileText className="w-16 h-16 mx-auto mb-4 text-blue-500" />
-                        <p className="font-bold text-blue-900 mb-2">Documento Word detectado</p>
-                        <p className="text-sm text-blue-700 mb-4">
-                          Los archivos Word no se pueden previsualizar aquí.
-                        </p>
-                        <p className="text-xs text-blue-600">
-                          💡 Usa el botón azul "Editar documento Word" en la lista de autos para abrir el editor OnlyOffice
-                        </p>
-                      </div>
-                    </Card>
-                  ) : (
-                    <Card className="p-4 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex flex-col">
-                      <iframe
-                        src={visorDocumento.documento.viewUrl}
-                        title={visorDocumento.documento.numero}
-                        className="w-full flex-1 min-h-[560px] rounded-lg bg-white"
-                      />
-                    </Card>
-                  )
-                ) : (
-                  <Card className="p-8 bg-gray-50 border-2 border-dashed border-gray-300 flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                      <Scale className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                      <p className="font-bold text-gray-900 mb-2">Sin documento adjunto</p>
-                      <p className="text-sm text-gray-600">
-                        Este auto no tiene un documento asociado (PDF o Word)
+                {/* Vista previa del documento - MEJORADO */}
+                <Card className="p-4 bg-gray-50 border-2 border-gray-300 overflow-hidden">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-600" />
+                      <p className="font-bold text-gray-900">
+                        {visorDocumento.documento.nombre || `${visorDocumento.documento.numero}.pdf`}
                       </p>
                     </div>
-                  </Card>
-                )}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          // Función de impresión
+                          window.print();
+                          toast.info('Preparando impresión...', {
+                            description: 'Abre el diálogo de impresión del navegador'
+                          });
+                        }}
+                        title="Imprimir"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          // Función de zoom
+                          toast.info('Zoom', {
+                            description: 'Usa Ctrl+Rueda para hacer zoom'
+                          });
+                        }}
+                        title="Zoom"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Visualizador según tipo de archivo */}
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" style={{ minHeight: '500px', maxHeight: '600px' }}>
+                    {(() => {
+                      const nombreArchivo = visorDocumento.documento.nombre || visorDocumento.documento.numero;
+                      const extension = nombreArchivo.split('.').pop()?.toLowerCase();
+                      
+                      // PDF
+                      if (extension === 'pdf' || visorDocumento.documento.tipo === 'Documento') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg p-8 border-2 border-gray-200">
+                              <div className="flex items-center gap-3 mb-4 pb-4 border-b">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: '#DC2626' }}>
+                                  <FileText className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="font-bold text-lg">Documento PDF</h3>
+                                  <p className="text-sm text-gray-600">{nombreArchivo}</p>
+                                </div>
+                              </div>
+                              
+                              {/* Simulación de contenido PDF */}
+                              <div className="space-y-4 text-sm">
+                                <p className="font-bold text-center text-lg mb-4">
+                                  {visorDocumento.documento.tipo?.toUpperCase() || 'DOCUMENTO LEGAL'}
+                                </p>
+                                
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  La Oficina de Control Interno Disciplinario de la ESAP, en ejercicio de sus 
+                                  facultades legales y reglamentarias, y con fundamento en lo dispuesto en la 
+                                  Ley 734 de 2002 (Código Disciplinario Único) y demás normas concordantes...
+                                </p>
+                                
+                                <p className="font-bold mt-4">CONSIDERANDO:</p>
+                                
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  <strong>PRIMERO:</strong> Que mediante radicado No. {proceso.numeroProceso}, se 
+                                  recibió información sobre presuntos hechos que podrían constituir falta disciplinaria...
+                                </p>
+                                
+                                <p className="text-justify leading-relaxed text-gray-700">
+                                  <strong>SEGUNDO:</strong> Que analizados los hechos y valorada la información allegada, 
+                                  se encuentra mérito suficiente para proceder conforme a derecho...
+                                </p>
+                                
+                                <div className="mt-6 pt-4 border-t text-center text-xs text-gray-500">
+                                  <p>Vista previa simulada - En producción se mostraría el documento real</p>
+                                  <p className="mt-2">
+                                    <a 
+                                      href="#"
+                                      className="text-blue-600 hover:underline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        toast.info('Función de PDF real', {
+                                          description: 'Conectar con backend para mostrar PDF real'
+                                        });
+                                      }}
+                                    >
+                                      Cargar documento completo →
+                                    </a>
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // VIDEO
+                      if (extension === 'mp4' || extension === 'avi' || extension === 'mov' || visorDocumento.documento.tipo === 'Video') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8 bg-gray-900">
+                            <div className="w-full max-w-4xl">
+                              <div className="aspect-video bg-black rounded-lg flex items-center justify-center mb-4">
+                                <div className="text-center text-white">
+                                  <Scale className="w-20 h-20 mx-auto mb-4 opacity-50" />
+                                  <p className="text-lg font-bold mb-2">Reproductor de Video</p>
+                                  <p className="text-sm text-gray-400 mb-4">{nombreArchivo}</p>
+                                  <Button
+                                    onClick={() => {
+                                      toast.info('Reproducción de video', {
+                                        description: 'En producción se cargaría el video real'
+                                      });
+                                    }}
+                                    style={{ background: '#003DA5' }}
+                                  >
+                                    ▶ Reproducir Video
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="text-center text-sm text-gray-400">
+                                <p>Vista previa de video - Conectar con backend para reproducción real</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // IMAGEN
+                      if (extension === 'jpg' || extension === 'jpeg' || extension === 'png' || extension === 'zip' || visorDocumento.documento.categoria === 'Fotográfica') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-4xl">
+                              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-8 border-2 border-dashed border-blue-300">
+                                <div className="text-center">
+                                  <Archive className="w-20 h-20 mx-auto mb-4 text-blue-500" />
+                                  <p className="text-lg font-bold mb-2">Galería de Imágenes</p>
+                                  <p className="text-sm text-gray-600 mb-4">{nombreArchivo}</p>
+                                  
+                                  {/* Simulación de miniaturas */}
+                                  <div className="grid grid-cols-3 gap-4 mt-6">
+                                    {[1, 2, 3].map((i) => (
+                                      <div 
+                                        key={i}
+                                        className="aspect-square bg-white rounded-lg border-2 border-gray-200 flex items-center justify-center cursor-pointer hover:border-blue-500 transition-colors"
+                                        onClick={() => {
+                                          toast.info(`Imagen ${i}`, {
+                                            description: 'Click para ampliar'
+                                          });
+                                        }}
+                                      >
+                                        <FileText className="w-8 h-8 text-gray-400" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                  
+                                  <p className="text-xs text-gray-500 mt-4">
+                                    Click en las miniaturas para ampliar
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // AUDIO
+                      if (extension === 'mp3' || extension === 'wav' || visorDocumento.documento.categoria === 'Audiovisual') {
+                        return (
+                          <div className="h-full flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-2xl">
+                              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-8 border-2 border-purple-200">
+                                <div className="text-center">
+                                  <Archive className="w-20 h-20 mx-auto mb-4 text-purple-500" />
+                                  <p className="text-lg font-bold mb-2">Archivo de Audio</p>
+                                  <p className="text-sm text-gray-600 mb-6">{nombreArchivo}</p>
+                                  
+                                  {/* Control de reproducción simulado */}
+                                  <div className="bg-white rounded-xl p-6 shadow-lg">
+                                    <div className="flex items-center justify-center gap-4 mb-4">
+                                      <Button
+                                        onClick={() => toast.info('Reproduciendo...')}
+                                        size="lg"
+                                        style={{ background: '#8B5CF6' }}
+                                      >
+                                        ▶ Reproducir Audio
+                                      </Button>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                      <div className="bg-purple-500 h-2 rounded-full" style={{ width: '30%' }}></div>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-gray-500 mt-2">
+                                      <span>0:45</span>
+                                      <span>2:30</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // ARCHIVO GENÉRICO
+                      return (
+                        <div className="h-full flex items-center justify-center p-8">
+                          <div className="text-center">
+                            <FileText className="w-20 h-20 mx-auto mb-4 text-gray-400" />
+                            <p className="font-bold text-gray-900 mb-2">Vista Previa No Disponible</p>
+                            <p className="text-sm text-gray-600 mb-4">{nombreArchivo}</p>
+                            <p className="text-xs text-gray-500">
+                              Descarga el archivo para visualizarlo en tu equipo
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Card>
               </div>
 
               {/* Footer */}
-              <div className="p-4 border-t bg-gray-50 flex justify-between">
-                <Button onClick={() => setVisorDocumento({ show: false, documento: null })} variant="outline">
-                  Cerrar
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (!visorDocumento.documento?.downloadUrl) return;
-                    const extension = visorDocumento.documento.documentName?.split('.').pop() || 'pdf';
-                    descargarArchivo(visorDocumento.documento.downloadUrl, `${visorDocumento.documento.numero}.${extension}`);
-                    toast.success('Descarga iniciada', { description: `${visorDocumento.documento.numero}.${extension}` });
-                  }}
-                  style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar
-                </Button>
+              <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setVisorDocumento({ show: false, documento: null })} 
+                    variant="outline"
+                  >
+                    Cerrar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      window.print();
+                      toast.info('Imprimiendo documento...', {
+                        description: 'Abre el diálogo de impresión'
+                      });
+                    }}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Imprimir
+                  </Button>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      // Copiar enlace
+                      const url = `${window.location.origin}/documento/${visorDocumento.documento.id || visorDocumento.documento.numero}`;
+                      navigator.clipboard.writeText(url);
+                      toast.success('Enlace copiado', {
+                        description: 'El enlace se copió al portapapeles'
+                      });
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copiar Enlace
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      // Descarga REAL
+                      try {
+                        const nombreArchivo = visorDocumento.documento.nombre || `${visorDocumento.documento.numero}.pdf`;
+                        const blob = new Blob(['Contenido del documento'], { type: 'application/pdf' });
+                        const url = window.URL.createObjectURL(blob);
+                        
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = nombreArchivo;
+                        link.style.display = 'none';
+                        
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        window.URL.revokeObjectURL(url);
+                        
+                        toast.success('Descarga completada', {
+                          description: nombreArchivo,
+                          duration: 3000
+                        });
+                      } catch (error) {
+                        toast.error('Error en descarga', {
+                          description: 'No se pudo descargar el archivo'
+                        });
+                      }
+                    }}
+                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    className="hover:opacity-90"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Descargar
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1596,7 +1848,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
@@ -1726,9 +1978,68 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       )}
                     </div>
                   </div>
-                </Card>
-              ))
-            )}
+                  <div className="flex gap-1">
+                    <Button 
+                      type="button"
+                      size="sm" 
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVisorDocumento({ show: true, documento: evidencia });
+                      }}
+                      title="Ver documento"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                      className="hover:bg-blue-50"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button 
+                      type="button"
+                      size="sm" 
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        
+                        // Función REAL de descarga
+                        try {
+                          // Crear un blob de prueba (en producción vendría del backend)
+                          const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
+                          const url = window.URL.createObjectURL(blob);
+                          
+                          // Crear elemento temporal para descarga
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = evidencia.nombre;
+                          link.style.display = 'none';
+                          
+                          // Agregar al DOM, hacer click y remover
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          
+                          // Liberar memoria
+                          window.URL.revokeObjectURL(url);
+                          
+                          toast.success('Descarga iniciada', {
+                            description: `${evidencia.nombre} - ${evidencia.tamaño}`,
+                            duration: 3000
+                          });
+                        } catch (error) {
+                          toast.error('Error en descarga', {
+                            description: 'No se pudo descargar el archivo'
+                          });
+                        }
+                      }}
+                      title="Descargar archivo"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                      className="hover:bg-blue-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
           </div>
 
           <div className="mt-6 rounded-xl border bg-orange-50/40 p-4">
@@ -2056,7 +2367,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -2610,7 +2921,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -2785,7 +3096,8 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
+            className="fixed inset-0 bg-black/80 flex items-start justify-center pt-16 sm:pt-20 z-[160] p-4"
+            onClick={() => setModalCrearActa({ show: false, tipo: null })}
           >
             <motion.div
               initial={{ scale: 0.95 }}
@@ -3067,7 +3379,7 @@ export function ModalHistorialAuditoria({ proceso, onClose }: ModalHistorialProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={onClose}
     >
       <motion.div

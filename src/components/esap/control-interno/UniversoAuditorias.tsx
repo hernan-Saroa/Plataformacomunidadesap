@@ -65,6 +65,7 @@ import { universoAuditoriasApi } from './services/api';
 import { useEffect } from 'react';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { ModalNuevaAreaWorldClass } from './ModalNuevaAreaWorldClass';
 
 // ============ TIPOS ============
 
@@ -1007,7 +1008,8 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
 
       {/* MODAL NUEVA ÁREA */}
       {modalNuevaArea && (
-        <ModalNuevaArea
+        <ModalNuevaAreaWorldClass
+          open={modalNuevaArea}
           onClose={() => setModalNuevaArea(false)}
           onGuardar={async (nuevaArea) => {
             try {
@@ -1090,28 +1092,11 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
               });
             }
           }}
-          ultimoCodigoPorTipo={{
-            Sede: areas.filter(a => a.tipo === 'Sede' && a.codigo.startsWith('SEDE-')).length > 0
-              ? Math.max(...areas.filter(a => a.tipo === 'Sede' && a.codigo.startsWith('SEDE-')).map(a => {
-                  const num = parseInt(a.codigo.split('-')[1]);
-                  return isNaN(num) ? 0 : num;
-                }))
-              : 0,
-            Territorial: areas.filter(a => a.tipo === 'Territorial' && a.codigo.startsWith('TERR-')).length > 0
-              ? Math.max(...areas.filter(a => a.tipo === 'Territorial' && a.codigo.startsWith('TERR-')).map(a => {
-                  const num = parseInt(a.codigo.split('-')[1]);
-                  return isNaN(num) ? 0 : num;
-                }))
-              : 0
-          }}
-        />
-      )}
-
-      {/* MODAL DETALLE ÁREA */}
-      {areaViendoDetalle && (
-        <ModalDetalleArea
-          area={areaViendoDetalle}
-          onClose={() => setAreaViendoDetalle(null)}
+          ultimoCodigo={areas.length > 0 ? Math.max(...areas.map(a => {
+            const num = parseInt(a.codigo.split('-')[1]);
+            return isNaN(num) ? 0 : num;
+          })) : 0}
+          unidadesOrganizacionales={TERRITORIALES_ESAP}
         />
       )}
     </div>

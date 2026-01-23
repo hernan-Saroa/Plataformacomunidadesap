@@ -478,12 +478,16 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
               </div>
 
               {/* FORMULARIO NUEVA NOTA */}
-              {modoEdicion && (
-                <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
-                        <Plus className="w-5 h-5" />
+              <AnimatePresence>
+                {modoEdicion && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden border-b border-gray-200"
+                  >
+                    <div className="p-4 bg-blue-50 max-h-[50vh] overflow-y-auto">
+                      <h3 className="font-bold text-sm mb-3 sticky top-0 bg-blue-50 pb-2" style={{ color: '#003DA5' }}>
                         Nueva Nota
                       </h3>
                       <Button
@@ -534,11 +538,27 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                           <p className="text-xs text-gray-500">
                             {nuevaNota.length} caracteres
                           </p>
-                          {nuevaNota.trim().length < 10 && (
-                            <p className="text-xs text-amber-600">
-                              Mínimo 10 caracteres
-                            </p>
-                          )}
+                        </div>
+
+                        {/* Botones - Sticky en mobile */}
+                        <div className="flex gap-2 justify-end pt-2 pb-1 sticky bottom-0 bg-blue-50">
+                          <Button
+                            variant="outline"
+                            onClick={handleCancelarEdicion}
+                            className="min-w-[90px]"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={handleAgregarNota}
+                            style={{ backgroundColor: '#003DA5' }}
+                            className="text-white gap-2 min-w-[120px]"
+                            disabled={!nuevaNota.trim()}
+                          >
+                            <Save className="w-4 h-4" />
+                            <span className="hidden sm:inline">Guardar Nota</span>
+                            <span className="sm:hidden">Guardar</span>
+                          </Button>
                         </div>
                       </div>
 

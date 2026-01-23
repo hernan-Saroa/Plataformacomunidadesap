@@ -3921,32 +3921,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
   return (
-
-
-
-    <div className="space-y-6">
-
-
-
-      <style>{`
-        .variable-token {
-          font-weight: inherit !important;
-          display: inline !important;
-          font-size: inherit !important;
-          line-height: inherit !important;
-          padding: 0px 2px !important;
-          margin: 0 !important;
-          border-radius: 2px !important;
-          vertical-align: baseline !important;
-        }
-        .variable-token * {
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-      `}</style>
-
-
-
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
 
 
@@ -3968,29 +3943,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       >
-
-
-
-        <div className="flex items-center justify-between">
-
-
-
-          <div>
-
-
-
-            <div className="flex items-center gap-3 mb-2">
-
-
-
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
               <div 
-
-
-
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-
-
-
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
 
 
@@ -4008,61 +3965,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               >
-
-
-
-                <FileText className="w-6 h-6 text-white" strokeWidth={2.5} />
-
-
-
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
               </div>
-
-
-
-              <div>
-
-
-
-                <h1 
-
-
-
-                  className="font-bold tracking-tight"
-
-
-
-                  style={{
-
-
-
-                    fontSize: '32px',
-
-
-
-                    lineHeight: '40px',
-
-
-
-                    letterSpacing: '-0.25px',
-
-
-
-                    color: '#1F2937'
-
-
-
-                  }}
-
-
-
-                >
-
-
-
-                  Configuracion de Plantilla
-
-
-
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-gray-900 truncate">
+                  Configuración de Plantilla
                 </h1>
 
 
@@ -4072,73 +3979,18 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
             </div>
-
-
-
-            <p
-
-
-
-              className="font-normal"
-
-
-
-              style={{
-
-
-
-                fontSize: '14px',
-
-
-
-                lineHeight: '20px',
-
-
-
-                color: '#6B7280'
-
-
-
-              }}
-
-
-
-            >
-
-
-
-              Configura los elementos visuales de los certificados laborales: firma del responsable y logo institucional.
-
-
-
+            <p className="text-xs sm:text-sm text-gray-600">
+              Gestiona la plantilla base de certificados laborales. Los cambios se aplican a todos los certificados futuros.
             </p>
 
 
 
           </div>
 
-
-
-
-
-
-
-          <div className="flex items-center gap-3">
-
-
-
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             {getEstadoBadge(plantilla.estado)}
-
-
-
-            <Badge variant="outline" className="px-3 py-1 text-sm">
-
-
-
-              Version {plantilla.version}
-
-
-
+            <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
+              Versión {plantilla.version}
             </Badge>
 
 
@@ -4176,49 +4028,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
           animate={{ opacity: 1, y: 0 }}
-
-
-
-          className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4"
-
-
-
+          className="bg-yellow-50 border-2 border-yellow-300 rounded-lg sm:rounded-xl p-3 sm:p-4"
         >
-
-
-
-          <div className="flex items-start gap-3">
-
-
-
-            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-
-
-
-            <div className="flex-1">
-
-
-
-              <h3 className="font-semibold text-yellow-900 mb-1">
-
-
-
+          <div className="flex items-start gap-2 sm:gap-3">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-yellow-900 mb-1 text-sm sm:text-base">
                 Cambios sin guardar
 
 
 
               </h3>
-
-
-
-              <p className="text-sm text-yellow-800">
-
-
-
-                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorizacion antes de cerrar.
-
-
-
+              <p className="text-xs sm:text-sm text-yellow-800">
+                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
               </p>
 
 
@@ -4240,13 +4062,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               onClick={handleDescartarCambios}
-
-
-
-              className="text-yellow-700 hover:text-yellow-900"
-
-
-
+              className="text-yellow-700 hover:text-yellow-900 min-h-[44px] sm:min-h-[36px]"
             >
 
 
@@ -4269,104 +4085,21 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       )}
 
-
-
-
-
-
-
-      {/* Tabs de Navegacion */}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <p className="text-sm text-gray-600">Tipo de plantilla:</p>
-        <div className="flex gap-2">
-          <Button
-            variant={templateType === 'docente' ? 'default' : 'outline'}
-            className={templateType === 'docente' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-            onClick={() => setTemplateType('docente')}
-          >
-            Docente
-          </Button>
-          <Button
-            variant={templateType === 'administrador' ? 'default' : 'outline'}
-            className={templateType === 'administrador' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
-            onClick={() => setTemplateType('administrador')}
-          >
-            Administrador
-          </Button>
-        </div>
-      </div>
-
-
-
-      <Tabs
-        value={activeTab}
-        onValueChange={(newTab: string) => {
-          // Guardar el contenido del editor antes de cambiar de pestana
-          if (activeTab === 'Modificacion' && editorRef.current) {
-            const currentContent = editorRef.current.innerHTML;
-            console.log('Guardando contenido antes de cambiar de pestana:', currentContent.substring(0, 50) + '...');
-            setEditorContent(currentContent);
-          }
-          // Cambiar la pestana
-          setActiveTab(newTab);
-        }}
-        className="mt-6"
-      >
-
-
-
-        <TabsList className={`grid w-full ${canEdit ? 'grid-cols-3' : 'grid-cols-1'}`}>
-
-
-
-          {canEdit && (
-
-
-
-            <TabsTrigger value="Modificacion" className="flex items-center gap-2">
-
-
-
-              <Edit3 className="w-4 h-4" /> Modificacion
-
-
-
-            </TabsTrigger>
-
-
-
-          )}
-
-
-
-          {canEdit && (
-
-
-
-            <TabsTrigger value="Visualizacion" className="flex items-center gap-2">
-
-
-
-              <Eye className="w-4 h-4" /> Visualizacion
-
-
-
-            </TabsTrigger>
-
-
-
-          )}
-
-
-
-          <TabsTrigger value="historial" className="flex items-center gap-2">
-
-
-
-            <History className="w-4 h-4" />
-
-
-
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 gap-1 sm:w-auto sm:inline-grid">
+          <TabsTrigger value="configuracion" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <Edit3 className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Configuración</span>
+            <span className="sm:hidden">Config</span>
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Vista Previa</span>
+            <span className="sm:hidden">Vista</span>
+          </TabsTrigger>
+          <TabsTrigger value="historial" className="gap-1 sm:gap-2 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">
+            <History className="w-3 h-3 sm:w-4 sm:h-4" />
             Historial
 
 
@@ -5262,206 +4995,253 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+                <p className="text-justify">
+                  Labora con nosotros desde el <strong>15 de marzo de 2018</strong>, completando a la fecha{' '}
+                  <strong>6 años y 10 meses</strong> de servicio ininterrumpido.
+                </p>
+
+                <p className="text-justify">
+                  Durante su vinculación, María ha desempeñado sus funciones con responsabilidad, compromiso y profesionalismo, 
+                  contribuyendo significativamente al cumplimiento de la misión institucional de la ESAP.
+                </p>
+
+                <p className="text-justify">
+                  La presente certificación se expide a solicitud de la interesada el día{' '}
+                  <strong>
+                    {new Date().toLocaleDateString('es-CO', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </strong>, para los fines que la interesada estime conveniente.
+                </p>
+
+                {/* Validez */}
+                <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 my-6">
+                  <div className="flex items-start gap-3">
+                    <Calendar className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm mb-1">Validez del Documento</p>
+                      <p className="text-sm text-gray-700">
+                        Este certificado tiene una validez de <strong>3 meses</strong> a partir de su fecha de expedición. 
+                        Pasado este tiempo, deberá solicitarse uno nuevo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Firma Digital */}
+              <div className="mt-12 pt-8 border-t-2 border-gray-300 relative z-10">
+                <div className="text-center">
+                  <div className="inline-block">
+                    {/* Imagen de firma si existe */}
+                    {borrador.grafoFirma && (
+                      <div className="mb-4">
+                        <div className="h-16 flex items-center justify-center">
+                          <img 
+                            src={borrador.grafoFirma.url}
+                            alt="Firma"
+                            className="max-h-16 object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="border-t-2 border-gray-800 pt-2 px-8">
+                      <p className="font-bold text-gray-900">{borrador.firmante.nombre}</p>
+                      <p className="text-sm text-gray-600">{borrador.firmante.cargo}</p>
+                      <p className="text-xs text-gray-500 mt-1">C.C. {borrador.firmante.documento}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pie de Página con QR */}
+              <div className="mt-12 pt-6 border-t border-gray-300 relative z-10">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start gap-2 mb-3">
+                      <Shield className="w-4 h-4 text-[#003DA5] flex-shrink-0 mt-1" />
+                      <div>
+                        <p className="text-xs font-semibold text-gray-900 mb-1">Verificación de Autenticidad</p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          Este certificado puede ser verificado escaneando el código QR o ingresando 
+                          el consecutivo en: <span className="text-[#003DA5] font-semibold">www.esap.edu.co/verificar-certificado</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 space-y-1">
+                      <p><strong>Documento electrónico:</strong> Generado automáticamente</p>
+                      <p><strong>Fecha de expedición:</strong> {new Date().toLocaleString('es-CO')}</p>
+                      <p><strong>Código de verificación:</strong> <span className="font-mono">ESAP-CERT-2025-51NXK</span></p>
+                    </div>
+                  </div>
+                  <div className="ml-6 text-center">
+                    <div className="bg-white border-2 border-gray-300 p-3 rounded-lg">
+                      <QrCode className="w-24 h-24 text-gray-400 mx-auto" />
+                      <p className="text-xs text-gray-600 mt-2 font-mono">51NXK</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Legal */}
+              <div className="mt-6 pt-4 border-t border-gray-200 relative z-10">
+                <p className="text-xs text-gray-500 text-center">
+                  Documento generado electrónicamente por el Sistema de Gestión de Certificados Laborales - ESAP
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-center gap-3">
+              <Button variant="outline" onClick={() => toast.info('Descargando PDF de ejemplo')}>
+                <Download className="w-4 h-4 mr-2" />
+                Descargar Ejemplo
+              </Button>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Historial - CON RESTAURACIÓN DE VERSIONES - RESPONSIVE OPTIMIZADO */}
+        <TabsContent value="historial" className="space-y-4 mt-6">
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <History className="w-4 h-4 sm:w-5 sm:h-5 text-[#003DA5] flex-shrink-0" />
+                  <span className="truncate">Historial de Cambios</span>
                 </h3>
-
-
-
-                <p className="text-sm text-gray-600 mb-6">
-
-
-
-                  Configura la tipografAa general y el contenido del certificado con formato enriquecido
-
-
-
-                </p>
-
-
-
-              </div>
-
-
-
-
-
-
-
-              {/* TipografAa General - Solo Fuente */}
-
-
-
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-
-
-
-                <Label htmlFor="fuente" className="text-sm font-medium text-gray-700">
-
-
-
-                  Fuente TipogrAfica
-
-
-
-                </Label>
-
-
-
-                <Select
-
-
-
-                  value={borrador.tipografia.fuente}
-
-
-
-                  onValueChange={(value) => {
-
-
-
-                    setBorrador({
-
-
-
-                      ...borrador,
-
-
-
-                      tipografia: { ...borrador.tipografia, fuente: value }
-
-
-
-                    });
-
-
-
-                    setHasChanges(true);
-
-
-
-                  }}
-
-
-
-                >
-
-
-
-                  <SelectTrigger className="mt-1">
-
-
-
-                    <SelectValue />
-
-
-
-                  </SelectTrigger>
-
-
-
-                  <SelectContent>
-
-
-
-                    {fuentesDisponibles.map((fuente) => (
-
-
-
-                      <SelectItem key={fuente.value} value={fuente.value}>
-
-
-
-                        {fuente.label}
-
-
-
-                      </SelectItem>
-
-
-
-                    ))}
-
-
-
-                  </SelectContent>
-
-
-
-                </Select>
-
-
-
-              </div>
-
-              {/* Editor de Titulo del Cargo */}
-              <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-gray-700">
-                    Titulo del Cargo (encabezado del certificado)
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetTituloCargo}
-                    disabled={isResettingTituloCargo || !canEdit}
-                  >
-                    <RefreshCw className="w-3 h-3 mr-2" />
-                    {isResettingTituloCargo ? 'Restableciendo...' : 'Restablecer'}
-                  </Button>
-                </div>
-                <div className="flex justify-center">
-                  <textarea
-                    value={borrador.tituloCargo.texto}
-                    onChange={(e) => {
-                      setBorrador({
-                        ...borrador,
-                        tituloCargo: {
-                          texto: e.target.value
-                        }
-                      });
-                      setHasChanges(true);
-                    }}
-                    placeholder="Ej: LA DIRECTORA TECNICA DE TALENTO HUMANO DE LA&#10;ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA - ESAP"
-                    className="p-3 border border-blue-300 rounded-md font-bold text-center resize-none uppercase whitespace-pre-line"
-                    style={{
-                      fontFamily: borrador.tipografia.fuente,
-                      fontSize: `${borrador.tipografia.tamano}pt`,
-                      lineHeight: '1.2',
-                      width: '600px',
-                      maxWidth: '100%'
-                    }}
-                    rows={3}
-                  />
-                </div>
-                <p className="text-xs text-blue-700">
-                  Este texto aparecera en la parte superior del certificado, antes de "HACE CONSTAR". Usa Enter para crear saltos de linea.
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 sm:mt-2">
+                  Registro completo de modificaciones. Restaura versiones anteriores.
                 </p>
               </div>
+              <Badge variant="outline" className="text-xs sm:text-sm whitespace-nowrap self-start">
+                {logCambios.length} versiones
+              </Badge>
+            </div>
 
-              {/* Editor de Contenido con Formato Enriquecido */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-gray-700">
-                    Contenido del Certificado
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetContenido}
-                    disabled={isResettingContenido || !canEdit}
-                  >
-                    <RefreshCw className="w-3 h-3 mr-2" />
-                    {isResettingContenido ? 'Restableciendo...' : 'Restablecer'}
-                  </Button>
+            {/* Info de restauración */}
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <Info className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm text-blue-800 min-w-0">
+                  <p className="font-semibold mb-1">Sistema de Restauración Activo</p>
+                  <p className="leading-relaxed">
+                    Mantenemos las <strong>últimas 5 versiones</strong> de la plantilla para que puedas 
+                    restaurar configuraciones anteriores en cualquier momento.
+                  </p>
                 </div>
 
-                {/* Barra de herramientas de formato */}
+            <div className="space-y-3 sm:space-y-4">
+              {logCambios.map((log, index) => (
+                <div key={log.id} className="relative">
+                  {index !== logCambios.length - 1 && (
+                    <div className="absolute left-5 sm:left-6 top-12 sm:top-14 bottom-0 w-0.5 bg-gray-200 hidden sm:block" />
+                  )}
+                  <Card className={`p-3 sm:p-4 hover:shadow-md transition-shadow ${index === 0 ? 'border-2 border-green-300' : ''}`}>
+                    <div className="flex gap-2 sm:gap-4">
+                      {/* Icon */}
+                      <div className="flex-shrink-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center ${
+                          index === 0 ? 'bg-green-100' : 'bg-blue-100'
+                        }`}>
+                          <History className={`w-5 h-5 sm:w-6 sm:h-6 ${index === 0 ? 'text-green-600' : 'text-[#003DA5]'}`} />
+                        </div>
+                      </div>
 
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Header - Responsive Stack */}
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                              <h4 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{log.accion}</h4>
+                              {index === 0 && (
+                                <Badge className="bg-green-600 text-white text-[10px] sm:text-xs flex-shrink-0">
+                                  Actual
+                                </Badge>
+                              )}
+                              {log.plantillaSnapshot && index > 0 && (
+                                <Badge variant="outline" className="text-[10px] sm:text-xs border-blue-300 text-blue-700 flex-shrink-0">
+                                  Restaurable
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-600 truncate">
+                              Por: <strong>{log.usuario}</strong>
+                            </p>
+                          </div>
+                          
+                          {/* Fecha - Mobile/Desktop */}
+                          <div className="text-left sm:text-right flex-shrink-0">
+                            <p className="text-xs sm:text-sm text-gray-600">
+                              {new Date(log.fecha).toLocaleDateString('es-CO', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-gray-500">
+                              {new Date(log.fecha).toLocaleTimeString('es-CO', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                        </div>
 
+                        {/* Cambios */}
+                        <div className="bg-gray-50 rounded-lg p-2.5 sm:p-3 mt-2 sm:mt-3">
+                          <p className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-1.5 sm:mb-2">
+                            Cambios realizados:
+                          </p>
+                          <ul className="text-xs sm:text-sm text-gray-700 space-y-1">
+                            {log.cambios.map((cambio, i) => (
+                              <li key={i} className="flex items-start gap-1.5 sm:gap-2">
+                                <span className="text-[#003DA5] mt-0.5 flex-shrink-0">•</span>
+                                <span className="break-words">{cambio}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
 
-                <div className="flex flex-wrap items-center gap-2 p-3 bg-white border border-gray-300 rounded-t-lg">
+                        {/* Footer - Actions Responsive */}
+                        <div className="mt-2 sm:mt-3 flex flex-col xs:flex-row xs:items-center xs:justify-between gap-2">
+                          <div className="flex items-center gap-2 sm:gap-4 text-[10px] sm:text-xs text-gray-500 overflow-x-auto scrollbar-hide">
+                            <span className="whitespace-nowrap">
+                              Versión: <strong>{log.versionAnterior}</strong> → <strong>{log.versionNueva}</strong>
+                            </span>
+                          </div>
 
+                          {/* Botón de restaurar (solo si tiene snapshot y no es la versión actual) */}
+                          {log.plantillaSnapshot && index > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAbrirRestaurar(log)}
+                              className="gap-1.5 sm:gap-2 text-blue-600 border-blue-300 hover:bg-blue-50 text-xs sm:text-sm min-h-[44px] sm:min-h-[36px] w-full xs:w-auto"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                              <span className="whitespace-nowrap">Restaurar versión</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              ))}
+            </div>
+
+            {logCambios.length === 0 && (
+              <div className="text-center py-8 sm:py-12">
+                <History className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                <p className="text-sm sm:text-base text-gray-500">No hay cambios registrados aún</p>
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
 
 
                   <div className="flex items-center gap-1 border-r border-gray-300 pr-2">

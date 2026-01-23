@@ -160,22 +160,22 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
             onClick={onClose}
           />
 
-          {/* Modal */}
+          {/* Modal - Mobile optimized */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-y-0 right-0 flex max-w-full pl-10 sm:pl-16"
+            className="fixed inset-y-0 right-0 flex w-full sm:max-w-full sm:pl-10 md:pl-16"
           >
-            <div className="w-screen max-w-2xl">
+            <div className="w-full sm:max-w-2xl">
               <div className="flex h-full flex-col bg-white shadow-2xl">
-                {/* Header - Ahora sticky para siempre visible */}
-                <div className="bg-[#003DA5] px-4 sm:px-6 py-4 sm:py-5 sticky top-0 z-10 shadow-lg">
-                  <div className="flex items-start justify-between gap-4">
+                {/* Header - Sticky and Mobile Optimized */}
+                <div className="bg-[#003DA5] px-3 sm:px-6 py-3 sm:py-5 sticky top-0 z-10 shadow-lg">
+                  <div className="flex items-start justify-between gap-2 sm:gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-                        <h2 className="text-white text-base sm:text-xl font-medium truncate">
+                      <div className="flex items-center gap-2 mb-1.5 sm:mb-2 flex-wrap">
+                        <h2 className="text-white text-sm sm:text-xl font-medium truncate">
                           Certificado {certificado.consecutivo}
                         </h2>
                         {getEstadoBadge(certificado.estado)}

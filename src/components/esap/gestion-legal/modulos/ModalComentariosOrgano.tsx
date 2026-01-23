@@ -142,7 +142,7 @@ export function ModalComentariosOrgano({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-0">
         <DialogTitle className="sr-only">
           Comentarios y Actuaciones del Requerimiento {requerimientoId}
         </DialogTitle>

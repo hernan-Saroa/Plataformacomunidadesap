@@ -132,15 +132,15 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: Certi
   if (vistaActual !== 'dashboard') {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Botón Volver */}
-        <div className="bg-white border-b px-6 py-4">
+        {/* Botón Volver - Mobile optimized */}
+        <div className="bg-white border-b px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
           <Button
             variant="ghost"
             onClick={() => setVistaActual('dashboard')}
-            className="hover:bg-gray-100"
+            className="hover:bg-gray-100 min-h-[44px]"
           >
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Volver al Dashboard
+            <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+            <span className="text-sm sm:text-base">Volver al Dashboard</span>
           </Button>
         </div>
 
@@ -152,6 +152,7 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: Certi
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
+            className="p-3 sm:p-4 md:p-6"
           >
             {vistaActual === 'validar-qr' && <ValidarCertificadoQR />}
             {vistaActual === 'analytics' && <AnalyticsDashboard />}

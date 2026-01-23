@@ -114,8 +114,15 @@ const MODULOS_SISTEMA = [
   'Control Interno - Hallazgos',
   'Control Interno - Planes de Mejoramiento',
   'Control Interno - Seguimiento',
-  'Control Interno - Informes de Ley',
   'Control Interno - Gestión Documental',
+  'Control Interno - Expedientes',
+  'Control Interno - Configuraciones',
+  'Control Interno - Notificaciones',
+  'Control Interno - Dashboard Kanban',
+  'Control Interno - Trazabilidad',
+  'Control Interno - Comunicaciones',
+  'Control Interno - Aprobaciones',
+  'Control Interno - Historial',
   
   // Control Disciplinario
   'Control Disciplinario - Quejas',
@@ -169,15 +176,36 @@ const ROLES_SISTEMA: Rol[] = [
     permisos: [
       { id: 'perm-dash', modulo: 'Dashboard Ejecutivo', acciones: ['leer', 'exportar'], descripcion: 'Visualización de métricas' },
       { id: 'perm-rep', modulo: 'Reportes y Análisis', acciones: ['leer', 'exportar'], descripcion: 'Generación de reportes' },
+      
+      // Planificación
       { id: 'perm-ci1', modulo: 'Control Interno - Plan Anual', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci2', modulo: 'Control Interno - Universo Auditorías', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci3', modulo: 'Control Interno - Programa Anual', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      
+      // Auditorías y Hallazgos
       { id: 'perm-ci4', modulo: 'Control Interno - Auditorías', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci5', modulo: 'Control Interno - Hallazgos', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      
+      // Planes de Mejoramiento
       { id: 'perm-ci6', modulo: 'Control Interno - Planes de Mejoramiento', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci7', modulo: 'Control Interno - Seguimiento', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-      { id: 'perm-ci8', modulo: 'Control Interno - Informes de Ley', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-      { id: 'perm-ci9', modulo: 'Control Interno - Gestión Documental', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      
+      // Gestión Documental y Expedientes
+      { id: 'perm-ci8', modulo: 'Control Interno - Gestión Documental', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      { id: 'perm-ci9', modulo: 'Control Interno - Expedientes', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      
+      // Configuraciones y Administración
+      { id: 'perm-ci10', modulo: 'Control Interno - Configuraciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      { id: 'perm-ci11', modulo: 'Control Interno - Notificaciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      { id: 'perm-ci12', modulo: 'Control Interno - Dashboard Kanban', acciones: ['leer', 'actualizar', 'exportar'], descripcion: 'Gestión del Kanban' },
+      
+      // Trazabilidad y Comunicaciones
+      { id: 'perm-ci13', modulo: 'Control Interno - Trazabilidad', acciones: ['leer', 'exportar'], descripcion: 'Visualización de trazabilidad' },
+      { id: 'perm-ci14', modulo: 'Control Interno - Comunicaciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
+      { id: 'perm-ci15', modulo: 'Control Interno - Aprobaciones', acciones: ['leer', 'aprobar', 'exportar'], descripcion: 'Aprobación de documentos' },
+      { id: 'perm-ci16', modulo: 'Control Interno - Historial', acciones: ['leer', 'exportar'], descripcion: 'Consulta de historial' },
+      
+      // Gestión de Personas y Roles
       { id: 'perm-usr', modulo: 'Gestión de Personas', acciones: ['leer'], descripcion: 'Solo consulta' },
       { id: 'perm-roles', modulo: 'Roles y Permisos', acciones: ['leer'], descripcion: 'Solo consulta' }
     ],
@@ -204,7 +232,6 @@ const ROLES_SISTEMA: Rol[] = [
       { id: 'perm-hall-aud', modulo: 'Control Interno - Hallazgos', acciones: ['crear', 'leer', 'actualizar', 'exportar'], descripcion: 'Gestión de hallazgos' },
       { id: 'perm-planes-aud', modulo: 'Control Interno - Planes de Mejoramiento', acciones: ['leer', 'exportar'], descripcion: 'Solo visualización' },
       { id: 'perm-seg-aud', modulo: 'Control Interno - Seguimiento', acciones: ['leer', 'exportar'], descripcion: 'Solo visualización' },
-      { id: 'perm-inf-aud', modulo: 'Control Interno - Informes de Ley', acciones: ['crear', 'leer', 'exportar'], descripcion: 'Generación de informes' },
       { id: 'perm-doc-aud', modulo: 'Control Interno - Gestión Documental', acciones: ['crear', 'leer', 'actualizar', 'exportar'], descripcion: 'Gestión de documentación' },
       { id: 'perm-rep-aud', modulo: 'Reportes y Análisis', acciones: ['leer', 'exportar'], descripcion: 'Acceso a reportes' }
     ],
@@ -231,7 +258,6 @@ const ROLES_SISTEMA: Rol[] = [
       { id: 'perm-hall-cons', modulo: 'Control Interno - Hallazgos', acciones: ['leer'], descripcion: 'Solo visualización' },
       { id: 'perm-planes-cons', modulo: 'Control Interno - Planes de Mejoramiento', acciones: ['leer'], descripcion: 'Solo visualización' },
       { id: 'perm-seg-cons', modulo: 'Control Interno - Seguimiento', acciones: ['leer'], descripcion: 'Solo visualización' },
-      { id: 'perm-inf-cons', modulo: 'Control Interno - Informes de Ley', acciones: ['leer'], descripcion: 'Solo visualización' },
       { id: 'perm-doc-cons', modulo: 'Control Interno - Gestión Documental', acciones: ['leer'], descripcion: 'Solo visualización' },
       { id: 'perm-rep-cons', modulo: 'Reportes y Análisis', acciones: ['leer'], descripcion: 'Solo visualización' }
     ],

@@ -3,13 +3,17 @@
  * ✅ Diseño corporativo ESAP 2025 premium con ModalSIGLPremium
  * ✅ Validación completa y UX mejorada
  * ✅ Botones SIEMPRE visibles en el footer
+ * ✅ MÚLTIPLES DEMANDANTES con UI mejorada
+ * ✅ MODAL 30% MÁS ANCHO para mejor visualización
  */
 
 import { useState, useEffect } from 'react';
-import { X, Scale, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel } from 'lucide-react';
+import { Scale, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { ModalHeaderClean } from './ModalHeaderClean';
 import { Button } from '../../../ui/button';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
@@ -40,6 +44,12 @@ export interface NuevaDemandaData {
   demandadoDireccion?: string;
   demandadoTelefono?: string;
   demandadoEmail?: string;
+  demandantes: Array<{
+    id: string;
+    nombre: string;
+    tipoPersona: 'natural' | 'juridica';
+    identificacion: string;
+  }>;
   cuantia: string;
   juzgado: string;
   ciudad: string;
@@ -117,6 +127,30 @@ const INITIAL_FORM_DATA: NuevaDemandaData = {
 
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
   const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
+  // const [formData, setFormData] = useState<NuevaDemandaData>({
+  //   numeroRadicado: '',
+  //   medioControl: '',
+  //   tipoProceso: '',
+  //   demandantes: [],
+  //   cuantia: '',
+  //   juzgado: '',
+  //   ciudad: '',
+  //   departamento: '',
+  //   fechaNotificacion: '',
+  //   fechaVencimiento: '',
+  //   abogadoAsignado: '',
+  //   etapa: 'NOTIFICADA',
+  //   pretensiones: '',
+  //   hechos: '',
+  //   observaciones: ''
+  // });
+
+  // Estado para el demandante temporal que se está agregando
+  const [nuevoDemandante, setNuevoDemandante] = useState({
+    nombre: '',
+    tipoPersona: 'natural' as 'natural' | 'juridica',
+    identificacion: ''
+  });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [abogados, setAbogados] = useState<Abogado[]>([]);
@@ -245,6 +279,57 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
   };
 
+  // Agregar demandante a la lista
+  const handleAgregarDemandante = () => {
+    if (!nuevoDemandante.nombre.trim()) {
+      toast.error('⚠️ Nombre incompleto', {
+        description: 'Ingrese el nombre completo del demandante'
+      });
+      return;
+    }
+    if (!nuevoDemandante.identificacion.trim()) {
+      toast.error('⚠️ Identificación incompleta', {
+        description: 'Ingrese la identificación del demandante'
+      });
+      return;
+    }
+
+    const demandante = {
+      id: `DEM-${Date.now()}`,
+      nombre: nuevoDemandante.nombre,
+      tipoPersona: nuevoDemandante.tipoPersona,
+      identificacion: nuevoDemandante.identificacion
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      demandantes: [...prev.demandantes, demandante]
+    }));
+
+    // Limpiar formulario de nuevo demandante
+    setNuevoDemandante({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: ''
+    });
+
+    toast.success('✅ Demandante agregado', {
+      description: `${demandante.nombre} agregado a la lista`
+    });
+  };
+
+  // Eliminar demandante de la lista
+  const handleEliminarDemandante = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      demandantes: prev.demandantes.filter(d => d.id !== id)
+    }));
+    
+    toast.info('🗑️ Demandante eliminado', {
+      description: 'El demandante ha sido removido de la lista'
+    });
+  };
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -262,6 +347,9 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
     if (!formData.identificacionDemandante.trim()) {
       newErrors.identificacionDemandante = 'La identificación es obligatoria';
+    }
+    if (formData.demandantes.length === 0) {
+      newErrors.demandantes = 'Debe agregar al menos un demandante';
     }
     if (!formData.juzgado.trim()) {
       newErrors.juzgado = 'El juzgado es obligatorio';
@@ -326,6 +414,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
       demandadoTelefono: '+57 601 220 2790',
       demandadoEmail: 'juridica@esap.edu.co',
+      demandantes: [],
       cuantia: '',
       juzgado: '',
       ciudad: '',
@@ -337,6 +426,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       pretensiones: '',
       hechos: '',
       observaciones: ''
+    });
+    setNuevoDemandante({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: ''
     });
     setErrors({});
 

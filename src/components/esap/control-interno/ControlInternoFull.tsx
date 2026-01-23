@@ -31,9 +31,7 @@ type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
   | "planificacion"                  // RF001-004 (4 tabs)
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
-  | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-  | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
 interface ControlInternoFullProps {
@@ -143,17 +141,7 @@ function ControlInternoContent({
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE)
     },
     
-    // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
-    {
-      id: "informes-ley",
-      label: "Informes de Ley",
-      subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
-      icon: <FileText className="w-5 h-5" />,
-      color: "#8B5CF6", // Púrpura - Informes
-      visible: authService.hasPermission(Permissions.CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE)
-    },
-    
-    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 4. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
@@ -163,18 +151,7 @@ function ControlInternoContent({
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_MANAGE)
     },
     
-    // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
-    // COMENTADO TEMPORALMENTE
-    // {
-    //   id: "roles-permisos",
-    //   label: "Roles y Permisos",
-    //   subtitle: "RBAC • Seguridad • Accesos",
-    //   icon: <Shield className="w-5 h-5" />,
-    //   color: "#DC2626", // Rojo - Seguridad
-    //   visible: puedeAcceder('roles-permisos'),
-    // },
-    
-    // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 5. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -248,14 +225,8 @@ function ControlInternoContent({
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;
       
-      case "informes-ley":
-        return <InformesLeyModulePremium />;
-      
       case "expedientes":
         return <ExpedientesModulePremium />;
-      
-      case "roles-permisos":
-        return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;

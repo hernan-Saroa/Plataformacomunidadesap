@@ -1,7 +1,6 @@
 /**
  * RF004 - FLUJO DE APROBACIÓN DE AUTOS POR JEFE DE OCID
- * Sistema completo de revisión, edición, aprobación, firma y notificación
- * VERSIÓN OPTIMIZADA: Responsive y Paleta Corporativa ESAP
+ * Diseño actualizado alineado con el estándar ESAP (SIGL v5.0)
  */
 
 import { useState, useEffect } from 'react';
@@ -85,16 +84,22 @@ const getStatusConfig = (status: string) => {
 // Mock Data - Empty as it will be loaded from backend
 const BORRADORES_PENDIENTES: BorradorPendiente[] = [];
 
-// Modal de Revisión y Edición - RESPONSIVE
-// Modal de Revisión y Edición - RESPONSIVE
-function ModalRevisionEdicion({
-  borrador,
-  onClose,
-  onAprobar,
-  onDevolver,
-  onFirmar,
-  onNotificar
-}: {
+// Función auxiliar para obtener iniciales
+const getInitials = (nombre: string) => {
+  const parts = nombre.split(' ');
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return nombre.substring(0, 2).toUpperCase();
+};
+
+// Modal de Revisión y Edición - ACTUALIZADO
+function ModalRevisionEdicion({ 
+  borrador, 
+  onClose, 
+  onAprobar, 
+  onDevolver 
+}: { 
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
@@ -109,54 +114,59 @@ function ModalRevisionEdicion({
   const [showModalNotificar, setShowModalNotificar] = useState(false); // For Notification
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
 
+  const initials = getInitials(borrador.profesional.nombre);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-6xl max-h-[98vh] sm:max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
       >
-        {/* Header - RESPONSIVE */}
-        <div className="p-4 sm:p-6 border-b" style={{ background: '#003DA5' }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-                  <FileSignature className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lg sm:text-xl font-bold text-white truncate">
-                    Revisión de Auto
-                  </h2>
-                  <p className="text-xs sm:text-sm text-white/90 truncate">{borrador.numeroProceso}</p>
-                </div>
+        {/* Header */}
+        <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+                <FileSignature className="w-6 h-6" style={{ color: '#003DA5' }} />
               </div>
-
-              {/* Info Compacta Mobile */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="bg-white/90 text-blue-900 border-0 text-xs">
-                  v{borrador.version}
-                </Badge>
-                <Badge className="bg-white/90 text-blue-900 border-0 text-xs">
-                  {borrador.etapa}
-                </Badge>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Revisión de Auto
+                </h2>
+                <p className="text-sm" style={{ color: '#6B7280' }}>
+                  {borrador.numeroProceso}
+                </p>
               </div>
             </div>
-
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <X className="w-5 h-5" style={{ color: '#6B7280' }} />
             </button>
+          </div>
+
+          {/* Badges */}
+          <div className="flex items-center gap-2">
+            <Badge style={{ background: '#E0EDFF', color: '#003DA5' }}>
+              Versión {borrador.version}
+            </Badge>
+            <Badge style={{ background: '#DBEAFE', color: '#2563EB' }}>
+              {borrador.etapa}
+            </Badge>
+            {borrador.prioridad === 'alta' && (
+              <Badge style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                ⚠️ Prioridad Alta
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -170,8 +180,8 @@ function ModalRevisionEdicion({
                 : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
             >
-              <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline-block mr-1.5" />
-              Documento
+              <FileText className="w-4 h-4 inline-block mr-2" />
+              Documentos
             </button>
             <button
               onClick={() => setActiveTab('historial')}
@@ -180,44 +190,52 @@ function ModalRevisionEdicion({
                 : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
             >
-              <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 inline-block mr-1.5" />
+              <History className="w-4 h-4 inline-block mr-2" />
               Historial ({borrador.historial.length})
             </button>
           </div>
         </div>
 
         {/* Contenido */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'documento' ? (
-            <div className="space-y-4 sm:space-y-5">
+            <div className="space-y-5">
               {/* Info Denunciado */}
-              <Card className="p-3 sm:p-4 bg-blue-50 border-blue-200">
+              <div className="p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm" style={{ background: '#DBEAFE', color: '#2563EB' }}>
+                    <User className="w-5 h-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-blue-600 mb-1">DENUNCIADO/INVESTIGADO</p>
-                    <p className="font-bold text-gray-900 text-sm sm:text-base truncate">{borrador.denunciado}</p>
-                    <p className="text-xs text-gray-600 mt-1">Etapa: {borrador.etapa}</p>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold mb-1" style={{ color: '#6B7280' }}>
+                      DENUNCIADO/INVESTIGADO
+                    </p>
+                    <p className="font-bold" style={{ color: '#1F2937' }}>
+                      {borrador.denunciado}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+                      Etapa: {borrador.etapa}
+                    </p>
                   </div>
                 </div>
-              </Card>
+              </div>
 
               {/* Profesional */}
-              <Card className="p-3 sm:p-4 bg-gray-50 border-gray-200">
+              <div className="p-4 rounded-xl" style={{ background: '#F8FAFC' }}>
                 <div className="flex items-center gap-3">
-                  <Avatar className="w-10 h-10 ring-2 ring-blue-100">
-                    <AvatarFallback className="bg-blue-100 text-blue-700 text-sm">
-                      {borrador.profesional.nombre.split(' ').map(n => n[0]).join('')}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{borrador.profesional.nombre}</p>
-                    <p className="text-xs text-gray-600 truncate">{borrador.profesional.email}</p>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                    {initials}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                      {borrador.profesional.nombre}
+                    </p>
+                    <p className="text-xs" style={{ color: '#6B7280' }}>
+                      {borrador.profesional.email}
+                    </p>
                   </div>
                 </div>
-              </Card>
+              </div>
 
               {/* Contenido Texto */}
               <div className="mt-4">
@@ -238,10 +256,212 @@ function ModalRevisionEdicion({
                   className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 />
               </div>
+              {/* Observaciones */}
+              <div className="p-4 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+                <div className="flex gap-3">
+                  <MessageSquare className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#6B7280' }} />
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold mb-2" style={{ color: '#6B7280' }}>
+                      Observaciones del Profesional:
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#374151' }}>
+                      {borrador.observacionesProfesional}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contenido del Auto */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold flex items-center gap-2" style={{ color: '#1F2937' }}>
+                    <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
+                    Contenido del Auto
+                  </h3>
+                  <div className="flex gap-2">
+                    {!archivoAuto && (
+                      <label htmlFor="upload-auto" className="cursor-pointer">
+                        <div className="px-4 py-2 rounded-xl border-2 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-semibold" style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
+                          <Upload className="w-4 h-4" />
+                          Subir Word/PDF
+                        </div>
+                        <input
+                          id="upload-auto"
+                          type="file"
+                          accept=".pdf,.doc,.docx"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              const file = e.target.files[0];
+                              setArchivoAuto(file);
+                              setTipoVista('archivo');
+                              toast.success('Archivo cargado', {
+                                description: `${file.name} listo para visualizar`
+                              });
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    <button
+                      onClick={() => setModoEdicion(!modoEdicion)}
+                      className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                      style={{ background: modoEdicion ? '#6B7280' : '#003DA5' }}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      {modoEdicion ? 'Cancelar' : 'Editar'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Archivo subido */}
+                {archivoAuto && (
+                  <div className="p-4 mb-3 rounded-xl border-2" style={{ background: '#D1FAE5', borderColor: '#6EE7B7' }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#059669' }}>
+                          <FileText className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate" style={{ color: '#1F2937' }}>
+                            {archivoAuto.name}
+                          </p>
+                          <p className="text-xs" style={{ color: '#6B7280' }}>
+                            {(archivoAuto.size / 1024).toFixed(2)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setTipoVista(tipoVista === 'archivo' ? 'texto' : 'archivo')}
+                          className="p-2 rounded-lg hover:bg-white/50 transition-colors"
+                          title={tipoVista === 'archivo' ? 'Ver Texto' : 'Ver Archivo'}
+                        >
+                          <Eye className="w-4 h-4" style={{ color: '#059669' }} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const url = URL.createObjectURL(archivoAuto);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = archivoAuto.name;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            toast.success('Descargando archivo...');
+                          }}
+                          className="p-2 rounded-lg hover:bg-white/50 transition-colors"
+                          title="Descargar"
+                        >
+                          <Download className="w-4 h-4" style={{ color: '#059669' }} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setArchivoAuto(null);
+                            setTipoVista('texto');
+                            toast.info('Archivo eliminado');
+                          }}
+                          className="p-2 rounded-lg hover:bg-white/50 transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {modoEdicion ? (
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl flex items-start gap-2" style={{ background: '#EFF6FF' }}>
+                      <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#2563EB' }} />
+                      <p className="text-xs" style={{ color: '#1E40AF' }}>
+                        Las modificaciones quedarán registradas en auditoría.
+                      </p>
+                    </div>
+                    <textarea
+                      value={contenidoEditado}
+                      onChange={(e) => setContenidoEditado(e.target.value)}
+                      className="w-full h-80 p-4 border-2 rounded-xl text-sm focus:outline-none focus:border-[#003DA5] font-mono"
+                      style={{ borderColor: '#E5E7EB' }}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleGuardarEdicion}
+                        className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                        style={{ background: '#003DA5' }}
+                      >
+                        <Check className="w-4 h-4" />
+                        Guardar Cambios
+                      </button>
+                      <button
+                        onClick={() => setModoEdicion(false)}
+                        className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+                        style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                ) : tipoVista === 'archivo' && archivoAuto ? (
+                  <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+                    {archivoAuto.name.endsWith('.pdf') ? (
+                      <iframe
+                        src={URL.createObjectURL(archivoAuto)}
+                        className="w-full h-[600px]"
+                        title="Visualizador de PDF"
+                      />
+                    ) : (
+                      <div className="p-8 text-center">
+                        <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#2563EB' }} />
+                        <p className="font-bold mb-2" style={{ color: '#1F2937' }}>
+                          Documento Word Cargado
+                        </p>
+                        <p className="text-sm mb-4" style={{ color: '#6B7280' }}>
+                          {archivoAuto.name}
+                        </p>
+                        <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
+                          Los archivos Word (.doc, .docx) no pueden visualizarse directamente.<br />
+                          Puedes descargar el archivo o ver el contenido en modo texto.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                          <button
+                            onClick={() => {
+                              const url = URL.createObjectURL(archivoAuto);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = archivoAuto.name;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                            className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                            style={{ background: '#10B981' }}
+                          >
+                            <Download className="w-4 h-4" />
+                            Descargar Archivo
+                          </button>
+                          <button
+                            onClick={() => setTipoVista('texto')}
+                            className="px-4 py-2 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+                            style={{ background: '#003DA5' }}
+                          >
+                            <FileText className="w-4 h-4" />
+                            Ver como Texto
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}>
+                    <pre className="whitespace-pre-wrap font-serif text-sm leading-relaxed overflow-x-auto" style={{ color: '#1F2937' }}>
+                      {contenidoEditado}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            // Tab de Historial
-            <div className="space-y-3 sm:space-y-4">
+            <div className="space-y-3">
               {borrador.historial.map((accion, index) => (
                 <Card key={accion.id || index} className="p-3 sm:p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
                   <div className="flex items-start gap-3">
@@ -272,6 +492,25 @@ function ModalRevisionEdicion({
                     </div>
                   </div>
                 </Card>
+                <div
+                  key={accion.id}
+                  className="p-4 rounded-xl border-l-4"
+                  style={{ background: '#F8FAFC', borderColor: '#003DA5' }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                        {accion.descripcion}
+                      </p>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {accion.usuario}
+                      </p>
+                    </div>
+                    <span className="text-xs" style={{ color: '#9CA3AF' }}>
+                      {new Date(accion.fecha).toLocaleString('es-CO')}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -696,6 +935,8 @@ function ModalAprobar({
           </Button>
         </div>
       </motion.div>
+
+      {/* Modales de Aprobar y Devolver (puedes implementarlos según necesites) */}
     </motion.div>
   );
 }
@@ -715,26 +956,28 @@ function ModalDevolver({
   const [comentarios, setComentarios] = useState('');
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
 
-  const handleAgregarArchivos = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
-    }
+  const borradorsFiltrados = borradores.filter(b => {
+    const matchesSearch = searchQuery === '' || 
+      b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.titulo.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesEstado = filtroEstado === 'todos' || b.estado === filtroEstado;
+    
+    return matchesSearch && matchesEstado;
+  });
+
+  const handleAprobar = (comentarios: string) => {
+    toast.success('Auto Aprobado', {
+      description: 'El auto ha sido aprobado exitosamente'
+    });
+    setBorradorSeleccionado(null);
   };
 
-  const handleConfirmar = () => {
-    if (!motivo.trim()) {
-      toast.error('Motivo Requerido', {
-        description: 'Debe especificar el motivo de la devolución'
-      });
-      return;
-    }
-    if (!comentarios.trim()) {
-      toast.error('Comentarios Requeridos', {
-        description: 'Proporcione comentarios detallados'
-      });
-      return;
-    }
-    onConfirm(motivo, comentarios, archivosAdjuntos);
+  const handleDevolver = (motivo: string, comentarios: string, archivos: File[]) => {
+    toast.warning('Auto Devuelto', {
+      description: 'El auto ha sido devuelto al profesional'
+    });
+    setBorradorSeleccionado(null);
   };
 
   return (
