@@ -42,6 +42,8 @@ import {
   mapearListaChequeoBackendAFrontend,
   mapearListaChequeoFrontendABackend
 } from './services/listasChequeoService';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ====================================
 // TIPOS
@@ -549,10 +551,12 @@ function SeccionTiposAuditoria({ tipos, onActualizar, cargandoTipos }: SeccionTi
             <h3 className="text-lg font-bold text-gray-900">Tipos de Auditoría</h3>
             <p className="text-sm text-gray-600 mt-1">Gestiona los tipos de auditoría disponibles</p>
           </div>
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_TIPO_CREATE) && (
           <Button onClick={handleNuevoTipo} style={{ background: '#003DA5' }}>
             <Plus className="w-4 h-4 mr-2" />
             Nuevo Tipo
           </Button>
+          )}
         </div>
 
         {cargandoTipos ? (
@@ -941,10 +945,12 @@ function SeccionListasChequeo({ listas, onActualizar, cargandoListas, tiposAudit
             <h3 className="text-lg font-bold text-gray-900">Listas de Chequeo Estándar</h3>
             <p className="text-sm text-gray-600 mt-1">Administra listas de verificación</p>
           </div>
+          {authService.hasPermission(Permissions.CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_LISTA_CREATE) && (
           <Button onClick={handleNuevaLista} style={{ background: '#003DA5' }}>
             <Plus className="w-4 h-4 mr-2" />
             Nueva Lista
           </Button>
+          )}
         </div>
 
         {cargandoListas ? (

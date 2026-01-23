@@ -36,6 +36,8 @@ import { toast } from 'sonner@2.0.3';
 import { universoAuditoriasApi, planAnual5RolesApi, auditoriasApi, hallazgosApi } from './services/api';
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -602,6 +604,7 @@ export function PlanificacionModuleRediseno() {
             </div>
 
             {/* ⭐ BOTÓN MANDATORIO: PUNTO DE ENTRADA ÚNICO PARA CREAR AUDITORÍAS */}
+            {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_CREATE) && (
             <button
               onClick={() => setModalNuevaAuditoriaOpen(true)}
               className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg font-medium hover:shadow-lg transition-all shadow-md min-h-[44px] w-full sm:w-auto"
@@ -609,6 +612,7 @@ export function PlanificacionModuleRediseno() {
               <Plus className="w-5 h-5" />
               <span>Nueva Auditoría</span>
             </button>
+            )}
           </div>
         </div>
 
