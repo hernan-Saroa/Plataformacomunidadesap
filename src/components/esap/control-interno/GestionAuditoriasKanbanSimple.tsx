@@ -54,7 +54,7 @@ import {
   Filter, Search, ChevronDown, TrendingUp, Target, Shield,
   Download, Columns3, ClipboardCheck, CheckSquare,
   Maximize2, Minimize2, RefreshCw, UserPlus, Send, FileDown, Archive, Trash2, Edit,
-  ChevronsDown, ChevronsUp, Building2, ListChecks
+  ChevronsDown, ChevronsUp, Building2, ListChecks, AlertTriangle
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
@@ -70,6 +70,7 @@ import { ModalHistorialAuditoria } from './ModalHistorialAuditoria';
 import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { ModalSolicitarAmpliacionPlazo } from './ModalSolicitarAmpliacionPlazo';
 import { BandejaAmpliacionesPendientes } from './BandejaAmpliacionesPendientes';
+import { ModalAgregarHallazgoRapido } from './ModalAgregarHallazgoRapido';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 import { ModalAsignarAuditorIndividual } from './ModalAsignarAuditorIndividual';
 import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
@@ -1028,6 +1029,7 @@ interface TarjetaAuditoriaProps {
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO: Crear Plan de Mejoramiento
   onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
+  onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
 }
@@ -1037,7 +1039,8 @@ function TarjetaAuditoria({
   onVerDetalle, 
   onVerNotas, 
   onVerHistorial,
-  onSolicitarAmpliacion, 
+  onSolicitarAmpliacion,
+  onRegistrarHallazgo,
   onAprobar,
   onCambiarEstado,
   onAsignarAuditor,
@@ -1560,6 +1563,27 @@ function TarjetaAuditoria({
               </Button>
             )}
 
+            {/* Botón Registrar Hallazgo - Solo para auditorías en Ejecución */}
+            {auditoria.estado === 'Ejecución' && onRegistrarHallazgo && authService.hasPermission(Permissions.CONTROL_INTERNO_HALLAZGOS_CREATE) && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegistrarHallazgo(auditoria);
+                }}
+                size="sm"
+                className="text-xs font-bold w-full mb-2"
+                style={{ background: '#F59E0B', color: '#FFFFFF' }}
+              >
+                <AlertTriangle className="w-3 h-3 mr-1 flex-shrink-0" />
+                <span className="truncate">Registrar Hallazgo</span>
+                {auditoria.hallazgos > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs font-bold">
+                    {auditoria.hallazgos}
+                  </span>
+                )}
+              </Button>
+            )}
+
             {/* Menú de Acciones Horizontales - CONDICIONAL SEGÚN ESTADO */}
             <div className="flex items-center justify-between gap-1 bg-gray-50 p-1.5 rounded-lg border border-gray-200">
               {/* Cambiar estado - DESHABILITADO en Finalizada */}
@@ -1791,6 +1815,7 @@ interface ColumnaKanbanProps {
   onEditar: (aud: Auditoria) => void;
   onCrearPlan?: (aud: Auditoria) => void; // ← NUEVO
   onSolicitarAmpliacion?: (aud: Auditoria) => void; // ← NUEVO: Solicitar ampliación de plazo
+  onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
 }
@@ -1813,6 +1838,7 @@ function ColumnaKanban({
   onEditar,
   onCrearPlan,
   onSolicitarAmpliacion,
+  onRegistrarHallazgo,
   tarjetasColapsadas,
   onToggleColapsoTarjeta
 }: ColumnaKanbanProps) {
@@ -1988,6 +2014,7 @@ function ColumnaKanban({
               onAsignarAuditor={onAsignarAuditor}
               onEnviarAprobacion={onEnviarAprobacion}
               onSolicitarAmpliacion={onSolicitarAmpliacion}
+              onRegistrarHallazgo={onRegistrarHallazgo}
               onExportar={onExportar}
               onArchivar={onArchivar}
               onEliminar={onEliminar}
@@ -2048,6 +2075,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [tarjetasColapsadas, setTarjetasColapsadas] = useState<Set<string>>(new Set()); // NUEVO: Estado para tarjetas colapsadas
   const [modalSolicitarAmpliacionOpen, setModalSolicitarAmpliacionOpen] = useState(false);
   const [bandejaAmpliacionesOpen, setBandejaAmpliacionesOpen] = useState(false);
+  const [modalHallazgoOpen, setModalHallazgoOpen] = useState(false); // NUEVO: Modal de hallazgo
 
   // Función para mapear etapa a icono basado en el nombre
   const obtenerIconoEtapa = (nombre: string) => {
@@ -2401,6 +2429,22 @@ export function GestionAuditoriasKanbanSimple() {
     }
     setAuditoriaSeleccionada(auditoria);
     setModalSolicitarAmpliacionOpen(true);
+  };
+
+  // Handler para registrar hallazgo
+  const handleRegistrarHallazgo = (auditoria: Auditoria) => {
+    // Validar que la auditoría esté en Ejecución
+    if (auditoria.estado !== 'Ejecución') {
+      toast.error('Solo se pueden registrar hallazgos durante la fase de Ejecución');
+      return;
+    }
+    setAuditoriaSeleccionada(auditoria);
+    setModalHallazgoOpen(true);
+  };
+
+  // Handler después de registrar hallazgo
+  const handleHallazgoCreado = async () => {
+    await cargarAuditorias();
   };
 
   // Handler después de enviar solicitud de ampliación
@@ -4045,6 +4089,7 @@ export function GestionAuditoriasKanbanSimple() {
                     onCrearPlan={handleCrearPlan}
                     onEditar={handleEditarAuditoria}
                     onSolicitarAmpliacion={handleSolicitarAmpliacion}
+                    onRegistrarHallazgo={handleRegistrarHallazgo}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
                   />
@@ -4739,6 +4784,20 @@ export function GestionAuditoriasKanbanSimple() {
           onClose={() => setBandejaAmpliacionesOpen(false)}
           onSolicitudProcesada={handleSolicitudAmpliacionProcesada}
         />
+
+        {/* MODAL AGREGAR HALLAZGO RÁPIDO */}
+        {auditoriaSeleccionada && (
+          <ModalAgregarHallazgoRapido
+            isOpen={modalHallazgoOpen}
+            onClose={() => {
+              setModalHallazgoOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            codigoAuditoria={auditoriaSeleccionada.codigo}
+            onHallazgoCreado={handleHallazgoCreado}
+          />
+        )}
       </div>
     </DndProvider>
   );
