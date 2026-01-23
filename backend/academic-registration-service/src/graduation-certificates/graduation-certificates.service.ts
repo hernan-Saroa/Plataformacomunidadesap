@@ -525,15 +525,22 @@ export class GraduationCertificatesService {
     }
 
     let requesterEmail: string | undefined = certificate.request?.requesterEmail;
+
+    // Si no está en la relación cargada, buscar la solicitud completa
     if (!requesterEmail) {
       const request = await this.requestRepository.findOne({
         where: { id: certificate.requestId },
       });
       requesterEmail = request?.requesterEmail;
+
+      // Intentar fallback con email del graduado si no hay email de solicitante
+      if (!requesterEmail && request?.graduateEmail) {
+        requesterEmail = request.graduateEmail;
+      }
     }
 
     if (!requesterEmail) {
-      throw new BadRequestException('No hay un email de solicitante asociado');
+      throw new BadRequestException('No hay un email de solicitante asociado ni se encontró email del graduado');
     }
 
     await this.sendCertificateEmail(requesterEmail, certificate, frontendBaseUrl);
