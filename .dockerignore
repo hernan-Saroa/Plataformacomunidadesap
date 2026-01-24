@@ -1,0 +1,27 @@
+# Node / builds
+node_modules
+**/node_modules
+dist
+build
+coverage
+npm-debug.log
+yarn.lock
+pnpm-lock.yaml
+
+# VCS / IDE
+.git
+.gitignore
+.vscode
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+*.pem
+
+# Docker files (opcional)
+docker-compose*.yml
+
+# En tu repo: esto es CLAVE para que el FRONTEND no cargue TODO el backend
+backend
+db
