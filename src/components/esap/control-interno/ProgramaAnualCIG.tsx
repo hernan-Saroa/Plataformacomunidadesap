@@ -596,10 +596,25 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
       const matchTipo = filtroTipo === 'Todos' || aud.tipo === filtroTipo;
       
       // Filtro por estado (usa filtro externo si está disponible)
-      const estadoFiltro = filtrosExternos?.estado && filtrosExternos.estado !== 'TODOS' 
-        ? filtrosExternos.estado 
-        : filtroEstado;
-      const matchEstado = estadoFiltro === 'Todos' || aud.estadoPrograma === estadoFiltro;
+      let matchEstado = true;
+      if (filtrosExternos?.estado && filtrosExternos.estado !== 'TODOS') {
+        // Mapear estados del filtro padre a estados del programa
+        // BORRADOR -> 'Borrador'
+        // EN_REVISION -> 'Pendiente Aprobación'
+        // APROBADO -> 'Aprobado'
+        // PUBLICADO -> 'En Ejecución' o 'Finalizado'
+        if (filtrosExternos.estado === 'BORRADOR') {
+          matchEstado = aud.estadoPrograma === 'Borrador';
+        } else if (filtrosExternos.estado === 'EN_REVISION') {
+          matchEstado = aud.estadoPrograma === 'Pendiente Aprobación';
+        } else if (filtrosExternos.estado === 'APROBADO') {
+          matchEstado = aud.estadoPrograma === 'Aprobado';
+        } else if (filtrosExternos.estado === 'PUBLICADO') {
+          matchEstado = aud.estadoPrograma === 'En Ejecución' || aud.estadoPrograma === 'Finalizado';
+        }
+      } else if (filtroEstado !== 'Todos') {
+        matchEstado = aud.estadoPrograma === filtroEstado;
+      }
       
       // Filtro por búsqueda (usa filtro externo si está disponible)
       const busquedaFiltro = filtrosExternos?.busqueda || busqueda;

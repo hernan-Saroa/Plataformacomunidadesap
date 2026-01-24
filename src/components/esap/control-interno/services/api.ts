@@ -879,6 +879,13 @@ export const planAnual5RolesApi = {
       body: JSON.stringify({ porcentajeAvance: porcentaje }),
     });
   },
+
+  /**
+   * Obtener indicadores del plan anual (US-003)
+   */
+  getIndicadores: async (planId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/plan-anual-5-roles/${planId}/indicadores`);
+  },
 };
 
 // ==================== LISTAS DE CHEQUEO ====================

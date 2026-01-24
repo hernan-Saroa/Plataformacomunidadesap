@@ -81,14 +81,15 @@ export function VisorPDFCertificado({
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
 
-  const normalizarTexto = (value: string) =>
-    (value || '')
-      .toLowerCase()
-      .normalize('NFD')
+  const normalizarTexto = (value: string) => {
+    const baseTexto = String(value || '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    return textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  };
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
@@ -346,7 +347,14 @@ export function VisorPDFCertificado({
   };
 
   const handleDescargar = async () => {
-    if (!certificadoRef.current) return;
+    if (!certificadoRef.current) {
+      if (autoAction === 'email') {
+        onEmailError?.();
+      } else if (autoAction === 'download') {
+        onAutoActionComplete?.('download', false);
+      }
+      return;
+    }
 
     try {
       setIsGenerating(true);
@@ -457,7 +465,13 @@ export function VisorPDFCertificado({
   };
 
   const handleImprimir = () => {
-    if (!certificadoRef.current) return;
+    if (!certificadoRef.current) {
+      if (autoAction === 'print') {
+        onAutoActionComplete?.('print', false);
+      }
+      toast.error('No se pudo preparar la vista de impresiÃ³n.');
+      return;
+    }
 
     // Clonar el certificado y fijar medidas para evitar recortes en la impresión
     const contenido = certificadoRef.current.cloneNode(true) as HTMLElement;
@@ -467,7 +481,13 @@ export function VisorPDFCertificado({
     contenido.style.backgroundColor = '#ffffff';
 
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
-    if (!printWindow) return;
+    if (!printWindow) {
+      if (autoAction === 'print') {
+        onAutoActionComplete?.('print', false);
+      }
+      toast.error('No se pudo abrir la ventana de impresiÃ³n.');
+      return;
+    }
 
     const printStyles = `
       @page { size: letter; margin: 0; }

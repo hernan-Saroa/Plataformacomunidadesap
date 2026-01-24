@@ -605,5 +605,197 @@ export class PlanAnual5RolesService {
       return [];
     }
   }
+
+  /**
+   * Calcula indicadores del Plan Anual
+   * US-003: Cálculo automático de indicadores
+   * Los indicadores dependen de: actividades, auditorías, informes y hallazgos
+   */
+  async getIndicadores(planId: string): Promise<any> {
+    const plan = await this.findOne(planId);
+
+    // ========== INDICADORES DE ACTIVIDADES ==========
+    const totalActividades = await this.actividadRepository.count({
+      where: { planId },
+    });
+
+    const actividadesCompletadas = await this.actividadRepository.count({
+      where: { planId, estado: 'completada' },
+    });
+
+    const actividadesEnProgreso = await this.actividadRepository.count({
+      where: { planId, estado: 'en-progreso' },
+    });
+
+    const actividadesPendientes = await this.actividadRepository.count({
+      where: { planId, estado: 'pendiente' },
+    });
+
+    const actividadesRetrasadas = await this.actividadRepository.count({
+      where: { planId, estado: 'retrasada' },
+    });
+
+    // ========== INDICADORES DE AUDITORÍAS ==========
+    let totalAuditorias = 0;
+    let auditoriasCompletadas = 0;
+    let auditoriasEnEjecucion = 0;
+    let auditoriasPendientes = 0;
+
+    try {
+      const auditoriasQuery = `
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE estado_kanban = 'Finalizada') as completadas,
+          COUNT(*) FILTER (WHERE estado_kanban = 'Ejecución') as en_ejecucion,
+          COUNT(*) FILTER (WHERE estado_kanban = 'Planeación') as pendientes
+        FROM control_interno.auditoria
+        WHERE EXTRACT(YEAR FROM fecha_inicio) = $1
+      `;
+      const resultAuditorias = await this.dataSource.query(auditoriasQuery, [plan.año]);
+      if (resultAuditorias && resultAuditorias.length > 0) {
+        totalAuditorias = parseInt(resultAuditorias[0].total) || 0;
+        auditoriasCompletadas = parseInt(resultAuditorias[0].completadas) || 0;
+        auditoriasEnEjecucion = parseInt(resultAuditorias[0].en_ejecucion) || 0;
+        auditoriasPendientes = parseInt(resultAuditorias[0].pendientes) || 0;
+      }
+    } catch (error) {
+      console.error('[getIndicadores] Error al obtener auditorías:', error);
+    }
+
+    // ========== INDICADORES DE INFORMES ==========
+    let totalInformes = 0;
+    let informesAprobados = 0;
+    let informesEnProceso = 0;
+    let informesPendientes = 0;
+
+    try {
+      // Los informes están en entrega_informe_ley con relación a informe_ley
+      // El periodo está en formato "2025", "2025-01", "2025-Q1", "2025-S1" 
+      // Necesitamos extraer el año de los primeros 4 caracteres
+      const informesQuery = `
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE estado = 'entregado') as aprobados,
+          COUNT(*) FILTER (WHERE estado = 'en-proceso') as en_proceso,
+          COUNT(*) FILTER (WHERE estado = 'pendiente') as pendientes
+        FROM control_interno.entrega_informe_ley
+        WHERE SUBSTRING(periodo, 1, 4) = $1
+      `;
+      const resultInformes = await this.dataSource.query(informesQuery, [plan.año.toString()]);
+      if (resultInformes && resultInformes.length > 0) {
+        totalInformes = parseInt(resultInformes[0].total) || 0;
+        informesAprobados = parseInt(resultInformes[0].aprobados) || 0;
+        informesEnProceso = parseInt(resultInformes[0].en_proceso) || 0;
+        informesPendientes = parseInt(resultInformes[0].pendientes) || 0;
+      }
+    } catch (error) {
+      console.error('[getIndicadores] Error al obtener informes:', error);
+    }
+
+    // ========== INDICADORES DE HALLAZGOS ==========
+    let totalHallazgos = 0;
+    let hallazgosAbiertos = 0;
+    let hallazgosCerrados = 0;
+
+    try {
+      // Contar hallazgos por año de detección, sin requerir vínculo a auditoría
+      const hallazgosQuery = `
+        SELECT 
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE estado IN ('borrador', 'notificado', 'en-controversia', 'ratificado', 'modificado')) as abiertos,
+          COUNT(*) FILTER (WHERE estado = 'cerrado') as cerrados
+        FROM control_interno.hallazgo
+        WHERE EXTRACT(YEAR FROM fecha_deteccion) = $1
+      `;
+      const resultHallazgos = await this.dataSource.query(hallazgosQuery, [plan.año]);
+      if (resultHallazgos && resultHallazgos.length > 0) {
+        totalHallazgos = parseInt(resultHallazgos[0].total) || 0;
+        hallazgosAbiertos = parseInt(resultHallazgos[0].abiertos) || 0;
+        hallazgosCerrados = parseInt(resultHallazgos[0].cerrados) || 0;
+      }
+    } catch (error) {
+      console.error('[getIndicadores] Error al obtener hallazgos:', error);
+    }
+
+    // ========== INDICADORES POR ROL ==========
+    const indicadoresPorRol = await Promise.all(
+      plan.roles.map(async (rol) => {
+        const totalRol = await this.actividadRepository.count({
+          where: { rolId: rol.id },
+        });
+
+        const completadasRol = await this.actividadRepository.count({
+          where: { rolId: rol.id, estado: 'completada' },
+        });
+
+        const enProgresoRol = await this.actividadRepository.count({
+          where: { rolId: rol.id, estado: 'en-progreso' },
+        });
+
+        const pendientesRol = await this.actividadRepository.count({
+          where: { rolId: rol.id, estado: 'pendiente' },
+        });
+
+        const retrasadasRol = await this.actividadRepository.count({
+          where: { rolId: rol.id, estado: 'retrasada' },
+        });
+
+        return {
+          rolId: rol.id,
+          rolNumero: rol.rol_numero,
+          rolNombre: rol.nombre,
+          totalActividades: totalRol,
+          actividadesCompletadas: completadasRol,
+          actividadesEnProgreso: enProgresoRol,
+          actividadesPendientes: pendientesRol,
+          actividadesRetrasadas: retrasadasRol,
+        };
+      })
+    );
+
+    return {
+      planId: plan.id,
+      año: plan.año,
+      estado: plan.estado,
+      
+      // Indicadores de actividades del plan
+      actividades: {
+        total: totalActividades,
+        completadas: actividadesCompletadas,
+        enProgreso: actividadesEnProgreso,
+        pendientes: actividadesPendientes,
+        retrasadas: actividadesRetrasadas,
+      },
+
+      // Indicadores de auditorías
+      auditorias: {
+        total: totalAuditorias,
+        completadas: auditoriasCompletadas,
+        enEjecucion: auditoriasEnEjecucion,
+        pendientes: auditoriasPendientes,
+      },
+
+      // Indicadores de informes
+      informes: {
+        total: totalInformes,
+        aprobados: informesAprobados,
+        enProceso: informesEnProceso,
+        pendientes: informesPendientes,
+      },
+
+      // Indicadores de hallazgos
+      hallazgos: {
+        total: totalHallazgos,
+        abiertos: hallazgosAbiertos,
+        cerrados: hallazgosCerrados,
+      },
+      
+      // Indicadores por rol (actividades)
+      indicadoresPorRol,
+      
+      // Fecha de consulta
+      fechaConsulta: new Date(),
+    };
+  }
 }
 

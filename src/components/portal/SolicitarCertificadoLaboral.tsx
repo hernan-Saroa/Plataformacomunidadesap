@@ -36,6 +36,7 @@ import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertificado';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
+import { useIsMobile } from '../ui/use-mobile';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface SolicitarCertificadoLaboralProps {
@@ -81,7 +82,7 @@ interface CertificadoGenerado {
 // Función para enmascarar correo (Habeas Data)
 // Muestra: 2 caracteres iniciales + asteriscos + 6 caracteres finales
 const enmascararCorreo = (correo: string): string => {
-  if (!correo || correo.length < 10) return correo;
+  if (typeof correo !== 'string' || !correo || correo.length < 10) return correo || '';
   
   const [usuario, dominio] = correo.split('@');
   
@@ -160,9 +161,9 @@ type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
   const resolverTemplateType = (data?: { position_category?: string; career_category?: string }) => {
-    const texto = (data?.career_category || '')
-      .toLowerCase()
-      .normalize('NFD')
+    const baseTexto = String(data?.career_category ?? '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    const texto = textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -283,6 +284,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const emailDestinoRef = useRef<string | null>(null);
   const lastEmailSentRef = useRef<string | null>(null);
+  const isMobile = useIsMobile();
 
   const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
@@ -392,9 +394,23 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
   };
 
+
+
+  const handleCodigoCompletoChange = (valor: string) => {
+    const limpio = valor.replace(/\D/g, '').slice(0, 6);
+    const nuevosDigitos = Array.from({ length: 6 }, (_, index) => limpio[index] || '');
+    setDigitosCodigo(nuevosDigitos);
+  };
+
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
+    if (buscandoEmpleado) return;
+
+    if (!tipoDocumento) {
+      toast.error('Por favor selecciona el tipo de documento');
+      return;
+    }
     if (!numeroDocumento) {
       toast.error('Por favor ingresa tu número de documento');
       return;
@@ -410,6 +426,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
       const verificacion = await certificadosService.autoservicio.verificarDocumento(numeroDocumento);
+      if (!verificacion || typeof verificacion !== 'object' || !('existe' in verificacion)) {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos validar tu documento en este momento. Intenta nuevamente.');
+        return;
+      }
+
       if (!verificacion.existe) {
         setBuscandoEmpleado(false);
         toast.error('No encontramos tu documento en la base de datos de ESAP');
@@ -418,6 +440,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
       // Llamar al backend para verificar documento y generar código
       const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+      if (!response || typeof response !== 'object') {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos generar el codigo en este momento. Intenta nuevamente.');
+        return;
+      }
+
 
       const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
       if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
@@ -435,7 +463,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setCodigoEnviado(codigo);
 
       // Crear objeto empleado desde la respuesta del backend
-      const solicitud = response.solicitud || {};
+      const solicitud = response.solicitud && typeof response.solicitud === 'object' ? response.solicitud : {};
       const templateType = resolverTemplateType(solicitud);
       const cargoNormalizado = solicitud.position_category || solicitud.career_category || 'N/A';
       const vinculoNormalizado =
@@ -664,12 +692,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
     setAutoPDFAction('download');
     setShowPDFViewer(true);
-
-    // Cerrar el visor después de que se ejecute la descarga
-    setTimeout(() => {
-      setShowPDFViewer(false);
-      setAutoPDFAction(null);
-    }, 1000);
   };
 
   const handleImprimir = () => {
@@ -679,12 +701,6 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     }
     setAutoPDFAction('print');
     setShowPDFViewer(true);
-
-    // Cerrar el visor después de que se ejecute la impresión
-    setTimeout(() => {
-      setShowPDFViewer(false);
-      setAutoPDFAction(null);
-    }, 1000);
   };
 
   const handleNuevaSolicitud = () => {
@@ -735,6 +751,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setAutoPDFAction(null);
       setShowPDFViewer(false);
     }
+  };
+
+
+
+  const handleAutoActionComplete = () => {
+    setShowPDFViewer(false);
+    setAutoPDFAction(null);
   };
 
   // Asegurar que el paso activo se mantenga en "certificado" cuando ya hay certificado listo
@@ -910,17 +933,35 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <Label htmlFor="tipo-documento" className="text-sm font-semibold text-gray-700 mb-2 block">
                           Tipo de Documento *
                         </Label>
-                        <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
-                          <SelectTrigger className="h-12 border-2">
-                            <SelectValue placeholder="Selecciona el tipo de documento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
-                            <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
-                            <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
-                            <SelectItem value="PP">Pasaporte (PP)</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {isMobile ? (
+                          <select
+                            id="tipo-documento"
+                            name="tipo-documento"
+                            value={tipoDocumento}
+                            onChange={(event) => setTipoDocumento(event.target.value)}
+                            className="h-12 w-full rounded-md border-2 border-input bg-input-background px-3 text-sm text-gray-700 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                          >
+                            <option value="" disabled>
+                              Selecciona el tipo de documento
+                            </option>
+                            <option value="CC">Cédula de Ciudadanía (CC)</option>
+                            <option value="CE">Cédula de Extranjería (CE)</option>
+                            <option value="TI">Tarjeta de Identidad (TI)</option>
+                            <option value="PP">Pasaporte (PP)</option>
+                          </select>
+                        ) : (
+                          <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
+                            <SelectTrigger id="tipo-documento" className="h-12 border-2">
+                              <SelectValue placeholder="Selecciona el tipo de documento" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
+                              <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
+                              <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
+                              <SelectItem value="PP">Pasaporte (PP)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
 
                       {/* Número de Documento */}
@@ -933,6 +974,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           <Input
                             id="numero-documento"
                             type="text"
+                            inputMode="numeric"
                             placeholder="Ej: 1234567890"
                             value={numeroDocumento}
                             onChange={(e) => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
@@ -1073,23 +1115,39 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       <Label className="text-sm font-semibold text-gray-700 mb-3 block">
                         Código de Validación *
                       </Label>
-                      <div className="flex gap-2 sm:gap-3 justify-center">
-                        {digitosCodigo.map((digito, index) => (
+                      {isMobile ? (
+                        <div className="flex justify-center">
                           <Input
-                            key={index}
-                            id={`digito-${index}`}
+                            id="codigo-validacion"
                             type="text"
                             inputMode="numeric"
-                            placeholder="0"
-                            value={digito}
-                            onChange={(e) => handleDigitoChange(index, e.target.value)}
-                            onKeyDown={(e) => handleDigitoKeyDown(index, e)}
-                            className="h-14 w-12 sm:h-16 sm:w-14 border-2 text-center text-2xl sm:text-3xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-                            maxLength={1}
-                            autoFocus={index === 0}
+                            autoComplete="one-time-code"
+                            placeholder="Ingresa el código"
+                            value={digitosCodigo.join('')}
+                            onChange={(e) => handleCodigoCompletoChange(e.target.value)}
+                            className="h-14 w-full max-w-[240px] border-2 text-center text-2xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+                            maxLength={6}
                           />
-                        ))}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 sm:gap-3 justify-center">
+                          {digitosCodigo.map((digito, index) => (
+                            <Input
+                              key={index}
+                              id={`digito-${index}`}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={digito}
+                              onChange={(e) => handleDigitoChange(index, e.target.value)}
+                              onKeyDown={(e) => handleDigitoKeyDown(index, e)}
+                              className="h-14 w-12 sm:h-16 sm:w-14 border-2 text-center text-2xl sm:text-3xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+                              maxLength={1}
+                              autoFocus={index === 0}
+                            />
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-center text-gray-500 mt-2">
                         Ingresa el código de 6 dígitos enviado a tu correo
                       </p>
@@ -1415,6 +1473,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           onClose={() => setShowPDFViewer(false)}
           autoAction={autoPDFAction || undefined}
           hiddenMode={!!autoPDFAction}
+          onAutoActionComplete={handleAutoActionComplete}
           certificado={certificadoGenerado.certificado_completo}
         />
       )}
