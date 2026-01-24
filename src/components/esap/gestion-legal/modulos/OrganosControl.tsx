@@ -907,15 +907,14 @@ function VistaLista({
         </table>
       </div>
 
-      {/* Paginación */}
-      {totalPaginas > 1 && (
-        <>
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-gray-600">
-            Mostrando {Math.min((paginaActual - 1) * itemsPorPagina + 1, total)} a {Math.min(paginaActual * itemsPorPagina, total)} de {total} requerimientos
-          </p>
-          <div className="flex gap-2">
-            <Button
+  {/* Paginación */}
+  {totalPaginas > 1 && (
+    <div className="flex items-center justify-between mt-4">
+      <p className="text-sm text-gray-600">
+        Mostrando {Math.min((paginaActual - 1) * itemsPorPagina + 1, total)} a {Math.min(paginaActual * itemsPorPagina, total)} de {total} requerimientos
+      </p>
+      <div className="flex gap-2">
+        <Button
               variant="outline"
               size="sm"
               onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
@@ -932,40 +931,14 @@ function VistaLista({
               onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
               disabled={paginaActual === totalPaginas}
             >
-              <FileCheck className="w-4 h-4 text-gray-600" />
-              <span>Documentos</span>
-            </button>
-
-            <button
-              onClick={() => {
-                onRespuesta(req);
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
-            >
-              <Send className="w-4 h-4 text-gray-600" />
-              <span>Redactar Respuesta</span>
-            </button>
-
-            <div className="border-t border-gray-100 my-1" />
-
-            <button
-              onClick={() => {
-                onComentarios(req);
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
-            >
-              <MessageSquare className="w-4 h-4 text-gray-600" />
-              <span>Comentarios</span>
-            </button>
-          </div>
-        </>
-      )}
-    </Card>
-  );
-
-
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    )}
+  </Card>
+);
+}
 // Modal Nuevo Requerimiento
 function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
   const [numeroOficio, setNumeroOficio] = useState('');

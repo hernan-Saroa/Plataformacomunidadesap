@@ -218,8 +218,6 @@ export function SistemaComentarios({
     { id: 'probatorio', nombre: 'Probatorio', icon: Users }
   ];
 
-  const handleAgregarComentario = async () => {
-  // Obtener color del avatar según el tipo
   const getAvatarColor = (tipo: string) => {
     switch(tipo) {
       case 'importante':
@@ -233,7 +231,7 @@ export function SistemaComentarios({
     }
   };
 
-  const handleEnviarComentario = () => {
+  const handleAgregarComentario = async () => {
     if (!nuevoComentario.trim()) {
       toast.error('Comentario vacío', {
         description: 'Por favor escribe un mensaje antes de enviar'
@@ -266,16 +264,6 @@ export function SistemaComentarios({
       }
     }
 
-    const comentario: Comentario = {
-      id: `c${Date.now()}`,
-      autor: getAutorActual(),
-      fecha: ahora.toISOString().split('T')[0],
-      hora: ahora.toTimeString().split(' ')[0].substring(0, 5),
-      etapa: etapaActual,
-      contenido: nuevoComentario,
-      tipo: 'normal',
-      categoria: 'general'
-    };
     const now = new Date();
     const nuevoComentarioObj: Comentario = {
       id: `c${comentarios.length + 1}`,
@@ -963,7 +951,7 @@ export function SistemaComentarios({
           </div>
 
           <button
-            onClick={handleEnviarComentario}
+            onClick={handleAgregarComentario}
             disabled={!nuevoComentario.trim()}
             className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: '#003DA5' }}

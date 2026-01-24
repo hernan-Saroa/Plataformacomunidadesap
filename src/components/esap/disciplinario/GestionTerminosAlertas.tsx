@@ -1143,6 +1143,8 @@ export function GestionTerminosAlertas() {
               </Card>
             ))}
           </div>
+        </div>
+      )}
 
       {/* VISTA: HISTORIAL DE ALERTAS */}
       {vistaActual === 'historial' && (
@@ -1216,7 +1218,7 @@ export function GestionTerminosAlertas() {
             </div>
           </Card>
         </div>
-      </div>
+      )}
 
       {/* Contenido Principal */}
       <div className="flex-1 overflow-auto p-3 sm:p-6">

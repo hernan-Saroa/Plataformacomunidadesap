@@ -1883,85 +1883,88 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
         {/* Contenido */}
         <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
           <div className="space-y-3">
-            {cargandoEvidencias ? (
+            {cargandoEvidencias && (
               <Card className="p-8 text-center">
                 <Clock className="w-10 h-10 mx-auto mb-3 text-gray-300 animate-pulse" />
                 <p className="text-sm text-gray-600">Cargando evidencias...</p>
               </Card>
-            ) : evidencias.length === 0 ? (
+            )}
+
+            {!cargandoEvidencias && evidencias.length === 0 && (
               <Card className="p-8 text-center">
                 <Archive className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <p className="text-sm text-gray-600">No hay evidencias registradas.</p>
               </Card>
-            ) : (
-              evidencias.map((evidencia) => (
-                <Card key={evidencia.id} className="p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className="p-2 rounded-lg bg-orange-100">
-                        <Archive className="w-5 h-5" style={{ color: '#F59E0B' }} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-bold text-gray-900">{evidencia.archivoNombre}</h3>
-                          <Badge className={evidencia.estado === 'Admitida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
-                            {evidencia.estado}
-                          </Badge>
-                          <Badge variant="outline">{evidencia.prioridad}</Badge>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2">
-                          <div>
-                            <p className="text-gray-600 text-xs">Tipo:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.tipo}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Aportado por:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.aportadoPor || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Fecha:</p>
-                            <p className="font-semibold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 text-xs">Tamaño:</p>
-                            <p className="font-semibold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
-                          </div>
-                        </div>
-                        {evidencia.descripcion && (
-                          <p className="text-sm text-gray-600 mt-2 italic">{evidencia.descripcion}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 flex-col sm:flex-row">
-                      {evidencia.estado === 'En Revisión' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR) && (
-                        <Button
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() => handleAdmitirEvidencia(evidencia)}
-                          title="Admitir Evidencia"
-                        >
-                          Admitir
-                        </Button>
-                      )}
+            )}
 
+            {!cargandoEvidencias && evidencias.length > 0 && evidencias.map((evidencia) => (
+              <Card key={evidencia.id} className="p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="p-2 rounded-lg bg-orange-100">
+                      <Archive className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-gray-900">{evidencia.archivoNombre}</h3>
+                        <Badge className={evidencia.estado === 'Admitida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
+                          {evidencia.estado}
+                        </Badge>
+                        <Badge variant="outline">{evidencia.prioridad}</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2">
+                        <div>
+                          <p className="text-gray-600 text-xs">Tipo:</p>
+                          <p className="font-semibold text-gray-900">{evidencia.tipo}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-xs">Aportado por:</p>
+                          <p className="font-semibold text-gray-900">{evidencia.aportadoPor || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-xs">Fecha:</p>
+                          <p className="font-semibold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600 text-xs">Tamaño:</p>
+                          <p className="font-semibold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
+                        </div>
+                      </div>
+                      {evidencia.descripcion && (
+                        <p className="text-sm text-gray-600 mt-2 italic">{evidencia.descripcion}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 flex-col sm:flex-row">
+                    {evidencia.estado === 'En Revisión' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR) && (
                       <Button
-                        type="button"
                         size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (evidencia.archivoUrl) {
-                            window.open(evidencia.archivoUrl, '_blank');
-                          } else {
-                            toast.error('URL no disponible');
-                          }
-                        }}
-                        title="Ver documento"
-                        style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleAdmitirEvidencia(evidencia)}
+                        title="Admitir Evidencia"
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        Admitir
                       </Button>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE) && (
+                    )}
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (evidencia.archivoUrl) {
+                          window.open(evidencia.archivoUrl, '_blank');
+                        } else {
+                          toast.error('URL no disponible');
+                        }
+                      }}
+                      title="Ver documento"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </Button>
+                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE) && (
                       <Button
                         type="button"
                         size="sm"
@@ -1975,68 +1978,63 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
-                      )}
-                    </div>
+                    )}
                   </div>
-                  <div className="flex gap-1">
-                    <Button 
-                      type="button"
-                      size="sm" 
-                      variant="outline"
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVisorDocumento({ show: true, documento: evidencia });
+                    }}
+                    title="Ver documento"
+                    style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                    className="hover:bg-blue-50"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
                       onClick={(e) => {
-                        e.stopPropagation();
-                        setVisorDocumento({ show: true, documento: evidencia });
-                      }}
-                      title="Ver documento"
-                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                      className="hover:bg-blue-50"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button 
-                      type="button"
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        
-                        // Función REAL de descarga
-                        try {
-                          // Crear un blob de prueba (en producción vendría del backend)
-                          const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
-                          const url = window.URL.createObjectURL(blob);
-                          
-                          // Crear elemento temporal para descarga
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = evidencia.nombre;
-                          link.style.display = 'none';
-                          
-                          // Agregar al DOM, hacer click y remover
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          
-                          // Liberar memoria
-                          window.URL.revokeObjectURL(url);
-                          
-                          toast.success('Descarga iniciada', {
-                            description: `${evidencia.nombre} - ${evidencia.tamaño}`,
-                            duration: 3000
-                          });
-                        } catch (error) {
-                          toast.error('Error en descarga', {
-                            description: 'No se pudo descargar el archivo'
-                          });
-                        }
-                      }}
-                      title="Descargar archivo"
-                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                      className="hover:bg-blue-50"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                      e.stopPropagation();
+
+                      // Función REAL de descarga
+                      try {
+                        const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
+                        const url = window.URL.createObjectURL(blob);
+
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = evidencia.nombre;
+                        link.style.display = 'none';
+
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        window.URL.revokeObjectURL(url);
+
+                        toast.success('Descarga iniciada', {
+                          description: `${evidencia.nombre} - ${evidencia.tamaño}`,
+                          duration: 3000
+                        });
+                      } catch (error) {
+                        toast.error('Error en descarga', {
+                          description: 'No se pudo descargar el archivo'
+                        });
+                      }
+                    }}
+                    title="Descargar archivo"
+                    style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                    className="hover:bg-blue-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </Card>
             ))}

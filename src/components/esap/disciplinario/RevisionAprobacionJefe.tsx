@@ -492,25 +492,6 @@ function ModalRevisionEdicion({
                     </div>
                   </div>
                 </Card>
-                <div
-                  key={accion.id}
-                  className="p-4 rounded-xl border-l-4"
-                  style={{ background: '#F8FAFC', borderColor: '#003DA5' }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                        {accion.descripcion}
-                      </p>
-                      <p className="text-xs" style={{ color: '#6B7280' }}>
-                        {accion.usuario}
-                      </p>
-                    </div>
-                    <span className="text-xs" style={{ color: '#9CA3AF' }}>
-                      {new Date(accion.fecha).toLocaleString('es-CO')}
-                    </span>
-                  </div>
-                </div>
               ))}
             </div>
           )}

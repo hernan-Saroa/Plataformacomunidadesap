@@ -1122,48 +1122,6 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
       <div className="flex-1 overflow-auto p-3 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                      Profesional
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                      Cargo y Especialidad
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">
-                      Territorial
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">
-                      Carga de Trabajo
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">
-                      Al Día
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">
-                      En Riesgo
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">
-                      Vencidos
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-600 uppercase">
-                      Estado
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {profesionalesFiltrados.map((profesional) => {
-                    const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
-                    const colorCarga = 
-                      porcentajeCarga >= 90 ? '#DC2626' :
-                      porcentajeCarga >= 70 ? '#F59E0B' :
-                      '#10B981';
-
-            {/* Filas de profesionales */}
             <div className="divide-y" style={{ borderColor: '#E5E7EB' }}>
               {profesionalesFiltrados.map((profesional) => {
                 const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
@@ -1187,89 +1145,67 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                         <h3 className="font-bold text-sm truncate mb-1" style={{ color: '#1F2937' }}>
                           {profesional.nombre}
                         </h3>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            className="text-xs"
-                            style={{
-                              backgroundColor: 
-                                profesional.estado === 'activo' ? '#D1FAE5' :
-                                profesional.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
-                              color:
-                                profesional.estado === 'activo' ? '#059669' :
-                                profesional.estado === 'vacaciones' ? '#D97706' : '#DC2626'
-                            }}
-                          >
-                            {profesional.estado.toUpperCase()}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Award className="w-3 h-3 flex-shrink-0" style={{ color: '#9CA3AF' }} />
-                          <p className="text-xs truncate" style={{ color: '#6B7280' }}>
-                            {profesional.especialidad}
-                          </p>
-                        </div>
+                        <p className="text-xs text-gray-600 truncate">{profesional.email}</p>
+                        <p className="text-[11px] text-gray-500">📞 {profesional.telefono}</p>
                       </div>
                     </div>
 
-                    {/* Columna 2: Carga de Trabajo */}
-                    <div className="col-span-2 flex flex-col justify-center">
-                      <div className="mb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                            Capacidad
-                          </p>
-                          <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
-                            {profesional.procesosAsignados}/{profesional.capacidadMaxima}
-                          </p>
-                        </div>
-                        <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${porcentajeCarga}%`,
-                              background: porcentajeCarga >= 90
-                                ? '#DC2626'
-                                : porcentajeCarga >= 70
-                                  ? '#F59E0B'
-                                  : '#10B981'
-                            }}
-                          />
-                        </div>
+                    {/* Columna 2: Cargo y Especialidad */}
+                    <div className="col-span-3">
+                      <p className="text-sm font-semibold text-gray-900">{profesional.cargo}</p>
+                      <p className="text-xs text-gray-600">{profesional.especialidad}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge className="bg-blue-50 text-blue-700 border border-blue-200">
+                          <Building className="w-3 h-3 mr-1" />
+                          {profesional.fechaIngreso}
+                        </Badge>
                       </div>
-                      <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                        {porcentajeCarga.toFixed(0)}% de capacidad utilizada
+                    </div>
+
+                    {/* Columna 3: Carga de trabajo */}
+                    <div className="col-span-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-gray-600">Carga de Trabajo</span>
+                        <span className="text-xs font-bold" style={{ color: '#003DA5' }}>
+                          {profesional.procesosAsignados}/{profesional.capacidadMaxima}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full"
+                          style={{
+                            width: `${Math.min(100, porcentajeCarga)}%`,
+                            backgroundColor: porcentajeCarga >= 90 ? '#DC2626' : porcentajeCarga >= 70 ? '#F59E0B' : '#10B981'
+                          }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Uso de capacidad: <strong>{porcentajeCarga.toFixed(0)}%</strong>
                       </p>
                     </div>
 
-                    {/* Columna 3: Distribución de Procesos */}
-                    <div className="col-span-3 flex items-center gap-2">
-                      {/* Al día */}
-                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#F0FDF4', borderColor: '#D1FAE5' }}>
+                    {/* Columna 4: Métricas */}
+                    <div className="col-span-2 flex items-center gap-2">
+                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#ECFDF3', borderColor: '#D1FADF' }}>
                         <div className="flex items-center gap-2 mb-1">
-                          <CheckCircle className="w-4 h-4" style={{ color: '#10B981' }} />
-                          <p className="text-xs font-semibold" style={{ color: '#059669' }}>
-                            Al día
-                          </p>
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          <p className="text-xs font-semibold text-green-700">Al Día</p>
                         </div>
-                        <p className="text-xl font-bold" style={{ color: '#10B981' }}>
-                          {profesional.procesosAlDia}
-                        </p>
+                        <p className="text-xl font-bold text-green-700">{profesional.procesosAlDia}</p>
                       </div>
 
-                      {/* En riesgo */}
                       <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FEF3C7' }}>
                         <div className="flex items-center gap-2 mb-1">
-                          <Clock className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                          <AlertTriangle className="w-4 h-4" style={{ color: '#D97706' }} />
                           <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-                            Riesgo
+                            En riesgo
                           </p>
                         </div>
-                        <p className="text-xl font-bold" style={{ color: '#F59E0B' }}>
+                        <p className="text-xl font-bold" style={{ color: '#D97706' }}>
                           {profesional.procesosEnRiesgo}
                         </p>
                       </div>
 
-                      {/* Vencidos */}
                       <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FEF2F2', borderColor: '#FEE2E2' }}>
                         <div className="flex items-center gap-2 mb-1">
                           <AlertTriangle className="w-4 h-4" style={{ color: '#DC2626' }} />
@@ -1291,7 +1227,12 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                           <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
                             Efectividad
                           </span>
-                        </td>
+                        </div>
+                        <span className="text-lg font-bold" style={{ color: '#10B981' }}>
+                          {profesional.efectividad || 0}%
+                        </span>
+                      </div>
+                    </div>
 
                     {/* Columna 5: Acciones */}
                     <div className="col-span-2 flex items-center justify-end gap-2">
@@ -1308,25 +1249,25 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                         Ver
                       </button>
                       {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_EDIT) && (
-                      <button
-                        onClick={() => {
-                          setProfesionalEditar(profesional);
-                          setShowModal('formulario');
-                        }}
-                        className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        title="Editar configuración"
-                      >
-                        <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
-                      </button>
+                        <button
+                          onClick={() => {
+                            setProfesionalEditar(profesional);
+                            setShowModal('formulario');
+                          }}
+                          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          title="Editar configuración"
+                        >
+                          <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
+                        </button>
                       )}
                       {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_DELETE) && (
-                      <button
-                        onClick={() => handleDesasignar(profesional.id)}
-                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                        title="Desasignar del equipo"
-                      >
-                        <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
-                      </button>
+                        <button
+                          onClick={() => handleDesasignar(profesional.id)}
+                          className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                          title="Desasignar del equipo"
+                        >
+                          <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1348,7 +1289,6 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
           </div>
         </div>
       </div>
-
       {/* Modal Detalle Profesional */}
       <AnimatePresence>
         {showModalDetalle && profesionalSeleccionado && (

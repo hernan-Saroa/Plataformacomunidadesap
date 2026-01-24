@@ -1060,8 +1060,7 @@ function TarjetaAuditoria({
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'auditoria',
     item: auditoria,
-    canDrag: () => canDrag,
-    canDrag: puedeMover, // Deshabilitar drag si no tiene permiso
+    canDrag: () => puedeMover && canDrag, // Deshabilitar drag si no tiene permiso
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging()
     })
