@@ -514,88 +514,22 @@ El Portal Transaccional implementa un diseño híbrido inspirado en Microsoft Dy
 | **Mi Perfil** | Todos | `PerfilUsuarioEditable.tsx` | Edición de datos personales y foto |
 | **Certificados Académicos** | Todos | `CertificadosAcademicosPortal.tsx` | Solicitud de certificaciones |
 | **Certificados Laborales** | Todos | `CertificadosLaboralesPortal.tsx` | Solicitud de certificados laborales |
-| **Comunidad** | Todos | `CommunitySection.tsx` | Feed social, eventos, noticias |
-| **Mi PTA** | Docentes | `DocentesPTAPortal.tsx` | Plan de Trabajo Anual personal |
 | **Mis Auditorías** | Jefes de Área | `DashboardAreaAuditada.tsx` | Seguimiento de auditorías del área |
 | **Firmas Pendientes** | Firmantes | `PortalTransaccionalFirmaCompleto.tsx` | Documentos para firma electrónica |
-| **Bolsa de Empleo** | Graduados | `JobBoardPortal.tsx` | Oportunidades laborales |
 | **Expedientes Legales** | Usuarios con casos | `MisExpedientesLegalesV2.tsx` | Seguimiento de procesos legales |
 
 #### Componentes Principales del Portal
 
 | Componente | Descripción |
 |------------|-------------|
-| `UnifiedPortalViewV5.tsx` | Vista principal unificada del portal (112K+ líneas) |
+| `UnifiedPortalViewV5.tsx` | Vista principal unificada del portal |
 | `PortalDashboard.tsx` | Dashboard con KPIs y servicios |
 | `ProfilePage.tsx` | Página completa de perfil |
 | `PerfilUsuarioEditable.tsx` | Editor de perfil con validaciones |
-| `CommunitySection.tsx` | Sección de comunidad con feed |
-| `DocentesSection.tsx` | Sección específica para docentes |
-| `DocentesPTAPortal.tsx` | Portal PTA para docentes |
 | `CertificadosLaboralesPortal.tsx` | Solicitud de certificados |
-| `JobBoardPortal.tsx` | Bolsa de empleo para graduados |
 | `MisExpedientesLegalesV2.tsx` | Expedientes legales del usuario |
 | `DashboardAreaAuditada.tsx` | Dashboard de auditorías para jefes |
 | `PortalTransaccionalFirmaCompleto.tsx` | Portal de firma electrónica |
-
-#### Módulos del Portal Transaccional
-
-**a) Comunidad (`CommunitySection.tsx`)**
-
-Espacio social para conectar con la comunidad ESAP:
-
-| Sección | Componente | Descripción |
-|---------|------------|-------------|
-| **Feed de Noticias** | `FeedNoticias.tsx` | Publicaciones y actualizaciones |
-| **Eventos** | `EventosCalendario.tsx` | Calendario de actividades y conferencias |
-| **Anuncios** | `AnunciosOficiales.tsx` | Comunicados institucionales |
-| **Red de Contactos** | `NetworkContacts.tsx` | Conexión con otros usuarios |
-
-Funcionalidades:
-- Dar "me gusta" y comentar publicaciones
-- Inscripción a eventos
-- Notificaciones de nuevos anuncios
-- Perfil profesional visible
-
----
-
-**b) Mi PTA - Plan de Trabajo Anual (`DocentesPTAPortal.tsx`)**
-
-Portal para que los docentes gestionen su Plan de Trabajo Anual:
-
-| Funcionalidad | Componente | Descripción |
-|---------------|------------|-------------|
-| **Dashboard Docente** | `DashboardDocente.tsx` | Vista general del PTA personal |
-| **Crear PTA** | `WizardCrearPTA.tsx` | Asistente paso a paso |
-| **Sección Docencia** | `FormularioDocencia.tsx` | Cursos, horarios, grupos |
-| **Sección Investigación** | `FormularioInvestigacion.tsx` | Proyectos y publicaciones |
-| **Sección Extensión** | `FormularioExtension.tsx` | Actividades con la comunidad |
-| **Complementarias** | `FormularioActividadesComplementarias.tsx` | Otras actividades |
-| **Prorrateo** | `ModalProrrateo.tsx` | Cálculo automático de horas |
-| **Vista Detalle** | `VistaDetallePTA.tsx` | Resumen completo del PTA |
-
-Estados del PTA:
-- **Borrador**: En edición
-- **Enviado**: Pendiente de aprobación
-- **Aprobado**: Validado por coordinador
-- **Requiere Ajustes**: Necesita correcciones
-
----
-
-**c) Bolsa de Empleo (`JobBoardPortal.tsx`)**
-
-Oportunidades laborales exclusivas para graduados ESAP:
-
-| Funcionalidad | Descripción |
-|---------------|-------------|
-| **Listado de Ofertas** | Explorar ofertas de empleo disponibles |
-| **Filtros Avanzados** | Por ubicación, área, tipo de contrato, experiencia |
-| **Detalle de Oferta** | Información completa de cada vacante |
-| **Postulación** | Aplicar a ofertas de interés |
-| **Alertas** | Notificaciones de nuevas ofertas |
-| **Perfil Profesional** | Actualización de CV y datos laborales |
-
----
 
 #### Componentes de Validación Pública
 
