@@ -111,13 +111,19 @@ PlataformaComUNIdadESAP/
 │   ├── 📄 index.css                  # Estilos globales
 │   │
 │   ├── 📁 components/                # Componentes React (561 archivos)
-│   │   ├── 📁 esap/                  # Módulo principal (353 archivos)
+│   │   ├── 📁 esap/                  # Módulo Backoffice (421 archivos)
+│   │   │   ├── 📁 control-interno/       # Control Interno CIG (108 archivos)
+│   │   │   ├── 📁 gestion-legal/         # Gestión Legal (96 archivos)
+│   │   │   ├── 📁 disciplinario/         # Control Disciplinario (30 archivos)
+│   │   │   ├── 📁 firma-electronica/     # Firma Electrónica (18 archivos)
+│   │   │   ├── 📁 registro-academico/    # Registro Académico
+│   │   │   ├── 📁 certificados-laborales/# Certificados Laborales (20 archivos)
+│   │   │   ├── 📁 arquitectura-empresarial/ # Arquitectura Empresarial (31 archivos)
+│   │   │   ├── 📁 gestion-profesoral/    # Gestión Profesoral PTA (17 archivos)
+│   │   │   └── ... (92 componentes raíz)
 │   │   ├── 📁 ui/                    # Design system (52 archivos)
 │   │   ├── 📁 portal/                # Portal transaccional (43 archivos)
-│   │   ├── 📁 arquitectura-empresarial/  # Arq. empresarial (31 archivos)
 │   │   ├── 📁 shared/                # Componentes compartidos (26 archivos)
-│   │   ├── 📁 certificados-laborales/# Certificados (20 archivos)
-│   │   ├── 📁 gestion-profesoral/    # Gestión docentes (17 archivos)
 │   │   └── 📁 estructura-organizacional/ # Estructura org. (9 archivos)
 │   │
 │   ├── 📁 hooks/                     # Hooks personalizados (29 archivos)
@@ -163,10 +169,10 @@ PlataformaComUNIdadESAP/
 ### 4.1 Módulo ESAP - Backoffice Administrativo
 
 **Ubicación:** `/src/components/esap/`
-**Archivos:** 353
-**Porcentaje del proyecto:** 62.8%
+**Archivos:** 421
+**Porcentaje del proyecto:** 75.0%
 
-Este es el módulo principal que contiene toda la funcionalidad administrativa.
+Este es el módulo principal que contiene toda la funcionalidad administrativa de la plataforma, incluyendo todos los submódulos especializados.
 
 #### 4.1.1 Componentes en la Raíz (92 archivos)
 
@@ -247,15 +253,96 @@ Sistema de firma digital:
 - `ModalHistorialFirmas.tsx` - Historial de firmas
 - `ModalTrazabilidadDocumento.tsx` - Trazabilidad
 
-**e) Otras Subcarpetas**
+**e) Registro Académico (`/esap/registro-academico/`)**
+
+Sistema para gestión de registros académicos:
+
+| Componente | Descripción |
+|------------|-------------|
+| `RegistroAcademicoModule.tsx` | Módulo principal de registro académico |
+| `GestionMatriculas.tsx` | Gestión de matrículas estudiantiles |
+| `HistorialAcademico.tsx` | Consulta de historial académico |
+| `CertificacionesTitulos.tsx` | Certificaciones de títulos |
+| `GestionNotas.tsx` | Administración de calificaciones |
+| `ConsultaEstudiantes.tsx` | Consulta de información estudiantil |
+| Componentes auxiliares | Modales, formularios y utilidades |
+
+**f) Certificados Laborales (`/esap/certificados-laborales/`) - 20 archivos**
+
+Sistema completo de certificados laborales con QR:
+
+| Componente | Descripción |
+|------------|-------------|
+| `CertificadosLaboralesDashboard.tsx` | Dashboard principal |
+| `CertificadosLaboralesRouter.tsx` | Enrutador del módulo |
+| `GenerarCertificadoModal.tsx` | Generación de certificados |
+| `SolicitarCertificadoForm.tsx` | Formulario de solicitud |
+| `CertificadoDetalleModal.tsx` | Detalle del certificado |
+| `CertificadoDetallePanel.tsx` | Panel de detalles |
+| `ConfiguracionPlantilla.tsx` | Configuración de plantillas |
+| `ModalCodigoQR.tsx` | Modal de código QR |
+| `QRScannerModal.tsx` | Escáner de QR |
+| `ValidarCertificadoQR.tsx` | Validador de QR |
+| `HistorialVerificacionesQR.tsx` | Historial de verificaciones |
+| `HistoricoValidaciones.tsx` | Histórico de validaciones |
+| `PDFViewerModal.tsx` | Visor de PDF |
+| `NotificacionesValidacion.tsx` | Notificaciones |
+| `APIDocumentacion.tsx` | Documentación API |
+| `AnalyticsDashboard.tsx` | Dashboard de analíticas |
+| `GeneradorReportes.tsx` | Generador de reportes |
+
+**g) Arquitectura Empresarial (`/esap/arquitectura-empresarial/`) - 31 archivos**
+
+Gestión de arquitectura empresarial y cumplimiento MinTIC:
+
+| Componente | Descripción |
+|------------|-------------|
+| `ArquitecturaEmpresarialModule.tsx` | Módulo principal |
+| `DashboardEjecutivoAE.tsx` | Dashboard ejecutivo |
+| `GestionProyectosAE.tsx` | Gestión de proyectos |
+| `MatrizMadurezCompleta.tsx` | Matriz de madurez |
+| `MatrizCumplimientoGlobal.tsx` | Cumplimiento global |
+| `RoadmapEstrategico.tsx` | Roadmap estratégico |
+| `SeguimientoMinTIC.tsx` | Seguimiento MinTIC |
+| `DominioEstrategiaTI.tsx` | Dominio estrategia TI |
+| `DominioGobiernoTI.tsx` | Dominio gobierno TI |
+| `DominioSeguridadPrivacidad.tsx` | Dominio seguridad |
+| `GestionRiesgosTI.tsx` | Gestión de riesgos TI |
+| `BibliotecaConocimiento.tsx` | Biblioteca de conocimiento |
+| `SeguimientoTerritorial.tsx` | Seguimiento territorial |
+| `Indicadores.tsx` | Sistema de indicadores |
+| Y componentes adicionales | |
+
+**h) Gestión Profesoral PTA (`/esap/gestion-profesoral/`) - 17 archivos**
+
+Gestión de docentes y Plan de Trabajo Anual (PTA):
+
+| Componente | Descripción |
+|------------|-------------|
+| `GestionProfesoralApp.tsx` | Aplicación principal |
+| `GestionProfesoralDashboard.tsx` | Dashboard general |
+| `DashboardDocente.tsx` | Dashboard del docente |
+| `DashboardAprobador.tsx` | Dashboard del aprobador |
+| `WizardCrearPTA.tsx` | Asistente de creación PTA |
+| `VistaDetallePTA.tsx` | Vista detalle del PTA |
+| `FormularioDocencia.tsx` | Formulario de docencia |
+| `FormularioInvestigacion.tsx` | Formulario de investigación |
+| `FormularioExtension.tsx` | Formulario de extensión |
+| `FormularioActividadesComplementarias.tsx` | Actividades complementarias |
+| `ModalProrrateo.tsx` | Modal de prorrateo automático |
+| `PanelRevision.tsx` | Panel de revisión |
+| `PlanTrabajoAcademicoModule.tsx` | Módulo PTA |
+| `DocenteExpedientePanel.tsx` | Expediente del docente |
+| `HistoricoDesarrolloComponent.tsx` | Histórico de desarrollo |
+
+**i) Otras Subcarpetas**
 
 | Subcarpeta | Archivos | Descripción |
 |------------|----------|-------------|
 | `/admin/` | 3 | Componentes de administración |
 | `/alertas/` | - | Sistema de notificaciones |
 | `/auth/` | - | Componentes de autenticación |
-| `/registro-academico/` | - | Gestión académica |
-| `/shared/` | - | Componentes compartidos |
+| `/shared/` | - | Componentes compartidos del backoffice |
 
 ---
 
@@ -320,31 +407,7 @@ Portal unificado para usuarios autenticados.
 
 ---
 
-### 4.4 Módulo Arquitectura Empresarial
-
-**Ubicación:** `/src/components/arquitectura-empresarial/`
-**Archivos:** 31
-**Porcentaje del proyecto:** 5.5%
-
-Gestión de arquitectura empresarial y cumplimiento MinTIC.
-
-| Componente | Descripción |
-|------------|-------------|
-| `ArquitecturaEmpresarialModule.tsx` | Módulo principal |
-| `DashboardEjecutivoAE.tsx` | Dashboard ejecutivo |
-| `GestionProyectosAE.tsx` | Gestión de proyectos |
-| `MatrizMadurezCompleta.tsx` | Matriz de madurez |
-| `MatrizCumplimientoGlobal.tsx` | Cumplimiento global |
-| `RoadmapEstrategico.tsx` | Roadmap estratégico |
-| `SeguimientoMinTIC.tsx` | Seguimiento MinTIC |
-| `DominioEstrategiaTI.tsx` | Dominio estrategia TI |
-| `DominioGobiernoTI.tsx` | Dominio gobierno TI |
-| `DominioSeguridadPrivacidad.tsx` | Dominio seguridad |
-| Y 21 componentes adicionales | |
-
----
-
-### 4.5 Módulo Componentes Compartidos
+### 4.4 Módulo Componentes Compartidos
 
 **Ubicación:** `/src/components/shared/`
 **Archivos:** 26
@@ -369,65 +432,7 @@ Componentes reutilizados en toda la aplicación.
 
 ---
 
-### 4.6 Módulo Certificados Laborales
-
-**Ubicación:** `/src/components/certificados-laborales/`
-**Archivos:** 20
-**Porcentaje del proyecto:** 3.6%
-
-Sistema completo de certificados laborales con QR.
-
-| Componente | Descripción |
-|------------|-------------|
-| `CertificadosLaboralesDashboard.tsx` | Dashboard principal |
-| `CertificadosLaboralesRouter.tsx` | Enrutador del módulo |
-| `GenerarCertificadoModal.tsx` | Generación de certificados |
-| `SolicitarCertificadoForm.tsx` | Formulario de solicitud |
-| `CertificadoDetalleModal.tsx` | Detalle del certificado |
-| `CertificadoDetallePanel.tsx` | Panel de detalles |
-| `ConfiguracionPlantilla.tsx` | Configuración de plantillas |
-| `ModalCodigoQR.tsx` | Modal de código QR |
-| `QRScannerModal.tsx` | Escáner de QR |
-| `ValidarCertificadoQR.tsx` | Validador de QR |
-| `HistorialVerificacionesQR.tsx` | Historial de verificaciones |
-| `HistoricoValidaciones.tsx` | Histórico de validaciones |
-| `PDFViewerModal.tsx` | Visor de PDF |
-| `NotificacionesValidacion.tsx` | Notificaciones |
-| `APIDocumentacion.tsx` | Documentación API |
-| `AnalyticsDashboard.tsx` | Dashboard de analíticas |
-| `GeneradorReportes.tsx` | Generador de reportes |
-
----
-
-### 4.7 Módulo Gestión Profesoral
-
-**Ubicación:** `/src/components/gestion-profesoral/`
-**Archivos:** 17
-**Porcentaje del proyecto:** 3.0%
-
-Gestión de docentes y Plan de Trabajo Anual (PTA).
-
-| Componente | Descripción |
-|------------|-------------|
-| `GestionProfesoralApp.tsx` | Aplicación principal |
-| `GestionProfesoralDashboard.tsx` | Dashboard general |
-| `DashboardDocente.tsx` | Dashboard del docente |
-| `DashboardAprobador.tsx` | Dashboard del aprobador |
-| `WizardCrearPTA.tsx` | Asistente de creación PTA |
-| `VistaDetallePTA.tsx` | Vista detalle del PTA |
-| `FormularioDocencia.tsx` | Formulario de docencia |
-| `FormularioInvestigacion.tsx` | Formulario de investigación |
-| `FormularioExtension.tsx` | Formulario de extensión |
-| `FormularioActividadesComplementarias.tsx` | Actividades complementarias |
-| `ModalProrrateo.tsx` | Modal de prorrateo |
-| `PanelRevision.tsx` | Panel de revisión |
-| `PlanTrabajoAcademicoModule.tsx` | Módulo PTA |
-| `DocenteExpedientePanel.tsx` | Expediente del docente |
-| `HistoricoDesarrolloComponent.tsx` | Histórico de desarrollo |
-
----
-
-### 4.8 Módulo Estructura Organizacional
+### 4.5 Módulo Estructura Organizacional
 
 **Ubicación:** `/src/components/estructura-organizacional/`
 **Archivos:** 9
@@ -750,13 +755,19 @@ Características configuradas:
 
 | Módulo | Archivos | % Total |
 |--------|----------|---------|
-| ESAP (Backoffice) | 353 | 62.8% |
+| **ESAP (Backoffice)** | **421** | **75.0%** |
+| ↳ Control Interno CIG | 108 | - |
+| ↳ Gestión Legal | 96 | - |
+| ↳ Arquitectura Empresarial | 31 | - |
+| ↳ Control Disciplinario | 30 | - |
+| ↳ Certificados Laborales | 20 | - |
+| ↳ Firma Electrónica | 18 | - |
+| ↳ Gestión Profesoral PTA | 17 | - |
+| ↳ Registro Académico | 9 | - |
+| ↳ Componentes raíz | 92 | - |
 | UI (Design System) | 52 | 9.3% |
 | Portal (Transaccional) | 43 | 7.7% |
-| Arquitectura Empresarial | 31 | 5.5% |
 | Shared (Compartidos) | 26 | 4.6% |
-| Certificados Laborales | 20 | 3.6% |
-| Gestión Profesoral | 17 | 3.0% |
 | Estructura Organizacional | 9 | 1.6% |
 | Otros módulos | 10 | 1.8% |
 | **TOTAL COMPONENTES** | **561** | **100%** |
