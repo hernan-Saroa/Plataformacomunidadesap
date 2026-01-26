@@ -538,6 +538,65 @@ El Portal Transaccional implementa un diseño híbrido inspirado en Microsoft Dy
 | `DashboardAreaAuditada.tsx` | Dashboard de auditorías para jefes |
 | `PortalTransaccionalFirmaCompleto.tsx` | Portal de firma electrónica |
 
+#### Módulos del Portal Transaccional
+
+**a) Comunidad (`CommunitySection.tsx`)**
+
+Espacio social para conectar con la comunidad ESAP:
+
+| Sección | Componente | Descripción |
+|---------|------------|-------------|
+| **Feed de Noticias** | `FeedNoticias.tsx` | Publicaciones y actualizaciones |
+| **Eventos** | `EventosCalendario.tsx` | Calendario de actividades y conferencias |
+| **Anuncios** | `AnunciosOficiales.tsx` | Comunicados institucionales |
+| **Red de Contactos** | `NetworkContacts.tsx` | Conexión con otros usuarios |
+
+Funcionalidades:
+- Dar "me gusta" y comentar publicaciones
+- Inscripción a eventos
+- Notificaciones de nuevos anuncios
+- Perfil profesional visible
+
+---
+
+**b) Mi PTA - Plan de Trabajo Anual (`DocentesPTAPortal.tsx`)**
+
+Portal para que los docentes gestionen su Plan de Trabajo Anual:
+
+| Funcionalidad | Componente | Descripción |
+|---------------|------------|-------------|
+| **Dashboard Docente** | `DashboardDocente.tsx` | Vista general del PTA personal |
+| **Crear PTA** | `WizardCrearPTA.tsx` | Asistente paso a paso |
+| **Sección Docencia** | `FormularioDocencia.tsx` | Cursos, horarios, grupos |
+| **Sección Investigación** | `FormularioInvestigacion.tsx` | Proyectos y publicaciones |
+| **Sección Extensión** | `FormularioExtension.tsx` | Actividades con la comunidad |
+| **Complementarias** | `FormularioActividadesComplementarias.tsx` | Otras actividades |
+| **Prorrateo** | `ModalProrrateo.tsx` | Cálculo automático de horas |
+| **Vista Detalle** | `VistaDetallePTA.tsx` | Resumen completo del PTA |
+
+Estados del PTA:
+- **Borrador**: En edición
+- **Enviado**: Pendiente de aprobación
+- **Aprobado**: Validado por coordinador
+- **Requiere Ajustes**: Necesita correcciones
+
+---
+
+**c) Bolsa de Empleo (`JobBoardPortal.tsx`)**
+
+Oportunidades laborales exclusivas para graduados ESAP:
+
+| Funcionalidad | Descripción |
+|---------------|-------------|
+| **Listado de Ofertas** | Explorar ofertas de empleo disponibles |
+| **Filtros Avanzados** | Por ubicación, área, tipo de contrato, experiencia |
+| **Detalle de Oferta** | Información completa de cada vacante |
+| **Postulación** | Aplicar a ofertas de interés |
+| **Alertas** | Notificaciones de nuevas ofertas |
+| **Perfil Profesional** | Actualización de CV y datos laborales |
+
+---
+
 #### Componentes de Validación Pública
 
 | Componente | Descripción |
