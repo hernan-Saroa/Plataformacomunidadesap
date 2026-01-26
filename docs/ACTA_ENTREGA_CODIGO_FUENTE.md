@@ -112,6 +112,15 @@ PlataformaComUNIdadESAP/
 │   │
 │   ├── 📁 components/                # Componentes React (561 archivos)
 │   │   ├── 📁 esap/                  # Módulo Backoffice (421 archivos)
+│   │   │   │
+│   │   │   ├── 📁 gestion-personas/      # GESTIÓN DE PERSONAS
+│   │   │   │   ├── personas/                 # Gestión de personas y usuarios
+│   │   │   │   ├── estructura-organizacional/# Estructura organizacional
+│   │   │   │   ├── programas-academicos/     # Programas académicos
+│   │   │   │   ├── roles-permisos/           # Roles y permisos
+│   │   │   │   ├── auditoria/                # Auditoría del sistema
+│   │   │   │   └── reportes/                 # Módulo de reportes
+│   │   │   │
 │   │   │   ├── 📁 control-interno/       # Control Interno CIG (108 archivos)
 │   │   │   ├── 📁 gestion-legal/         # Gestión Legal (96 archivos)
 │   │   │   ├── 📁 disciplinario/         # Control Disciplinario (30 archivos)
@@ -120,11 +129,11 @@ PlataformaComUNIdadESAP/
 │   │   │   ├── 📁 certificados-laborales/# Certificados Laborales (20 archivos)
 │   │   │   ├── 📁 arquitectura-empresarial/ # Arquitectura Empresarial (31 archivos)
 │   │   │   ├── 📁 gestion-profesoral/    # Gestión Profesoral PTA (17 archivos)
-│   │   │   └── ... (92 componentes raíz)
+│   │   │   └── ... (componentes raíz del backoffice)
+│   │   │
 │   │   ├── 📁 ui/                    # Design system (52 archivos)
 │   │   ├── 📁 portal/                # Portal transaccional (43 archivos)
-│   │   ├── 📁 shared/                # Componentes compartidos (26 archivos)
-│   │   └── 📁 estructura-organizacional/ # Estructura org. (9 archivos)
+│   │   └── 📁 shared/                # Componentes compartidos (26 archivos)
 │   │
 │   ├── 📁 hooks/                     # Hooks personalizados (29 archivos)
 │   ├── 📁 services/                  # Servicios API (29 archivos)
@@ -197,9 +206,70 @@ Este es el módulo principal que contiene toda la funcionalidad administrativa d
 
 #### 4.1.2 Submódulos Especializados
 
-**a) Control Interno (`/esap/control-interno/`) - 108 archivos**
+**a) Gestión de Personas (`/esap/gestion-personas/`)**
 
-Sistema completo para gestión de auditorías internas:
+Módulo integrado para la administración de personas, estructura organizacional y configuración del sistema:
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Personas** | `UsersPersonsModulePremium.tsx` | Gestión completa de usuarios y personas |
+| | `PersonasDataTable.tsx` | Tabla de datos de personas |
+| | `PersonaDetalleModal.tsx` | Modal de detalle de persona |
+| | `PersonaFormulario.tsx` | Formulario de creación/edición |
+| | `CarpetaDigitalModule.tsx` | Carpeta digital de documentos |
+| | `EnrollmentManagementModule.tsx` | Gestión de enrolamiento |
+| | `GraduatesManagementModule.tsx` | Gestión de graduados |
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Estructura Organizacional** | `EstructuraOrganizacionalModule.tsx` | Módulo principal de estructura |
+| | `OrganizacionCompleta.tsx` | Vista completa de organización |
+| | `ComponenteArbolOrganigrama.tsx` | Árbol del organigrama |
+| | `GestionSedes.tsx` | Gestión de sedes |
+| | `GestionAreas.tsx` | Gestión de áreas |
+| | `GestionTerritoriales.tsx` | Gestión de territoriales |
+| | `GestionCETAP.tsx` | Gestión de CETAP |
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Programas Académicos** | `ProgramasAcademicosModule.tsx` | Módulo principal |
+| | `GestionProgramas.tsx` | Gestión de programas |
+| | `AsignacionDocentes.tsx` | Asignación de docentes |
+| | `PlanesEstudio.tsx` | Planes de estudio |
+| | `OfertaAcademica.tsx` | Oferta académica |
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Roles y Permisos** | `RolesAdministrationModulePremium.tsx` | Administración de roles |
+| | `PermisosGranulares.tsx` | Permisos granulares |
+| | `AsignacionRoles.tsx` | Asignación de roles a usuarios |
+| | `MatrizPermisos.tsx` | Matriz de permisos |
+| | `GestionAccesos.tsx` | Control de accesos |
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Auditoría del Sistema** | `AuditModulePremium.tsx` | Módulo de auditoría |
+| | `AuditLogTable.tsx` | Tabla de logs de auditoría |
+| | `AuditFilters.tsx` | Filtros de auditoría |
+| | `AuditDetailModal.tsx` | Detalle de registro |
+| | `AuditExport.tsx` | Exportación de auditoría |
+| | `AnomaliesDetection.tsx` | Detección de anomalías |
+
+| Submódulo | Componentes | Descripción |
+|-----------|-------------|-------------|
+| **Reportes** | `ReportsModuleV2.tsx` | Módulo de reportes |
+| | `ReportBuilder.tsx` | Constructor de reportes |
+| | `ReportScheduler.tsx` | Programación de reportes |
+| | `ReportTemplates.tsx` | Plantillas de reportes |
+| | `ExportPDF.tsx` | Exportación a PDF |
+| | `ExportExcel.tsx` | Exportación a Excel |
+| | `DashboardReports.tsx` | Dashboard de reportes |
+
+---
+
+**b) Control Interno CIG (`/esap/control-interno/`) - 108 archivos**
+
+Sistema completo para gestión de auditorías internas según Decreto 648:
 
 | Subcarpeta | Contenido |
 |------------|-----------|
@@ -218,7 +288,7 @@ Componentes principales:
 - `SeguimientoPlanMejoramientoModule.tsx` - Seguimiento
 - `DashboardEjecutivoCIG.tsx` - Dashboard ejecutivo
 
-**b) Gestión Legal (`/esap/gestion-legal/`) - 96 archivos**
+**c) Gestión Legal (`/esap/gestion-legal/`) - 96 archivos**
 
 Sistema para procesos legales y coactivos:
 
@@ -233,7 +303,7 @@ Sistema para procesos legales y coactivos:
 | `/data/` | Datos mock |
 | `/utils/` | Utilidades |
 
-**c) Control Disciplinario (`/esap/disciplinario/`) - 30 archivos**
+**d) Control Disciplinario (`/esap/disciplinario/`) - 30 archivos**
 
 Gestión de procesos disciplinarios:
 
@@ -243,7 +313,7 @@ Gestión de procesos disciplinarios:
 - `GestionTerminosAlertas.tsx` - Términos y alertas
 - Modales y componentes auxiliares
 
-**d) Firma Electrónica (`/esap/firma-electronica/`) - 18 archivos**
+**e) Firma Electrónica (`/esap/firma-electronica/`) - 18 archivos**
 
 Sistema de firma digital:
 
@@ -253,7 +323,7 @@ Sistema de firma digital:
 - `ModalHistorialFirmas.tsx` - Historial de firmas
 - `ModalTrazabilidadDocumento.tsx` - Trazabilidad
 
-**e) Registro Académico (`/esap/registro-academico/`)**
+**f) Registro Académico (`/esap/registro-academico/`)**
 
 Sistema para gestión de registros académicos:
 
@@ -267,7 +337,7 @@ Sistema para gestión de registros académicos:
 | `ConsultaEstudiantes.tsx` | Consulta de información estudiantil |
 | Componentes auxiliares | Modales, formularios y utilidades |
 
-**f) Certificados Laborales (`/esap/certificados-laborales/`) - 20 archivos**
+**g) Certificados Laborales (`/esap/certificados-laborales/`) - 20 archivos**
 
 Sistema completo de certificados laborales con QR:
 
@@ -291,7 +361,7 @@ Sistema completo de certificados laborales con QR:
 | `AnalyticsDashboard.tsx` | Dashboard de analíticas |
 | `GeneradorReportes.tsx` | Generador de reportes |
 
-**g) Arquitectura Empresarial (`/esap/arquitectura-empresarial/`) - 31 archivos**
+**h) Arquitectura Empresarial (`/esap/arquitectura-empresarial/`) - 31 archivos**
 
 Gestión de arquitectura empresarial y cumplimiento MinTIC:
 
@@ -313,7 +383,7 @@ Gestión de arquitectura empresarial y cumplimiento MinTIC:
 | `Indicadores.tsx` | Sistema de indicadores |
 | Y componentes adicionales | |
 
-**h) Gestión Profesoral PTA (`/esap/gestion-profesoral/`) - 17 archivos**
+**i) Gestión Profesoral PTA (`/esap/gestion-profesoral/`) - 17 archivos**
 
 Gestión de docentes y Plan de Trabajo Anual (PTA):
 
@@ -335,7 +405,7 @@ Gestión de docentes y Plan de Trabajo Anual (PTA):
 | `DocenteExpedientePanel.tsx` | Expediente del docente |
 | `HistoricoDesarrolloComponent.tsx` | Histórico de desarrollo |
 
-**i) Otras Subcarpetas**
+**j) Otras Subcarpetas**
 
 | Subcarpeta | Archivos | Descripción |
 |------------|----------|-------------|
@@ -429,22 +499,6 @@ Componentes reutilizados en toda la aplicación.
 | **Estados** | LoadingErrorUI.tsx, ErrorFallbackUI.tsx, EmptyStatesPremium.tsx |
 | **Badges** | SedeBadge.tsx |
 | **Providers** | UXPremiumProvider.tsx |
-
----
-
-### 4.5 Módulo Estructura Organizacional
-
-**Ubicación:** `/src/components/estructura-organizacional/`
-**Archivos:** 9
-**Porcentaje del proyecto:** 1.6%
-
-Gestión de la estructura organizativa de la ESAP.
-
-| Componente | Descripción |
-|------------|-------------|
-| `OrganizacionCompleta.tsx` | Vista completa de la organización |
-| `ComponenteArbolOrganigrama.tsx` | Árbol del organigrama |
-| Formularios de creación/edición | CRUD de entidades |
 
 ---
 
@@ -755,7 +809,14 @@ Características configuradas:
 
 | Módulo | Archivos | % Total |
 |--------|----------|---------|
-| **ESAP (Backoffice)** | **421** | **75.0%** |
+| **ESAP (Backoffice)** | **430** | **76.6%** |
+| ↳ **Gestión de Personas** | - | - |
+|   • Personas y Usuarios | 25 | - |
+|   • Estructura Organizacional | 9 | - |
+|   • Programas Académicos | 8 | - |
+|   • Roles y Permisos | 12 | - |
+|   • Auditoría del Sistema | 10 | - |
+|   • Reportes | 15 | - |
 | ↳ Control Interno CIG | 108 | - |
 | ↳ Gestión Legal | 96 | - |
 | ↳ Arquitectura Empresarial | 31 | - |
@@ -764,11 +825,10 @@ Características configuradas:
 | ↳ Firma Electrónica | 18 | - |
 | ↳ Gestión Profesoral PTA | 17 | - |
 | ↳ Registro Académico | 9 | - |
-| ↳ Componentes raíz | 92 | - |
+| ↳ Componentes raíz | 22 | - |
 | UI (Design System) | 52 | 9.3% |
 | Portal (Transaccional) | 43 | 7.7% |
 | Shared (Compartidos) | 26 | 4.6% |
-| Estructura Organizacional | 9 | 1.6% |
 | Otros módulos | 10 | 1.8% |
 | **TOTAL COMPONENTES** | **561** | **100%** |
 
