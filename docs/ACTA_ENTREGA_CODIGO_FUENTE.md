@@ -442,42 +442,125 @@ Biblioteca de componentes reutilizables basada en Radix UI.
 
 ---
 
-### 4.3 Módulo Portal - Portal Transaccional
+### 4.3 Landing Page - Página de Inicio Pública
+
+**Ubicación:** `/src/components/portal/LandingPage.tsx`
+**Acceso:** Público (sin autenticación)
+
+Página principal de la plataforma accesible para cualquier visitante sin necesidad de iniciar sesión.
+
+#### Secciones del Landing Page
+
+| Sección | Descripción |
+|---------|-------------|
+| **Header/Navegación** | Menú principal con acceso a servicios públicos y botón de login |
+| **Hero Section** | Presentación institucional de la ESAP con estadísticas |
+| **Servicios Públicos** | Accesos directos a validación de certificados |
+| **Estadísticas** | Indicadores de la comunidad (17K+ estudiantes, programas) |
+| **Noticias Destacadas** | Información relevante de la institución |
+| **Newsletter** | Suscripción al boletín informativo |
+| **Footer** | Información de contacto y enlaces legales |
+
+#### Servicios Públicos Disponibles (Sin Login)
+
+| Servicio | Componente | Funcionalidad |
+|----------|------------|---------------|
+| **Validar Certificados** | `ValidadorCertificadosPublico.tsx` | Verificación de autenticidad por código QR |
+| **Certificación de Títulos** | `PublicTitleVerification.tsx` | Validación de títulos académicos |
+| **Certificados Laborales** | `PublicCertificateValidation.tsx` | Solicitud de certificados laborales |
+| **Enrolamiento** | `ModalEnrolamiento.tsx` | Registro de nuevos usuarios |
+
+#### Componentes del Landing Page
+
+| Componente | Descripción |
+|------------|-------------|
+| `LandingPage.tsx` | Componente principal de la página de inicio |
+| `HeroSection.tsx` | Sección principal con mensaje institucional |
+| `ServiciosPublicos.tsx` | Grid de servicios públicos disponibles |
+| `EstadisticasComunidad.tsx` | Contadores de estudiantes, graduados, programas |
+| `NoticiasDestacadas.tsx` | Carrusel de noticias recientes |
+| `NewsletterForm.tsx` | Formulario de suscripción |
+| `FooterInstitucional.tsx` | Pie de página con información legal |
+| `ModalEnrolamiento.tsx` | Modal para registro de nuevos usuarios |
+
+---
+
+### 4.4 Portal Transaccional - Servicios para Usuarios Autenticados
 
 **Ubicación:** `/src/components/portal/`
 **Archivos:** 43
 **Porcentaje del proyecto:** 7.7%
+**Acceso:** Usuarios autenticados con correo @esap.edu.co
 
-Portal unificado para usuarios autenticados.
+Portal unificado que presenta servicios personalizados según el rol del usuario autenticado.
 
-#### Componentes Principales
+#### Diseño del Portal
+
+El Portal Transaccional implementa un diseño híbrido inspirado en Microsoft Dynamics y LinkedIn Professional:
+
+| Elemento | Descripción |
+|----------|-------------|
+| **Command Bar** | Barra de búsqueda rápida y acciones frecuentes |
+| **KPIs Dashboard** | Indicadores numéricos personalizados por rol |
+| **Service Cards** | Tarjetas de acceso a servicios según permisos |
+| **Feed de Actividad** | Noticias, eventos y anuncios de la comunidad |
+| **Perfil Profesional** | Información del usuario con red de contactos |
+| **Notificaciones** | Sistema de alertas y mensajes |
+
+#### Servicios Disponibles por Rol
+
+| Servicio | Rol Requerido | Componente | Descripción |
+|----------|--------------|------------|-------------|
+| **Mi Perfil** | Todos | `PerfilUsuarioEditable.tsx` | Edición de datos personales y foto |
+| **Certificados Académicos** | Todos | `CertificadosAcademicosPortal.tsx` | Solicitud de certificaciones |
+| **Certificados Laborales** | Todos | `CertificadosLaboralesPortal.tsx` | Solicitud de certificados laborales |
+| **Comunidad** | Todos | `CommunitySection.tsx` | Feed social, eventos, noticias |
+| **Mi PTA** | Docentes | `DocentesPTAPortal.tsx` | Plan de Trabajo Anual personal |
+| **Mis Auditorías** | Jefes de Área | `DashboardAreaAuditada.tsx` | Seguimiento de auditorías del área |
+| **Firmas Pendientes** | Firmantes | `PortalTransaccionalFirmaCompleto.tsx` | Documentos para firma electrónica |
+| **Bolsa de Empleo** | Graduados | `JobBoardPortal.tsx` | Oportunidades laborales |
+| **Expedientes Legales** | Usuarios con casos | `MisExpedientesLegalesV2.tsx` | Seguimiento de procesos legales |
+
+#### Componentes Principales del Portal
 
 | Componente | Descripción |
 |------------|-------------|
-| `LandingPage.tsx` | Página de inicio pública |
-| `UnifiedPortalViewV5.tsx` | Vista principal del portal |
-| `PortalDashboard.tsx` | Dashboard del portal |
-| `ProfilePage.tsx` | Página de perfil |
-| `PerfilUsuarioEditable.tsx` | Editor de perfil |
-| `CommunitySection.tsx` | Sección de comunidad |
-| `CertificadosLaboralesPortal.tsx` | Certificados laborales |
-| `JobBoardPortal.tsx` | Bolsa de empleo |
-| `DocentesSection.tsx` | Sección para docentes |
-| `DocentesPTAPortal.tsx` | Portal PTA docentes |
-| `MisExpedientesLegalesV2.tsx` | Expedientes legales |
-| `DashboardAreaAuditada.tsx` | Dashboard de auditorías |
+| `UnifiedPortalViewV5.tsx` | Vista principal unificada del portal (112K+ líneas) |
+| `PortalDashboard.tsx` | Dashboard con KPIs y servicios |
+| `ProfilePage.tsx` | Página completa de perfil |
+| `PerfilUsuarioEditable.tsx` | Editor de perfil con validaciones |
+| `CommunitySection.tsx` | Sección de comunidad con feed |
+| `DocentesSection.tsx` | Sección específica para docentes |
+| `DocentesPTAPortal.tsx` | Portal PTA para docentes |
+| `CertificadosLaboralesPortal.tsx` | Solicitud de certificados |
+| `JobBoardPortal.tsx` | Bolsa de empleo para graduados |
+| `MisExpedientesLegalesV2.tsx` | Expedientes legales del usuario |
+| `DashboardAreaAuditada.tsx` | Dashboard de auditorías para jefes |
+| `PortalTransaccionalFirmaCompleto.tsx` | Portal de firma electrónica |
 
 #### Componentes de Validación Pública
 
 | Componente | Descripción |
 |------------|-------------|
-| `PublicCertificateValidation.tsx` | Validación de certificados |
-| `PublicTitleVerification.tsx` | Verificación de títulos |
-| `ValidadorCertificadosPublico.tsx` | Validador público |
+| `PublicCertificateValidation.tsx` | Validación de certificados por QR |
+| `PublicTitleVerification.tsx` | Verificación de títulos académicos |
+| `ValidadorCertificadosPublico.tsx` | Validador público de documentos |
+
+#### Características del Portal Transaccional
+
+| Característica | Implementación |
+|----------------|----------------|
+| **Autenticación** | Login con correo @esap.edu.co |
+| **Sesión Segura** | Auto-logout por inactividad (15 min) |
+| **Alerta de Sesión** | Aviso 1 minuto antes del cierre |
+| **Persistencia** | LocalStorage con máximo 24 horas |
+| **Roles Dinámicos** | Servicios según permisos del usuario |
+| **Notificaciones** | Sistema de alertas en tiempo real |
+| **Responsive** | Adaptable a móviles y tablets |
 
 ---
 
-### 4.4 Módulo Componentes Compartidos
+### 4.5 Módulo Componentes Compartidos
 
 **Ubicación:** `/src/components/shared/`
 **Archivos:** 26
