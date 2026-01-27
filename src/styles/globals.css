@@ -15,6 +15,116 @@
   display: none;
 }
 
+/* ===================== CROSS-BROWSER VIEWPORT HEIGHTS (SAFARI FIX) ===================== */
+/* 
+ * Safari mobile tiene problemas con vh cuando la barra de navegación aparece/desaparece
+ * Usamos dvh (dynamic viewport height) que ajusta dinámicamente
+ * + fallback para navegadores antiguos
+ */
+
+/* Height utilities con soporte Safari */
+.h-screen-safe {
+  height: 100vh; /* Fallback para navegadores antiguos */
+  height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.min-h-screen-safe {
+  min-height: 100vh; /* Fallback */
+  min-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-screen-safe {
+  max-height: 100vh; /* Fallback */
+  max-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+/* Height utilities para modales (90vh, 95vh) */
+.h-modal-90 {
+  height: 90vh; /* Fallback */
+  height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-90 {
+  max-height: 90vh; /* Fallback */
+  max-height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-95 {
+  height: 95vh; /* Fallback */
+  height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-95 {
+  max-height: 95vh; /* Fallback */
+  max-height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-80 {
+  height: 80vh; /* Fallback */
+  height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-80 {
+  max-height: 80vh; /* Fallback */
+  max-height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+/* Flexbox gap support (Safari < 14.1) */
+@supports not (gap: 1rem) {
+  .flex.gap-2 > * + * {
+    margin-left: 0.5rem;
+  }
+  
+  .flex.gap-3 > * + * {
+    margin-left: 0.75rem;
+  }
+  
+  .flex.gap-4 > * + * {
+    margin-left: 1rem;
+  }
+}
+
+/* Backdrop-filter support (Safari prefixes) */
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.backdrop-blur {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.backdrop-blur-md {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.backdrop-blur-lg {
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.backdrop-blur-xl {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+/* Sticky position fallback for older browsers */
+@supports not (position: sticky) {
+  .sticky {
+    position: -webkit-sticky;
+    position: fixed;
+  }
+}
+
+/* Transform 3D acceleration for smooth animations (all browsers) */
+.transform-gpu {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
 /* Custom scrollbar para Kanban */
 .custom-scrollbar {
   scrollbar-width: thin;
@@ -47,6 +157,7 @@
   
   /* Responsive viewport height (para mobile Safari) */
   --vh: 1vh;
+  --vh-offset: 0px;
   
   /* Sidebar widths - Optimizado para laptops 13-14" */
   --sidebar-width: 280px;

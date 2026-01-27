@@ -173,6 +173,10 @@ export class LegalService {
         return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
     }
 
+    async deleteExpediente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);
@@ -1213,4 +1217,3 @@ export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
 export const correosJuridicosService = new CorreosJuridicosService();
 export const procesosCoactivosService = new ProcesosCoactivosService();
-

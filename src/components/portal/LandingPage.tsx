@@ -436,31 +436,31 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   <img
                     src={esapStudentsReal}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
-                    className="w-full h-[300px] xs:h-[350px] sm:h-[400px] md:h-[450px] lg:h-[500px] object-cover"
+                    className="w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
                   
                   {/* Floating Stats */}
                   <motion.div
-                    className="absolute top-6 right-6 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl"
+                    className="absolute top-4 right-4 sm:top-6 sm:right-6 bg-white/95 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xl"
                     animate={{ y: [0, -10, 0] }}
                     transition={{ duration: 3, repeat: Infinity, delay: 0.5 }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl flex items-center justify-center">
-                        <Globe className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center">
+                        <Globe className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-gray-900">84%</p>
-                        <p className="text-xs text-gray-600">Cobertura Nacional</p>
+                        <p className="text-xl sm:text-2xl font-bold text-gray-900">84%</p>
+                        <p className="text-[10px] sm:text-xs text-gray-600">Cobertura Nacional</p>
                       </div>
                     </div>
                   </motion.div>
                 </div>
 
                 {/* Decorative Elements */}
-                <div className="absolute -top-4 -left-4 w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-3xl blur-2xl opacity-60" />
-                <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-gradient-to-br from-purple-400 to-pink-500 rounded-3xl blur-2xl opacity-60" />
+                <div className="absolute -top-4 -left-4 w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-3xl blur-2xl opacity-60" />
+                <div className="absolute -bottom-4 -right-4 w-24 h-24 sm:w-32 sm:h-32 bg-gradient-to-br from-purple-400 to-pink-500 rounded-3xl blur-2xl opacity-60" />
               </motion.div>
             </motion.div>
           </div>

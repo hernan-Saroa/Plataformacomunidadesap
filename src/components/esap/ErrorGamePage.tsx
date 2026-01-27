@@ -132,9 +132,14 @@ const questions: Question[] = [
 interface ErrorGamePageProps {
   onRetry?: () => void;
   onGoHome?: () => void;
+  debug?: {
+    message?: string;
+    stack?: string;
+    componentStack?: string;
+  };
 }
 
-export function ErrorGamePage({ onRetry, onGoHome }: ErrorGamePageProps) {
+export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -255,6 +260,23 @@ export function ErrorGamePage({ onRetry, onGoHome }: ErrorGamePageProps) {
             Mientras trabajamos en solucionarlo, ¿qué tal un pequeño quiz?
           </p>
         </motion.div>
+
+        {debug && (
+          <div className="mx-auto mb-8 max-w-3xl rounded-xl border border-red-200 bg-red-50 p-4 text-left text-xs text-red-800">
+            <div className="mb-2 font-semibold">Dev error details</div>
+            {debug.message && (
+              <div>
+                <span className="font-semibold">Message:</span> {debug.message}
+              </div>
+            )}
+            {debug.stack && (
+              <pre className="mt-2 whitespace-pre-wrap">{debug.stack}</pre>
+            )}
+            {debug.componentStack && (
+              <pre className="mt-2 whitespace-pre-wrap">{debug.componentStack}</pre>
+            )}
+          </div>
+        )}
 
         {/* Juego Principal */}
         <motion.div

@@ -475,6 +475,40 @@ services:
       - superapp-net
     command: redis-server --appendonly yes
 
+  # ============ SONARQUBE ============
+  sonarqube:
+    image: sonarqube:10.5-community
+    container_name: sonarqube
+    restart: unless-stopped
+    ports:
+      - "9090:9000"
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    depends_on:
+      - sonarqube_db
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - superapp-net
+
+  sonarqube_db:
+    image: postgres:15
+    container_name: sonarqube_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - superapp-net
+
 networks:
   superapp-net:
     driver: bridge
@@ -488,3 +522,7 @@ volumes:
     name: esap-onlyoffice-data-dev
   onlyoffice-logs:
     name: esap-onlyoffice-logs-dev
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgresql_data:

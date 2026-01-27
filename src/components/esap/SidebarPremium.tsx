@@ -134,6 +134,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     'users-management-menu': false, // Menú Gestión Personas cerrado por defecto
   });
 
+  // Estado para controlar el menú flotante en modo colapsado (NUEVO)
+  const [hoveredMenu, setHoveredMenu] = useState<string | null>(null);
+
   // Estado para controlar qué SECCIONES principales están expandidas (NUEVO)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     dashboard: true,            // Dashboard siempre visible
@@ -458,29 +461,62 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               </div>
             </motion.button>
           </TooltipTrigger>
-          <TooltipContent
-            side="right"
-            className="text-xs px-3 py-2 bg-gray-900/95 backdrop-blur-xl border-white/10"
-            sideOffset={12}
+          <TooltipContent 
+            side="right" 
+            className="p-0 bg-white backdrop-blur-xl border-2 border-gray-200 shadow-2xl"
+            sideOffset={16}
           >
-            <div>
-              <div className="font-semibold text-white">{label}</div>
-              {subtitle && <div className="text-white/70 mt-0.5">{subtitle}</div>}
-              {hasSubmenu && (
-                <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
-                  {visibleSubmenu.map((item, idx) => (
-                    <div key={idx} className="text-white/80 text-xs flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-1 h-1 rounded-full bg-white/40" />
-                        {item.label}
-                      </div>
-                      {item.badge && (
-                        <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-500 text-white">
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+            <div className="min-w-[280px] max-w-[320px]">
+              {/* Header del menú */}
+              <div 
+                className="px-4 py-3 border-b border-blue-200"
+                style={{
+                  background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)'
+                }}
+              >
+                <div className="flex items-center gap-2 text-white">
+                  <div className="flex-shrink-0">
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{label}</div>
+                    {subtitle && <div className="text-xs text-white/80 truncate mt-0.5">{subtitle}</div>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Submenús clickeables */}
+              {submenuItems && submenuItems.length > 0 && (
+                <div className="py-2">
+                  {submenuItems.map((item, idx) => {
+                    const isSubmenuActive = currentSidebarModule === item.module || currentModule === item.module;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleModuleClick(item.module)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-200 ${
+                          isSubmenuActive
+                            ? 'bg-blue-50 text-blue-700 font-semibold'
+                            : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex-shrink-0 opacity-80">
+                          {item.icon}
+                        </div>
+                        <div className="flex-1 text-left min-w-0">
+                          <div className="text-sm font-medium truncate">{item.label}</div>
+                          {item.subtitle && (
+                            <div className="text-xs text-gray-500 truncate mt-0.5">{item.subtitle}</div>
+                          )}
+                        </div>
+                        {item.badge && (
+                          <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-red-500 text-white flex-shrink-0">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

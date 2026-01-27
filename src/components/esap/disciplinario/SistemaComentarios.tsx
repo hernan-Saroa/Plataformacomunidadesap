@@ -1,6 +1,6 @@
 /**
- * SISTEMA DE COMENTARIOS - CONTROL INTERNO DISCIPLINARIO
- * Permite agregar comentarios en cada fase del proceso para trazabilidad
+ * SISTEMA DE COMUNICACIONES DEL PROCESO - CONTROL INTERNO DISCIPLINARIO
+ * Diseño actualizado tipo chat alineado con el estándar ESAP (SIGL v5.0)
  */
 
 import { useEffect, useState } from 'react';
@@ -9,11 +9,11 @@ import {
   MessageCircle, Send, Pin, AlertCircle, Info, CheckCircle,
   User, Clock, X, Edit2, Trash2, Flag, Search, Filter,
   FileText, Scale, Users, Calendar, Tag, ChevronDown, ChevronUp,
-  Paperclip, Download, History
+  Paperclip, Download, History, Smile, AtSign, Hash,
 } from 'lucide-react';
-import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
+import { Card } from '../../ui/card';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -22,7 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogAction,
-  AlertDialogCancel
+  AlertDialogCancel,
 } from '../../ui/alert-dialog';
 import { toast } from 'sonner@2.0.3';
 
@@ -30,6 +30,7 @@ interface Persona {
   nombre: string;
   tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
   numeroIdentificacion: string;
+  cargo?: string;
 }
 
 interface ComentarioAdjunto {
@@ -190,16 +191,17 @@ export function SistemaComentarios({
     reader.readAsDataURL(file);
   });
 
-  const etapas = [
-    'Recepción',
-    'Indagación Previa',
-    'Valoración',
-    'Indagación Preliminar',
-    'Investigación',
-    'Pliego de Cargos',
-    'Descargos',
-    'Evaluación'
-  ];
+  const [etiquetaSeleccionada, setEtiquetaSeleccionada] = useState<string | null>(null);
+  const [mostrarAdjuntos, setMostrarAdjuntos] = useState(false);
+
+  // Obtener iniciales del nombre
+  const getInitials = (nombre: string) => {
+    const parts = nombre.split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return nombre.substring(0, 2).toUpperCase();
+  };
 
   const tiposComentario = [
     { id: 'normal', nombre: 'Normal', color: '#6B7280', icon: MessageCircle },
@@ -216,10 +218,23 @@ export function SistemaComentarios({
     { id: 'probatorio', nombre: 'Probatorio', icon: Users }
   ];
 
+  const getAvatarColor = (tipo: string) => {
+    switch(tipo) {
+      case 'importante':
+        return { bg: '#FEE2E2', text: '#DC2626' };
+      case 'alerta':
+        return { bg: '#FEF3C7', text: '#D97706' };
+      case 'guia':
+        return { bg: '#DBEAFE', text: '#2563EB' };
+      default:
+        return { bg: '#E0EDFF', text: '#003DA5' };
+    }
+  };
+
   const handleAgregarComentario = async () => {
     if (!nuevoComentario.trim()) {
-      toast.error('Error', {
-        description: 'Debes escribir un comentario'
+      toast.error('Comentario vacío', {
+        description: 'Por favor escribe un mensaje antes de enviar'
       });
       return;
     }
@@ -249,26 +264,21 @@ export function SistemaComentarios({
       }
     }
 
-    const comentario: Comentario = {
-      id: `c${Date.now()}`,
-      autor: getAutorActual(),
-      fecha: ahora.toISOString().split('T')[0],
-      hora: ahora.toTimeString().split(' ')[0].substring(0, 5),
+    const now = new Date();
+    const nuevoComentarioObj: Comentario = {
+      id: `c${comentarios.length + 1}`,
+      autor: profesionalActual,
+      fecha: now.toLocaleDateString('es-CO'),
+      hora: now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
       etapa: etapaActual,
       contenido: nuevoComentario,
-      tipo: tipoSeleccionado,
-      categoria: categoriaSeleccionada,
-      adjuntos,
-      fijado: false,
-      editado: false
+      tipo: 'normal',
+      categoria: 'general'
     };
 
-    setComentarios([comentario, ...comentarios]);
+    setComentarios([...comentarios, nuevoComentarioObj]);
     setNuevoComentario('');
-    setTipoSeleccionado('normal');
-    setCategoriaSeleccionada('general');
-    setArchivosAdjuntos([]);
-    setMostrarFormulario(false);
+    setEtiquetaSeleccionada(null);
 
     toast.success('Comentario agregado', {
       description: adjuntos 
@@ -332,24 +342,25 @@ export function SistemaComentarios({
   function getCategoriaConfig(categoria?: string) {
     return categorias.find(c => c.id === categoria) || categorias[0];
   }
+  const handleResponder = (comentario: Comentario) => {
+    setNuevoComentario(`@${comentario.autor.nombre.split(' ')[0]} `);
+  };
+
+  const handleReaccionar = (comentario: Comentario) => {
+    toast.info('Reacción', {
+      description: 'Función de reacciones disponible próximamente'
+    });
+  };
+
+  const totalComentarios = comentarios.length;
 
   return (
-    <div className="space-y-4">
+    <div className="w-full">
       {/* Header */}
-      <Card className="p-4" style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0056D6 100%)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-white/20">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="font-black text-white">
-                Comentarios del Proceso
-              </h3>
-              <p className="text-xs text-white/80">
-                {numeroProceso} • {comentariosFiltrados.length} comentario(s)
-              </p>
-            </div>
+      <Card className="mb-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+            <MessageCircle className="w-5 h-5" style={{ color: '#003DA5' }} />
           </div>
           <Button
             onClick={() => setMostrarFormulario(!mostrarFormulario)}
@@ -747,35 +758,218 @@ export function SistemaComentarios({
                 : 'No hay comentarios en este proceso'}
             </p>
           </Card>
-        ) : null}
+        ) : (<></>)}
+
+        <div className="flex items-center gap-2">
+          <Badge style={{ background: '#003DA5', color: '#FFFFFF' }}>
+            NOTIFICACIÓN
+          </Badge>
+          <Badge style={{ background: '#E0EDFF', color: '#003DA5' }}>
+            {totalComentarios} {totalComentarios === 1 ? 'mensaje' : 'mensajes'}
+          </Badge>
+        </div>
       </div>
 
-      {/* Resumen por Etapas */}
-      {comentarios.length > 0 && (
-        <Card className="p-4 bg-gray-50">
-          <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-            <Tag className="w-4 h-4" />
-            Resumen por Etapa
-          </h4>
-          <div className="grid grid-cols-4 gap-2">
-            {etapas.map((etapa) => {
-              const cantidad = comentarios.filter(c => c.etapa === etapa).length;
-              if (cantidad === 0) return null;
-              return (
-                <Badge
-                  key={etapa}
-                  variant="outline"
-                  className="justify-between cursor-pointer hover:bg-white"
-                  onClick={() => setFiltroEtapa(etapa)}
-                >
-                  <span className="text-xs">{etapa}</span>
-                  <span className="text-xs font-black ml-1">{cantidad}</span>
-                </Badge>
-              );
-            })}
+      {/* Información del Demandante/Proceso */}
+      <div className="mb-6 p-4 rounded-xl" style={{ background: '#EFF6FF' }}>
+        <div className="flex items-center gap-3">
+          <User className="w-5 h-5" style={{ color: '#003DA5' }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+              Denunciante: María González Pérez
+            </p>
+            <p className="text-xs" style={{ color: '#6B7280' }}>
+              Profesional: Dr. Juan Pérez López
+            </p>
           </div>
-        </Card>
-      )}
+        </div>
+      </div>
+
+      {/* Lista de Comentarios/Mensajes */}
+      <div className="space-y-3 mb-6 max-h-[500px] overflow-y-auto">
+        {comentarios.map((comentario) => {
+          const avatarColor = getAvatarColor(comentario.tipo);
+          const initials = getInitials(comentario.autor.nombre);
+
+          return (
+            <div
+              key={comentario.id}
+              className="p-4 rounded-xl hover:shadow-sm transition-all"
+              style={{ background: '#F8FAFC' }}
+            >
+              <div className="flex items-start gap-3">
+                {/* Avatar */}
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm"
+                  style={{ background: avatarColor.bg, color: avatarColor.text }}
+                >
+                  {initials}
+                </div>
+
+                {/* Contenido */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm" style={{ color: '#1F2937' }}>
+                          {comentario.autor.nombre}
+                        </span>
+                        {comentario.tipo === 'importante' && (
+                          <Flag className="w-4 h-4" style={{ color: '#DC2626' }} />
+                        )}
+                      </div>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {comentario.autor.cargo || 'Profesional'} • {comentario.etapa}
+                      </p>
+                    </div>
+                    <span className="text-xs flex-shrink-0" style={{ color: '#9CA3AF' }}>
+                      {comentario.fecha} {comentario.hora}
+                    </span>
+                  </div>
+
+                  <p className="text-sm mb-3" style={{ color: '#374151' }}>
+                    {comentario.contenido}
+                  </p>
+
+                  {/* Adjuntos si los hay */}
+                  {comentario.adjuntos && comentario.adjuntos.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <Paperclip className="w-4 h-4" style={{ color: '#6B7280' }} />
+                      <span className="text-xs font-semibold" style={{ color: '#003DA5' }}>
+                        {comentario.adjuntos.length} {comentario.adjuntos.length === 1 ? 'adjunto' : 'adjuntos'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Botones de acción */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleResponder(comentario)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-white"
+                      style={{ color: '#003DA5' }}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      Responder
+                    </button>
+                    <button
+                      onClick={() => handleReaccionar(comentario)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:bg-white"
+                      style={{ color: '#F59E0B' }}
+                    >
+                      <Smile className="w-3.5 h-3.5" />
+                      Reaccionar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Etiquetas rápidas */}
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+          Respuestas rápidas:
+        </span>
+        <button
+          onClick={() => setEtiquetaSeleccionada('re-saludo')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            etiquetaSeleccionada === 're-saludo' ? 'shadow-sm' : ''
+          }`}
+          style={{
+            background: etiquetaSeleccionada === 're-saludo' ? '#D1FAE5' : '#F3F4F6',
+            color: etiquetaSeleccionada === 're-saludo' ? '#059669' : '#6B7280'
+          }}
+        >
+          ✓ Re-Saludo
+        </button>
+        <button
+          onClick={() => setEtiquetaSeleccionada('me-info')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            etiquetaSeleccionada === 'me-info' ? 'shadow-sm' : ''
+          }`}
+          style={{
+            background: etiquetaSeleccionada === 'me-info' ? '#DBEAFE' : '#F3F4F6',
+            color: etiquetaSeleccionada === 'me-info' ? '#2563EB' : '#6B7280'
+          }}
+        >
+          ? Me info
+        </button>
+        <button
+          onClick={() => setEtiquetaSeleccionada('aplazado')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            etiquetaSeleccionada === 'aplazado' ? 'shadow-sm' : ''
+          }`}
+          style={{
+            background: etiquetaSeleccionada === 'aplazado' ? '#FEF3C7' : '#F3F4F6',
+            color: etiquetaSeleccionada === 'aplazado' ? '#D97706' : '#6B7280'
+          }}
+        >
+          ⚡ Aplazado
+        </button>
+      </div>
+
+      {/* Área de escritura */}
+      <div className="border-2 rounded-xl p-4" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+        <textarea
+          value={nuevoComentario}
+          onChange={(e) => setNuevoComentario(e.target.value)}
+          placeholder="Escribe un mensaje sobre este proceso judicial..."
+          rows={3}
+          className="w-full px-0 py-0 border-0 focus:outline-none resize-none text-sm"
+          style={{ color: '#1F2937' }}
+        />
+
+        {/* Botones de acción del editor */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t" style={{ borderColor: '#E5E7EB' }}>
+          <div className="flex items-center gap-2">
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Adjuntar archivo"
+            >
+              <Paperclip className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Emoji"
+            >
+              <Smile className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Mencionar"
+            >
+              <AtSign className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              title="Etiqueta"
+            >
+              <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
+            </button>
+          </div>
+
+          <button
+            onClick={handleAgregarComentario}
+            disabled={!nuevoComentario.trim()}
+            className="px-4 py-2 rounded-lg font-semibold text-white flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: '#003DA5' }}
+          >
+            <Send className="w-4 h-4" />
+            Enviar
+          </button>
+        </div>
+
+        {/* Ayuda */}
+        <div className="mt-3 flex items-start gap-2">
+          <Info className="w-4 h-4 flex-shrink-0" style={{ color: '#F59E0B' }} />
+          <p className="text-xs" style={{ color: '#6B7280' }}>
+            Usa <code className="px-1 py-0.5 rounded bg-gray-100 font-mono">ENTER</code> para enviar o{' '}
+            <code className="px-1 py-0.5 rounded bg-gray-100 font-mono">SHIFT + ENTER</code> para nueva línea
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

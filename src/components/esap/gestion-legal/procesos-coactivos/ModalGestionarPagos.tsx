@@ -212,7 +212,6 @@ export function ModalGestionarPagos({
         valor: valorFinal,
         fechaPago: new Date(fechaPago).toISOString(), // Importante formato ISO para backend
         origen: metodoPago,
-        origen: metodoPago,
         observaciones: observaciones + (tipoPago === 'TOTAL' ? ' [PAGO TOTAL]' : ''),
         soporteUrl: soporteUrl,
         comprobante: numeroComprobante // Aunque el backend no tiene columna comprobante explicita en el DTO simple, podriamos meterlo en observaciones o añadir columna

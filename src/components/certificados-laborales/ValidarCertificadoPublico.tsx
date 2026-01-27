@@ -176,31 +176,31 @@ export function ValidarCertificadoPublico() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Hero Section - Mobile Optimized */}
+      <div className="bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white py-8 sm:py-12 md:py-16">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
             className="text-center"
           >
-            <div className="flex items-center justify-center mb-6">
-              <div className="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                <Shield className="w-12 h-12 text-white" strokeWidth={2} />
+            <div className="flex items-center justify-center mb-4 sm:mb-6">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/10 backdrop-blur-sm rounded-xl sm:rounded-2xl flex items-center justify-center">
+                <Shield className="w-10 h-10 sm:w-12 sm:h-12 text-white" strokeWidth={2} />
               </div>
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 px-4">
               Validación de Certificados Laborales
             </h1>
-            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+            <p className="text-sm sm:text-base md:text-lg lg:text-xl text-blue-100 max-w-3xl mx-auto px-4">
               Verifica la autenticidad de certificados laborales emitidos por la ESAP mediante código QR o número de certificado
             </p>
           </motion.div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-16">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 -mt-6 sm:-mt-8 pb-8 sm:pb-12 md:pb-16">
         {!certificadoValidado ? (
           /* Sección de Validación */
           <motion.div
@@ -208,57 +208,59 @@ export function ValidarCertificadoPublico() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <Card className="p-8 shadow-2xl">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <Card className="p-4 sm:p-6 md:p-8 shadow-2xl">
+              <div className="text-center mb-6 sm:mb-8">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2">
                   Selecciona el método de validación
                 </h2>
-                <p className="text-gray-600">
+                <p className="text-sm sm:text-base text-gray-600 px-2">
                   Puedes validar el certificado escaneando el código QR o ingresando el número manualmente
                 </p>
               </div>
 
-              {/* Toggle Método */}
-              <div className="flex justify-center mb-8">
-                <div className="inline-flex rounded-lg border-2 border-gray-200 p-1 bg-gray-50">
+              {/* Toggle Método - Mobile Optimized */}
+              <div className="flex justify-center mb-6 sm:mb-8">
+                <div className="inline-flex rounded-lg border-2 border-gray-200 p-1 bg-gray-50 w-full sm:w-auto">
                   <button
                     onClick={() => setMetodoValidacion('qr')}
-                    className={`px-6 py-3 rounded-md font-medium transition-all ${
+                    className={`flex-1 sm:flex-initial px-4 sm:px-6 py-3 rounded-md font-medium transition-all text-sm sm:text-base min-h-[48px] ${
                       metodoValidacion === 'qr'
                         ? 'bg-[#003DA5] text-white shadow-md'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    <QrCode className="w-5 h-5 inline mr-2" />
-                    Escanear QR
+                    <QrCode className="w-4 h-4 sm:w-5 sm:h-5 inline mr-2" />
+                    <span className="hidden sm:inline">Escanear QR</span>
+                    <span className="sm:hidden">QR</span>
                   </button>
                   <button
                     onClick={() => setMetodoValidacion('codigo')}
-                    className={`px-6 py-3 rounded-md font-medium transition-all ${
+                    className={`flex-1 sm:flex-initial px-4 sm:px-6 py-3 rounded-md font-medium transition-all text-sm sm:text-base min-h-[48px] ${
                       metodoValidacion === 'codigo'
                         ? 'bg-[#003DA5] text-white shadow-md'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    <Hash className="w-5 h-5 inline mr-2" />
-                    Ingresar Código
+                    <Hash className="w-4 h-4 sm:w-5 sm:h-5 inline mr-2" />
+                    <span className="hidden sm:inline">Ingresar Código</span>
+                    <span className="sm:hidden">Código</span>
                   </button>
                 </div>
               </div>
 
               {/* Contenido según método */}
               {metodoValidacion === 'qr' ? (
-                <div className="space-y-6">
-                  <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-8 border-2 border-dashed border-blue-300">
+                <div className="space-y-4 sm:space-y-6">
+                  <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-4 sm:p-6 md:p-8 border-2 border-dashed border-blue-300">
                     <div className="text-center">
                       {showScanner ? (
                         <div>
-                          <div className="w-64 h-64 mx-auto bg-black/80 rounded-xl flex items-center justify-center mb-4">
-                            <div className="w-48 h-48 border-4 border-white/50 rounded-lg relative">
-                              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg" />
-                              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg" />
-                              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg" />
-                              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg" />
+                          <div className="w-48 h-48 sm:w-56 sm:h-56 md:w-64 md:h-64 mx-auto bg-black/80 rounded-xl flex items-center justify-center mb-4">
+                            <div className="w-36 h-36 sm:w-40 sm:h-40 md:w-48 md:h-48 border-4 border-white/50 rounded-lg relative">
+                              <div className="absolute top-0 left-0 w-6 h-6 sm:w-8 sm:h-8 border-t-4 border-l-4 border-green-400 rounded-tl-lg" />
+                              <div className="absolute top-0 right-0 w-6 h-6 sm:w-8 sm:h-8 border-t-4 border-r-4 border-green-400 rounded-tr-lg" />
+                              <div className="absolute bottom-0 left-0 w-6 h-6 sm:w-8 sm:h-8 border-b-4 border-l-4 border-green-400 rounded-bl-lg" />
+                              <div className="absolute bottom-0 right-0 w-6 h-6 sm:w-8 sm:h-8 border-b-4 border-r-4 border-green-400 rounded-br-lg" />
                               <motion.div
                                 className="absolute top-0 left-0 right-0 h-1 bg-green-400"
                                 animate={{ top: ['0%', '100%'] }}
@@ -266,15 +268,15 @@ export function ValidarCertificadoPublico() {
                               />
                             </div>
                           </div>
-                          <p className="text-gray-700 font-medium">Escaneando código QR...</p>
+                          <p className="text-gray-700 font-medium text-sm sm:text-base">Escaneando código QR...</p>
                         </div>
                       ) : (
                         <>
-                          <QrCode className="w-32 h-32 mx-auto mb-6 text-[#003DA5]" strokeWidth={1.5} />
-                          <h3 className="text-xl font-bold text-gray-900 mb-2">
+                          <QrCode className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 mx-auto mb-4 sm:mb-6 text-[#003DA5]" strokeWidth={1.5} />
+                          <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
                             Escanea el código QR del certificado
                           </h3>
-                          <p className="text-gray-600 mb-6">
+                          <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
                             Coloca el código QR del certificado frente a tu cámara
                           </p>
                           <Button

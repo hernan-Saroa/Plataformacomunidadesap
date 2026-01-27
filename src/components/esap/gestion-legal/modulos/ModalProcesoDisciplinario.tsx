@@ -515,36 +515,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCerrar}>
-      <DialogContent className="max-w-7xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Proceso Disciplinario {proceso.id}</DialogTitle>
-        <DialogDescription className="sr-only">Vista completa del proceso disciplinario</DialogDescription>
-
-        {/* ==================== HEADER STICKY ==================== */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                  <Gavel className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <DialogTitle className="text-2xl font-black text-white">{proceso.id}</DialogTitle>
-                  <p className="text-sm text-blue-100">{proceso.tipoFalta}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge className="bg-white/20 text-white font-semibold border-white/30">{proceso.etapa || 'SIN ETAPA'}</Badge>
-                <Badge className="bg-orange-500 text-white font-semibold">{proceso.diasRestantes} días restantes</Badge>
-              </div>
-            </div>
-
-            <Button onClick={onClose} variant="ghost" size="sm" className="text-white hover:bg-white/20">
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">
+          Proceso Disciplinario {proceso.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Vista completa del proceso disciplinario {proceso.id} con información detallada de hechos, pruebas, actuaciones y decisiones
+        </DialogDescription>
+        
         {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
         <ModalHeaderClean
           icono={Gavel}

@@ -123,7 +123,8 @@ cmd_status() {
 # Comando: clean
 cmd_clean() {
     echo -e "${YELLOW}Limpiando recursos Docker no utilizados...${NC}"
-    docker system prune -f
+    docker system prune -a -f
+    docker volume prune -f
     echo -e "${GREEN}Limpieza completada${NC}"
 }
 

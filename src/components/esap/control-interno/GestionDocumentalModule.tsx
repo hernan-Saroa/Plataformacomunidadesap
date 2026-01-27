@@ -57,14 +57,6 @@ type VistaActual = "CARPETAS" | "RECIENTES" | "BUSQUEDA";
 
 const CARPETAS_MOCK: Carpeta[] = [
   {
-    id: "c1",
-    nombre: "Informes de Ley",
-    descripcion: "16 informes normativos obligatorios",
-    parent: null,
-    color: "indigo",
-    documentosCount: 24,
-  },
-  {
     id: "c2",
     nombre: "Planes Anuales",
     descripcion: "Planes anuales de auditoría",

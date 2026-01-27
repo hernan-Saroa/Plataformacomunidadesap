@@ -143,42 +143,41 @@ export function AnalyticsDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-4">
       <div className="max-w-[1600px] mx-auto">
-        {/* Header */}
+        {/* Header - Mobile Optimized */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-8"
+          className="mb-4 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4 mb-4 sm:mb-6">
+            {/* Title Section */}
+            <div className="flex items-start gap-3 sm:gap-4">
               <div 
-                className="w-16 h-16 rounded-xl flex items-center justify-center"
+                className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
                   background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                   boxShadow: '0 4px 12px rgba(0, 61, 165, 0.2)'
                 }}
               >
-                <BarChart3 className="w-8 h-8 text-white" strokeWidth={2.5} />
+                <BarChart3 className="w-6 h-6 sm:w-8 sm:h-8 text-white" strokeWidth={2.5} />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h1 
-                  className="font-bold"
+                  className="font-bold text-xl sm:text-2xl lg:text-3xl"
                   style={{
-                    fontSize: '32px',
-                    lineHeight: '40px',
+                    lineHeight: '1.2',
                     color: '#1F2937'
                   }}
                 >
                   Analíticas de Validación
                 </h1>
                 <p 
-                  className="text-gray-600"
+                  className="text-gray-600 text-sm sm:text-base mt-1"
                   style={{
-                    fontSize: '16px',
-                    lineHeight: '24px'
+                    lineHeight: '1.5'
                   }}
                 >
                   Dashboard completo de métricas y tendencias
@@ -186,9 +185,10 @@ export function AnalyticsDashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Controls - Stack on mobile */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               <Select value={periodoSeleccionado} onValueChange={setPeriodoSeleccionado}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px] min-h-[48px]">
                   <Calendar className="w-4 h-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>

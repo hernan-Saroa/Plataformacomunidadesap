@@ -16,7 +16,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -627,9 +627,33 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
 
+  const puedeEliminar = authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE);
+
   // Handler para abrir modal de expediente
   const handleAbrirExpediente = () => {
     setModalExpedienteOpen(true);
+  };
+
+  const handleEliminarExpediente = async () => {
+    const id = expediente.uuid || expediente.id;
+    if (!id) {
+      toast.error('No se encontró el ID del expediente');
+      return;
+    }
+
+    const confirmDelete = window.confirm(`¿Eliminar el expediente ${expediente.id}? Esta acción no se puede deshacer.`);
+    if (!confirmDelete) return;
+
+    try {
+      await legalService.deleteExpediente(id);
+      toast.success('Expediente eliminado', {
+        description: `Radicado ${expediente.id}`
+      });
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error eliminando expediente:', error);
+      toast.error('No se pudo eliminar el expediente');
+    }
   };
 
   // Determinar semáforo
@@ -678,6 +702,20 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
                 <p className="text-xs text-gray-600 truncate">{expediente.medioControl}</p>
               </div>
             </div>
+            {puedeEliminar && (
+              <Button
+                size="icon"
+                variant="ghost"
+                title="Eliminar expediente"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEliminarExpediente();
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
           </div>
 
           <div className="mb-2 pb-2 border-b border-gray-200">
