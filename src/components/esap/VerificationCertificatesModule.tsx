@@ -58,6 +58,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import React from 'react';
+import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import graduadosService, {
@@ -919,7 +920,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleCopyToClipboard = async (text: string, label: string) => {
-    const { copyToClipboard } = await import('@/utils/browser');
     const success = await copyToClipboard(text);
     if (success) {
       toast.success(`${label} copiado al portapapeles`);
