@@ -34,12 +34,20 @@ export interface TipoProcesoJudicial {
   activo: boolean;
 }
 
+export interface TipoAuto {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+}
+
 export interface ConfiguracionModulo {
   id: string;
   nombre: string;
   estados: EstadoKanban[];
   tiempos: ConfiguracionTiempo[];
   tiposProcesos?: TipoProcesoJudicial[];
+  tiposAutos?: TipoAuto[];
 }
 
 // ============ DATOS MOCK DE CASOS POR ESTADO ============
@@ -102,6 +110,16 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', plazo: 20, alertaDias: 5, activo: true },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', plazo: 15, alertaDias: 3, activo: true },
     ],
+    tiposAutos: [
+      { id: 'auto-admisorio', nombre: 'Auto Admisorio', descripcion: 'Auto que admite la demanda y ordena correr traslado al demandado', activo: true },
+      { id: 'auto-pruebas', nombre: 'Auto de Pruebas', descripcion: 'Auto que decreta o niega las pruebas solicitadas por las partes', activo: true },
+      { id: 'auto-traslado', nombre: 'Auto de Traslado', descripcion: 'Auto que ordena dar traslado a la parte contraria', activo: true },
+      { id: 'auto-archivo', nombre: 'Auto de Archivo', descripcion: 'Auto que ordena el archivo del proceso', activo: true },
+      { id: 'auto-nulidad', nombre: 'Auto de Nulidad', descripcion: 'Auto que declara la nulidad de actuaciones procesales', activo: true },
+      { id: 'auto-correccion', nombre: 'Auto de Corrección', descripcion: 'Auto que corrige errores aritméticos o de transcripción', activo: true },
+      { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Auto que resuelve incidentes o cuestiones de trámite', activo: true },
+      { id: 'auto-sustanciacion', nombre: 'Auto de Sustanciación', descripcion: 'Auto que impulsa el proceso y ordena trámites', activo: true },
+    ],
   },
   {
     id: 'juzgamiento',
@@ -147,6 +165,7 @@ interface ConfiguracionesSIGLContextType {
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
   getTiposProcesosActivos: (moduloId: string) => TipoProcesoJudicial[];
+  getTiposAutosActivos: (moduloId: string) => TipoAuto[];
   actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
   guardarConfiguraciones: () => Promise<void>;
   restablecerDefecto: () => void;
@@ -194,6 +213,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return modulo?.tiposProcesos?.filter(t => t.activo) || [];
   };
 
+  // Obtener solo los tipos de autos activos
+  const getTiposAutosActivos = (moduloId: string): TipoAuto[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.tiposAutos?.filter(t => t.activo) || [];
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -239,6 +264,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getConfiguracionModulo,
     getEstadosActivos,
     getTiposProcesosActivos,
+    getTiposAutosActivos,
     actualizarConfiguraciones,
     guardarConfiguraciones,
     restablecerDefecto,
@@ -265,11 +291,12 @@ export function useConfiguracionesSIGL() {
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {
-  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos } = useConfiguracionesSIGL();
+  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos } = useConfiguracionesSIGL();
   
   return {
     configuracion: getConfiguracionModulo(moduloId),
     estadosActivos: getEstadosActivos(moduloId),
     tiposProcesosActivos: getTiposProcesosActivos(moduloId),
+    tiposAutosActivos: getTiposAutosActivos(moduloId),
   };
 }

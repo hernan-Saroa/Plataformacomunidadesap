@@ -1,224 +1,245 @@
 /**
- * MOCK DATA: USUARIOS CON SEDES
- * Datos de ejemplo para demostración
+ * STUB: Array vacío - Agregar datos reales cuando se requieran
+ * 
+ * ⚠️ DEPRECATED: Para pruebas de desarrollo, usar:
+ * import { USUARIOS_EJEMPLO } from './usuarios-ejemplo';
  */
-
-export interface UserWithSedes {
-  id: string;
-  personId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  status: 'active' | 'blocked' | 'pending';
-  roles: Array<{
-    id: string;
-    name: string;
-    code: string;
-    alcance?: 'nacional' | 'territorial' | 'cetap';
-    unidadOrganizacionalId?: string;
-  }>;
-  location: string;
-  sedes: Array<{
-    id: string;
-    codigo: string;
-    nombre: string;
-    nivel: 'sede-central' | 'territorial' | 'cetap';
-    esPrincipal: boolean;
-  }>;
-  enrollmentMethod: 'qr' | 'manual' | 'massive';
-  enrollmentDate: string;
-  lastLogin?: string;
-  avatar?: string;
-  documentType: string;
-  documentNumber: string;
-  documentIssueDate?: string;
-  birthDate?: string;
-  address?: string;
-  program?: string;
-}
-
-// Datos de ejemplo para demostración
 export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
+  // ========== ESTUDIANTE ==========
   {
-    id: 'USR-001',
-    personId: 'PER-001',
-    firstName: 'María Claudia',
-    lastName: 'Rodríguez Martínez',
-    email: 'maria.rodriguez@esap.edu.co',
-    phone: '+57 310 5551234',
+    id: 'usr-001',
+    personId: 'per-001',
+    firstName: 'María Camila',
+    lastName: 'González Rodríguez',
+    email: 'maria.gonzalez@estudiante.esap.edu.co',
+    phone: '+57 310 234 5678',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-estudiante',
+        name: 'Estudiante',
+        code: 'EST',
+        alcance: 'territorial',
+        unidadOrganizacionalId: 'sede-bogota'
+      }
+    ],
+    location: 'Bogotá D.C.',
+    sedes: [
+      {
+        id: 'sede-bogota',
+        codigo: 'BOG-001',
+        nombre: 'Sede Bogotá',
+        nivel: 'sede-central',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'qr',
+    enrollmentDate: '2024-08-15',
+    lastLogin: '2025-01-26T08:30:00',
+    avatar: 'https://i.pravatar.cc/150?img=1',
+    documentType: 'CC',
+    documentNumber: '1012345678',
+    documentIssueDate: '2018-03-15',
+    birthDate: '2000-05-20',
+    address: 'Calle 45 #23-10, Bogotá',
+    program: 'Administración Pública Territorial'
+  },
+
+  // ========== DOCENTE ==========
+  {
+    id: 'usr-002',
+    personId: 'per-002',
+    firstName: 'Carlos Alberto',
+    lastName: 'Martínez Pérez',
+    email: 'carlos.martinez@docente.esap.edu.co',
+    phone: '+57 315 987 6543',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-docente',
+        name: 'Docente',
+        code: 'DOC',
+        alcance: 'territorial',
+        unidadOrganizacionalId: 'sede-medellin'
+      }
+    ],
+    location: 'Medellín',
+    sedes: [
+      {
+        id: 'sede-medellin',
+        codigo: 'MED-001',
+        nombre: 'Sede Medellín',
+        nivel: 'territorial',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2020-02-10',
+    lastLogin: '2025-01-26T09:15:00',
+    avatar: 'https://i.pravatar.cc/150?img=12',
+    documentType: 'CC',
+    documentNumber: '71234567',
+    documentIssueDate: '2005-06-20',
+    birthDate: '1985-11-10',
+    address: 'Carrera 50 #12-34, Medellín',
+    program: 'Gestión Pública'
+  },
+
+  // ========== ADMINISTRATIVO ==========
+  {
+    id: 'usr-003',
+    personId: 'per-003',
+    firstName: 'Ana Patricia',
+    lastName: 'Ramírez Silva',
+    email: 'ana.ramirez@esap.edu.co',
+    phone: '+57 312 456 7890',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-administrativo',
+        name: 'Administrativo',
+        code: 'ADM',
+        alcance: 'nacional',
+        unidadOrganizacionalId: 'sede-central'
+      }
+    ],
+    location: 'Bogotá D.C.',
+    sedes: [
+      {
+        id: 'sede-central',
+        codigo: 'BOG-CENTRAL',
+        nombre: 'Sede Central Nacional',
+        nivel: 'sede-central',
+        esPrincipal: true
+      }
+    ],
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2019-03-01',
+    lastLogin: '2025-01-26T07:45:00',
+    avatar: 'https://i.pravatar.cc/150?img=5',
     documentType: 'CC',
     documentNumber: '52345678',
-    birthDate: '1985-03-15',
-    address: 'Calle 44 # 53-37, Bogotá D.C.',
+    documentIssueDate: '2008-09-12',
+    birthDate: '1988-07-15',
+    address: 'Calle 80 #45-67, Bogotá'
+  },
+
+  // ========== GRADUADO ==========
+  {
+    id: 'usr-004',
+    personId: 'per-004',
+    firstName: 'Diego Fernando',
+    lastName: 'López Torres',
+    email: 'diego.lopez@graduado.esap.edu.co',
+    phone: '+57 320 765 4321',
     status: 'active',
-    location: 'Bogotá D.C.',
-    program: 'Especialización en Gestión Pública',
-    enrollmentMethod: 'manual',
-    enrollmentDate: '2024-01-15T10:30:00Z',
-    lastLogin: '2025-01-23T08:45:00Z',
     roles: [
       {
-        id: 'ROL-ADM-001',
-        name: 'Administrador Nacional',
-        code: 'ADMIN_NACIONAL',
+        id: 'rol-graduado',
+        name: 'Graduado',
+        code: 'GRAD',
         alcance: 'nacional'
       }
     ],
+    location: 'Cali',
     sedes: [
       {
-        id: 'SEDE-001',
-        codigo: 'SC-BOG',
-        nombre: 'Sede Central Bogotá',
-        nivel: 'sede-central',
-        esPrincipal: true
-      }
-    ]
-  },
-  {
-    id: 'USR-002',
-    personId: 'PER-002',
-    firstName: 'Carlos Alberto',
-    lastName: 'Gómez Silva',
-    email: 'carlos.gomez@esap.edu.co',
-    phone: '+57 315 5559876',
-    documentType: 'CC',
-    documentNumber: '79456123',
-    birthDate: '1978-08-22',
-    status: 'active',
-    location: 'Antioquia',
-    program: 'Maestría en Administración Pública',
-    enrollmentMethod: 'qr',
-    enrollmentDate: '2024-02-10T14:20:00Z',
-    lastLogin: '2025-01-22T16:30:00Z',
-    roles: [
-      {
-        id: 'ROL-TER-001',
-        name: 'Coordinador Territorial',
-        code: 'COORD_TERRITORIAL',
-        alcance: 'territorial',
-        unidadOrganizacionalId: 'TERR-ANT'
-      }
-    ],
-    sedes: [
-      {
-        id: 'TERR-ANT',
-        codigo: 'T-ANT',
-        nombre: 'Territorial Antioquia',
+        id: 'sede-cali',
+        codigo: 'CAL-001',
+        nombre: 'Sede Cali',
         nivel: 'territorial',
         esPrincipal: true
       }
-    ]
-  },
-  {
-    id: 'USR-003',
-    personId: 'PER-003',
-    firstName: 'Ana Patricia',
-    lastName: 'Ramírez Vargas',
-    email: 'ana.ramirez@esap.edu.co',
-    phone: '+57 320 5554567',
-    documentType: 'CC',
-    documentNumber: '1015789654',
-    birthDate: '1992-11-30',
-    status: 'active',
-    location: 'Valle del Cauca',
-    program: 'Administración Pública Territorial',
+    ],
     enrollmentMethod: 'massive',
-    enrollmentDate: '2024-03-05T09:15:00Z',
-    lastLogin: '2025-01-23T07:20:00Z',
+    enrollmentDate: '2022-12-01',
+    lastLogin: '2025-01-20T14:30:00',
+    avatar: 'https://i.pravatar.cc/150?img=8',
+    documentType: 'CC',
+    documentNumber: '1098765432',
+    documentIssueDate: '2015-04-10',
+    birthDate: '1995-03-25',
+    address: 'Avenida 6N #25-50, Cali',
+    program: 'Administración Pública Territorial - Graduado 2022'
+  },
+
+  // ========== ASPIRANTE ==========
+  {
+    id: 'usr-005',
+    personId: 'per-005',
+    firstName: 'Laura Valentina',
+    lastName: 'Hernández Castro',
+    email: 'laura.hernandez@aspirante.esap.edu.co',
+    phone: '+57 318 234 5678',
+    status: 'pending',
     roles: [
       {
-        id: 'ROL-DOC-001',
-        name: 'Docente',
-        code: 'DOCENTE',
+        id: 'rol-aspirante',
+        name: 'Aspirante',
+        code: 'ASP',
         alcance: 'territorial',
-        unidadOrganizacionalId: 'TERR-VAL'
+        unidadOrganizacionalId: 'sede-barranquilla'
       }
     ],
+    location: 'Barranquilla',
     sedes: [
       {
-        id: 'TERR-VAL',
-        codigo: 'T-VAL',
-        nombre: 'Territorial Valle del Cauca',
+        id: 'sede-barranquilla',
+        codigo: 'BAQ-001',
+        nombre: 'Sede Barranquilla',
         nivel: 'territorial',
         esPrincipal: true
       }
-    ]
-  },
-  {
-    id: 'USR-004',
-    personId: 'PER-004',
-    firstName: 'Jorge Enrique',
-    lastName: 'Pérez Gutiérrez',
-    email: 'jorge.perez@esap.edu.co',
-    phone: '+57 318 5552345',
+    ],
+    enrollmentMethod: 'qr',
+    enrollmentDate: '2025-01-10',
+    avatar: 'https://i.pravatar.cc/150?img=9',
     documentType: 'CC',
-    documentNumber: '8234567',
-    birthDate: '1980-05-18',
+    documentNumber: '1023456789',
+    documentIssueDate: '2020-02-15',
+    birthDate: '2002-09-08',
+    address: 'Calle 72 #45-23, Barranquilla',
+    program: 'Pendiente de admisión'
+  },
+
+  // ========== SUPER ADMINISTRADOR ==========
+  {
+    id: 'usr-006',
+    personId: 'per-006',
+    firstName: 'Roberto',
+    lastName: 'Sánchez Morales',
+    email: 'roberto.sanchez@esap.edu.co',
+    phone: '+57 311 555 0001',
     status: 'active',
-    location: 'Santander',
-    program: 'Especialización en Alta Gerencia',
-    enrollmentMethod: 'manual',
-    enrollmentDate: '2024-01-22T11:45:00Z',
-    lastLogin: '2025-01-21T14:10:00Z',
     roles: [
       {
-        id: 'ROL-AUD-001',
-        name: 'Auditor Interno',
-        code: 'AUDITOR_INTERNO',
+        id: 'rol-superadmin',
+        name: 'Super Administrador',
+        code: 'SADM',
         alcance: 'nacional'
       }
     ],
+    location: 'Bogotá D.C.',
     sedes: [
       {
-        id: 'SEDE-001',
-        codigo: 'SC-BOG',
-        nombre: 'Sede Central Bogotá',
+        id: 'sede-central',
+        codigo: 'BOG-CENTRAL',
+        nombre: 'Sede Central Nacional',
         nivel: 'sede-central',
         esPrincipal: true
-      },
-      {
-        id: 'TERR-SAN',
-        codigo: 'T-SAN',
-        nombre: 'Territorial Santander',
-        nivel: 'territorial',
-        esPrincipal: false
-      }
-    ]
-  },
-  {
-    id: 'USR-005',
-    personId: 'PER-005',
-    firstName: 'Laura Fernanda',
-    lastName: 'Hernández López',
-    email: 'laura.hernandez@esap.edu.co',
-    phone: '+57 312 5558901',
-    documentType: 'CC',
-    documentNumber: '1045123789',
-    birthDate: '1995-02-14',
-    status: 'active',
-    location: 'Cundinamarca',
-    program: 'Tecnología en Gestión Pública',
-    enrollmentMethod: 'qr',
-    enrollmentDate: '2024-02-28T13:00:00Z',
-    lastLogin: '2025-01-23T09:00:00Z',
-    roles: [
-      {
-        id: 'ROL-EST-001',
-        name: 'Estudiante',
-        code: 'ESTUDIANTE',
-        alcance: 'cetap',
-        unidadOrganizacionalId: 'CETAP-FUN'
       }
     ],
-    sedes: [
-      {
-        id: 'CETAP-FUN',
-        codigo: 'C-FUN',
-        nombre: 'CETAP Funza',
-        nivel: 'cetap',
-        esPrincipal: true
-      }
-    ]
+    enrollmentMethod: 'manual',
+    enrollmentDate: '2018-01-15',
+    lastLogin: '2025-01-26T06:00:00',
+    avatar: 'https://i.pravatar.cc/150?img=13',
+    documentType: 'CC',
+    documentNumber: '79876543',
+    documentIssueDate: '2000-05-20',
+    birthDate: '1980-12-05',
+    address: 'Carrera 15 #100-45, Bogotá'
   }
 ];
+
+// Re-exportar usuarios de ejemplo para compatibilidad
+export { USUARIOS_EJEMPLO, obtenerUsuarioPorRol, obtenerUsuarioPorEmail } from './usuarios-ejemplo';

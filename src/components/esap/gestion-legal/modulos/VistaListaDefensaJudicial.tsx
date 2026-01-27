@@ -443,9 +443,47 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index }: FilaE
 
         {/* Demandante */}
         <td className="px-4 py-3">
-          <p className="font-bold text-sm text-gray-900 line-clamp-2 max-w-xs">
-            {expediente.demandante}
-          </p>
+          <div className="max-w-xs space-y-1">
+            {/* Demandantes */}
+            {expediente.demandantes && expediente.demandantes.length > 0 ? (
+              <>
+                <p className="text-[10px] font-semibold text-orange-700 uppercase">Demandante(s):</p>
+                {expediente.demandantes.map((demandante, idx) => (
+                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
+                    • {demandante.nombre}
+                  </p>
+                ))}
+              </>
+            ) : (
+              <p className="font-bold text-sm text-gray-900 line-clamp-2">
+                {expediente.demandante}
+              </p>
+            )}
+            
+            {/* Demandados */}
+            {expediente.demandados && expediente.demandados.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-gray-200">
+                <p className="text-[10px] font-semibold text-red-700 uppercase">Demandado(s):</p>
+                {expediente.demandados.map((demandado, idx) => (
+                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
+                    • {demandado.nombre}
+                  </p>
+                ))}
+              </div>
+            )}
+            
+            {/* Otros Actores */}
+            {expediente.otrosActores && expediente.otrosActores.length > 0 && (
+              <div className="mt-1 pt-1 border-t border-gray-200">
+                <p className="text-[10px] font-semibold text-blue-700 uppercase">Otros Actores:</p>
+                {expediente.otrosActores.map((actor, idx) => (
+                  <p key={idx} className="font-bold text-xs text-gray-900 line-clamp-1">
+                    • {actor.nombre} <span className="text-[9px] text-gray-600">({actor.rol})</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
         </td>
 
         {/* Etapa */}

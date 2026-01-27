@@ -300,6 +300,21 @@
     max-width: 100vw;
   }
   
+  /* Limitar ancho en pantallas ultra-anchas para prevenir parpadeos y mejorar legibilidad */
+  @media (min-width: 2560px) {
+    body {
+      max-width: 2400px;
+      margin: 0 auto;
+    }
+  }
+  
+  @media (min-width: 1920px) and (max-width: 2559px) {
+    body {
+      max-width: 1800px;
+      margin: 0 auto;
+    }
+  }
+  
   body {
     position: relative;
     width: 100%;
@@ -322,6 +337,23 @@
     -webkit-backface-visibility: hidden;
     perspective: 1000px;
     -webkit-perspective: 1000px;
+  }
+  
+  /* Optimización adicional para pantallas de alta resolución (4K, 5K, 8K) */
+  @media (min-width: 1920px) {
+    * {
+      transform: translateZ(0);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* Mejorar rendimiento de gradientes en alta resolución */
+    [class*="bg-gradient"],
+    [style*="background: linear-gradient"],
+    [style*="background-image: linear-gradient"] {
+      will-change: transform;
+      transform: translateZ(0);
+    }
   }
 
   /* 2. Optimizar transiciones y animaciones */

@@ -353,7 +353,7 @@ const generarLogsMock = () => {
     
     // ========== GESTIÓN LEGAL ==========
     {
-      accion: 'crear_expediente',
+      accion: 'crear',
       descripcion: 'Crear expediente legal: Acción de tutela',
       tabla: 'expediente_legal',
       registroId: 'exp-legal-2026-034',

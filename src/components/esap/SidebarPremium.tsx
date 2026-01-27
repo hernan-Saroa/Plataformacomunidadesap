@@ -43,7 +43,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'procesos' | 'gestion-profesoral';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -57,7 +57,7 @@ interface SidebarProps {
   userRole?: string; // Rol del usuario para permisos
   userEmail?: string; // Email del usuario para restricciones específicas
   certificatesPendingCount?: number; // Número de solicitudes pendientes en Certificados
-  restrictedMode?: 'certificados-laborales' | 'arquitectura-empresarial' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
+  restrictedMode?: 'certificados-laborales' | 'control-interno' | 'control-disciplinario' | 'registro-academico' | 'gestion-legal'; // Modo restringido para usuarios especiales
 }
 
 const STORAGE_KEY = 'esap-sidebar-collapsed';
@@ -96,7 +96,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     dashboard: true,            // Dashboard siempre visible
     'estructura-org': true,     // Estructura Organizacional ABIERTA por defecto
     'gestion-usuarios': true,  // Gestión Académica ABIERTA por defecto (cambiado de false a true)
-    'arquitectura': false,      // Arquitectura Empresarial CERRADA por defecto
   });
   
   // Persistir estado colapsado en localStorage
@@ -855,58 +854,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   )}
                 </div>
               </>
-            ) : restrictedMode === 'arquitectura-empresarial' ? (
-              <>
-                {/* Dashboard Ejecutivo - Solo estadísticas de arquitectura */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Zap className="w-3 h-3" />
-                        Principal
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  {renderMenuItem(
-                    'executive',
-                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Dashboard Ejecutivo',
-                    'Métricas de Arquitectura'
-                  )}
-                </div>
-
-                {/* Módulo de Arquitectura Empresarial */}
-                <div className="mb-8">
-                  <AnimatePresence mode="wait">
-                    {!effectiveCollapsed && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={contentTransition}
-                        className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-3 pb-3 flex items-center gap-2"
-                      >
-                        <Layout className="w-3 h-3" />
-                        Arquitectura TI
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  
-                  {renderMenuItem(
-                    'arquitectura-empresarial',
-                    <Layout className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
-                    'Arquitectura Empresarial',
-                    'MRAE MinTIC Colombia'
-                  )}
-                </div>
-              </>
             ) : restrictedMode === 'control-interno' ? (
               <>
                 {/* Módulo de Control Interno de Gestión - Único módulo visible */}
@@ -1220,40 +1167,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       <Scale className="w-5 h-5" strokeWidth={2} />,
                       'Gestión Legal (SIGL)',
                       'Sistema Integrado Legal'
-                    )}
-                    
-                    {renderMenuItem(
-                      'centro-alertas',
-                      <Bell className="w-5 h-5" strokeWidth={2} />,
-                      'Centro de Alertas',
-                      'Configuración centralizada'
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Arquitectura Empresarial - SECCIÓN INDEPENDIENTE */}
-            <div className="mb-8">
-              <AnimatePresence mode="wait">
-                {!effectiveCollapsed && renderSectionHeader('arquitectura', <Layout className="w-3 h-3" />, 'ARQUITECTURA EMPRESARIAL', 1)}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {(effectiveCollapsed || expandedSections['arquitectura']) && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                    className="overflow-hidden"
-                  >
-                    {/* Arquitectura Empresarial - Clickeable directo */}
-                    {renderMenuItem(
-                      'arquitectura-empresarial',
-                      <Layout className="w-5 h-5" strokeWidth={2} />,
-                      'Arquitectura Empresarial',
-                      'MRAE MinTIC Colombia'
                     )}
                   </motion.div>
                 )}

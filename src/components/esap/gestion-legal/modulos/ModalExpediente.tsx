@@ -32,6 +32,7 @@ import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { copyToClipboard } from '../../../../utils/clipboard';
 
 interface ModalExpedienteProps {
@@ -51,6 +52,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const [modalCrearTareaAbierto, setModalCrearTareaAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
   const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
+  const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
   const [tareaEnEdicion, setTareaEnEdicion] = useState<any>(null);
 
   // Estado para tareas - ahora reactivo
@@ -62,7 +64,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       vencimiento: '05/01/2025',
       diasRestantes: 10,
       prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
+      responsable: expediente.abogadoAsignado || 'No asignado',
       estado: 'Pendiente'
     },
     {
@@ -72,7 +74,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       vencimiento: '30/12/2024',
       diasRestantes: 4,
       prioridad: 'Alta',
-      responsable: expediente.abogadoAsignado,
+      responsable: expediente.abogadoAsignado || 'No asignado',
       estado: 'En proceso'
     },
     {
@@ -237,10 +239,10 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
 
   const documentos = expediente.documentos || [
     { id: 1, nombre: 'Demanda Principal.pdf', fecha: '15/12/2024', tipo: 'Demanda', tamaño: '2.4 MB', firmante: 'Apoderado Demandante' },
-    { id: 2, nombre: 'Contestación ESAP.pdf', fecha: '20/12/2024', tipo: 'Contestación', tamaño: '1.8 MB', firmante: expediente.abogadoAsignado },
+    { id: 2, nombre: 'Contestación ESAP.pdf', fecha: '20/12/2024', tipo: 'Contestación', tamaño: '1.8 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
     { id: 3, nombre: 'Auto Admisorio.pdf', fecha: '10/12/2024', tipo: 'Auto', tamaño: '980 KB', firmante: 'Juzgado 1° Administrativo' },
-    { id: 4, nombre: 'Pruebas Documentales.pdf', fecha: '22/12/2024', tipo: 'Pruebas', tamaño: '5.2 MB', firmante: expediente.abogadoAsignado },
-    { id: 5, nombre: 'Memorial de Parte.pdf', fecha: '18/12/2024', tipo: 'Memorial', tamaño: '1.2 MB', firmante: expediente.abogadoAsignado },
+    { id: 4, nombre: 'Pruebas Documentales.pdf', fecha: '22/12/2024', tipo: 'Pruebas', tamaño: '5.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
+    { id: 5, nombre: 'Memorial de Parte.pdf', fecha: '18/12/2024', tipo: 'Memorial', tamaño: '1.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
     { id: 6, nombre: 'Certificaciones Laborales.pdf', fecha: '16/12/2024', tipo: 'Pruebas', tamaño: '3.8 MB', firmante: 'Gestión Humana ESAP' },
     { id: 7, nombre: 'Poder del Apoderado.pdf', fecha: '14/12/2024', tipo: 'Poder', tamaño: '620 KB', firmante: 'Notaría 15 de Bogotá' },
   ];
@@ -249,14 +251,14 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     { 
       fecha: '26/12/2024', 
       descripcion: 'Se aportaron pruebas documentales adicionales',
-      responsable: expediente.abogadoAsignado,
+      responsable: expediente.abogadoAsignado || 'Oficina Jurídica',
       tipo: 'Aporte de Pruebas',
       estado: 'Completado'
     },
     { 
       fecha: '22/12/2024', 
       descripcion: 'Se presentó contestación de la demanda', 
-      responsable: expediente.abogadoAsignado,
+      responsable: expediente.abogadoAsignado || 'Oficina Jurídica',
       tipo: 'Contestación',
       estado: 'Completado'
     },
@@ -366,8 +368,27 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     }, 1500);
   };
 
-  const partes = [
-    {
+  // Construir array dinámico de partes desde los datos del expediente
+  const partesDelExpediente = [];
+
+  // Agregar demandantes (soporte para arrays)
+  if (expediente.demandantes && expediente.demandantes.length > 0) {
+    expediente.demandantes.forEach(demandante => {
+      partesDelExpediente.push({
+        tipo: 'Demandante',
+        nombre: demandante.nombre,
+        identificacion: `${demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${demandante.identificacion}`,
+        apoderado: 'Dr. Carlos Andrés Martínez', // Mock - en producción vendría del backend
+        direccion: 'Calle 100 #15-20, Bogotá D.C.', // Mock
+        telefono: '+57 310 123 4567', // Mock
+        email: 'demandante@email.com', // Mock
+        notificaciones: 'Electrónicas',
+        tipoPersona: demandante.tipoPersona
+      });
+    });
+  } else {
+    // Fallback a datos mock para compatibilidad
+    partesDelExpediente.push({
       tipo: 'Demandante',
       nombre: expediente.demandante,
       identificacion: 'CC 1.234.567.890',
@@ -376,18 +397,58 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       telefono: '+57 310 123 4567',
       email: 'demandante@email.com',
       notificaciones: 'Electrónicas'
-    },
-    {
+    });
+  }
+
+  // Agregar demandados (soporte para arrays)
+  if (expediente.demandados && expediente.demandados.length > 0) {
+    expediente.demandados.forEach(demandado => {
+      partesDelExpediente.push({
+        tipo: 'Demandado',
+        nombre: demandado.nombre,
+        identificacion: `${demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${demandado.identificacion}`,
+        apoderado: expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
+        direccion: 'Calle 44 #53-37, Bogotá D.C.', // Mock
+        telefono: '+57 601 220 2790', // Mock
+        email: 'juridica@esap.edu.co', // Mock
+        notificaciones: 'Electrónicas + Físicas',
+        tipoPersona: demandado.tipoPersona,
+        cargo: demandado.cargo
+      });
+    });
+  } else {
+    // Fallback a datos mock para compatibilidad
+    partesDelExpediente.push({
       tipo: 'Demandado',
       nombre: 'ESAP - Escuela Superior de Administración Pública',
       identificacion: 'NIT 899.999.061-4',
-      apoderado: expediente.abogadoAsignado,
+      apoderado: expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
       direccion: 'Calle 44 #53-37, Bogotá D.C.',
       telefono: '+57 601 220 2790',
       email: 'juridica@esap.edu.co',
       notificaciones: 'Electrónicas + Físicas'
-    }
-  ];
+    });
+  }
+
+  // Agregar otros actores (NUEVO)
+  if (expediente.otrosActores && expediente.otrosActores.length > 0) {
+    expediente.otrosActores.forEach(actor => {
+      partesDelExpediente.push({
+        tipo: 'Otro Actor',
+        nombre: actor.nombre,
+        identificacion: `${actor.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${actor.identificacion}`,
+        rol: actor.rol,
+        apoderado: 'Sin apoderado registrado', // Mock
+        direccion: 'Sin dirección registrada', // Mock
+        telefono: 'Sin teléfono registrado', // Mock
+        email: 'Sin email registrado', // Mock
+        notificaciones: 'N/A',
+        tipoPersona: actor.tipoPersona
+      });
+    });
+  }
+
+  const partes = partesDelExpediente;
 
   const notasInternas = [
     {
@@ -400,7 +461,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     {
       id: 2,
       fecha: '21/12/2024',
-      autor: expediente.abogadoAsignado,
+      autor: expediente.abogadoAsignado || 'Oficina Jurídica',
       nota: 'Se solicitó al área de talento humano certificación de nómina de los últimos 6 meses.',
       tipo: 'Seguimiento'
     },
@@ -621,16 +682,20 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                         className="text-base font-bold"
                         style={{ background: '#E0EDFF', color: '#003DA5' }}
                       >
-                        {expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                        {expediente.abogadoAsignado 
+                          ? expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)
+                          : 'NA'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <p className="font-black text-gray-900 text-base">{expediente.abogadoAsignado}</p>
+                      <p className="font-black text-gray-900 text-base">{expediente.abogadoAsignado || 'No asignado'}</p>
                       <p className="text-xs text-gray-600 mb-2">Abogado Defensor - Oficina Jurídica</p>
                       <div className="space-y-1">
                         <p className="text-xs text-gray-600 flex items-center gap-1.5">
                           <Mail className="w-3 h-3" />
-                          {expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co
+                          {expediente.abogadoAsignado 
+                            ? `${expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co`
+                            : 'juridica@esap.edu.co'}
                         </p>
                         <p className="text-xs text-gray-600 flex items-center gap-1.5">
                           <Phone className="w-3 h-3" />
@@ -674,19 +739,26 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                   ÚLTIMA ACTUACIÓN PROCESAL
                 </h4>
                 <p className="text-base text-gray-800 mb-3 font-semibold">
-                  {expediente.ultimaActuacion || 'No hay actuaciones recientes registradas en el sistema'}
+                  {expediente.ultimaActuacion?.descripcion || 'No hay actuaciones recientes registradas en el sistema'}
                 </p>
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-gray-600 flex items-center gap-1.5">
                     <Calendar className="w-3 h-3" />
-                    {expediente.fechaActualizacion.toLocaleDateString('es-CO', { 
-                      day: '2-digit', 
-                      month: 'long', 
-                      year: 'numeric' 
-                    })}
+                    {expediente.ultimaActuacion?.fecha 
+                      ? new Date(expediente.ultimaActuacion.fecha).toLocaleDateString('es-CO', { 
+                          day: '2-digit', 
+                          month: 'long', 
+                          year: 'numeric' 
+                        })
+                      : expediente.fechaActualizacion.toLocaleDateString('es-CO', { 
+                          day: '2-digit', 
+                          month: 'long', 
+                          year: 'numeric' 
+                        })
+                    }
                   </p>
                   <Badge className="bg-blue-600 text-white text-xs font-bold">
-                    Hace {Math.floor((Date.now() - expediente.fechaActualizacion.getTime()) / (1000 * 60 * 60 * 24))} días
+                    {expediente.ultimaActuacion?.tipo || 'Sin tipo'}
                   </Badge>
                 </div>
               </Card>
@@ -728,27 +800,69 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
 
             {/* ==================== TAB: PARTES ==================== */}
             <TabsContent value="partes" className="space-y-4">
-              {partes.map((parte, idx) => (
-                <Card 
-                  key={idx} 
-                  className="p-4 border-l-4" 
-                  style={{ borderLeftColor: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5' }}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <h4 className="text-sm font-black flex items-center gap-2" style={{ color: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5' }}>
-                      {parte.tipo === 'Demandante' ? <User className="w-4 h-4" /> : <Building2 className="w-4 h-4" />}
-                      {parte.tipo.toUpperCase()}
-                    </h4>
-                    <Badge 
-                      className="font-bold text-xs"
-                      style={{
-                        background: parte.tipo === 'Demandante' ? '#FEE2E2' : '#E0EDFF',
-                        color: parte.tipo === 'Demandante' ? '#DC2626' : '#003DA5'
-                      }}
-                    >
-                      {parte.tipo}
-                    </Badge>
-                  </div>
+              {partes.map((parte, idx) => {
+                // Determinar colores según tipo de parte
+                const getParteColors = (tipo: string) => {
+                  if (tipo === 'Demandante') {
+                    return {
+                      borderColor: '#F57C00',
+                      textColor: '#F57C00',
+                      bgColor: '#FFF3E0',
+                      icon: <User className="w-4 h-4" />
+                    };
+                  } else if (tipo === 'Demandado') {
+                    return {
+                      borderColor: '#DC2626',
+                      textColor: '#DC2626',
+                      bgColor: '#FEE2E2',
+                      icon: <Building2 className="w-4 h-4" />
+                    };
+                  } else {
+                    // Otro Actor
+                    return {
+                      borderColor: '#6B7280',
+                      textColor: '#6B7280',
+                      bgColor: '#F3F4F6',
+                      icon: <User className="w-4 h-4" />
+                    };
+                  }
+                };
+
+                const colors = getParteColors(parte.tipo);
+
+                return (
+                  <Card 
+                    key={idx} 
+                    className="p-4 border-l-4" 
+                    style={{ borderLeftColor: colors.borderColor }}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="text-sm font-black flex items-center gap-2" style={{ color: colors.textColor }}>
+                          {colors.icon}
+                          {parte.tipo.toUpperCase()}
+                        </h4>
+                        {parte.tipo === 'Otro Actor' && parte.rol && (
+                          <p className="text-xs text-gray-600 mt-1 ml-6">
+                            <span className="font-semibold">Rol:</span> {parte.rol}
+                          </p>
+                        )}
+                        {parte.tipo === 'Demandado' && parte.cargo && (
+                          <p className="text-xs text-gray-600 mt-1 ml-6">
+                            <span className="font-semibold">Cargo:</span> {parte.cargo}
+                          </p>
+                        )}
+                      </div>
+                      <Badge 
+                        className="font-bold text-xs"
+                        style={{
+                          background: colors.bgColor,
+                          color: colors.textColor
+                        }}
+                      >
+                        {parte.tipo}
+                      </Badge>
+                    </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -789,7 +903,8 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                     </div>
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </TabsContent>
 
             {/* ==================== TAB: DOCUMENTOS ==================== */}
@@ -834,12 +949,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                       size="sm" 
                       variant="outline"
                       className="font-bold border-2 border-blue-600 text-blue-600 hover:bg-blue-50"
-                      onClick={() => {
-                        toast.info('📎 Cargar documentos', {
-                          description: 'Abriendo gestor de archivos...',
-                          duration: 2000
-                        });
-                      }}
+                      onClick={() => setModalGestionDocumentosAbierto(true)}
                     >
                       <Upload className="w-3 h-3 mr-1" />
                       Cargar
@@ -985,11 +1095,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
                           <Button 
                             style={{ background: '#003DA5', color: '#FFFFFF' }}
                             className="font-bold"
-                            onClick={() => {
-                              toast.info('📎 Función de carga de documentos', {
-                                description: 'Esta función permitirá subir documentos al expediente'
-                              });
-                            }}
+                            onClick={() => setModalGestionDocumentosAbierto(true)}
                           >
                             <Upload className="w-4 h-4 mr-2" />
                             Cargar Primer Documento
@@ -1397,6 +1503,14 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       onClose={() => setModalAgregarNotaAbierto(false)} 
       expediente={expediente} 
     />
+    {modalGestionDocumentosAbierto && (
+      <ModalGestionDocumentos
+        isOpen={modalGestionDocumentosAbierto}
+        onClose={() => setModalGestionDocumentosAbierto(false)}
+        requerimientoId={expediente.id}
+        tituloContexto={`Documentos del Expediente ${expediente.id}`}
+      />
+    )}
     </>
   );
 }

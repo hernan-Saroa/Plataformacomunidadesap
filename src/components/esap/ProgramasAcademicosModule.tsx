@@ -727,7 +727,7 @@ export function ProgramasAcademicosModule() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 <AnimatePresence mode="popLayout">
                   {paginatedProgramas.map((programa, index) => (
-                    <>
+                    <React.Fragment key={`programa-fragment-${programa.id}`}>
                       <motion.tr
                         key={`programa-${programa.id}`}
                         initial={{ opacity: 0, y: 10 }}
@@ -868,7 +868,7 @@ export function ProgramasAcademicosModule() {
                           </td>
                         </motion.tr>
                       )}
-                    </>
+                    </React.Fragment>
                   ))}
                 </AnimatePresence>
               </tbody>

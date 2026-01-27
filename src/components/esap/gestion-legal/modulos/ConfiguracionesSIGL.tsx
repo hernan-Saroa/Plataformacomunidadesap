@@ -3,10 +3,12 @@
  * Permite configurar estados, columnas y tiempos de todos los tableros Kanban
  * DISEÑO 100% COHERENTE CON EL ESTÁNDAR DEL PROYECTO (Modal Comunicaciones del Proceso)
  * CONECTADO A CONTEXT API - Los cambios afectan a todos los módulos de Gestión Legal
+ * ✅ ORGANIZADO CON TABS para mejor usabilidad
  */
 
 import { useState } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   DndContext,
   closestCenter,
@@ -32,6 +34,7 @@ import {
   EstadoKanban,
   ConfiguracionModulo,
   TipoProcesoJudicial,
+  TipoAuto,
   ConfiguracionTiempo
 } from '../config/ConfiguracionesSIGLContext';
 
@@ -57,6 +60,12 @@ export function ConfiguracionesSIGL() {
   const [showModalAgregarTipoProceso, setShowModalAgregarTipoProceso] = useState(false);
   const [showModalEliminarTipoProceso, setShowModalEliminarTipoProceso] = useState(false);
   const [tipoProcesoAEliminar, setTipoProcesoAEliminar] = useState<TipoProcesoJudicial | null>(null);
+  const [showModalAgregarTipoAuto, setShowModalAgregarTipoAuto] = useState(false);
+  const [showModalEliminarTipoAuto, setShowModalEliminarTipoAuto] = useState(false);
+  const [tipoAutoAEliminar, setTipoAutoAEliminar] = useState<TipoAuto | null>(null);
+
+  // Estado para tabs de configuración
+  const [tabActivo, setTabActivo] = useState<'estados' | 'procesos' | 'autos' | 'tiempos'>('estados');
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
@@ -240,6 +249,77 @@ export function ConfiguracionesSIGL() {
         ? { 
             ...m, 
             tiposProcesos: (m.tiposProcesos || []).map(t => 
+              t.id === tipoId ? { ...t, ...cambios } : t
+            )
+          }
+        : m
+    ));
+    setCambiosPendientes(true);
+  };
+
+  // ============ FUNCIONES DE TIPOS DE AUTOS ============
+
+  const agregarTipoAuto = () => {
+    setShowModalAgregarTipoAuto(true);
+  };
+
+  const confirmarAgregarTipoAuto = () => {
+    if (!moduloActual || !moduloActual.tiposAutos) return;
+    
+    const nuevoTipo: TipoAuto = {
+      id: `auto-${Date.now()}`,
+      nombre: 'Nuevo Tipo de Auto',
+      descripcion: 'Descripción del nuevo tipo de auto procesal',
+      activo: true,
+    };
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposAutos: [...(m.tiposAutos || []), nuevoTipo] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalAgregarTipoAuto(false);
+    
+    toast.success('Tipo de auto agregado correctamente', {
+      description: 'Se ha agregado un nuevo tipo de auto procesal',
+      duration: 3000
+    });
+  };
+
+  const solicitarEliminarTipoAuto = (tipoId: string) => {
+    const tipo = moduloActual?.tiposAutos?.find(t => t.id === tipoId);
+    if (tipo) {
+      setTipoAutoAEliminar(tipo);
+      setShowModalEliminarTipoAuto(true);
+    }
+  };
+
+  const confirmarEliminarTipoAuto = () => {
+    if (!tipoAutoAEliminar) return;
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposAutos: (m.tiposAutos || []).filter(t => t.id !== tipoAutoAEliminar.id) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalEliminarTipoAuto(false);
+    
+    toast.success('Tipo de auto eliminado correctamente', {
+      description: `"${tipoAutoAEliminar.nombre}" ha sido eliminado de los tipos de autos procesales`,
+      duration: 3000
+    });
+    
+    setTipoAutoAEliminar(null);
+  };
+
+  const actualizarTipoAuto = (tipoId: string, cambios: Partial<TipoAuto>) => {
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            tiposAutos: (m.tiposAutos || []).map(t => 
               t.id === tipoId ? { ...t, ...cambios } : t
             )
           }
@@ -524,6 +604,89 @@ export function ConfiguracionesSIGL() {
                                 type="checkbox"
                                 checked={tipo.activo}
                                 onChange={(e) => actualizarTipoProceso(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Tipos de Autos - SOLO PARA DEFENSA JUDICIAL */}
+              {moduloActual.tiposAutos && moduloActual.tiposAutos.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Tipos de Autos Procesales
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de autos que estarán disponibles en el formulario de Nueva Demanda
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarTipoAuto}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Tipo</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.tiposAutos.map((tipo) => (
+                        <div 
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                        >
+                          {/* Fila 1: Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoAuto(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nombre del tipo de auto"
+                            />
+                            <button
+                              onClick={() => solicitarEliminarTipoAuto(tipo.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={tipo.descripcion}
+                              onChange={(e) => actualizarTipoAuto(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              placeholder="Descripción del tipo de auto..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            {/* Toggle Activo */}
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoAuto(tipo.id, { activo: e.target.checked })}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               <span className="text-xs sm:text-sm text-gray-700 font-medium">
@@ -824,6 +987,106 @@ export function ConfiguracionesSIGL() {
                 </button>
                 <button
                   onClick={confirmarEliminarTipoProceso}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Agregar Tipo de Auto */}
+      {showModalAgregarTipoAuto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Tipo de Auto</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de auto procesal?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarTipoAuto(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo tipo de auto con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarTipoAuto(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarTipoAuto}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar Tipo de Auto */}
+      {showModalEliminarTipoAuto && tipoAutoAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Auto</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de auto?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarTipoAuto(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Tipo: "{tipoAutoAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {tipoAutoAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de nueva demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarTipoAuto(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarTipoAuto}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
                 >
                   Eliminar Tipo

@@ -9,6 +9,7 @@
  * - 📬 Judiciales: Notificaciones oficiales de juzgados
  * - 📧 Correos: Emails entrantes con clasificación IA
  * - 📄 Oficios: Comunicaciones internas
+ * - 📤 Enviados: Comunicaciones enviadas
  * - ⚠️ Urgentes: Todas las comunicaciones urgentes
  * - 📦 Archivadas: Todas las archivadas
  */
@@ -19,7 +20,7 @@ import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star, Gavel, Scale, Briefcase
+  Filter, Star, Gavel, Scale, Briefcase, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -36,8 +37,8 @@ import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComun
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 
 // TIPOS UNIFICADOS
-type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
-type EstadoComunicacion = 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA';
+type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
+type EstadoComunicacion = 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA' | 'ENVIADA';
 
 interface ComunicacionUnificada {
   id: string;
@@ -46,6 +47,7 @@ interface ComunicacionUnificada {
   asunto: string;
   descripcion: string;
   remitente: string;
+  destinatario?: string; // Para comunicaciones enviadas
   despachoOrigen?: string;
   radicadoExterno?: string;
   fechaRadicacion: Date;
@@ -123,6 +125,22 @@ const comunicacionesUnificadas: ComunicacionUnificada[] = [
     estado: 'LEIDA',
     documentosAdjuntos: ['auto_admisorio.pdf']
   },
+  // ============= Generar más datos judiciales para demostrar paginación =============
+  ...Array.from({ length: 30 }, (_, i) => ({
+    id: `JUD-2024-${100 + i}`,
+    tipo: 'JUDICIAL' as const,
+    tipoProceso: ['Laboral', 'NRD', 'Acción Popular', 'Ejecutivo'][i % 4],
+    asunto: `Notificación judicial ${100 + i} - ${['Auto', 'Sentencia', 'Audiencia', 'Requerimiento'][i % 4]}`,
+    descripcion: `Descripción de la comunicación judicial número ${100 + i}`,
+    remitente: `Juzgado ${(i % 10) + 1} ${['Laboral', 'Administrativo', 'Civil'][i % 3]} Bogotá`,
+    despachoOrigen: `Juzgado ${(i % 10) + 1}`,
+    radicadoExterno: `11001-31-${String(i + 1).padStart(2, '0')}-${2024}-${String(i + 500).padStart(5, '0')}-00`,
+    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
+    urgente: i % 5 === 0,
+    leida: i % 3 === 0,
+    estado: (i % 3 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
+    documentosAdjuntos: [`documento_${i + 1}.pdf`]
+  })),
 
   // ============= CORREOS (Emails con clasificación IA) =============
   {
@@ -159,81 +177,82 @@ const comunicacionesUnificadas: ComunicacionUnificada[] = [
       confianza: 99
     }
   },
+  // ============= Generar más correos =============
+  ...Array.from({ length: 25 }, (_, i) => ({
+    id: `EMAIL-2024-${200 + i}`,
+    tipo: 'CORREO' as const,
+    asunto: `Correo electrónico ${200 + i} - ${['Consulta', 'Solicitud', 'Notificación', 'Información'][i % 4]}`,
+    descripcion: `Contenido del correo número ${200 + i}`,
+    remitente: ['contratacion@esap.edu.co', 'juridica@esap.edu.co', 'admin@esap.edu.co', 'externo@gobierno.co'][i % 4],
+    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
+    urgente: i % 7 === 0,
+    leida: i % 4 === 0,
+    estado: (i % 4 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
+    documentosAdjuntos: [`correo_${i + 1}.pdf`],
+    clasificacionIA: {
+      tipoDetectado: ['Consulta Interna', 'Órgano Control', 'PQRS', 'Solicitud Info'][i % 4],
+      moduloSugerido: ['MOD-03: Asesoría', 'MOD-07: Control', 'MOD-04: Notif.', 'MOD-01: Defensa'][i % 4],
+      confianza: 85 + (i % 15)
+    }
+  })),
+
+  // ============= OFICIOS (Comunicaciones formales) =============
   {
-    id: 'EMAIL-2024-234',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de concepto - Modificación estatutaria',
-    descripcion: 'Secretaría General solicita concepto jurídico sobre reforma de estatutos',
-    remitente: 'secretariageneral@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-22'),
-    urgente: false,
+    id: 'OFICIO-2025-001',
+    tipo: 'OFICIO',
+    asunto: 'Oficio Procuraduría - Solicitud de información sobre proceso disciplinario',
+    descripcion: 'Procuraduría General solicita información de proceso disciplinario interno',
+    remitente: 'Procuraduría General de la Nación',
+    fechaRadicacion: new Date('2024-12-23'),
+    urgente: true,
     leida: false,
     estado: 'PENDIENTE',
-    documentosAdjuntos: ['proyecto_reforma.docx'],
-    clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 97
-    }
+    documentosAdjuntos: ['oficio_procuraduria.pdf']
   },
+  // ============= Generar más oficios =============
+  ...Array.from({ length: 20 }, (_, i) => ({
+    id: `OFICIO-2024-${300 + i}`,
+    tipo: 'OFICIO' as const,
+    asunto: `Oficio ${300 + i} - ${['Solicitud', 'Requerimiento', 'Información', 'Respuesta'][i % 4]}`,
+    descripcion: `Contenido del oficio número ${300 + i}`,
+    remitente: ['Contraloría', 'Procuraduría', 'Ministerio Público', 'Ente Territorial'][i % 4],
+    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
+    urgente: i % 6 === 0,
+    leida: i % 5 === 0,
+    estado: (i % 5 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
+    documentosAdjuntos: [`oficio_${i + 1}.pdf`]
+  })),
+
+  // ============= ENVIADOS (Comunicaciones enviadas) =============
   {
-    id: 'EMAIL-2024-233',
-    tipo: 'CORREO',
-    asunto: 'PQRS ciudadana - Solicitud información procesos judiciales',
-    descripcion: 'Ciudadano solicita información sobre estado de demanda contra ESAP',
-    remitente: 'juan.perez@example.com',
-    fechaRadicacion: new Date('2024-12-21'),
+    id: 'ENV-2025-001',
+    tipo: 'ENVIADO',
+    asunto: 'Respuesta a demanda DJ-2024-089',
+    descripcion: 'Respuesta a demanda laboral presentada por Juan Pérez',
+    remitente: 'Oficina Asesora Jurídica',
+    destinatario: 'Juzgado 3 Laboral Circuito Bogotá',
+    fechaRadicacion: new Date('2024-12-24'),
     urgente: false,
     leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['solicitud_pqrs.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'PQRS Externa',
-      moduloSugerido: 'MOD-04: Gestión PQRS',
-      confianza: 96
-    }
-  },
-
-  // ============= OFICIOS (Documentos internos) =============
-  {
-    id: 'OFIC-2025-001',
-    tipo: 'OFICIO',
-    asunto: 'Oficio 001-2025 - Instrucciones para contestación de tutelas',
-    descripcion: 'Rectoría emite instrucciones para contestación oportuna de acciones de tutela',
-    remitente: 'Rectoría Nacional',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_001_2025.pdf']
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['respuesta_demandajudicial.pdf']
   },
   {
-    id: 'OFIC-2024-089',
-    tipo: 'OFICIO',
+    id: 'ENV-2025-002',
+    tipo: 'ENVIADO',
     asunto: 'Circular Jurídica - Actualización normativa Ley 2294 de 2023',
     descripcion: 'Circular sobre aplicación de nueva ley anticorrupción en contratación',
     remitente: 'Oficina Asesora Jurídica',
+    destinatario: 'Todas las áreas',
     fechaRadicacion: new Date('2024-12-20'),
     urgente: false,
     leida: true,
-    estado: 'LEIDA',
+    estado: 'ENVIADA',
     documentosAdjuntos: ['circular_juridica_089.pdf', 'ley_2294.pdf']
-  },
-  {
-    id: 'OFIC-2024-088',
-    tipo: 'OFICIO',
-    asunto: 'Memorando - Socialización de nuevo sistema SIGL',
-    descripcion: 'Invitación a capacitación sobre el Sistema Integral de Gestión Legal (SIGL)',
-    remitente: 'Dirección TI',
-    fechaRadicacion: new Date('2024-12-18'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['invitacion_capacitacion.pdf']
   }
 ];
 
-type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'urgentes' | 'archivadas';
+type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
@@ -253,6 +272,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [comunicacionParaExpediente, setComunicacionParaExpediente] = useState<ComunicacionUnificada | null>(null);
+
+  // ✨ Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 50;
 
   // Debug: Monitorear cambios en el estado del modal
   useEffect(() => {
@@ -292,6 +315,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       case 'oficios':
         resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA');
         break;
+      case 'enviados':
+        resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA');
+        break;
       case 'urgentes':
         resultado = resultado.filter(c => c.urgente && c.estado !== 'ARCHIVADA');
         break;
@@ -317,6 +343,19 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     });
   }, [comunicaciones, tabActiva, busqueda]);
 
+  // ✨ Aplicar paginación
+  const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
+  const comunicacionesPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    const fin = inicio + ITEMS_POR_PAGINA;
+    return comunicacionesFiltradas.slice(inicio, fin);
+  }, [comunicacionesFiltradas, paginaActual, ITEMS_POR_PAGINA]);
+
+  // Resetear página cuando cambian filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [tabActiva, busqueda]);
+
   // Calcular estadísticas
   const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
   const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
@@ -326,6 +365,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
     correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
     oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
@@ -540,6 +580,14 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             color="#6B7280"
           />
           <TabButton
+            active={tabActiva === 'enviados'}
+            onClick={() => setTabActiva('enviados')}
+            icon={<Send className="w-4 h-4" />}
+            label="Enviados"
+            count={contadoresTabs.enviados}
+            color="#6B7280"
+          />
+          <TabButton
             active={tabActiva === 'urgentes'}
             onClick={() => setTabActiva('urgentes')}
             icon={<AlertTriangle className="w-4 h-4" />}
@@ -597,7 +645,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Vista Inbox (Gmail style) */}
       {tipoVista === 'inbox' && (
         <VistaInbox
-          comunicaciones={comunicacionesFiltradas}
+          comunicaciones={comunicacionesPaginadas}
           comunicacionSeleccionada={comunicacionSeleccionada}
           onSeleccionar={setComunicacionSeleccionada}
           seleccionadas={seleccionadas}
@@ -620,10 +668,70 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaLista
-          comunicaciones={comunicacionesFiltradas}
+          comunicaciones={comunicacionesPaginadas}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
         />
+      )}
+
+      {/* Controles de Paginación */}
+      {comunicacionesFiltradas.length > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600">
+              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, comunicacionesFiltradas.length)} de {comunicacionesFiltradas.length} comunicaciones
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1 || totalPaginas <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={paginaActual === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                      disabled={totalPaginas <= 1}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+              >
+                Siguiente
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Modal Nueva Comunicación */}
@@ -800,7 +908,8 @@ function ItemComunicacion({
   const iconoTipo = {
     JUDICIAL: <Gavel className="w-4 h-4 text-blue-600" />,
     CORREO: <Mail className="w-4 h-4 text-gray-600" />,
-    OFICIO: <FileText className="w-4 h-4 text-gray-600" />
+    OFICIO: <FileText className="w-4 h-4 text-gray-600" />,
+    ENVIADO: <Send className="w-4 h-4 text-gray-600" />
   };
 
   return (
@@ -894,7 +1003,8 @@ function VistaPreviaComunicacion({
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' }
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' }
   };
 
   return (
@@ -1027,7 +1137,8 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' }
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' }
   };
 
   return (

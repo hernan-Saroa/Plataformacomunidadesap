@@ -398,21 +398,6 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
                 )}
               </div>
             </Card>
-
-            {/* Información */}
-            <Card className="p-4 bg-amber-50 border-amber-200">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div className="space-y-2">
-                  <h4 className="font-bold text-amber-900">Clasificación Automática IA</h4>
-                  <ul className="text-sm text-amber-800 space-y-1 list-disc pl-5">
-                    <li>El sistema analizará el contenido y sugerirá el módulo destino</li>
-                    <li>Las comunicaciones urgentes se priorizan automáticamente</li>
-                    <li>Se notificará al responsable correspondiente</li>
-                  </ul>
-                </div>
-              </div>
-            </Card>
           </form>
         </div>
 

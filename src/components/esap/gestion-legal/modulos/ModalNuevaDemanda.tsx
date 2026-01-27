@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { Scale, User, Calendar, FileText, Building2, AlertCircle, Save, MapPin, DollarSign, Gavel, Plus, X, UserPlus } from 'lucide-react';
+import { Scale, User, Calendar, FileText, Building2, AlertCircle, Save, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Users } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Button } from '../../../ui/button';
@@ -29,6 +29,20 @@ export interface NuevaDemandaData {
     nombre: string;
     tipoPersona: 'natural' | 'juridica';
     identificacion: string;
+  }>;
+  demandados: Array<{
+    id: string;
+    nombre: string;
+    tipoPersona: 'natural' | 'juridica';
+    identificacion: string;
+    cargo?: string;
+  }>;
+  otrosActores: Array<{
+    id: string;
+    nombre: string;
+    tipoPersona: 'natural' | 'juridica';
+    identificacion: string;
+    rol: string; // Tercero, Ministerio Público, etc.
   }>;
   cuantia: string;
   juzgado: string;
@@ -92,6 +106,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     medioControl: '',
     tipoProceso: '',
     demandantes: [],
+    demandados: [],
+    otrosActores: [],
     cuantia: '',
     juzgado: '',
     ciudad: '',
@@ -110,6 +126,22 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
     identificacion: ''
+  });
+
+  // Estado para el demandado temporal que se está agregando
+  const [nuevoDemandado, setNuevoDemandado] = useState({
+    nombre: '',
+    tipoPersona: 'natural' as 'natural' | 'juridica',
+    identificacion: '',
+    cargo: ''
+  });
+
+  // Estado para el otro actor temporal que se está agregando
+  const [nuevoOtroActor, setNuevoOtroActor] = useState({
+    nombre: '',
+    tipoPersona: 'natural' as 'natural' | 'juridica',
+    identificacion: '',
+    rol: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -173,6 +205,112 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     });
   };
 
+  // Agregar demandado a la lista
+  const handleAgregarDemandado = () => {
+    if (!nuevoDemandado.nombre.trim()) {
+      toast.error('⚠️ Nombre incompleto', {
+        description: 'Ingrese el nombre completo del demandado'
+      });
+      return;
+    }
+    if (!nuevoDemandado.identificacion.trim()) {
+      toast.error('⚠️ Identificación incompleta', {
+        description: 'Ingrese la identificación del demandado'
+      });
+      return;
+    }
+
+    const demandado = {
+      id: `DEMAN-${Date.now()}`,
+      nombre: nuevoDemandado.nombre,
+      tipoPersona: nuevoDemandado.tipoPersona,
+      identificacion: nuevoDemandado.identificacion,
+      cargo: nuevoDemandado.cargo
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      demandados: [...prev.demandados, demandado]
+    }));
+
+    // Limpiar formulario de nuevo demandado
+    setNuevoDemandado({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: '',
+      cargo: ''
+    });
+
+    toast.success('✅ Demandado agregado', {
+      description: `${demandado.nombre} agregado a la lista`
+    });
+  };
+
+  // Eliminar demandado de la lista
+  const handleEliminarDemandado = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      demandados: prev.demandados.filter(d => d.id !== id)
+    }));
+    
+    toast.info('🗑️ Demandado eliminado', {
+      description: 'El demandado ha sido removido de la lista'
+    });
+  };
+
+  // Agregar otro actor a la lista
+  const handleAgregarOtroActor = () => {
+    if (!nuevoOtroActor.nombre.trim()) {
+      toast.error('⚠️ Nombre incompleto', {
+        description: 'Ingrese el nombre completo del otro actor'
+      });
+      return;
+    }
+    if (!nuevoOtroActor.identificacion.trim()) {
+      toast.error('⚠️ Identificación incompleta', {
+        description: 'Ingrese la identificación del otro actor'
+      });
+      return;
+    }
+
+    const otroActor = {
+      id: `OTRO-${Date.now()}`,
+      nombre: nuevoOtroActor.nombre,
+      tipoPersona: nuevoOtroActor.tipoPersona,
+      identificacion: nuevoOtroActor.identificacion,
+      rol: nuevoOtroActor.rol
+    };
+
+    setFormData(prev => ({
+      ...prev,
+      otrosActores: [...prev.otrosActores, otroActor]
+    }));
+
+    // Limpiar formulario de nuevo otro actor
+    setNuevoOtroActor({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: '',
+      rol: ''
+    });
+
+    toast.success('✅ Otro actor agregado', {
+      description: `${otroActor.nombre} agregado a la lista`
+    });
+  };
+
+  // Eliminar otro actor de la lista
+  const handleEliminarOtroActor = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      otrosActores: prev.otrosActores.filter(d => d.id !== id)
+    }));
+    
+    toast.info('🗑️ Otro actor eliminado', {
+      description: 'El otro actor ha sido removido de la lista'
+    });
+  };
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -228,6 +366,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       medioControl: '',
       tipoProceso: '',
       demandantes: [],
+      demandados: [],
+      otrosActores: [],
       cuantia: '',
       juzgado: '',
       ciudad: '',
@@ -244,6 +384,18 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       nombre: '',
       tipoPersona: 'natural',
       identificacion: ''
+    });
+    setNuevoDemandado({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: '',
+      cargo: ''
+    });
+    setNuevoOtroActor({
+      nombre: '',
+      tipoPersona: 'natural',
+      identificacion: '',
+      rol: ''
     });
     setErrors({});
     
@@ -543,6 +695,334 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-xs text-gray-500 font-medium">
                     No hay demandantes agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Sección 2.5: Datos de Demandados - ✅ SECCIÓN AGREGADA PARA ESAP */}
+            <div className="bg-gradient-to-br from-red-50 to-white p-4 rounded-lg border-l-4 border-l-red-500">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-red-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-red-600" />
+                  DATOS DEL DEMANDADO(S)
+                </h3>
+                <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+                  {formData.demandados.length} agregado(s)
+                </span>
+              </div>
+
+              {/* ✅ FORMULARIO PARA AGREGAR DEMANDADO */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-red-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-red-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandado</h4>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
+                    </label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaDemandado"
+                          value="natural"
+                          checked={nuevoDemandado.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#DC2626' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaDemandado"
+                          value="juridica"
+                          checked={nuevoDemandado.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#DC2626' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Segunda fila: Identificación, Nombre, Cargo y Botón */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoDemandado.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.identificacion}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, identificacion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder={nuevoDemandado.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                      />
+                    </div>
+
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.nombre}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, nombre: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Nombre completo del demandado"
+                      />
+                    </div>
+
+                    {/* Cargo (Opcional) */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Cargo / Función (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.cargo}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, cargo: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Ej: Rector, Director, etc."
+                      />
+                    </div>
+
+                    {/* Botón Agregar */}
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={handleAgregarDemandado}
+                        className="w-full text-white text-xs font-bold"
+                        style={{ background: '#DC2626' }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ LISTA DE DEMANDADOS AGREGADOS */}
+              {formData.demandados.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.demandados.map((demandado, index) => (
+                    <div 
+                      key={demandado.id} 
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-red-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{demandado.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {demandado.tipoPersona}
+                            </span>
+                            {demandado.cargo && (
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                                {demandado.cargo}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandado.identificacion}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarDemandado(demandado.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay demandados agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Sección 2.6: Datos de Otros Actores - ✅ SECCIÓN AGREGADA PARA ESAP */}
+            <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-gray-600" />
+                  DATOS DE OTROS ACTORES
+                </h3>
+                <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-bold rounded-full">
+                  {formData.otrosActores.length} agregado(s)
+                </span>
+              </div>
+
+              {/* ✅ FORMULARIO PARA AGREGAR OTRO ACTOR */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-gray-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-gray-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Otro Actor</h4>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
+                    </label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaOtroActor"
+                          value="natural"
+                          checked={nuevoOtroActor.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaOtroActor"
+                          value="juridica"
+                          checked={nuevoOtroActor.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Segunda fila: Identificación, Nombre, Rol y Botón */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoOtroActor.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.identificacion}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, identificacion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder={nuevoOtroActor.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                      />
+                    </div>
+
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.nombre}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, nombre: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Nombre completo del otro actor"
+                      />
+                    </div>
+
+                    {/* Rol */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Rol
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.rol}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, rol: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Ej: Tercero, Ministerio Público, etc."
+                      />
+                    </div>
+
+                    {/* Botón Agregar */}
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={handleAgregarOtroActor}
+                        className="w-full text-white text-xs font-bold"
+                        style={{ background: '#2962FF' }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ LISTA DE OTROS ACTORES AGREGADOS */}
+              {formData.otrosActores.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.otrosActores.map((otroActor, index) => (
+                    <div 
+                      key={otroActor.id} 
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{otroActor.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {otroActor.tipoPersona}
+                            </span>
+                            {otroActor.rol && (
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                                {otroActor.rol}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {otroActor.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {otroActor.identificacion}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarOtroActor(otroActor.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay otros actores agregados. Use el formulario arriba para agregar.
                   </p>
                 </div>
               )}

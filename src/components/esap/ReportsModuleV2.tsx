@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════
  * 
  * CARACTERÍSTICAS:
- * ✅ 60+ reportes predefinidos cubriendo TODOS los módulos
+ * ✅ Reportes predefinidos cubriendo los módulos principales (OPTIMIZADO)
  * ✅ Constructor visual de reportes personalizados (Report Builder)
  * ✅ Sistema de filtros inteligentes con jerarquía territorial
  * ✅ Exportación multi-formato (CSV, Excel, PDF)
@@ -13,20 +13,19 @@
  * ✅ Permisos granulares por módulo y territorio
  * ✅ Vista previa en tiempo real
  * 
- * MÓDULOS CUBIERTOS (13 módulos):
+ * MÓDULOS CUBIERTOS (12 módulos):
  * 1. Dashboard Ejecutivo
  * 2. Usuarios (Gestión de Personas)
  * 3. Estructura Organizacional
  * 4. Programas Académicos
  * 5. Roles y Permisos
  * 6. Auditoría
- * 7. Registro + Identidades
- * 8. Aspirantes
- * 9. Bolsa de Empleo
- * 10. Certificados Laborales
- * 11. Gestión Profesoral
- * 12. Control Interno
- * 13. Verificación de Títulos
+ * 7. Aspirantes
+ * 8. Bolsa de Empleo
+ * 9. Certificados Laborales
+ * 10. Gestión Profesoral
+ * 11. Control Interno
+ * 12. Verificación de Títulos
  */
 
 import { useState } from 'react';
@@ -58,7 +57,7 @@ import { UnifiedStatsCards, StatCardData } from './UnifiedStatsCards';
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Categorías actualizadas para cubrir TODOS los módulos del sistema
+ * Categorías de reportes (12 módulos principales - OPTIMIZADO)
  */
 type ReportCategory = 
   | 'dashboard'           // Dashboard Ejecutivo
@@ -67,14 +66,12 @@ type ReportCategory =
   | 'programas'           // Programas Académicos
   | 'roles'               // Roles y Permisos
   | 'auditoria'           // Auditoría
-  | 'registro'            // Registro e Identidades
   | 'aspirantes'          // Aspirantes
   | 'empleo'              // Bolsa de Empleo
   | 'certificados-lab'    // Certificados Laborales
   | 'profesoral'          // Gestión Profesoral
   | 'control-interno'     // Control Interno
-  | 'verificacion'        // Verificación de Títulos
-  | 'cross-modulo';       // Reportes que cruzan múltiples módulos
+  | 'verificacion';       // Verificación de Títulos
 
 type ExportFormat = 'csv' | 'excel' | 'pdf' | 'json';
 type ReportStatus = 'disponible' | 'generando' | 'error';
@@ -117,7 +114,7 @@ interface SavedReportConfig {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CATÁLOGO COMPLETO DE REPORTES (60+ reportes)
+// CATÁLOGO DE REPORTES - OPTIMIZADO (12 reportes representativos)
 // ═══════════════════════════════════════════════════════════════
 
 const REPORTES_PREDEFINIDOS: Report[] = [
@@ -137,29 +134,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     soportaFiltroTerritorial: true,
     favorito: true,
   },
-  {
-    id: 'DASH-002',
-    nombre: 'Indicadores por Territorial',
-    descripcion: 'Comparativa de indicadores clave entre las 17 territoriales de ESAP',
-    categoria: 'dashboard',
-    registros: 17,
-    tamanoEstimado: '180 KB',
-    campos: ['Territorial', 'Usuarios Activos', 'Programas', 'Aspirantes', 'Graduados', 'Empleabilidad %'],
-    filtrosDisponibles: ['Territorio', 'Período'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'DASH-003',
-    nombre: 'Evolución Temporal de Métricas',
-    descripcion: 'Serie temporal de métricas clave para análisis de tendencias',
-    categoria: 'dashboard',
-    registros: 365,
-    tamanoEstimado: '1.2 MB',
-    campos: ['Fecha', 'Usuarios Activos', 'Nuevos Registros', 'Certificados Emitidos', 'Ofertas Laborales'],
-    filtrosDisponibles: ['Rango de Fechas', 'Granularidad (día/semana/mes)'],
-    estado: 'disponible',
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: USUARIOS Y PERSONAS
@@ -178,40 +152,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     soportaFiltroTerritorial: true,
     favorito: true,
   },
-  {
-    id: 'USU-002',
-    nombre: 'Personas con Múltiples Roles',
-    descripcion: 'Usuarios con rol simultáneo (ej: admin + estudiante + graduado)',
-    categoria: 'usuarios',
-    registros: 342,
-    tamanoEstimado: '890 KB',
-    campos: ['Nombre', 'Documento', 'Roles Asignados', 'Fecha de Asignación', 'Estado'],
-    filtrosDisponibles: ['Combinación de Roles', 'Estado'],
-    estado: 'disponible',
-  },
-  {
-    id: 'USU-003',
-    nombre: 'Distribución Territorial de Usuarios',
-    descripcion: 'Usuarios organizados por jerarquía Nacional > Territorial > Regional > Sede',
-    categoria: 'usuarios',
-    registros: 1247,
-    tamanoEstimado: '1.8 MB',
-    campos: ['Territorial', 'Regional', 'Sede', 'Total Usuarios', 'Activos', 'Inactivos', '% Ocupación'],
-    filtrosDisponibles: ['Nivel Territorial', 'Estado'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'USU-004',
-    nombre: 'Usuarios Inactivos',
-    descripcion: 'Usuarios sin conexión en los últimos 90 días',
-    categoria: 'usuarios',
-    registros: 156,
-    tamanoEstimado: '420 KB',
-    campos: ['Nombre', 'Email', 'Última Conexión', 'Días Inactivo', 'Rol', 'Estado'],
-    filtrosDisponibles: ['Días de Inactividad', 'Rol'],
-    estado: 'disponible',
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: ESTRUCTURA ORGANIZACIONAL
@@ -229,18 +169,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     soportaFiltroTerritorial: true,
     favorito: true,
   },
-  {
-    id: 'EST-002',
-    nombre: 'Capacidad por Sede',
-    descripcion: 'Capacidad instalada y ocupación actual por cada sede',
-    categoria: 'estructura',
-    registros: 71,
-    tamanoEstimado: '480 KB',
-    campos: ['Sede', 'Territorial', 'Capacidad Total', 'Estudiantes Actuales', '% Ocupación', 'Estado'],
-    filtrosDisponibles: ['Territorial', '% Ocupación'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: PROGRAMAS ACADÉMICOS
@@ -256,29 +184,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     filtrosDisponibles: ['Nivel', 'Modalidad', 'Sede', 'Estado'],
     estado: 'disponible',
     soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'PROG-002',
-    nombre: 'Programas por Sede',
-    descripcion: 'Oferta académica disponible en cada sede',
-    categoria: 'programas',
-    registros: 456,
-    tamanoEstimado: '980 KB',
-    campos: ['Sede', 'Territorial', 'Programa', 'Nivel', 'Cupos Disponibles', 'Matriculados', 'Estado'],
-    filtrosDisponibles: ['Sede', 'Territorial', 'Nivel', 'Estado'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'PROG-003',
-    nombre: 'Estadísticas de Matrícula por Programa',
-    descripcion: 'Indicadores de matrícula, deserción y graduación por programa',
-    categoria: 'programas',
-    registros: 234,
-    tamanoEstimado: '750 KB',
-    campos: ['Programa', 'Total Matriculados', 'Nuevos Ingresos', 'Desertores', 'Graduados', '% Retención'],
-    filtrosDisponibles: ['Programa', 'Período', 'Sede'],
-    estado: 'disponible',
   },
 
   // ─────────────────────────────────────────────────────────────
@@ -297,28 +202,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     estado: 'disponible',
     favorito: true,
   },
-  {
-    id: 'ROL-002',
-    nombre: 'Matriz de Permisos',
-    descripcion: 'Matriz completa: Roles vs Permisos del sistema',
-    categoria: 'roles',
-    registros: 960, // 48 roles x ~20 permisos
-    tamanoEstimado: '1.4 MB',
-    campos: ['Rol', 'Módulo', 'Permiso', 'Acceso', 'Nivel'],
-    filtrosDisponibles: ['Rol', 'Módulo', 'Tipo de Permiso'],
-    estado: 'disponible',
-  },
-  {
-    id: 'ROL-003',
-    nombre: 'Usuarios con Acceso 2FA',
-    descripcion: 'Listado de usuarios con autenticación de dos factores habilitada',
-    categoria: 'roles',
-    registros: 89,
-    tamanoEstimado: '290 KB',
-    campos: ['Usuario', 'Email', 'Rol', 'Método 2FA', 'Fecha Activación', 'Último Uso'],
-    filtrosDisponibles: ['Rol', 'Método 2FA'],
-    estado: 'disponible',
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: AUDITORÍA
@@ -336,69 +219,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     estado: 'disponible',
     requierePermiso: 'audit:read:full',
   },
-  {
-    id: 'AUD-002',
-    nombre: 'Anomalías Detectadas',
-    descripcion: 'Eventos sospechosos o fuera de patrón detectados por el sistema',
-    categoria: 'auditoria',
-    registros: 47,
-    tamanoEstimado: '380 KB',
-    campos: ['Fecha', 'Usuario', 'Tipo de Anomalía', 'Descripción', 'Severidad', 'Estado'],
-    filtrosDisponibles: ['Tipo de Anomalía', 'Severidad', 'Estado', 'Fecha'],
-    estado: 'disponible',
-    requierePermiso: 'audit:read:anomalies',
-  },
-  {
-    id: 'AUD-003',
-    nombre: 'Acciones por Usuario',
-    descripcion: 'Historial de acciones agrupado por usuario',
-    categoria: 'auditoria',
-    registros: 1247,
-    tamanoEstimado: '2.1 MB',
-    campos: ['Usuario', 'Total Acciones', 'Última Acción', 'Módulos Accedidos', 'IPs Utilizadas'],
-    filtrosDisponibles: ['Usuario', 'Período', 'Módulo'],
-    estado: 'disponible',
-    requierePermiso: 'audit:read:full',
-  },
-  {
-    id: 'AUD-004',
-    nombre: 'Timeline de Eventos Críticos',
-    descripcion: 'Línea temporal de eventos de alta prioridad',
-    categoria: 'auditoria',
-    registros: 234,
-    tamanoEstimado: '620 KB',
-    campos: ['Timestamp', 'Evento', 'Usuario', 'Descripción', 'Impacto', 'Resolución'],
-    filtrosDisponibles: ['Tipo de Evento', 'Período', 'Impacto'],
-    estado: 'disponible',
-    requierePermiso: 'audit:read:critical',
-  },
-
-  // ─────────────────────────────────────────────────────────────
-  // CATEGORÍA: REGISTRO E IDENTIDADES
-  // ─────────────────────────────────────────────────────────────
-  {
-    id: 'REG-001',
-    nombre: 'Registro de Identidades Únicas',
-    descripcion: 'Personas registradas en el sistema con identidad única (puede tener múltiples roles)',
-    categoria: 'registro',
-    registros: 1089,
-    tamanoEstimado: '1.9 MB',
-    campos: ['Documento', 'Nombre', 'Email Personal', 'Teléfono', 'Roles Asignados', 'Estado', 'Fecha Registro'],
-    filtrosDisponibles: ['Estado', 'Número de Roles', 'Fecha Registro'],
-    estado: 'disponible',
-  },
-  {
-    id: 'REG-002',
-    nombre: 'Nuevos Registros por Período',
-    descripcion: 'Usuarios registrados en un rango de fechas específico',
-    categoria: 'registro',
-    registros: 456,
-    tamanoEstimado: '980 KB',
-    campos: ['Fecha Registro', 'Nombre', 'Email', 'Rol Inicial', 'Sede', 'Estado'],
-    filtrosDisponibles: ['Rango de Fechas', 'Rol Inicial', 'Sede'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: ASPIRANTES
@@ -412,18 +232,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     tamanoEstimado: '1.3 MB',
     campos: ['Nombre', 'Documento', 'Programa Solicitado', 'Sede', 'Estado', 'Fecha Solicitud', 'Puntaje'],
     filtrosDisponibles: ['Programa', 'Sede', 'Estado', 'Rango de Puntaje'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'ASP-002',
-    nombre: 'Estadísticas de Admisión',
-    descripcion: 'Métricas de proceso de admisión por programa y sede',
-    categoria: 'aspirantes',
-    registros: 234,
-    tamanoEstimado: '670 KB',
-    campos: ['Programa', 'Sede', 'Total Aspirantes', 'Admitidos', 'En Proceso', 'Rechazados', '% Admisión'],
-    filtrosDisponibles: ['Programa', 'Sede', 'Período'],
     estado: 'disponible',
     soportaFiltroTerritorial: true,
   },
@@ -442,39 +250,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     filtrosDisponibles: ['Ubicación', 'Tipo Contrato', 'Rango Salarial', 'Fecha'],
     estado: 'disponible',
   },
-  {
-    id: 'EMP-002',
-    nombre: 'Postulaciones por Graduado',
-    descripcion: 'Historial de postulaciones de cada graduado',
-    categoria: 'empleo',
-    registros: 456,
-    tamanoEstimado: '1.2 MB',
-    campos: ['Graduado', 'Documento', 'Programa', 'Ofertas Postuladas', 'Entrevistas', 'Contrataciones', 'Última Postulación'],
-    filtrosDisponibles: ['Programa', 'Estado', 'Período'],
-    estado: 'disponible',
-  },
-  {
-    id: 'EMP-003',
-    nombre: 'Empresas Aliadas',
-    descripcion: 'Empresas registradas que publican ofertas',
-    categoria: 'empleo',
-    registros: 89,
-    tamanoEstimado: '420 KB',
-    campos: ['Empresa', 'NIT', 'Sector', 'Ciudad', 'Ofertas Publicadas', 'Contrataciones', 'Estado'],
-    filtrosDisponibles: ['Sector', 'Ciudad', 'Estado'],
-    estado: 'disponible',
-  },
-  {
-    id: 'EMP-004',
-    nombre: 'Indicadores de Empleabilidad',
-    descripcion: 'Métricas de inserción laboral por programa',
-    categoria: 'empleo',
-    registros: 234,
-    tamanoEstimado: '780 KB',
-    campos: ['Programa', 'Graduados', 'Empleados', '% Empleabilidad', 'Tiempo Promedio Inserción', 'Salario Promedio'],
-    filtrosDisponibles: ['Programa', 'Período'],
-    estado: 'disponible',
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: CERTIFICADOS LABORALES
@@ -488,18 +263,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     tamanoEstimado: '920 KB',
     campos: ['Fecha Emisión', 'Empleado', 'Cargo', 'Período Laboral', 'Solicitante', 'Estado', 'Código'],
     filtrosDisponibles: ['Fecha Emisión', 'Estado', 'Solicitante'],
-    estado: 'disponible',
-    requierePermiso: 'certs:labor:read',
-  },
-  {
-    id: 'CERT-LAB-002',
-    nombre: 'Solicitudes Pendientes',
-    descripcion: 'Certificados solicitados pendientes de aprobación',
-    categoria: 'certificados-lab',
-    registros: 23,
-    tamanoEstimado: '180 KB',
-    campos: ['Fecha Solicitud', 'Empleado', 'Tipo Certificado', 'Solicitante', 'Días Pendiente', 'Prioridad'],
-    filtrosDisponibles: ['Días Pendiente', 'Tipo', 'Prioridad'],
     estado: 'disponible',
     requierePermiso: 'certs:labor:read',
   },
@@ -519,29 +282,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     estado: 'disponible',
     soportaFiltroTerritorial: true,
   },
-  {
-    id: 'PROF-002',
-    nombre: 'Convocatorias de Docentes',
-    descripcion: 'Historial de convocatorias para plazas docentes',
-    categoria: 'profesoral',
-    registros: 78,
-    tamanoEstimado: '580 KB',
-    campos: ['Código', 'Cargo', 'Perfil', 'Sede', 'Fecha Apertura', 'Postulantes', 'Estado'],
-    filtrosDisponibles: ['Sede', 'Estado', 'Fecha'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'PROF-003',
-    nombre: 'Evaluación Docente',
-    descripcion: 'Resultados de evaluación de desempeño docente',
-    categoria: 'profesoral',
-    registros: 456,
-    tamanoEstimado: '1.1 MB',
-    campos: ['Docente', 'Programa', 'Período', 'Puntaje Global', 'Dimensiones', 'Observaciones'],
-    filtrosDisponibles: ['Período', 'Programa', 'Rango de Puntaje'],
-    estado: 'disponible',
-  },
 
   // ─────────────────────────────────────────────────────────────
   // CATEGORÍA: CONTROL INTERNO
@@ -555,18 +295,6 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     tamanoEstimado: '670 KB',
     campos: ['Código', 'Tipo Hallazgo', 'Descripción', 'Área', 'Responsable', 'Fecha Detección', 'Estado', 'Severidad'],
     filtrosDisponibles: ['Tipo', 'Área', 'Severidad', 'Estado', 'Fecha'],
-    estado: 'disponible',
-    requierePermiso: 'control:interno:read',
-  },
-  {
-    id: 'CI-002',
-    nombre: 'Planes de Mejoramiento',
-    descripcion: 'Planes de acción para mitigar hallazgos',
-    categoria: 'control-interno',
-    registros: 89,
-    tamanoEstimado: '520 KB',
-    campos: ['Hallazgo', 'Plan de Acción', 'Responsable', 'Fecha Compromiso', 'Avance %', 'Estado'],
-    filtrosDisponibles: ['Estado', 'Responsable', 'Fecha'],
     estado: 'disponible',
     requierePermiso: 'control:interno:read',
   },
@@ -585,111 +313,8 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     filtrosDisponibles: ['Estado', 'Programa', 'Fecha', 'Entidad'],
     estado: 'disponible',
   },
-  {
-    id: 'VER-002',
-    nombre: 'Solicitudes de Revisión',
-    descripcion: 'Casos donde NO se encontró al graduado en la base de datos',
-    categoria: 'verificacion',
-    registros: 34,
-    tamanoEstimado: '280 KB',
-    campos: ['Fecha Solicitud', 'Nombre Consultado', 'Documento', 'Programa', 'Entidad Solicitante', 'Estado Revisión'],
-    filtrosDisponibles: ['Estado', 'Fecha', 'Entidad'],
-    estado: 'disponible',
-  },
-  {
-    id: 'VER-003',
-    nombre: 'Historial de Validaciones QR',
-    descripcion: 'Registro de escaneos y validaciones de certificados',
-    categoria: 'verificacion',
-    registros: 2341,
-    tamanoEstimado: '3.2 MB',
-    campos: ['Timestamp', 'Código QR', 'Graduado', 'IP Origen', 'Ubicación', 'Dispositivo', 'Resultado'],
-    filtrosDisponibles: ['Fecha', 'Resultado', 'Ubicación'],
-    estado: 'disponible',
-  },
-  {
-    id: 'VER-004',
-    nombre: 'Egresados por Programa',
-    descripcion: 'Listado completo de graduados organizados por programa académico con métricas de desempeño',
-    categoria: 'verificacion',
-    registros: 2847,
-    ultimaGeneracion: 'Hace 2 horas',
-    tamanoEstimado: '4.2 MB',
-    campos: ['Programa', 'Nivel', 'Nombre Completo', 'Documento', 'Fecha Graduación', 'Diploma No.', 'Promedio', 'Distinción', 'Ciudad', 'Estado'],
-    filtrosDisponibles: ['Programa', 'Nivel Académico', 'Ciudad', 'Rango de Fechas', 'Distinción'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-    favorito: true,
-  },
-  {
-    id: 'VER-005',
-    nombre: 'Egresados por Año',
-    descripcion: 'Análisis estadístico de graduados agrupados por año de graduación con tendencias históricas',
-    categoria: 'verificacion',
-    registros: 2847,
-    ultimaGeneracion: 'Hace 3 horas',
-    tamanoEstimado: '3.8 MB',
-    campos: ['Año Graduación', 'Nombre Completo', 'Documento', 'Programa', 'Nivel', 'Promedio', 'Diploma No.', 'Mes Graduación', 'Ciudad', 'Distinción'],
-    filtrosDisponibles: ['Año', 'Rango de Años', 'Programa', 'Ciudad', 'Nivel Académico'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-  {
-    id: 'VER-006',
-    nombre: 'Egresados por Cohorte',
-    descripcion: 'Seguimiento de cohortes académicas con métricas de retención, deserción y éxito académico',
-    categoria: 'verificacion',
-    registros: 2847,
-    ultimaGeneracion: 'Hace 1 hora',
-    tamanoEstimado: '4.5 MB',
-    campos: ['Cohorte', 'Programa', 'Nombre Completo', 'Documento', 'Fecha Ingreso', 'Fecha Graduación', 'Duración (semestres)', 'Promedio', 'Estado', 'Observaciones'],
-    filtrosDisponibles: ['Cohorte', 'Programa', 'Estado', 'Rango de Ingreso', 'Duración'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-  },
-
-  // ─────────────────────────────────────────────────────────────
-  // CATEGORÍA: CROSS-MÓDULO (Reportes que cruzan datos)
-  // ─────────────────────────────────────────────────────────────
-  {
-    id: 'CROSS-001',
-    nombre: 'Ciclo Completo: Aspirante → Graduado → Empleado',
-    descripcion: 'Trazabilidad completa del ciclo de vida académico y laboral',
-    categoria: 'cross-modulo',
-    registros: 234,
-    tamanoEstimado: '1.5 MB',
-    campos: ['Persona', 'Fecha Aspirante', 'Programa', 'Fecha Grado', 'Empleabilidad', 'Empresa Actual', 'Salario'],
-    filtrosDisponibles: ['Programa', 'Estado Laboral', 'Período'],
-    estado: 'disponible',
-    favorito: true,
-  },
-  {
-    id: 'CROSS-002',
-    nombre: 'Actividad Integral por Usuario',
-    descripcion: 'Vista 360° de la actividad de un usuario en todos los módulos',
-    categoria: 'cross-modulo',
-    registros: 1247,
-    tamanoEstimado: '2.8 MB',
-    campos: ['Usuario', 'Módulos Accedidos', 'Acciones Totales', 'Documentos', 'Certificados', 'Última Actividad'],
-    filtrosDisponibles: ['Usuario', 'Período', 'Módulo'],
-    estado: 'disponible',
-  },
-  {
-    id: 'CROSS-003',
-    nombre: 'Performance Territorial Global',
-    descripcion: 'Indicadores consolidados por territorial (académicos, administrativos, laborales)',
-    categoria: 'cross-modulo',
-    registros: 17,
-    tamanoEstimado: '420 KB',
-    campos: ['Territorial', 'Sedes', 'Estudiantes', 'Graduados', 'Empleabilidad %', 'Certificados', 'Puntaje Global'],
-    filtrosDisponibles: ['Territorial', 'Período'],
-    estado: 'disponible',
-    soportaFiltroTerritorial: true,
-    favorito: true,
-  },
 ];
 
-// ═══════════════════════════════════════════════════════════════
 // COMPONENTE: STATS CARDS
 // ═══════════════════════════════════════════════════════════════
 
@@ -769,14 +394,12 @@ function ReportCard({ report, onGenerate, onToggleFavorite, delay = 0 }: ReportC
       programas: { icon: GraduationCap, color: '#10b981', bgColor: '#f0fdf4', label: 'Programas' },
       roles: { icon: Shield, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Roles' },
       auditoria: { icon: Activity, color: '#ef4444', bgColor: '#fef2f2', label: 'Auditoría' },
-      registro: { icon: UserCheck, color: '#14b8a6', bgColor: '#f0fdfa', label: 'Registro' },
       aspirantes: { icon: Target, color: '#f59e0b', bgColor: '#fffbeb', label: 'Aspirantes' },
       empleo: { icon: Briefcase, color: '#059669', bgColor: '#d1fae5', label: 'Empleo' },
       'certificados-lab': { icon: FileCheck, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Cert. Laborales' },
       profesoral: { icon: BookOpen, color: '#0891b2', bgColor: '#cffafe', label: 'Profesoral' },
       'control-interno': { icon: Shield, color: '#dc2626', bgColor: '#fee2e2', label: 'Control Interno' },
       verificacion: { icon: Award, color: '#7c3aed', bgColor: '#ede9fe', label: 'Verificación' },
-      'cross-modulo': { icon: Layers, color: '#ea580c', bgColor: '#ffedd5', label: 'Cross-Módulo' },
     };
     return configs[categoria];
   };
@@ -992,7 +615,7 @@ export function ReportsModuleV2() {
   // Estados para reportes
   const [allReports, setAllReports] = useState<Report[]>([...REPORTES_PREDEFINIDOS, ...customReports]);
 
-  // Categorías con contador
+  // Categorías con contador (12 módulos principales - OPTIMIZADO)
   const categories = [
     { id: 'todos', label: 'Todas las Categorías', icon: Package },
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -1001,14 +624,12 @@ export function ReportsModuleV2() {
     { id: 'programas', label: 'Programas', icon: GraduationCap },
     { id: 'roles', label: 'Roles', icon: Shield },
     { id: 'auditoria', label: 'Auditoría', icon: Activity },
-    { id: 'registro', label: 'Registro', icon: UserCheck },
     { id: 'aspirantes', label: 'Aspirantes', icon: Target },
     { id: 'empleo', label: 'Empleo', icon: Briefcase },
     { id: 'certificados-lab', label: 'Cert. Laborales', icon: FileCheck },
     { id: 'profesoral', label: 'Profesoral', icon: BookOpen },
     { id: 'control-interno', label: 'Control Interno', icon: Shield },
     { id: 'verificacion', label: 'Verificación', icon: Award },
-    { id: 'cross-modulo', label: 'Cross-Módulo', icon: Layers },
   ];
 
   // Filtrar reportes

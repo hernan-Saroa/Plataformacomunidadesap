@@ -424,24 +424,42 @@ function VistaTimeline({ solicitudes, onVerDetalle }: VistaTimelineProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <ButtonSIGL
+                  <button
                     onClick={() => onVerDetalle(solicitud)}
-                    size="sm"
-                    className="text-xs"
-                    style={{ background: '#003DA5', color: '#FFFFFF' }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                    style={{ 
+                      background: '#003DA5', 
+                      color: '#FFFFFF',
+                      border: 'none'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
                   >
-                    <Eye className="w-3 h-3 mr-1" />
+                    <Eye className="w-3.5 h-3.5" />
                     Ver Detalle
-                  </ButtonSIGL>
-                  <ButtonSIGL
+                  </button>
+                  <button
                     onClick={() => toast.info('Documentos', { description: solicitud.id })}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                    style={{ 
+                      background: '#FFFFFF', 
+                      color: '#003DA5',
+                      border: '1.5px solid #003DA5'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#E0EDFF';
+                      e.currentTarget.style.borderColor = '#2962FF';
+                      e.currentTarget.style.color = '#2962FF';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#FFFFFF';
+                      e.currentTarget.style.borderColor = '#003DA5';
+                      e.currentTarget.style.color = '#003DA5';
+                    }}
                   >
-                    <FileText className="w-3 h-3 mr-1" />
+                    <FileText className="w-3.5 h-3.5" />
                     Documentos
-                  </ButtonSIGL>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -603,14 +621,20 @@ function VistaLista({ solicitudes, onVerDetalle }: VistaListaProps) {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{solicitud.etapa}</td>
                   <td className="px-4 py-3">
-                    <ButtonSIGL
+                    <button
                       onClick={() => onVerDetalle(solicitud)}
-                      size="sm"
-                      style={{ background: '#003DA5', color: '#FFFFFF' }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
+                      style={{ 
+                        background: '#003DA5', 
+                        color: '#FFFFFF',
+                        border: 'none'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2962FF'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#003DA5'}
                     >
-                      <Eye className="w-3 h-3 mr-1" />
+                      <Eye className="w-3.5 h-3.5" />
                       Ver
-                    </ButtonSIGL>
+                    </button>
                   </td>
                 </tr>
               );

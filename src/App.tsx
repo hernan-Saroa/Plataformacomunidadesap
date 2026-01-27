@@ -337,8 +337,6 @@ export default function App() {
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ra-001', restrictedAccess: true, module: 'registro-academico' }
           : usuarioActual?.email === 'cerlaboral@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cl-001', restrictedAccess: true, module: 'certificados-laborales' }
-          : usuarioActual?.email === 'arqempresarial@esap.edu.co' || usuarioActual?.email === 'ar.empresarial@esap.edu.co'
-          ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ae-001', restrictedAccess: true, module: 'arquitectura-empresarial' }
           : usuarioActual?.email === 'gestion.legal@esap.edu.co'
           ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gl-001', restrictedAccess: true, module: 'gestion-legal' }
           : usuarioActual?.email === 'gestion.profesoral@esap.edu.co'

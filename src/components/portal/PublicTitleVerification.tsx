@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -12,6 +12,16 @@ import { PublicNavbar } from './PublicNavbar';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { simularEnvioCorreo } from '../../utils/emailTemplates';
 import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
+import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
+
+// Helper function to normalize text (remove accents and convert to lowercase)
+const normalizeText = (text: string): string => {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .trim();
+};
 
 interface PublicTitleVerificationProps {
   onBack: () => void;
@@ -39,17 +49,78 @@ interface PublicTitleVerificationProps {
  */
 
 export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVerificationProps) {
+  // Scroll to top cuando se monta el componente
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   // Form states
   const [graduateDocumentNumber, setGraduateDocumentNumber] = useState('');
   const [graduateDocumentIssueDate, setGraduateDocumentIssueDate] = useState('');
   const [graduateLastName, setGraduateLastName] = useState('');
-  const [requesterName, setRequesterName] = useState('');
+  const [graduateEmail, setGraduateEmail] = useState(''); // Email del graduado (para notificación cuando es empresa)
+  const [requesterName, setRequesterName] = useState(''); // Nombre empresa o del graduado
   const [requesterEmail, setRequesterEmail] = useState('');
+  const [companyNIT, setCompanyNIT] = useState(''); // NIT de la empresa
+  const [contactPerson, setContactPerson] = useState(''); // Persona de contacto en la empresa
   const [requesterType, setRequesterType] = useState<'empresa' | 'graduado'>('graduado');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
   const [reviewRequestCreated, setReviewRequestCreated] = useState(false);
+  const [isLoadingCompanyData, setIsLoadingCompanyData] = useState(false);
+  const [companyDataLoaded, setCompanyDataLoaded] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  // 🏢 Base de datos simulada de empresas (normalmente vendría de un API)
+  const companyDatabase: { [key: string]: { name: string; email: string } } = {
+    '900123456-7': { name: 'Accenture Colombia S.A.S.', email: 'rrhh@accenture.com.co' },
+    '860123456-1': { name: 'Ecopetrol S.A.', email: 'talento@ecopetrol.com.co' },
+    '900987654-3': { name: 'Bancolombia S.A.', email: 'seleccion@bancolombia.com.co' },
+    '800456789-2': { name: 'Ministerio de Hacienda y Crédito Público', email: 'gestionhumana@minhacienda.gov.co' },
+    '899999063-3': { name: 'Departamento Administrativo de la Función Pública', email: 'talento@funcionpublica.gov.co' },
+  };
+
+  // 🔍 Función para buscar empresa por NIT
+  const handleNITChange = async (nit: string) => {
+    setCompanyNIT(nit);
+    
+    // Limpiar datos previos
+    if (nit.length < 9) {
+      setRequesterName('');
+      setRequesterEmail('');
+      setCompanyDataLoaded(false);
+      return;
+    }
+
+    // Buscar empresa en la base de datos cuando se complete el NIT
+    if (nit.length >= 9) {
+      setIsLoadingCompanyData(true);
+      
+      // Simular búsqueda en base de datos
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      const companyData = companyDatabase[nit];
+      
+      if (companyData) {
+        setRequesterName(companyData.name);
+        setRequesterEmail(companyData.email);
+        setCompanyDataLoaded(true);
+        toast.success('Empresa encontrada', {
+          description: `Se cargaron los datos de ${companyData.name}`
+        });
+      } else {
+        setRequesterName('');
+        setRequesterEmail('');
+        setCompanyDataLoaded(false);
+        toast.warning('Empresa no encontrada', {
+          description: 'No se encontró una empresa registrada con este NIT. Por favor contacta al administrador.'
+        });
+      }
+      
+      setIsLoadingCompanyData(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,11 +135,20 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
     if (!graduateLastName) {
-      toast.error('Por favor ingresa el apellido del graduado');
+      toast.error('Por favor ingresa el nombre completo del graduado');
       return;
     }
-    if (!requesterName) {
-      toast.error('Por favor ingresa tu nombre o el de tu empresa');
+    // Para graduados, el requesterName será el mismo que graduateLastName
+    if (requesterType === 'empresa' && !requesterName) {
+      toast.error('Por favor ingresa el nombre de tu empresa');
+      return;
+    }
+    if (requesterType === 'empresa' && !companyNIT) {
+      toast.error('Por favor ingresa el NIT de la empresa');
+      return;
+    }
+    if (requesterType === 'empresa' && !contactPerson) {
+      toast.error('Por favor ingresa el nombre de la persona que solicita');
       return;
     }
     if (!requesterEmail) {
@@ -80,6 +160,12 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(requesterEmail)) {
       toast.error('Por favor ingresa un correo electrónico válido');
+      return;
+    }
+
+    // Validación de términos y condiciones
+    if (!acceptedTerms) {
+      toast.error('Debes aceptar los términos y condiciones y la política de tratamiento de datos personales');
       return;
     }
 
@@ -109,12 +195,13 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
 
       // Enviar correo de confirmación de solicitud de revisión
       const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
+      const reviewRequesterName = requesterType === 'graduado' ? graduateLastName : requesterName;
       simularEnvioCorreo('verificacion-titulo-revision', {
-        nombreCompleto: requesterName,
+        nombreCompleto: reviewRequesterName,
         correoDestino: requesterEmail,
         consecutivoCertificado: numeroSolicitud,
         datosAdicionales: {
-          nombreGraduado: 'Datos proporcionados',
+          nombreGraduado: graduateLastName,
           documentoGraduado: graduateDocumentNumber
         }
       });
@@ -122,8 +209,26 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
 
-    // ✅ Graduado encontrado y validado - Generar certificado con datos reales del backoffice
+    // ✅ Graduado encontrado y validado - Verificar nombre completo
     const foundGraduate = validationResult.graduate!;
+    const registeredFullName = foundGraduate.nombreCompleto; // ✅ USAR CAMPO nombreCompleto
+    
+    // Normalizar ambos nombres para comparación (sin mayúsculas ni tildes)
+    const normalizedInput = normalizeText(graduateLastName);
+    const normalizedRegistered = normalizeText(registeredFullName);
+    
+    if (normalizedInput !== normalizedRegistered) {
+      setIsGenerating(false);
+      toast.error('El nombre completo no coincide', {
+        description: `El nombre ingresado no coincide con nuestros registros. Verificaste que sea: "${registeredFullName}"?`
+      });
+      return;
+    }
+    
+    // ✅ Graduado encontrado, validado y nombre verificado - Generar certificado con datos reales del backoffice
+    // Si es graduado, usar su nombre completo como requester name
+    const finalRequesterName = requesterType === 'graduado' ? foundGraduate.nombreCompleto : requesterName;
+    
     const certificate: VerificationCertificate = {
       id: 'CERT-' + Date.now(),
       certificateNumber: 'ESAP-CERT-2025-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
@@ -133,7 +238,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       graduate: {
         documentNumber: foundGraduate.documento,
         documentIssueDate: foundGraduate.fechaExpedicionDocumento || '',
-        fullName: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
+        fullName: foundGraduate.nombreCompleto,
         titleType: foundGraduate.tituloObtenido.includes('Especialización') ? 'Especialización' : 
                    foundGraduate.tituloObtenido.includes('Maestría') ? 'Maestría' : 'Pregrado',
         programName: foundGraduate.programa,
@@ -144,7 +249,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       },
       
       requester: {
-        name: requesterName,
+        name: finalRequesterName,
         email: requesterEmail,
         type: requesterType,
       },
@@ -163,14 +268,14 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setIsGenerating(false);
     toast.success('Certificado generado exitosamente');
 
-    // Enviar correo con el certificado generado
+    // Enviar correo con el certificado generado a quien lo solicitó
     simularEnvioCorreo('verificacion-titulo-generado', {
-      nombreCompleto: requesterName,
+      nombreCompleto: finalRequesterName,
       correoDestino: requesterEmail,
       consecutivoCertificado: certificate.certificateNumber,
       urlValidacion: certificate.qrUrl,
       datosAdicionales: {
-        nombreGraduado: `${foundGraduate.nombre} ${foundGraduate.apellido}`,
+        nombreGraduado: foundGraduate.nombreCompleto,
         programa: foundGraduate.programa,
         tipoTitulo: certificate.graduate.titleType,
         fechaGraduacion: new Date(foundGraduate.graduationDate).toLocaleDateString('es-CO')
@@ -182,11 +287,17 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setGraduateDocumentNumber('');
     setGraduateDocumentIssueDate('');
     setGraduateLastName('');
+    setGraduateEmail('');
     setRequesterName('');
     setRequesterEmail('');
+    setCompanyNIT('');
+    setContactPerson('');
     setRequesterType('graduado');
     setGeneratedCertificate(null);
     setReviewRequestCreated(false);
+    setCompanyDataLoaded(false);
+    setIsLoadingCompanyData(false);
+    setAcceptedTerms(false);
   };
 
   // Si hay un certificado generado, mostrarlo
@@ -492,11 +603,11 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
         onNavigateToHome={onBack}
       />
       
-      {/* Header/Navbar espaciado */}
-      <div className="h-20" />
+      {/* Spacing for Fixed Navbar - CORRECTO */}
+      <div className="h-20 sm:h-24" />
 
-      {/* Main Content */}
-      <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-5xl">
+      {/* Main Content - WORLD CLASS */}
+      <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
         {/* Botón Volver Premium */}
         <motion.button
           onClick={onBack}
@@ -504,27 +615,28 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
           animate={{ opacity: 1, x: 0 }}
           whileHover={{ scale: 1.02, x: -4 }}
           whileTap={{ scale: 0.98 }}
-          className="group flex items-center gap-2 px-5 py-3 rounded-xl bg-white/80 backdrop-blur-sm border-2 border-gray-200 text-gray-700 hover:text-[#1e5da8] hover:border-[#1e5da8] hover:shadow-lg mb-8 transition-all font-medium min-h-[44px]"
+          className="group flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/90 backdrop-blur-sm border-2 border-gray-200 text-gray-700 hover:text-[#1e5da8] hover:border-[#1e5da8] hover:shadow-lg mb-4 transition-all font-medium min-h-[44px]"
         >
-          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-          <span>Volver al Inicio</span>
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <span className="text-sm sm:text-base">Volver al Inicio</span>
         </motion.button>
 
-        {/* Hero Section */}
+        {/* Hero Section - WORLD CLASS RESPONSIVE */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
+          className="text-center mb-6"
         >
-          <div className="inline-flex items-center gap-3 px-4 py-2 bg-blue-100 rounded-full mb-6">
-            <Sparkles className="w-5 h-5 text-blue-600" />
-            <span className="font-semibold text-blue-900">Certificación Oficial de Títulos</span>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full mb-3 shadow-sm">
+            <Sparkles className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-semibold text-blue-900">Certificación Oficial de Títulos</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-gray-900 mb-4">
-            Certificación de Títulos<br/>
-            <span className="text-[#1e5da8]">Graduados ESAP</span>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mb-3 leading-tight px-4">
+            <span className="block sm:inline">Certificación de Títulos</span>
+            <span className="hidden sm:inline"> </span>
+            <span className="block sm:inline bg-gradient-to-r from-[#1e5da8] to-[#2962FF] bg-clip-text text-transparent">Graduados ESAP</span>
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto leading-relaxed px-4">
             Obtén un certificado oficial de verificación con código QR en segundos
           </p>
         </motion.div>
@@ -535,74 +647,221 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card className="border-0 shadow-2xl bg-white/95 backdrop-blur-sm overflow-hidden">
-            {/* Header con gradiente */}
-            <div className="bg-gradient-to-r from-[#1e5da8] to-blue-600 p-8 text-white">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                  <Award className="w-8 h-8" />
+          <Card className="border border-gray-200 shadow-lg bg-white overflow-hidden rounded-2xl">
+            {/* Header Compacto - World Class */}
+            <div className="bg-white border-b border-gray-200 px-5 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <Award className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Certificación de Títulos</h2>
+                    <p className="text-xs text-gray-500">Código: CERT-{Date.now().toString().slice(-6)}</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-3xl font-black">Solicitud de Certificado</h2>
-                  <p className="text-blue-100">Ingresa los datos del graduado</p>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                    NUEVO
+                  </span>
+                  <span className="text-xs text-gray-400 hidden sm:inline">Público</span>
                 </div>
               </div>
             </div>
 
-            <CardContent className="p-8">
-              {/* Info Banner Premium */}
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-6 mb-8"
-              >
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <AlertCircle className="w-6 h-6 text-white" />
+            <CardContent className="p-5 sm:p-6 space-y-6">
+              {/* Info Box - World Class */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-gray-900 mb-2 text-lg">¿Cómo funciona?</p>
-                    <p className="text-gray-700 leading-relaxed mb-3">
-                      Verifica títulos académicos de graduados ESAP (Pregrado, Especialización y Maestría). 
-                      El certificado incluye un código QR único para validación.
+                    <p className="text-sm font-semibold text-gray-900 mb-1">Información del Proceso</p>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Verifica títulos académicos de graduados ESAP. El certificado se genera instantáneamente si el graduado está registrado, o en 48-72h si requiere revisión manual.
                     </p>
-                    <ul className="space-y-2">
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <span className="text-gray-700"><strong>Certificado instantáneo</strong> si el graduado está en nuestra base de datos</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <span className="text-gray-700">Si NO está registrado, se crea solicitud de revisión manual <strong>(48-72h)</strong></span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <span className="text-gray-700">Enviado por correo electrónico en formato PDF con código QR verificable</span>
-                      </li>
-                    </ul>
                   </div>
                 </div>
-              </motion.div>
+              </div>
 
-              <form onSubmit={handleSubmit} className="space-y-8">
-                {/* Graduate Information */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center gap-3 pb-4 border-b-2 border-gray-200">
-                    <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                      <User className="w-5 h-5 text-[#1e5da8]" />
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Requester Card - World Class */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
+                      <UserCircle className="w-4 h-4 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900">Información del Graduado</h3>
+                    <h3 className="text-sm font-bold text-gray-900">Datos del Solicitante</h3>
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="graduateDocument" className="text-base font-semibold text-gray-900">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-xs font-semibold text-gray-700 mb-2 block">
+                        Tipo de Solicitante <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setRequesterType('graduado');
+                            // Limpiar datos de empresa
+                            setCompanyNIT('');
+                            setRequesterName('');
+                            setRequesterEmail('');
+                            setContactPerson('');
+                            setCompanyDataLoaded(false);
+                          }}
+                          variant="outline"
+                          className={`h-10 px-3 text-sm border transition-all ${
+                            requesterType === 'graduado' 
+                              ? 'bg-blue-50 border-blue-600 text-blue-900 font-semibold' 
+                              : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          <UserCircle className="w-4 h-4 mr-1.5" />
+                          Graduado
+                        </Button>
+                        
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setRequesterType('empresa');
+                            // Limpiar correo del graduado
+                            setRequesterEmail('');
+                          }}
+                          variant="outline"
+                          className={`h-10 px-3 text-sm border transition-all ${
+                            requesterType === 'empresa' 
+                              ? 'bg-blue-50 border-blue-600 text-blue-900 font-semibold' 
+                              : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          <Building2 className="w-4 h-4 mr-1.5" />
+                          Empresa
+                        </Button>
+                      </div>
+                    </div>
+
+                  {/* Conditional fields based on requester type */}
+                  {requesterType === 'empresa' && (
+                    <div className="space-y-3">
+                      {/* 🏢 1. NIT - PRIMERO (EDITABLE) */}
+                      <div>
+                        <Label htmlFor="companyNIT" className="text-xs font-semibold text-gray-700 mb-2 block">
+                          NIT de la Empresa <span className="text-red-500">*</span>
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="companyNIT"
+                            type="text"
+                            value={companyNIT}
+                            onChange={(e) => handleNITChange(e.target.value)}
+                            placeholder="Ej: 900123456-7"
+                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            required
+                          />
+                          {isLoadingCompanyData && (
+                            <div className="absolute right-3 top-2.5">
+                              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Ingresa el NIT para cargar automáticamente los datos de la empresa
+                        </p>
+                      </div>
+
+                      {/* 📋 2. Nombre de la Empresa - SEGUNDO (AUTOCARGADO, NO EDITABLE) */}
+                      <div>
+                        <Label htmlFor="companyName" className="text-xs font-semibold text-gray-700 mb-2 block">
+                          Nombre de la Empresa <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="companyName"
+                          type="text"
+                          value={requesterName}
+                          readOnly
+                          disabled={!companyDataLoaded}
+                          placeholder="Se cargará automáticamente"
+                          className={`h-10 text-sm ${companyDataLoaded ? 'bg-gray-50 border-gray-300 text-gray-900' : 'bg-gray-100 border-gray-200 text-gray-400'}`}
+                          required
+                        />
+                      </div>
+
+                      {/* 📧 3. Correo Empresarial - TERCERO (AUTOCARGADO, NO EDITABLE) */}
+                      <div>
+                        <Label htmlFor="requesterEmail" className="text-xs font-semibold text-gray-700 mb-2 block">
+                          Correo Empresarial <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="requesterEmail"
+                          type="email"
+                          value={requesterEmail}
+                          readOnly
+                          disabled={!companyDataLoaded}
+                          placeholder="Se cargará automáticamente"
+                          className={`h-10 text-sm ${companyDataLoaded ? 'bg-gray-50 border-gray-300 text-gray-900' : 'bg-gray-100 border-gray-200 text-gray-400'}`}
+                          required
+                        />
+                        {companyDataLoaded && (
+                          <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            El certificado se enviará a este correo
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 👤 4. Persona que Solicita - CUARTO (EDITABLE) */}
+                      <div>
+                        <Label htmlFor="contactPerson" className="text-xs font-semibold text-gray-700 mb-2 block">
+                          Persona que Solicita (Nombre completo) <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="contactPerson"
+                          type="text"
+                          value={contactPerson}
+                          onChange={(e) => setContactPerson(e.target.value)}
+                          placeholder="Ej: María Fernanda Rodríguez"
+                          className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Graduate Data Card - World Class */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900">Datos del Graduado</h3>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Nombre Completo */}
+                  <div>
+                    <Label htmlFor="graduateLastName" className="text-xs font-semibold text-gray-700 mb-2 block">
+                      Nombre Completo <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="graduateLastName"
+                      type="text"
+                      value={graduateLastName}
+                      onChange={(e) => setGraduateLastName(e.target.value)}
+                      placeholder="Ej: María Fernanda Rodríguez García"
+                      className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                      required
+                    />
+                  </div>
+
+                  {/* Grid de 2 columnas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="graduateDocument" className="text-xs font-semibold text-gray-700 mb-2 block">
                         Número de Cédula <span className="text-red-500">*</span>
                       </Label>
                       <Input
@@ -611,260 +870,141 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         value={graduateDocumentNumber}
                         onChange={(e) => setGraduateDocumentNumber(e.target.value)}
                         placeholder="Ej: 1234567890"
-                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                        className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                         required
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="documentIssueDate" className="text-base font-semibold text-gray-900">
+                    <div>
+                      <Label htmlFor="documentIssueDate" className="text-xs font-semibold text-gray-700 mb-2 block">
                         Fecha de Grado <span className="text-red-500">*</span>
                       </Label>
-                      <div className="relative">
-                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
-                        <Input
-                          id="documentIssueDate"
-                          type="date"
-                          value={graduateDocumentIssueDate}
-                          onChange={(e) => setGraduateDocumentIssueDate(e.target.value)}
-                          className="h-12 text-base pl-12 border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="graduateLastName" className="text-base font-semibold text-gray-900">
-                      Apellido <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="graduateLastName"
-                      type="text"
-                      value={graduateLastName}
-                      onChange={(e) => setGraduateLastName(e.target.value)}
-                      placeholder="Ej: Rodríguez"
-                      className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
-                      required
-                    />
-                  </div>
-                </motion.div>
-
-                {/* Requester Information */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center gap-3 pb-4 border-b-2 border-gray-200">
-                    <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
-                      <UserCircle className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900">Información del Solicitante</h3>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-base font-semibold text-gray-900">
-                      Tipo de Solicitante <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Button
-                        type="button"
-                        onClick={() => setRequesterType('graduado')}
-                        variant={requesterType === 'graduado' ? 'default' : 'outline'}
-                        className={`h-14 text-base border-2 transition-all ${
-                          requesterType === 'graduado' 
-                            ? 'bg-[#1e5da8] border-[#1e5da8] hover:bg-[#1a4d8f] shadow-lg' 
-                            : 'hover:border-[#1e5da8] hover:text-[#1e5da8]'
-                        }`}
-                      >
-                        <UserCircle className="w-5 h-5 mr-2" />
-                        Soy Graduado
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => setRequesterType('empresa')}
-                        variant={requesterType === 'empresa' ? 'default' : 'outline'}
-                        className={`h-14 text-base border-2 transition-all ${
-                          requesterType === 'empresa' 
-                            ? 'bg-[#1e5da8] border-[#1e5da8] hover:bg-[#1a4d8f] shadow-lg' 
-                            : 'hover:border-[#1e5da8] hover:text-[#1e5da8]'
-                        }`}
-                      >
-                        <Building2 className="w-5 h-5 mr-2" />
-                        Soy Empresa
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="requesterName" className="text-base font-semibold text-gray-900">
-                        {requesterType === 'empresa' ? 'Nombre de la Empresa' : 'Nombre Completo'} <span className="text-red-500">*</span>
-                      </Label>
                       <Input
-                        id="requesterName"
-                        type="text"
-                        value={requesterName}
-                        onChange={(e) => setRequesterName(e.target.value)}
-                        placeholder={requesterType === 'empresa' ? 'Ej: Empresa ABC S.A.S.' : 'Ej: María Fernanda Rodríguez'}
-                        className="h-12 text-base border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                        id="documentIssueDate"
+                        type="date"
+                        value={graduateDocumentIssueDate}
+                        onChange={(e) => setGraduateDocumentIssueDate(e.target.value)}
+                        className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                         required
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="requesterEmail" className="text-base font-semibold text-gray-900">
-                        Correo Electrónico <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
+                    {requesterType === 'graduado' && (
+                      <div className="sm:col-span-2">
+                        <Label htmlFor="graduateEmail" className="text-xs font-semibold text-gray-700 mb-2 block">
+                          Tu Correo Electrónico <span className="text-red-500">*</span>
+                        </Label>
                         <Input
-                          id="requesterEmail"
+                          id="graduateEmail"
                           type="email"
                           value={requesterEmail}
                           onChange={(e) => setRequesterEmail(e.target.value)}
-                          placeholder="correo@ejemplo.com"
-                          className="h-12 text-base pl-12 border-2 focus:border-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20"
+                          placeholder="tucorreo@ejemplo.com"
+                          className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                           required
                         />
                       </div>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        <Mail className="w-4 h-4" />
-                        El certificado será enviado a este correo
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Important Notice */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-6"
-                >
-                  <div className="flex gap-4">
-                    <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-gray-900 mb-2 text-lg">Importante</p>
-                      <ul className="space-y-2 text-gray-700">
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Verifica que el número de cédula, la fecha de grado y el apellido sean correctos</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Si el graduado está en nuestra base de datos, el certificado se generará <strong>instantáneamente</strong></span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-amber-600 font-bold mt-0.5">•</span>
-                          <span>Si NO está registrado, se creará una solicitud de revisión manual (48-72 horas)</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Submit Button Premium */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                  className="pt-4"
-                >
-                  <Button
-                    type="submit"
-                    disabled={isGenerating}
-                    style={{ backgroundColor: '#1e5da8' }}
-                    className="w-full h-14 text-lg font-bold hover:opacity-90 shadow-xl hover:shadow-2xl transition-all disabled:opacity-50"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="w-6 h-6 mr-3 animate-spin" />
-                        Generando Certificado...
-                      </>
-                    ) : (
-                      <>
-                        <Award className="w-6 h-6 mr-3" />
-                        Solicitar Certificado de Verificación
-                      </>
                     )}
-                  </Button>
-                </motion.div>
-              </form>
-
-              {/* Example Data Section */}
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 }}
-                className="mt-12 pt-8 border-t-2 border-gray-200"
-              >
-                <div className="space-y-4">
-                  {/* EJEMPLO EXITOSO */}
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border-2 border-emerald-300 rounded-2xl p-6">
-                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-emerald-800">
-                      <Sparkles className="w-5 h-5 text-emerald-600" />
-                      ✅ Prueba con estos datos de ejemplo (CASO EXITOSO)
-                    </h4>
-                    <div className="grid sm:grid-cols-3 gap-4 mb-3">
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
-                        <p className="font-mono font-bold text-lg text-gray-900">52987654</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Grado</p>
-                        <p className="font-bold text-lg text-gray-900">2024-12-01</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-emerald-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Apellido</p>
-                        <p className="font-bold text-lg text-gray-900">Rodríguez Gutiérrez</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-emerald-700 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" />
-                      Laura Marcela Rodríguez Gutiérrez - Administración Pública Territorial
-                    </p>
                   </div>
+                </div>
+              </div>
 
-                  {/* EJEMPLO NO EXITOSO */}
-                  <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-2xl p-6">
-                    <h4 className="font-bold mb-3 text-lg flex items-center gap-2 text-orange-800">
-                      <AlertCircle className="w-5 h-5 text-orange-600" />
-                      ❌ Prueba con estos datos (CASO NO EXITOSO)
-                    </h4>
-                    <div className="grid sm:grid-cols-3 gap-4 mb-3">
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Cédula</p>
-                        <p className="font-mono font-bold text-lg text-gray-900">9999999999</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Fecha de Grado</p>
-                        <p className="font-bold text-lg text-gray-900">2015-12-10</p>
-                      </div>
-                      <div className="bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-orange-300">
-                        <p className="text-sm font-semibold text-gray-600 mb-2">Apellido</p>
-                        <p className="font-bold text-lg text-gray-900">NoExiste</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-orange-700 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Este graduado NO está registrado - Se creará solicitud de revisión manual (48-72h)
+              {/* Alert Box - World Class */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-gray-900 mb-1">Verifica que todos los datos sean correctos antes de enviar la solicitud.</p>
+                    <p className="text-xs text-gray-600">
+                      El certificado se genera instantáneamente si el graduado está registrado.
                     </p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
+
+              {/* 📜 Términos y Condiciones - Habeas Data */}
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="acceptTerms"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="acceptTerms" className="flex-1 cursor-pointer">
+                    <p className="text-sm font-semibold text-gray-900 mb-2">
+                      Acepto los Términos y Condiciones y la Política de Tratamiento de Datos Personales
+                      <span className="text-red-500 ml-1">*</span>
+                    </p>
+                    <div className="text-xs text-gray-700 space-y-1">
+                      <p>
+                        Autorizo a la Escuela Superior de Administración Pública (ESAP) para que en los términos legalmente establecidos, 
+                        recolecte, almacene, use, circule, suprima, comparta, actualice y transmita mis datos personales de acuerdo con 
+                        la <strong>Ley 1581 de 2012</strong> y el <strong>Decreto 1377 de 2013</strong>, con la finalidad de:
+                      </p>
+                      <ul className="list-disc list-inside pl-2 space-y-0.5">
+                        <li>Verificar la autenticidad de la información académica del graduado</li>
+                        <li>Generar y expedir certificados de verificación de títulos</li>
+                        <li>Enviar el certificado al correo electrónico registrado</li>
+                        <li>Mantener un registro histórico de las solicitudes realizadas</li>
+                      </ul>
+                      <p className="mt-2">
+                        Declaro que he leído y acepto que los datos suministrados son verídicos y que conozco mis derechos como titular 
+                        de la información (acceso, rectificación, actualización, supresión y revocación).
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Submit Button Premium */}
+              {/* Submit Footer - World Class */}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    disabled={isGenerating || !acceptedTerms}
+                    className="flex-1 h-10 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Award className="w-4 h-4 mr-2" />
+                        Enviar Solicitud
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 px-4 text-sm font-semibold border-gray-300"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+                
+                {!acceptedTerms && (
+                  <p className="text-xs text-gray-500 text-center">
+                    <Shield className="w-3 h-3 inline-block mr-1" />
+                    Debes aceptar los términos y condiciones para continuar
+                  </p>
+                )}
+              </div>
+            </form>
             </CardContent>
           </Card>
         </motion.div>
       </main>
 
       {/* Footer Corporativo ESAP */}
-      <footer className="bg-[#1e5da8] text-white py-12 mt-16">
+      <footer className="bg-[#1e5da8] text-white py-4 mt-4">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header del Footer */}
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
@@ -906,7 +1046,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
           </div>
 
           {/* Columnas de Enlaces */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 mb-4 sm:mb-6">
             {/* INSTITUCIONAL */}
             <div>
               <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛️ Institucional</h4>

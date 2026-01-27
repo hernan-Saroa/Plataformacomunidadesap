@@ -41,7 +41,7 @@ export { NotificacionesModule } from './NotificacionesModule';
 // ⭐ MÓDULOS AVANZADOS (RF015-019)
 export { RolesYPermisos } from './RolesYPermisos';
 export { ReportesEjecutivosModule } from './ReportesEjecutivosModule';
-export { DashboardEjecutivoCIG } from './DashboardEjecutivoCIG';
+// ❌ ELIMINADO: DashboardEjecutivoCIG (no usado)
 export { GestionAuditoriasTerritoriales } from './GestionAuditoriasTerritoriales';
 export { WizardAuditoriaTerritorial } from './WizardAuditoriaTerritorial';
 export { AuditoriasEspecialesModule } from './AuditoriasEspecialesModule';

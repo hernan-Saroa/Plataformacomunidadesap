@@ -769,7 +769,7 @@ export function RolesAdministrationModulePremium() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 <AnimatePresence mode="popLayout">
                   {paginatedRoles.map((role, index) => (
-                    <>
+                    <React.Fragment key={`role-fragment-${role.id}`}>
                       <motion.tr
                         key={`role-${role.id}`}
                         initial={{ opacity: 0, y: 10 }}
@@ -995,7 +995,7 @@ export function RolesAdministrationModulePremium() {
                           </td>
                         </motion.tr>
                       )}
-                    </>
+                    </React.Fragment>
                   ))}
                 </AnimatePresence>
               </tbody>

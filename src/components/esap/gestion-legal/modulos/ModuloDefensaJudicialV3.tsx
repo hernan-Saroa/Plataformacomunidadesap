@@ -36,6 +36,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { IndicadorDiasHabiles, BannerDiasHabiles } from '../design-system/BadgeDiasHabiles';
 import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -63,7 +64,223 @@ export function ModuloDefensaJudicialV3() {
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   
   // Estado local para manejar drag and drop
-  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>(expedientesJudicialesMock);
+  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
+
+  // ✅ Datos mock para cada etapa del tablero Kanban
+  const expedientesMockDefensaJudicial: ExpedienteJudicial[] = [
+    {
+      id: 'DJ-001',
+      radicado: '25000-23-33-001-2024-00045-00',
+      demandante: 'María Rodríguez López',
+      tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
+      estado: 'ACTIVO',
+      etapa: 'NOTIFICADA',
+      prioridad: 'ALTA',
+      fechaNotificacion: '2025-01-15',
+      fechaVencimiento: '2025-02-15',
+      juzgado: 'Juzgado 12 Administrativo de Bogotá',
+      abogadoResponsable: 'Dra. Ana María López',
+      cuantia: '85000000',
+      pretensiones: 'Nulidad del acto administrativo por el cual se declaró insubsistencia del cargo y restablecimiento del derecho con reintegro y pago de salarios dejados de percibir.',
+      // ✅ Ejemplo de múltiples demandantes
+      demandantes: [
+        {
+          id: 'DEM-001',
+          nombre: 'María Rodríguez López',
+          tipoPersona: 'natural',
+          identificacion: '52123456'
+        }
+      ],
+      // ✅ Ejemplo de múltiples demandados
+      demandados: [
+        {
+          id: 'DEMAN-001',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Accionada'
+        },
+        {
+          id: 'DEMAN-002',
+          nombre: 'José Alberto Ramírez González',
+          tipoPersona: 'natural',
+          identificacion: '79456123',
+          cargo: 'Rector ESAP'
+        }
+      ],
+      // ✅ Ejemplo de otros actores
+      otrosActores: [
+        {
+          id: 'OTRO-001',
+          nombre: 'Procuraduría General de la Nación',
+          tipoPersona: 'juridica',
+          identificacion: '899999007-1',
+          rol: 'Ministerio Público'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-20',
+        tipo: 'Auto Admisorio',
+        descripcion: 'Se admite demanda y se ordena notificación a ESAP',
+        responsable: 'Juzgado 12 Administrativo',
+        estado: 'NOTIFICADO'
+      }
+    },
+    {
+      id: 'DJ-002',
+      radicado: '11001-03-25-000-2024-00123-00',
+      demandante: 'Carlos Eduardo Martínez',
+      tipoAccion: 'REPARACIÓN DIRECTA',
+      estado: 'ACTIVO',
+      etapa: 'CONTESTACIÓN',
+      prioridad: 'MEDIA',
+      fechaNotificacion: '2024-12-05',
+      fechaVencimiento: '2025-02-05',
+      juzgado: 'Tribunal Administrativo de Cundinamarca',
+      abogadoResponsable: 'Dr. Juan Carlos Pérez',
+      cuantia: '120000000',
+      pretensiones: 'Reparación directa por daños y perjuicios ocasionados en accidente de tránsito con vehículo institucional de ESAP.',
+      // ✅ Ejemplo con tercero interviniente
+      demandantes: [
+        {
+          id: 'DEM-002',
+          nombre: 'Carlos Eduardo Martínez',
+          tipoPersona: 'natural',
+          identificacion: '80123456'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-003',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Demandada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-002',
+          nombre: 'Seguros del Estado S.A.',
+          tipoPersona: 'juridica',
+          identificacion: '860066119-1',
+          rol: 'Tercero Llamado en Garantía'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-18',
+        tipo: 'Contestación Demanda',
+        descripcion: 'Se presenta escrito de contestación y excepciones',
+        responsable: 'Oficina Jurídica ESAP',
+        estado: 'RADICADO'
+      }
+    },
+    {
+      id: 'DJ-003',
+      radicado: '76001-23-33-000-2024-00089-00',
+      demandante: 'Asociación Docentes ESAP',
+      tipoAccion: 'ACCIÓN DE GRUPO',
+      estado: 'ACTIVO',
+      etapa: 'PROBATORIA',
+      prioridad: 'ALTA',
+      fechaNotificacion: '2024-10-10',
+      fechaVencimiento: '2025-03-10',
+      juzgado: 'Juzgado 8 Administrativo del Circuito de Cali',
+      abogadoResponsable: 'Dra. María González',
+      cuantia: '450000000',
+      pretensiones: 'Acción de grupo por falta de pago de primas de vacaciones a docentes de planta durante los años 2022-2024.',
+      // ✅ Ejemplo con acción de grupo y curador
+      demandantes: [
+        {
+          id: 'DEM-003',
+          nombre: 'Asociación Docentes ESAP',
+          tipoPersona: 'juridica',
+          identificacion: '900123789-1'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-004',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Demandada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-003',
+          nombre: 'Dr. Alberto Mendoza Ramírez',
+          tipoPersona: 'natural',
+          identificacion: '79345678',
+          rol: 'Curador Ad Litem del Grupo'
+        },
+        {
+          id: 'OTRO-004',
+          nombre: 'Defensoría del Pueblo',
+          tipoPersona: 'juridica',
+          identificacion: '899999011-7',
+          rol: 'Agente Oficioso'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-22',
+        tipo: 'Decreto Pruebas',
+        descripcion: 'Se decretan testimonios y pruebas documentales solicitadas',
+        responsable: 'Juzgado 8 Administrativo',
+        estado: 'EN PRÁCTICA'
+      }
+    },
+    {
+      id: 'DJ-004',
+      radicado: '05001-23-33-000-2024-00234-00',
+      demandante: 'Pedro Antonio Gómez',
+      tipoAccion: 'TUTELA',
+      estado: 'ACTIVO',
+      etapa: 'ALEGATOS',
+      prioridad: 'URGENTE',
+      fechaNotificacion: '2025-01-08',
+      fechaVencimiento: '2025-01-30',
+      juzgado: 'Juzgado 5 Civil del Circuito de Medellín',
+      abogadoResponsable: 'Dr. Carlos Ramírez',
+      cuantia: '0',
+      pretensiones: 'Protección del derecho fundamental al debido proceso en investigación disciplinaria adelantada por ESAP.',
+      // ✅ Ejemplo con tutela y agencia de defensa
+      demandantes: [
+        {
+          id: 'DEM-004',
+          nombre: 'Pedro Antonio Gómez',
+          tipoPersona: 'natural',
+          identificacion: '71234567'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-005',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Accionada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-005',
+          nombre: 'Agencia Nacional de Defensa Jurídica del Estado',
+          tipoPersona: 'juridica',
+          identificacion: '900460870-4',
+          rol: 'Tercero con Interés'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-25',
+        tipo: 'Alegatos de Conclusión',
+        descripcion: 'Se presentan alegatos finales por parte de ESAP',
+        responsable: 'Oficina Jurídica ESAP',
+        estado: 'PRESENTADO'
+      }
+    }
+  ];
 
   // ✅ Log de configuraciones cargadas
   useEffect(() => {
@@ -72,6 +289,19 @@ export function ModuloDefensaJudicialV3() {
     console.log('   ⚖️ Tipos de procesos activos:', tiposProcesosActivos.length);
     console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
   }, [estadosActivos, tiposProcesosActivos]);
+
+  // ✅ Cargar datos mock al montar el componente
+  useEffect(() => {
+    setExpedientes(expedientesMockDefensaJudicial.map(exp => ({
+      ...exp,
+      abogadoAsignado: exp.abogadoResponsable, // ✅ Mapear abogadoResponsable a abogadoAsignado
+      diasRestantes: Math.ceil((new Date(exp.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24)),
+      diasTotales: Math.ceil((new Date(exp.fechaVencimiento).getTime() - new Date(exp.fechaNotificacion).getTime()) / (1000 * 60 * 60 * 24)),
+      fechaActualizacion: new Date(exp.ultimaActuacion?.fecha || exp.fechaNotificacion),
+      documentos: [],
+      medioControl: exp.tipoAccion
+    })));
+  }, []);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -270,6 +500,9 @@ export function ModuloDefensaJudicialV3() {
         tipos={['TODOS', 'NOTIFICADA', 'CONTESTACIÓN', 'PROBATORIA', 'ALEGATOS']}
       />
 
+      {/* ✅ Banner de Días Hábiles - Indicador prominente */}
+      <IndicadorDiasHabiles className="animate-fade-in" />
+
       {/* Tablero Kanban - IGUAL A DISCIPLINARIO */}
       {tipoVista === 'kanban' && (
         <DndProvider backend={HTML5Backend}>
@@ -373,7 +606,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente }: Columna
                 </h3>
                 <p className="text-[10px] text-gray-500 flex items-center gap-1">
                   <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días
+                  {etapa.diasEstimados} días hábiles
                 </p>
               </div>
             </div>
@@ -457,7 +690,7 @@ function TarjetaExpediente({ expediente, isMobile, onMoverExpediente, etapaActua
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
   const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
-  const ultimaActuacion = expediente.ultimaActuacion || `Expediente en etapa de ${expediente.etapa}`;
+  const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -499,10 +732,53 @@ function TarjetaExpediente({ expediente, isMobile, onMoverExpediente, etapaActua
 
           {/* Demandante */}
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">👤 Demandante:</p>
-            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {expediente.demandante}
-            </p>
+            <p className="text-xs text-gray-500 mb-0.5">👤 Partes Procesales:</p>
+            
+            {/* Demandantes */}
+            {expediente.demandantes && expediente.demandantes.length > 0 ? (
+              <div className="mb-1.5">
+                <p className="text-xs font-semibold text-orange-700 mb-0.5">Demandante(s):</p>
+                <div className="space-y-0.5">
+                  {expediente.demandantes.map((demandante, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {demandante.nombre}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                {expediente.demandante}
+              </p>
+            )}
+
+            {/* Demandados */}
+            {expediente.demandados && expediente.demandados.length > 0 && (
+              <div className="mb-1.5">
+                <p className="text-xs font-semibold text-red-700 mb-0.5">Demandado(s):</p>
+                <div className="space-y-0.5">
+                  {expediente.demandados.map((demandado, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {demandado.nombre} <span className="text-[10px] text-gray-600">({demandado.cargo})</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Otros Actores */}
+            {expediente.otrosActores && expediente.otrosActores.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-blue-700 mb-0.5">Otros Actores:</p>
+                <div className="space-y-0.5">
+                  {expediente.otrosActores.map((actor, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {actor.nombre} <span className="text-[10px] text-gray-600">({actor.rol})</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Profesional Asignado */}
@@ -513,13 +789,15 @@ function TarjetaExpediente({ expediente, isMobile, onMoverExpediente, etapaActua
                   className="text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  {expediente.abogadoAsignado 
+                    ? expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)
+                    : 'NA'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
                 <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {expediente.abogadoAsignado}
+                  {expediente.abogadoAsignado || 'No asignado'}
                 </p>
               </div>
             </div>

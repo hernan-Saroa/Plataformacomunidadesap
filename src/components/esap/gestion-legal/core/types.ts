@@ -51,6 +51,16 @@ export type MedioControl =
   | 'Acción Popular'
   | 'Cumplimiento';
 
+// Interfaz para partes procesales
+export interface ParteProcesal {
+  id: string;
+  nombre: string;
+  tipoPersona: 'natural' | 'juridica';
+  identificacion: string;
+  cargo?: string;
+  rol?: string; // Ej: "Tercero interviniente", "Ministerio Público", etc.
+}
+
 export interface ExpedienteJudicial {
   id: string; // "PJ-2025-001"
   tipo: string; // "Nulidad y Restablecimiento del Derecho"
@@ -58,8 +68,12 @@ export interface ExpedienteJudicial {
   jurisdiccion: Jurisdiccion;
   etapa: EtapaDefensaJudicial;
   
-  // Partes procesales
-  demandante: string;
+  // Partes procesales - MIGRADAS A ARRAYS
+  demandante: string; // DEPRECADO: mantener para compatibilidad con vistas existentes
+  demandantes?: ParteProcesal[]; // NUEVO: soporte para múltiples demandantes
+  demandados?: ParteProcesal[]; // NUEVO: soporte para múltiples demandados
+  otrosActores?: ParteProcesal[]; // NUEVO: otros actores del proceso (terceros, ministerio público, etc.)
+  
   apoderado: string;
   juzgado: string;
   radicado: string;
@@ -90,7 +104,13 @@ export interface ExpedienteJudicial {
   estado: EstadoGeneral;
   
   // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
-  ultimaActuacion?: string; // Descripción breve de la última actuación procesal
+  ultimaActuacion?: {
+    fecha: string;
+    tipo: string;
+    descripcion: string;
+    responsable: string;
+    estado: string;
+  };
 }
 
 // ============================================================================
@@ -144,7 +164,13 @@ export interface ProcesoDisciplinario {
   estado: EstadoGeneral;
   
   // NUEVA PROPIEDAD PARA VISUALIZACIÓN EN TARJETA
-  ultimaActuacion?: string; // Descripción breve de la última actuación procesal
+  ultimaActuacion?: {
+    fecha: string;
+    tipo: string;
+    descripcion: string;
+    responsable: string;
+    estado: string;
+  };
 }
 
 // ============================================================================

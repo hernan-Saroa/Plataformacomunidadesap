@@ -37,7 +37,6 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  QrCode, // ✅ AGREGADO para gestión de QR
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
@@ -60,8 +59,6 @@ import {
 } from "../ui/avatar";
 import { PaginationPremium } from "../shared/PaginationPremium";
 import { CreatePersonModal } from "./CreatePersonModal";
-import { UserEnrollmentSection } from "./UserEnrollmentSection"; // ✅ NUEVO
-import { EnrollmentConfigModal } from "./EnrollmentConfigModal"; // ✅ MODAL CONFIGURACIÓN
 import { AssignAccessModal } from "./AssignAccessModal"; // ✅ MODAL ASIGNAR ACCESOS
 import { EditUserModal } from "./EditUserModal"; // ✅ MODAL EDITAR CON SEDES
 import { DashboardSedesMetrics } from "./DashboardSedesMetrics"; // ✅ DASHBOARD SEDES
@@ -100,8 +97,6 @@ export function UsersPersonsModulePremium() {
   >(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEnrollmentConfig, setShowEnrollmentConfig] =
-    useState(false); // ✅ NUEVO
   const [showAssignAccessModal, setShowAssignAccessModal] =
     useState(false); // ✅ MODAL ASIGNAR ACCESOS
   const [showEditModal, setShowEditModal] = useState(false); // ✅ MODAL EDITAR
@@ -132,20 +127,6 @@ export function UsersPersonsModulePremium() {
       (u) => u.status === "blocked",
     ).length,
     growth: 12.5,
-  };
-
-  // ✅ Stats de enrolamiento para el modal
-  const enrollmentStats = {
-    qr: MOCK_USERS_WITH_SEDES.filter(
-      (u) => u.enrollmentMethod === "qr",
-    ).length,
-    manual: MOCK_USERS_WITH_SEDES.filter(
-      (u) => u.enrollmentMethod === "manual",
-    ).length,
-    massive: MOCK_USERS_WITH_SEDES.filter(
-      (u) => u.enrollmentMethod === "massive",
-    ).length,
-    total: MOCK_USERS_WITH_SEDES.length,
   };
 
   // Filtros únicos para los selectores
@@ -306,51 +287,6 @@ export function UsersPersonsModulePremium() {
         className={`${colorConfig[roleColor] || colorConfig.blue} border text-xs font-medium`}
       >
         {roleName}
-      </Badge>
-    );
-  };
-
-  // ✅ FUNCIÓN HELPER PARA BADGES DE ENROLAMIENTO
-  const getEnrollmentBadge = (
-    method: "qr" | "manual" | "massive",
-  ) => {
-    const methodConfig: Record<
-      string,
-      { label: string; className: string; icon: any }
-    > = {
-      qr: {
-        label: "QR Code",
-        className:
-          "bg-[#EDE9FE] text-[#5B21B6] border-[#8B5CF6]",
-        icon: QrCode,
-      },
-      manual: {
-        label: "Manual",
-        className:
-          "bg-[#EFF6FF] text-[#1E40AF] border-[#3B82F6]",
-        icon: UserPlus,
-      },
-      massive: {
-        label: "Carga Masiva",
-        className:
-          "bg-[#D1FAE5] text-[#065F46] border-[#10B981]",
-        icon: Upload,
-      },
-    };
-
-    const config = methodConfig[method];
-    const Icon = config.icon;
-
-    return (
-      <Badge
-        className={`${config.className} border hover:${config.className}`}
-      >
-        <div className="flex items-center gap-1.5">
-          <Icon className="w-3.5 h-3.5" />
-          <span className="text-xs font-semibold">
-            {config.label}
-          </span>
-        </div>
       </Badge>
     );
   };
@@ -703,34 +639,6 @@ export function UsersPersonsModulePremium() {
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar por Sede</span>
-          </button>
-
-          {/* ✅ Botón Configurar Enrolamiento QR */}
-          <button
-            onClick={() => setShowEnrollmentConfig(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#003DA5",
-              border: "2px solid #003DA5",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#F0F6FF";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
-            <span>Configurar Enrolamiento</span>
           </button>
 
           {/* Botón Primario - Crear Usuario */}
@@ -2007,14 +1915,6 @@ export function UsersPersonsModulePremium() {
         onClose={() => setShowExportModal(false)}
         usuarios={filteredUsers}
       />
-
-      {/* Modal Configuración de Enrolamiento */}
-      {showEnrollmentConfig && (
-        <EnrollmentConfigModal
-          onClose={() => setShowEnrollmentConfig(false)}
-          enrollmentStats={enrollmentStats}
-        />
-      )}
 
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (

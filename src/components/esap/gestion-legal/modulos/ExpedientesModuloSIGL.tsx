@@ -46,6 +46,7 @@ type TipoDocumento =
   | 'DEMANDA'
   | 'CONTESTACION'
   | 'PRUEBAS'
+  | 'AUTOS'
   | 'SENTENCIAS'
   | 'TUTELAS'
   | 'RECURSOS'
@@ -107,9 +108,16 @@ const TIPOS_DOCUMENTO = [
     icon: FolderCheck
   },
   {
+    id: 'AUTOS' as TipoDocumento,
+    nombre: 'Autos',
+    descripcion: 'Autos judiciales, providencias, decretos',
+    color: 'violet',
+    icon: Gavel
+  },
+  {
     id: 'SENTENCIAS' as TipoDocumento,
     nombre: 'Sentencias y Fallos',
-    descripcion: 'Sentencias, autos, providencias judiciales',
+    descripcion: 'Sentencias finales y fallos definitivos',
     color: 'purple',
     icon: Gavel
   },
@@ -185,11 +193,11 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     totalDocumentos: 15,
     documentos: [
       { id: 'd1', nombre: 'Demanda NRD - María González.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '2.4 MB', fechaCreacion: '2024-10-15', autor: 'Tribunal Administrativo' },
-      { id: 'd2', nombre: 'Auto Admisorio.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-10-20', autor: 'Tribunal' },
+      { id: 'd2', nombre: 'Auto Admisorio.pdf', tipo: 'AUTOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-10-20', autor: 'Tribunal' },
       { id: 'd3', nombre: 'Notificación Auto Admisorio.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-10-22', autor: 'Notificador' },
       { id: 'd4', nombre: 'Contestación ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '3.8 MB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
       { id: 'd5', nombre: 'Prueba - Resolución Litigio.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
-      { id: 'd6', nombre: 'Auto Decreto Pruebas.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-10', autor: 'Tribunal' },
+      { id: 'd6', nombre: 'Auto Decreto Pruebas.pdf', tipo: 'AUTOS', tipoArchivo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-10', autor: 'Tribunal' },
     ]
   },
   {
@@ -590,6 +598,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
       DEMANDA: [],
       CONTESTACION: [],
       PRUEBAS: [],
+      AUTOS: [],
       SENTENCIAS: [],
       TUTELAS: [],
       RECURSOS: [],
@@ -751,6 +760,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon }: CarpetaTipoDo
     red: 'bg-red-50 border-red-200 text-red-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
+    violet: 'bg-violet-50 border-violet-200 text-violet-700',
     purple: 'bg-purple-50 border-purple-200 text-purple-700',
     orange: 'bg-orange-50 border-orange-200 text-orange-700',
     indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
@@ -990,6 +1000,7 @@ function VistaEstadisticas() {
       DEMANDA: 0,
       CONTESTACION: 0,
       PRUEBAS: 0,
+      AUTOS: 0,
       SENTENCIAS: 0,
       TUTELAS: 0,
       RECURSOS: 0,
