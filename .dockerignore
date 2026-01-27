@@ -1,27 +1,34 @@
-# Node / builds
+# Dependencias / builds
 node_modules
 **/node_modules
 dist
+**/dist
 build
+**/build
 coverage
-npm-debug.log
-yarn.lock
-pnpm-lock.yaml
+**/coverage
+*.log
 
-# VCS / IDE
+# Git / IDE / OS
 .git
 .gitignore
 .vscode
+.idea
 .DS_Store
 
-# Env / secrets
+# Env / secretos
 .env
 .env.*
 *.pem
+*.key
 
-# Docker files (opcional)
-docker-compose*.yml
+# Cache
+.npm
+**/.npm
+.cache
+**/.cache
 
-# En tu repo: esto es CLAVE para que el FRONTEND no cargue TODO el backend
-backend
-db
+# Si tienes carpetas grandes que NO deben entrar al build de otros servicios:
+# (ajusta a tu repo real)
+tmp
+**/tmp
