@@ -3004,31 +3004,650 @@ El seguimiento se realiza cada trimestre según el calendario:
 **Acceso**: Oficina de Control Disciplinario (c.disciplinario@esap.edu.co)
 
 **¿Qué es?**
-Sistema para gestionar procesos disciplinarios de la institución.
-
-**Funcionalidades principales**:
-- Gestión de noticias disciplinarias
-- Seguimiento de procesos
-- Expedientes electrónicos
-- Control de términos y alertas
-- Generación de notificaciones
-- Aprobación por jefatura
+Sistema integral para gestionar procesos disciplinarios de la institución conforme a la Ley 734 de 2002 (Código Disciplinario Único) y la Ley 1952 de 2019 (Código General Disciplinario).
 
 ---
 
-### 6.3 Gestión Legal
+#### 6.2.1 Dashboard de Control Disciplinario
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CONTROL DISCIPLINARIO                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  INDICADORES GENERALES                                                      │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌────────────┐│
+│  │      23        │  │       8        │  │       5        │  │     3      ││
+│  │   Procesos     │  │  En Indagación │  │   En Juicio    │  │  Por Vencer││
+│  │   Activos      │  │   Preliminar   │  │  Disciplinario │  │  Términos  ││
+│  └────────────────┘  └────────────────┘  └────────────────┘  └────────────┘│
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ACCESOS RÁPIDOS                                                            │
+│                                                                             │
+│  [Nueva Noticia]  [Mis Procesos]  [Términos]  [Notificaciones]  [Reportes] │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ALERTAS DE TÉRMINOS                                                        │
+│  ⚠️ EXP-2026-015: Vence en 3 días - Decisión de archivo                    │
+│  ⚠️ EXP-2026-012: Vence en 5 días - Formulación de cargos                  │
+│  ⚠️ EXP-2026-008: Vence en 7 días - Práctica de pruebas                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.2.2 Flujo del Proceso Disciplinario
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  NOTICIA    │───▶│ INDAGACIÓN  │───▶│INVESTIGACIÓN│───▶│   JUICIO    │
+│DISCIPLINARIA│    │ PRELIMINAR  │    │DISCIPLINARIA│    │DISCIPLINARIO│
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+      │                  │                  │                  │
+      │                  │                  │                  │
+      ▼                  ▼                  ▼                  ▼
+   Registro         Verificar si      Recopilar          Decidir
+   del hecho        hay mérito        pruebas            sanción
+                                                         o archivo
+                         │                  │
+                         ▼                  ▼
+                    ┌─────────┐        ┌─────────┐
+                    │ ARCHIVO │        │FORMULAC.│
+                    │         │        │ CARGOS  │
+                    └─────────┘        └─────────┘
+```
+
+---
+
+#### 6.2.3 Estados del Proceso Disciplinario
+
+| Estado | Descripción | Término Legal |
+|--------|-------------|---------------|
+| **Noticia recibida** | Queja o informe registrado | - |
+| **En evaluación** | Análisis inicial de la noticia | 15 días |
+| **Indagación preliminar** | Verificación de hechos | 6 meses |
+| **Investigación disciplinaria** | Recopilación formal de pruebas | 6 meses |
+| **Formulación de cargos** | Cargos formales al investigado | - |
+| **Descargos** | Respuesta del investigado | 10 días |
+| **Período probatorio** | Práctica de pruebas | 90 días |
+| **Alegatos** | Argumentos finales | 10 días |
+| **Fallo** | Decisión final | 20 días |
+| **Segunda instancia** | Apelación (si aplica) | 45 días |
+| **Archivado** | Proceso cerrado sin sanción | - |
+| **Ejecutoriado** | Sanción en firme | - |
+
+---
+
+#### 6.2.4 Registrar Nueva Noticia Disciplinaria
+
+**Paso 1**: Haga clic en **"Nueva Noticia"**
+
+**Paso 2**: Complete la información del hecho
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  REGISTRAR NOTICIA DISCIPLINARIA                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  INFORMACIÓN DE LA NOTICIA                                     │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Tipo de noticia*:      [Queja                             ▼]  │
+│                         • Queja (de tercero)                   │
+│                         • Informe (de servidor público)        │
+│                         • Anónima                              │
+│                         • De oficio                            │
+│                                                                 │
+│  Fecha de los hechos*:  [15/01/2026                        📅] │
+│  Fecha de conocimiento*: [20/01/2026                       📅] │
+│                                                                 │
+│  DESCRIPCIÓN DE LOS HECHOS                                     │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Resumen de los hechos*:                                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Describa de manera clara y detallada los hechos que    │   │
+│  │ motivan la noticia disciplinaria...                    │   │
+│  │                                                         │   │
+│  │                                                         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Posibles faltas disciplinarias:                               │
+│  ☐ Incumplimiento de deberes                                   │
+│  ☐ Extralimitación de funciones                                │
+│  ☐ Prohibiciones                                               │
+│  ☐ Conflicto de intereses                                      │
+│  ☐ Otras                                                       │
+│                                                                 │
+│  PRESUNTO(S) RESPONSABLE(S)                                    │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  [+ Agregar servidor]                                          │
+│                                                                 │
+│  | Nombre              | Cargo              | Área            │ │
+│  |---------------------|--------------------|-----------------|│ │
+│  | Juan Pérez García   | Prof. Universitario| Subdirección Ac.│ │
+│  |                                         [Quitar]           │ │
+│                                                                 │
+│  QUEJOSO (si aplica)                                           │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Nombre:    [María López Torres                            ]   │
+│  Documento: [CC 9876543210                                 ]   │
+│  Teléfono:  [3001234567                                    ]   │
+│  Correo:    [maria.lopez@email.com                         ]   │
+│                                                                 │
+│  ☐ El quejoso solicita reserva de identidad                   │
+│                                                                 │
+│  DOCUMENTOS DE SOPORTE                                         │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  [+ Adjuntar documento]                                        │
+│  ─ Queja_escrita.pdf                                          │
+│  ─ Evidencia_1.pdf                                            │
+│                                                                 │
+│                              [Cancelar]  [Registrar Noticia]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.2.5 Gestión del Expediente Disciplinario
+
+**Vista del Expediente**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  EXPEDIENTE EXP-2026-015                                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Estado actual: ● EN INVESTIGACIÓN DISCIPLINARIA               │
+│  Fecha de inicio: 20/01/2026                                   │
+│  Abogado asignado: DRA. ANA MARÍA RODRÍGUEZ                    │
+│                                                                 │
+│  INVESTIGADO                                                   │
+│  Nombre: JUAN CARLOS PÉREZ GARCÍA                              │
+│  Cargo: Profesional Universitario - Grado 11                   │
+│  Área: Subdirección Académica                                  │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  PESTAÑAS: [Resumen] [Documentos] [Actuaciones] [Términos]     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  LÍNEA DE TIEMPO                                               │
+│  ─────────────────────────────────────────────────────────────  │
+│                                                                 │
+│  ● 20/01/2026 - Registro de noticia                           │
+│  │                                                             │
+│  ● 22/01/2026 - Apertura indagación preliminar                │
+│  │              Auto No. 001-2026                              │
+│  │                                                             │
+│  ● 15/02/2026 - Cierre indagación preliminar                  │
+│  │              Decisión: Apertura investigación               │
+│  │                                                             │
+│  ● 16/02/2026 - Apertura investigación disciplinaria          │
+│  │              Auto No. 015-2026                              │
+│  │                                                             │
+│  ○ Pendiente - Formulación de cargos                          │
+│    Vence: 16/08/2026 (178 días restantes)                     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.2.6 Control de Términos
+
+El sistema controla automáticamente los términos procesales:
+
+**Alertas automáticas**:
+| Días antes | Tipo de alerta |
+|------------|----------------|
+| 15 días | Notificación informativa |
+| 7 días | Alerta de precaución (amarillo) |
+| 3 días | Alerta urgente (rojo) |
+| 0 días | Vencimiento del término |
+
+**Vista de términos**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONTROL DE TÉRMINOS                                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  | Expediente  | Etapa          | Vence      | Días | Estado  │ │
+│  |-------------|----------------|------------|------|---------|│ │
+│  | EXP-2026-015| Formulac.cargos| 16/08/2026 | 178  | 🟢 OK   │ │
+│  | EXP-2026-012| Invest. disc.  | 05/02/2026 | 9    | 🟡 Alerta│ │
+│  | EXP-2026-008| Descargos      | 30/01/2026 | 3    | 🔴 Urgente│ │
+│  | EXP-2025-098| Fallo 1ra inst.| 28/01/2026 | 1    | 🔴 Crítico│ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.2.7 Generación de Documentos
+
+El sistema genera automáticamente los documentos procesales:
+
+| Documento | Etapa | Descripción |
+|-----------|-------|-------------|
+| Auto de apertura | Indagación | Inicia la indagación preliminar |
+| Auto de archivo | Indagación | Archiva por falta de mérito |
+| Auto de investigación | Investigación | Abre investigación disciplinaria |
+| Pliego de cargos | Cargos | Cargos formales al investigado |
+| Auto de pruebas | Probatorio | Decreta práctica de pruebas |
+| Fallo de primera instancia | Fallo | Decisión sancionatoria o absolutoria |
+| Fallo de segunda instancia | Apelación | Confirma, modifica o revoca |
+
+**Generar documento**:
+1. Seleccione el expediente
+2. Haga clic en **"Generar Documento"**
+3. Seleccione el tipo de documento
+4. El sistema genera el borrador con los datos del expediente
+5. Revise y edite si es necesario
+6. Envíe a aprobación del jefe
+
+---
+
+#### 6.2.8 Notificaciones al Investigado
+
+El sistema registra todas las notificaciones:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  NOTIFICACIONES - EXP-2026-015                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [+ Nueva Notificación]                                        │
+│                                                                 │
+│  | Fecha      | Documento          | Medio    | Estado        │ │
+│  |------------|--------------------|----------|---------------|│ │
+│  | 22/01/2026 | Auto apertura ind. | Personal | ✓ Notificado  │ │
+│  | 16/02/2026 | Auto invest. disc. | Correo   | ✓ Notificado  │ │
+│  | 20/03/2026 | Pliego de cargos   | Edicto   | ⏳ En curso   │ │
+│                                                                 │
+│  MEDIOS DE NOTIFICACIÓN:                                       │
+│  • Personal: En la oficina de Control Disciplinario            │
+│  • Correo electrónico: Al correo institucional                 │
+│  • Edicto: Publicación en cartelera (si no se ubica)          │
+│  • Aviso: En periódico de amplia circulación                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.2.9 Tipos de Sanciones
+
+| Sanción | Descripción | Duración |
+|---------|-------------|----------|
+| **Amonestación escrita** | Llamado de atención formal | N/A |
+| **Multa** | Sanción económica | Hasta 90 días de salario |
+| **Suspensión** | Separación temporal del cargo | 1 a 12 meses |
+| **Destitución** | Retiro definitivo del cargo | Permanente |
+| **Inhabilidad general** | Prohibición de ejercer cargos | 10 a 20 años |
+| **Inhabilidad especial** | Prohibición en área específica | Variable |
+
+---
+
+#### 6.2.10 Reportes de Control Disciplinario
+
+| Reporte | Descripción |
+|---------|-------------|
+| Procesos activos | Listado de expedientes en curso |
+| Procesos por etapa | Distribución por estado procesal |
+| Términos por vencer | Alertas de vencimientos próximos |
+| Estadísticas de sanciones | Tipos de sanciones impuestas |
+| Informe de gestión | Resumen para la Dirección |
+
+---
+
+### 6.3 Gestión Legal (SIGL)
 
 **Acceso**: Oficina Jurídica (gestion.legal@esap.edu.co)
 
 **¿Qué es?**
-Sistema para la gestión de procesos legales y coactivos.
+Sistema Integral de Gestión Legal (SIGL) para la administración de procesos judiciales, cobro coactivo y conceptos jurídicos de la entidad.
 
-**Funcionalidades principales**:
-- Gestión de procesos coactivos
-- Administración de expedientes legales
-- Flujos de aprobación
-- Control de términos procesales
-- Reportería legal
+---
+
+#### 6.3.1 Dashboard de Gestión Legal
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GESTIÓN LEGAL - SIGL                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  INDICADORES GENERALES                                                      │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌────────────┐│
+│  │      45        │  │      12        │  │   $1.250 M     │  │     8      ││
+│  │   Procesos     │  │   Procesos     │  │   Cartera por  │  │ Audiencias ││
+│  │   Judiciales   │  │   Coactivos    │  │    Cobrar      │  │ Este Mes   ││
+│  └────────────────┘  └────────────────┘  └────────────────┘  └────────────┘│
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  MÓDULOS                                                                    │
+│                                                                             │
+│  [Procesos Judiciales]  [Cobro Coactivo]  [Conceptos]  [Contratos]         │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  PRÓXIMAS ACTUACIONES                                                       │
+│  | Fecha      | Proceso       | Actuación              | Abogado         │ │
+│  |------------|---------------|------------------------|-----------------|│ │
+│  | 28/01/2026 | JUD-2025-089  | Audiencia inicial      | Dr. Martínez    │ │
+│  | 30/01/2026 | COA-2026-003  | Vence mandamiento pago | Dra. López      │ │
+│  | 02/02/2026 | JUD-2024-156  | Alegatos de conclusión | Dr. García      │ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.3.2 Módulo de Procesos Judiciales
+
+Gestión de procesos donde la ESAP es demandante o demandada.
+
+**Tipos de Procesos**:
+| Tipo | Descripción | Jurisdicción |
+|------|-------------|--------------|
+| Nulidad y Restablecimiento | Contra actos administrativos | Contencioso |
+| Reparación Directa | Por daños causados por la entidad | Contencioso |
+| Controversias Contractuales | Disputas de contratos | Contencioso |
+| Acción de Tutela | Protección de derechos fundamentales | Constitucional |
+| Acción Popular | Derechos colectivos | Constitucional |
+| Laboral | Conflictos con servidores | Ordinaria Laboral |
+
+---
+
+##### Crear Nuevo Proceso Judicial
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  REGISTRAR PROCESO JUDICIAL                                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  INFORMACIÓN DEL PROCESO                                       │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Número de radicado*:    [11001333502420260001500          ]   │
+│  Tipo de proceso*:       [Nulidad y Restablecimiento       ▼]  │
+│  Jurisdicción*:          [Contencioso Administrativa       ▼]  │
+│                                                                 │
+│  Despacho judicial*:                                           │
+│  [Juzgado 24 Administrativo del Circuito de Bogotá         ▼]  │
+│                                                                 │
+│  Fecha de radicación*:   [15/01/2026                       📅] │
+│                                                                 │
+│  PARTES DEL PROCESO                                            │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Calidad de la ESAP*:    [● Demandada  ○ Demandante       ]   │
+│                                                                 │
+│  Demandante:             [JUAN CARLOS PÉREZ GARCÍA         ]   │
+│  Apoderado demandante:   [DR. PEDRO MARTÍNEZ               ]   │
+│                                                                 │
+│  Demandado:              [ESAP                             ]   │
+│  Abogado ESAP asignado*: [DRA. ANA MARÍA LÓPEZ            ▼]  │
+│                                                                 │
+│  PRETENSIONES                                                  │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Cuantía*:               [$150.000.000                     ]   │
+│                                                                 │
+│  Pretensiones principales:                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ 1. Declarar la nulidad de la Resolución 123 de 2025   │   │
+│  │ 2. Ordenar el reintegro al cargo                       │   │
+│  │ 3. Pagar salarios y prestaciones dejados de percibir   │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  DOCUMENTOS                                                    │
+│  [+ Adjuntar demanda]  [+ Adjuntar anexos]                    │
+│                                                                 │
+│                              [Cancelar]  [Registrar Proceso]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Seguimiento del Proceso Judicial
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PROCESO JUD-2026-015                                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Radicado: 11001333502420260001500                             │
+│  Tipo: Nulidad y Restablecimiento del Derecho                  │
+│  Estado: ● EN TRÁMITE                                          │
+│  Etapa actual: Contestación de demanda                         │
+│                                                                 │
+│  Cuantía: $150.000.000                                         │
+│  Riesgo de pérdida: ALTO                                       │
+│  Provisión contable: $100.000.000                              │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  PESTAÑAS: [Resumen] [Actuaciones] [Documentos] [Términos]     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ACTUACIONES PROCESALES                                        │
+│  ─────────────────────────────────────────────────────────────  │
+│                                                                 │
+│  | Fecha      | Actuación                | Responsable        │ │
+│  |------------|--------------------------|--------------------│ │
+│  | 15/01/2026 | Admisión de demanda      | Juzgado 24         │ │
+│  | 20/01/2026 | Notificación a ESAP      | Juzgado 24         │ │
+│  | 25/01/2026 | Contestación demanda     | Dra. López (ESAP)  │ │
+│  | Pendiente  | Audiencia inicial        | 28/02/2026         │ │
+│                                                                 │
+│  [+ Registrar Actuación]                                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.3.3 Módulo de Cobro Coactivo
+
+Gestión del cobro de obligaciones a favor de la ESAP.
+
+##### Flujo del Proceso Coactivo
+
+```
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│   TÍTULO        │──▶│  MANDAMIENTO    │──▶│  NOTIFICACIÓN   │
+│   EJECUTIVO     │   │   DE PAGO       │   │   AL DEUDOR     │
+└─────────────────┘   └─────────────────┘   └─────────────────┘
+                                                    │
+         ┌──────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│  EXCEPCIONES    │──▶│   RESOLUCIÓN    │──▶│   MEDIDAS       │
+│  (si presenta)  │   │   EXCEPCIONES   │   │   CAUTELARES    │
+└─────────────────┘   └─────────────────┘   └─────────────────┘
+                                                    │
+         ┌──────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+│    EMBARGO Y    │──▶│     REMATE      │──▶│     PAGO /      │
+│    SECUESTRO    │   │   (si aplica)   │   │   TERMINACIÓN   │
+└─────────────────┘   └─────────────────┘   └─────────────────┘
+```
+
+---
+
+##### Crear Proceso de Cobro Coactivo
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  INICIAR COBRO COACTIVO                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  INFORMACIÓN DEL DEUDOR                                        │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Tipo de deudor*:        [Persona Natural                  ▼]  │
+│  Tipo de documento*:     [Cédula de Ciudadanía             ▼]  │
+│  Número de documento*:   [1234567890                       ]   │
+│  Nombre/Razón social*:   [JUAN CARLOS PÉREZ GARCÍA         ]   │
+│                                                                 │
+│  Dirección de notificación*: [Calle 100 # 45-67, Bogotá    ]   │
+│  Teléfono:               [3001234567                       ]   │
+│  Correo electrónico:     [juan.perez@email.com             ]   │
+│                                                                 │
+│  TÍTULO EJECUTIVO                                              │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Tipo de título*:        [Resolución sancionatoria         ▼]  │
+│                          • Resolución sancionatoria            │
+│                          • Acto administrativo                 │
+│                          • Contrato                            │
+│                          • Sentencia judicial                  │
+│                          • Otro título ejecutivo               │
+│                                                                 │
+│  Número del título*:     [Resolución 456 de 2025           ]   │
+│  Fecha del título*:      [15/11/2025                       📅] │
+│  Fecha ejecutoria*:      [30/11/2025                       📅] │
+│                                                                 │
+│  OBLIGACIÓN                                                    │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Concepto*:              [Multa disciplinaria              ]   │
+│  Valor capital*:         [$15.000.000                      ]   │
+│  Intereses (si aplica):  [$1.250.000                       ]   │
+│  Total a cobrar:         $16.250.000                           │
+│                                                                 │
+│  DOCUMENTOS SOPORTE                                            │
+│  [+ Adjuntar título ejecutivo]                                 │
+│  [+ Adjuntar constancia de ejecutoria]                         │
+│                                                                 │
+│                              [Cancelar]  [Iniciar Cobro]       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Estados del Proceso Coactivo
+
+| Estado | Descripción | Siguiente Paso |
+|--------|-------------|----------------|
+| **Iniciado** | Proceso registrado | Generar mandamiento |
+| **Mandamiento librado** | Orden de pago emitida | Notificar al deudor |
+| **Notificado** | Deudor notificado | Esperar pago o excepciones |
+| **Con excepciones** | Deudor presentó defensa | Resolver excepciones |
+| **Excepciones resueltas** | Decisión sobre excepciones | Continuar o archivar |
+| **Con medidas cautelares** | Bienes embargados | Seguir a remate o pago |
+| **En acuerdo de pago** | Facilidad de pago aprobada | Seguimiento de cuotas |
+| **Pagado** | Obligación satisfecha | Archivar |
+| **Archivado** | Proceso terminado | - |
+
+---
+
+##### Acuerdos de Pago
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR ACUERDO DE PAGO                                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Proceso: COA-2026-003                                         │
+│  Deudor: JUAN CARLOS PÉREZ GARCÍA                              │
+│  Valor total de la deuda: $16.250.000                          │
+│                                                                 │
+│  CONDICIONES DEL ACUERDO                                       │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Número de cuotas*:      [12                               ▼]  │
+│  Valor por cuota:        $1.354.167 (calculado)                │
+│  Primera cuota:          [15/02/2026                       📅] │
+│  Periodicidad:           [Mensual                          ▼]  │
+│                                                                 │
+│  CUOTA INICIAL (opcional):                                     │
+│  Valor cuota inicial:    [$2.000.000                       ]   │
+│  Fecha cuota inicial:    [30/01/2026                       📅] │
+│                                                                 │
+│  PLAN DE PAGOS GENERADO                                        │
+│  ─────────────────────────────────────────────────────────────  │
+│  | # | Fecha      | Valor        | Estado                    │ │
+│  |---|------------|--------------|---------------------------│ │
+│  | 0 | 30/01/2026 | $2.000.000   | Cuota inicial             │ │
+│  | 1 | 15/02/2026 | $1.187.500   | Pendiente                 │ │
+│  | 2 | 15/03/2026 | $1.187.500   | Pendiente                 │ │
+│  | ...                                                        │ │
+│                                                                 │
+│  ☐ El deudor acepta las condiciones del acuerdo               │
+│                                                                 │
+│                              [Cancelar]  [Crear Acuerdo]       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.3.4 Control de Términos Procesales
+
+**Términos legales críticos**:
+
+| Actuación | Término | Consecuencia de vencimiento |
+|-----------|---------|----------------------------|
+| Contestar demanda | 30 días | Se dan por ciertos los hechos |
+| Interponer recursos | 10 días | Pérdida de la oportunidad |
+| Excepciones coactivas | 15 días | Continúa el proceso |
+| Pagar mandamiento | 15 días | Medidas cautelares |
+| Alegatos | 10 días | Preclusión |
+
+---
+
+#### 6.3.5 Reportes de Gestión Legal
+
+| Reporte | Descripción |
+|---------|-------------|
+| Procesos por estado | Distribución de procesos activos |
+| Procesos por abogado | Carga de trabajo por profesional |
+| Cartera coactiva | Valores pendientes por cobrar |
+| Provisiones contables | Contingencias por procesos |
+| Índice de éxito | Procesos ganados vs perdidos |
+| Términos por vencer | Alertas de actuaciones pendientes |
+| Informe mensual | Resumen para la Dirección |
+
+---
+
+#### 6.3.6 Módulo de Conceptos Jurídicos
+
+Gestión de consultas y conceptos emitidos por la Oficina Jurídica.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONCEPTOS JURÍDICOS                                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  [+ Nueva Consulta]  [Buscar Concepto]                         │
+│                                                                 │
+│  CONSULTAS RECIENTES                                           │
+│  | Radicado    | Tema               | Solicitante | Estado    │ │
+│  |-------------|--------------------|-------------|-----------|│ │
+│  | CON-2026-015| Contratación       | Sub. Admin. | Emitido   │ │
+│  | CON-2026-014| Licencias          | Talento Hum.| En trámite│ │
+│  | CON-2026-013| Pensiones          | Financiera  | Emitido   │ │
+│                                                                 │
+│  BIBLIOTECA DE CONCEPTOS                                       │
+│  ─────────────────────────────────────────────────────────────  │
+│  Buscar: [                                     ] [Buscar]      │
+│                                                                 │
+│  Categorías:                                                   │
+│  📁 Contratación (45 conceptos)                                │
+│  📁 Talento Humano (38 conceptos)                              │
+│  📁 Financiero (22 conceptos)                                  │
+│  📁 Disciplinario (15 conceptos)                               │
+│  📁 Otros (28 conceptos)                                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
