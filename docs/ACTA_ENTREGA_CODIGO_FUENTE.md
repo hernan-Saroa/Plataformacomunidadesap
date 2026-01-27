@@ -206,140 +206,835 @@ Este es el módulo principal que contiene toda la funcionalidad administrativa d
 
 #### 4.1.2 Submódulos Especializados
 
-**a) Gestión de Personas (`/esap/gestion-personas/`)**
+---
 
-Módulo integrado para la administración de personas, estructura organizacional y configuración del sistema:
+##### **a) GESTIÓN DE PERSONAS**
 
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Personas** | `UsersPersonsModulePremium.tsx` | Gestión completa de usuarios y personas |
-| | `PersonasDataTable.tsx` | Tabla de datos de personas |
-| | `PersonaDetalleModal.tsx` | Modal de detalle de persona |
-| | `PersonaFormulario.tsx` | Formulario de creación/edición |
-| | `CarpetaDigitalModule.tsx` | Carpeta digital de documentos |
-| | `EnrollmentManagementModule.tsx` | Gestión de enrolamiento |
-| | `GraduatesManagementModule.tsx` | Gestión de graduados |
+**Ubicación:** `/esap/gestion-personas/`
 
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Estructura Organizacional** | `EstructuraOrganizacionalModule.tsx` | Módulo principal de estructura |
-| | `OrganizacionCompleta.tsx` | Vista completa de organización |
-| | `ComponenteArbolOrganigrama.tsx` | Árbol del organigrama |
-| | `GestionSedes.tsx` | Gestión de sedes |
-| | `GestionAreas.tsx` | Gestión de áreas |
-| | `GestionTerritoriales.tsx` | Gestión de territoriales |
-| | `GestionCETAP.tsx` | Gestión de CETAP |
-
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Programas Académicos** | `ProgramasAcademicosModule.tsx` | Módulo principal |
-| | `GestionProgramas.tsx` | Gestión de programas |
-| | `AsignacionDocentes.tsx` | Asignación de docentes |
-| | `PlanesEstudio.tsx` | Planes de estudio |
-| | `OfertaAcademica.tsx` | Oferta académica |
-
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Roles y Permisos** | `RolesAdministrationModulePremium.tsx` | Administración de roles |
-| | `PermisosGranulares.tsx` | Permisos granulares |
-| | `AsignacionRoles.tsx` | Asignación de roles a usuarios |
-| | `MatrizPermisos.tsx` | Matriz de permisos |
-| | `GestionAccesos.tsx` | Control de accesos |
-
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Auditoría del Sistema** | `AuditModulePremium.tsx` | Módulo de auditoría |
-| | `AuditLogTable.tsx` | Tabla de logs de auditoría |
-| | `AuditFilters.tsx` | Filtros de auditoría |
-| | `AuditDetailModal.tsx` | Detalle de registro |
-| | `AuditExport.tsx` | Exportación de auditoría |
-| | `AnomaliesDetection.tsx` | Detección de anomalías |
-
-| Submódulo | Componentes | Descripción |
-|-----------|-------------|-------------|
-| **Reportes** | `ReportsModuleV2.tsx` | Módulo de reportes |
-| | `ReportBuilder.tsx` | Constructor de reportes |
-| | `ReportScheduler.tsx` | Programación de reportes |
-| | `ReportTemplates.tsx` | Plantillas de reportes |
-| | `ExportPDF.tsx` | Exportación a PDF |
-| | `ExportExcel.tsx` | Exportación a Excel |
-| | `DashboardReports.tsx` | Dashboard de reportes |
+Módulo integrado para la administración completa de personas, estructura organizacional, configuración del sistema, auditoría y reportes.
 
 ---
 
-**b) Control Interno CIG (`/esap/control-interno/`) - 108 archivos**
+###### a.1) PERSONAS Y USUARIOS
 
-Sistema completo para gestión de auditorías internas según Decreto 648:
+**Propósito:** Gestión integral del ciclo de vida de usuarios en la plataforma.
 
-| Subcarpeta | Contenido |
-|------------|-----------|
-| `/auditorias/` | Gestión de auditorías |
-| `/listas-chequeo/` | Listas de verificación |
-| `/hooks/` | Hooks de control interno |
-| `/services/` | Servicios API |
-| `/utils/` | Utilidades especializadas |
+| Componente | Descripción | Funcionalidades |
+|------------|-------------|-----------------|
+| `UsersPersonsModulePremium.tsx` | Módulo principal | Vista completa de gestión de usuarios |
+| `PersonasDataTable.tsx` | Tabla de datos | Listado con filtros, ordenamiento, paginación |
+| `PersonaDetalleModal.tsx` | Modal de detalle | Información completa de la persona |
+| `PersonaFormulario.tsx` | Formulario CRUD | Crear, editar datos de persona |
+| `BulkActionsPersonas.tsx` | Acciones masivas | Operaciones sobre múltiples registros |
 
-Componentes principales:
-- `PlanAnualModule.tsx` - Plan anual de auditorías
-- `UniversoAuditorias.tsx` - Catálogo de auditorías
-- `GestionAuditoriasKanbanSimple.tsx` - Vista Kanban
-- `EjecucionAuditoriaModule.tsx` - Ejecución de auditorías
-- `HallazgosYMejoramientoCompleto.tsx` - Hallazgos y mejoras
-- `SeguimientoPlanMejoramientoModule.tsx` - Seguimiento
-- `DashboardEjecutivoCIG.tsx` - Dashboard ejecutivo
+**Funcionalidades de Personas:**
 
-**c) Gestión Legal (`/esap/gestion-legal/`) - 96 archivos**
+| Función | Descripción |
+|---------|-------------|
+| **Crear Usuario** | Registro de nuevo usuario con validación de documento |
+| **Editar Usuario** | Modificación de datos personales y de contacto |
+| **Desactivar/Activar** | Cambio de estado de cuenta |
+| **Eliminar Usuario** | Eliminación permanente con confirmación |
+| **Carga Masiva** | Importación desde archivo Excel (.xlsx) |
+| **Exportar Listado** | Descarga en PDF o Excel |
+| **Búsqueda Avanzada** | Por documento, nombre, correo, sede, rol |
+| **Filtros Dinámicos** | Por estado, tipo, fecha de creación |
 
-Sistema para procesos legales y coactivos:
-
-| Subcarpeta | Contenido |
-|------------|-----------|
-| `/modulos/` | Módulos funcionales |
-| `/procesos-coactivos/` | Gestión de procesos |
-| `/design-system/` | Componentes UI |
-| `/services/` | Servicios API |
-| `/core/` | Núcleo del sistema |
-| `/config/` | Configuración |
-| `/data/` | Datos mock |
-| `/utils/` | Utilidades |
-
-**d) Control Disciplinario (`/esap/disciplinario/`) - 30 archivos**
-
-Gestión de procesos disciplinarios:
-
-- `DashboardKanbanOperativo.tsx` - Vista Kanban de procesos
-- `GestionProcesos.tsx` - Gestión de procesos
-- `GestionProfesionales.tsx` - Gestión de involucrados
-- `GestionTerminosAlertas.tsx` - Términos y alertas
-- Modales y componentes auxiliares
-
-**e) Firma Electrónica (`/esap/firma-electronica/`) - 18 archivos**
-
-Sistema de firma digital:
-
-- `ModuloFirmaElectronicaWorldClass.tsx` - Módulo principal
-- `PortalTransaccionalFirmaCompleto.tsx` - Portal de firmas
-- `VisorDocumentoFirmaOTP.tsx` - Visor con OTP
-- `ModalHistorialFirmas.tsx` - Historial de firmas
-- `ModalTrazabilidadDocumento.tsx` - Trazabilidad
-
-**f) Registro Académico (`/esap/registro-academico/`)**
-
-Sistema para gestión de registros académicos:
+**Carpeta Digital:**
 
 | Componente | Descripción |
 |------------|-------------|
-| `RegistroAcademicoModule.tsx` | Módulo principal de registro académico |
-| `GestionMatriculas.tsx` | Gestión de matrículas estudiantiles |
-| `HistorialAcademico.tsx` | Consulta de historial académico |
-| `CertificacionesTitulos.tsx` | Certificaciones de títulos |
+| `CarpetaDigitalModule.tsx` | Módulo de documentos personales |
+| `DocumentosGrid.tsx` | Grid de documentos del usuario |
+| `UploadDocumento.tsx` | Carga de nuevos documentos |
+| `DocumentoViewer.tsx` | Visualizador de documentos |
+| `CategoriasDocumentos.tsx` | Organización por categorías |
+
+Tipos de documentos soportados: PDF, imágenes (JPG, PNG), documentos Office.
+
+**Enrolamiento:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `EnrollmentManagementModule.tsx` | Gestión de enrolamiento |
+| `SolicitudesPendientes.tsx` | Bandeja de solicitudes |
+| `EnrollmentForm.tsx` | Formulario de registro |
+| `QREnrollment.tsx` | Enrolamiento por código QR |
+| `BulkEnrollment.tsx` | Enrolamiento masivo |
+
+Flujo de enrolamiento:
+```
+Solicitud → Validación de datos → Verificación de correo → Creación de cuenta → Asignación de rol
+```
+
+**Gestión de Graduados:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `GraduatesManagementModule.tsx` | Módulo de graduados |
+| `GraduadosDataTable.tsx` | Listado de egresados |
+| `TitulosGraduado.tsx` | Gestión de títulos |
+| `CertificacionGraduado.tsx` | Emisión de certificados |
+
+---
+
+###### a.2) ESTRUCTURA ORGANIZACIONAL
+
+**Propósito:** Definición y gestión de la estructura jerárquica de la ESAP.
+
+| Componente | Descripción | Funcionalidades |
+|------------|-------------|-----------------|
+| `EstructuraOrganizacionalModule.tsx` | Módulo principal | Vista general de estructura |
+| `OrganizacionCompleta.tsx` | Vista completa | Organigrama interactivo |
+| `ComponenteArbolOrganigrama.tsx` | Árbol jerárquico | Visualización en árbol |
+
+**Entidades Organizacionales:**
+
+| Entidad | Componente | Descripción |
+|---------|------------|-------------|
+| **Sedes** | `GestionSedes.tsx` | Ubicaciones físicas principales |
+| **Territoriales** | `GestionTerritoriales.tsx` | 16 divisiones geográficas |
+| **Áreas** | `GestionAreas.tsx` | Dependencias administrativas |
+| **CETAP** | `GestionCETAP.tsx` | Centros Territoriales de Administración Pública |
+
+**Funcionalidades por Entidad:**
+
+| Función | Sedes | Territoriales | Áreas | CETAP |
+|---------|-------|---------------|-------|-------|
+| Crear | ✓ | ✓ | ✓ | ✓ |
+| Editar | ✓ | ✓ | ✓ | ✓ |
+| Eliminar | ✓ | ✓ | ✓ | ✓ |
+| Asignar responsable | ✓ | ✓ | ✓ | ✓ |
+| Ver dependencias | ✓ | ✓ | ✓ | - |
+| Exportar | ✓ | ✓ | ✓ | ✓ |
+
+**Jerarquía Organizacional:**
+```
+ESAP (Nacional)
+├── Sede Central
+│   ├── Áreas Administrativas
+│   └── Áreas Académicas
+└── Territoriales (16)
+    ├── CETAP (múltiples por territorial)
+    └── Áreas Territoriales
+```
+
+---
+
+###### a.3) PROGRAMAS ACADÉMICOS
+
+**Propósito:** Gestión de la oferta académica de la ESAP.
+
+| Componente | Descripción |
+|------------|-------------|
+| `ProgramasAcademicosModule.tsx` | Módulo principal de programas |
+| `GestionProgramas.tsx` | CRUD de programas académicos |
+| `AsignacionDocentes.tsx` | Asignación de docentes a programas |
+| `PlanesEstudio.tsx` | Gestión de planes de estudio |
+| `OfertaAcademica.tsx` | Configuración de oferta por período |
+| `MallaCurricular.tsx` | Visualización de malla curricular |
+
+**Tipos de Programas:**
+
+| Tipo | Descripción |
+|------|-------------|
+| **Pregrado** | Programas de formación profesional |
+| **Especialización** | Programas de posgrado cortos |
+| **Maestría** | Programas de posgrado avanzados |
+| **Diplomado** | Programas de educación continua |
+| **Curso Corto** | Capacitaciones específicas |
+
+**Funcionalidades:**
+
+| Función | Descripción |
+|---------|-------------|
+| Crear programa | Registro de nuevo programa con código SNIES |
+| Editar programa | Modificación de información del programa |
+| Activar/Desactivar | Control de disponibilidad |
+| Asignar docentes | Vinculación de docentes al programa |
+| Gestionar plan de estudios | Definición de asignaturas y créditos |
+| Consultar histórico | Versiones anteriores del programa |
+
+---
+
+###### a.4) ROLES Y PERMISOS
+
+**Propósito:** Sistema RBAC (Role-Based Access Control) para control de acceso granular.
+
+| Componente | Descripción |
+|------------|-------------|
+| `RolesAdministrationModulePremium.tsx` | Administración de roles |
+| `PermisosGranulares.tsx` | Gestión de permisos específicos |
+| `AsignacionRoles.tsx` | Asignación de roles a usuarios |
+| `MatrizPermisos.tsx` | Matriz visual de permisos por rol |
+| `GestionAccesos.tsx` | Control de accesos al sistema |
+| `AuditRoles.tsx` | Auditoría de cambios en roles |
+
+**Roles Predefinidos del Sistema:**
+
+| Rol | Nivel | Acceso |
+|-----|-------|--------|
+| `SUPER_ADMIN` | Máximo | Acceso total a todos los módulos |
+| `ADMIN` | Alto | Gestión administrativa completa |
+| `AUDITOR` | Especializado | Control interno y auditorías |
+| `JEFE_AREA` | Medio | Gestión de su área/dependencia |
+| `DOCENTE` | Usuario | Gestión de PTA y actividades académicas |
+| `FIRMANTE` | Especializado | Firma electrónica de documentos |
+| `ESTUDIANTE` | Básico | Consulta de información personal |
+| `GRADUADO` | Básico | Acceso a bolsa de empleo y certificados |
+
+**Permisos Granulares:**
+
+| Categoría | Permisos Disponibles |
+|-----------|---------------------|
+| **Usuarios** | ver, crear, editar, eliminar, exportar |
+| **Roles** | ver, crear, editar, asignar |
+| **Reportes** | ver, generar, programar, exportar |
+| **Auditorías** | ver, ejecutar, aprobar, cerrar |
+| **Documentos** | ver, cargar, firmar, eliminar |
+| **Configuración** | ver, modificar |
+
+**Funcionalidades:**
+
+| Función | Descripción |
+|---------|-------------|
+| Crear rol | Definición de nuevo rol con nombre y descripción |
+| Clonar rol | Duplicar rol existente como base |
+| Asignar permisos | Selección de permisos para el rol |
+| Asignar usuarios | Vincular usuarios al rol |
+| Auditar cambios | Registro de modificaciones en roles |
+| Exportar matriz | Descarga de matriz de permisos |
+
+---
+
+###### a.5) AUDITORÍA DEL SISTEMA
+
+**Propósito:** Registro y trazabilidad de todas las acciones realizadas en la plataforma.
+
+| Componente | Descripción |
+|------------|-------------|
+| `AuditModulePremium.tsx` | Módulo principal de auditoría |
+| `AuditLogTable.tsx` | Tabla de registros de auditoría |
+| `AuditFilters.tsx` | Filtros avanzados de búsqueda |
+| `AuditDetailModal.tsx` | Detalle completo del registro |
+| `AuditExport.tsx` | Exportación de logs |
+| `AnomaliesDetection.tsx` | Detección de comportamientos anómalos |
+| `AuditDashboard.tsx` | Dashboard de métricas de auditoría |
+
+**Información Registrada:**
+
+| Campo | Descripción |
+|-------|-------------|
+| `timestamp` | Fecha y hora exacta de la acción |
+| `usuario` | Usuario que realizó la acción |
+| `accion` | Tipo de acción (crear, editar, eliminar, ver) |
+| `modulo` | Módulo donde se realizó |
+| `entidad` | Tipo de objeto afectado |
+| `entidad_id` | Identificador del objeto |
+| `datos_anteriores` | Estado antes del cambio (JSON) |
+| `datos_nuevos` | Estado después del cambio (JSON) |
+| `ip_address` | Dirección IP del usuario |
+| `user_agent` | Navegador/dispositivo utilizado |
+
+**Filtros Disponibles:**
+
+| Filtro | Opciones |
+|--------|----------|
+| Fecha | Rango de fechas (desde/hasta) |
+| Usuario | Selección de usuario específico |
+| Módulo | Filtro por módulo del sistema |
+| Acción | Crear, Editar, Eliminar, Ver, Login, Logout |
+| Resultado | Exitoso, Fallido |
+
+**Funcionalidades:**
+
+| Función | Descripción |
+|---------|-------------|
+| Consultar logs | Búsqueda con filtros avanzados |
+| Ver detalle | Información completa del registro |
+| Exportar | Descarga en PDF o Excel |
+| Detectar anomalías | Alertas de comportamientos inusuales |
+| Generar reporte | Informe de auditoría por período |
+
+---
+
+###### a.6) REPORTES
+
+**Propósito:** Generación, programación y exportación de reportes del sistema.
+
+| Componente | Descripción |
+|------------|-------------|
+| `ReportsModuleV2.tsx` | Módulo principal de reportes |
+| `ReportBuilder.tsx` | Constructor visual de reportes |
+| `ReportScheduler.tsx` | Programación de reportes automáticos |
+| `ReportTemplates.tsx` | Gestión de plantillas |
+| `ReportViewer.tsx` | Visualizador de reportes |
+| `ExportPDF.tsx` | Exportación a PDF |
+| `ExportExcel.tsx` | Exportación a Excel |
+| `DashboardReports.tsx` | Dashboard con KPIs |
+
+**Tipos de Reportes:**
+
+| Categoría | Reportes Disponibles |
+|-----------|---------------------|
+| **Usuarios** | Listado de usuarios, Usuarios por rol, Usuarios por sede |
+| **Auditoría** | Log de actividades, Accesos al sistema, Cambios críticos |
+| **Académico** | Estudiantes por programa, Graduados por período |
+| **Operativo** | Certificados emitidos, Firmas realizadas |
+| **Gerencial** | Dashboard ejecutivo, Indicadores de gestión |
+
+**Constructor de Reportes (Report Builder):**
+
+| Función | Descripción |
+|---------|-------------|
+| Seleccionar fuente de datos | Elegir tabla o vista de datos |
+| Agregar columnas | Seleccionar campos a mostrar |
+| Aplicar filtros | Condiciones de filtrado |
+| Agrupar datos | Agrupación por campos |
+| Ordenar resultados | Orden ascendente/descendente |
+| Agregar cálculos | Sumas, promedios, conteos |
+| Diseñar layout | Encabezados, logos, formato |
+
+**Programación de Reportes:**
+
+| Frecuencia | Descripción |
+|------------|-------------|
+| Diario | Generación automática cada día |
+| Semanal | Cada semana en día específico |
+| Mensual | Primer día de cada mes |
+| Trimestral | Cada 3 meses |
+| Personalizado | Cron expression personalizada |
+
+**Formatos de Exportación:**
+
+| Formato | Características |
+|---------|-----------------|
+| **PDF** | Formato imprimible con diseño, logos, firmas |
+| **Excel** | Datos editables con fórmulas |
+| **CSV** | Datos planos para importación |
+
+---
+
+##### **b) CONTROL INTERNO CIG**
+
+**Ubicación:** `/esap/control-interno/`
+**Archivos:** 108
+**Normativa:** Decreto 648 de 2017
+
+Sistema completo para la gestión de auditorías internas según los lineamientos del Departamento Administrativo de la Función Pública (DAFP).
+
+---
+
+###### b.1) ESTRUCTURA DEL MÓDULO
+
+| Subcarpeta | Archivos | Descripción |
+|------------|----------|-------------|
+| `/auditorias/` | 25 | Gestión completa de auditorías |
+| `/listas-chequeo/` | 18 | Listas de verificación digitales |
+| `/hallazgos/` | 15 | Gestión de hallazgos |
+| `/planes-mejora/` | 12 | Planes de mejoramiento |
+| `/seguimiento/` | 10 | Seguimiento trimestral |
+| `/reportes/` | 8 | Reportería especializada |
+| `/hooks/` | 8 | Hooks personalizados |
+| `/services/` | 7 | Servicios API |
+| `/utils/` | 5 | Utilidades |
+
+---
+
+###### b.2) PLAN ANUAL DE AUDITORÍAS
+
+| Componente | Descripción |
+|------------|-------------|
+| `PlanAnualModule.tsx` | Módulo de planificación anual |
+| `CrearPlanAnual.tsx` | Formulario de creación del plan |
+| `CalendarioAuditorias.tsx` | Vista calendario de auditorías |
+| `AsignacionEquipos.tsx` | Asignación de equipos auditores |
+
+**Elementos del Plan Anual:**
+
+| Elemento | Descripción |
+|----------|-------------|
+| Año fiscal | Período del plan |
+| Objetivos | Objetivos de auditoría del período |
+| Alcance | Procesos y áreas a auditar |
+| Recursos | Equipo auditor disponible |
+| Cronograma | Fechas planificadas |
+| Presupuesto | Recursos financieros asignados |
+
+**Roles del Equipo Auditor (Decreto 648):**
+
+| Rol | Responsabilidades |
+|-----|-------------------|
+| **Jefe OCIG** | Aprobación del plan, supervisión general |
+| **Auditor Líder** | Coordinación de auditoría específica |
+| **Auditor Senior** | Ejecución de procedimientos complejos |
+| **Auditor Junior** | Apoyo en ejecución y documentación |
+| **Profesional de Apoyo** | Soporte técnico especializado |
+
+---
+
+###### b.3) UNIVERSO DE AUDITORÍAS
+
+| Componente | Descripción |
+|------------|-------------|
+| `UniversoAuditorias.tsx` | Catálogo de procesos auditables |
+| `ProcesoAuditable.tsx` | Detalle de proceso |
+| `ReferenciasDAFP.tsx` | Referencias normativas |
+| `HistoricoAuditorias.tsx` | Histórico de auditorías por proceso |
+
+**Procesos Auditables por Sede:**
+
+| Proceso | Frecuencia Sugerida |
+|---------|---------------------|
+| Gestión Financiera | Anual |
+| Gestión Documental | Anual |
+| Gestión de Talento Humano | Anual |
+| Gestión Contractual | Semestral |
+| Gestión Académica | Anual |
+| Gestión de TI | Anual |
+| Gestión de Bienes | Anual |
+| Atención al Ciudadano | Anual |
+| Control Interno Contable | Semestral |
+
+---
+
+###### b.4) EJECUCIÓN DE AUDITORÍAS
+
+**Flujo de Auditoría:**
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   INICIO    │───▶│ PLANEACIÓN  │───▶│  EJECUCIÓN  │───▶│COMUNICACIÓN │
+│  (3-5 días) │    │ (5-10 días) │    │ (10-30 días)│    │  (5 días)   │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+**Etapa 1: INICIO**
+
+| Componente | Descripción |
+|------------|-------------|
+| `InicioAuditoriaWizard.tsx` | Asistente de inicio |
+| `GenerarOficioInicio.tsx` | Generación de oficio de inicio |
+| `CartaPresentacion.tsx` | Carta de presentación del equipo |
+| `NotificacionAreaAuditada.tsx` | Notificación automática |
+
+Documentos generados:
+- Oficio de comunicación de inicio
+- Carta de presentación del equipo auditor
+- Solicitud de información inicial
+
+**Etapa 2: PLANEACIÓN**
+
+| Componente | Descripción |
+|------------|-------------|
+| `PlaneacionAuditoria.tsx` | Módulo de planeación |
+| `DefinirAlcance.tsx` | Definición de alcance y objetivos |
+| `ProgramaTrabajo.tsx` | Programa de trabajo detallado |
+| `CronogramaActividades.tsx` | Cronograma de ejecución |
+| `MatrizRiesgos.tsx` | Matriz de riesgos del proceso |
+
+Duración:
+- Sede central: 5-10 días hábiles
+- Territorial: 3 días hábiles
+
+**Etapa 3: EJECUCIÓN**
+
+| Componente | Descripción |
+|------------|-------------|
+| `EjecucionAuditoriaModule.tsx` | Módulo de ejecución |
+| `ListasChequeoDigitales.tsx` | Listas de verificación |
+| `RecoleccionEvidencias.tsx` | Carga de evidencias |
+| `PapelesTrabajo.tsx` | Papeles de trabajo |
+| `RegistroHallazgos.tsx` | Registro de hallazgos |
+
+Duración:
+- Sede central: 10-30 días hábiles
+- Territorial: 4 días hábiles
+
+**Listas de Chequeo Digitales:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `ListaChequeoViewer.tsx` | Visualizador de lista |
+| `ChecklistItem.tsx` | Item individual de verificación |
+| `EvidenciaAdjunta.tsx` | Adjuntar evidencia por item |
+| `ObservacionItem.tsx` | Observaciones por item |
+| `CalificacionCumplimiento.tsx` | Calificación de cumplimiento |
+
+Estados de cumplimiento:
+- ✅ Cumple totalmente
+- ⚠️ Cumple parcialmente
+- ❌ No cumple
+- ➖ No aplica
+
+**Etapa 4: COMUNICACIÓN**
+
+| Componente | Descripción |
+|------------|-------------|
+| `ComunicacionResultados.tsx` | Módulo de comunicación |
+| `InformePreliminar.tsx` | Generación de informe preliminar |
+| `MesaTrabajoHallazgos.tsx` | Mesa de trabajo con auditados |
+| `InformeFinal.tsx` | Informe final de auditoría |
+| `InformeEjecutivo.tsx` | Resumen ejecutivo |
+
+Documentos generados:
+- Informe preliminar de auditoría
+- Acta de mesa de trabajo
+- Informe final de auditoría
+- Informe ejecutivo para la dirección
+
+---
+
+###### b.5) HALLAZGOS Y PLANES DE MEJORAMIENTO
+
+| Componente | Descripción |
+|------------|-------------|
+| `HallazgosYMejoramientoCompleto.tsx` | Módulo integrado |
+| `RegistroHallazgo.tsx` | Formulario de hallazgo |
+| `ClasificacionHallazgo.tsx` | Clasificación por tipo |
+| `AccionCorrectiva.tsx` | Definición de acciones |
+| `ResponsableAccion.tsx` | Asignación de responsables |
+
+**Clasificación de Hallazgos:**
+
+| Tipo | Descripción | Nivel |
+|------|-------------|-------|
+| **No Conformidad Mayor** | Incumplimiento total de requisito | Alto |
+| **No Conformidad Menor** | Incumplimiento parcial | Medio |
+| **Observación** | Oportunidad de mejora | Bajo |
+| **Fortaleza** | Buena práctica identificada | Positivo |
+
+**Estructura del Plan de Mejoramiento:**
+
+| Campo | Descripción |
+|-------|-------------|
+| Hallazgo | Descripción del hallazgo |
+| Causa raíz | Análisis de causa |
+| Acción correctiva | Acción a implementar |
+| Responsable | Persona responsable |
+| Fecha compromiso | Fecha límite |
+| Recursos | Recursos necesarios |
+| Indicador | Indicador de cumplimiento |
+| Meta | Meta a alcanzar |
+
+---
+
+###### b.6) SEGUIMIENTO TRIMESTRAL
+
+| Componente | Descripción |
+|------------|-------------|
+| `SeguimientoPlanMejoramientoModule.tsx` | Módulo de seguimiento |
+| `CargaEvidencias.tsx` | Carga de evidencias de avance |
+| `ValidacionAvance.tsx` | Validación por auditor |
+| `SemaforoIndicadores.tsx` | Indicadores tipo semáforo |
+| `ReporteSeguimiento.tsx` | Reporte de seguimiento |
+
+**Períodos de Seguimiento:**
+
+| Período | Meses | Fecha Límite |
+|---------|-------|--------------|
+| Primer trimestre | Ene-Mar | 15 de Abril |
+| Segundo trimestre | Abr-Jun | 15 de Julio |
+| Tercer trimestre | Jul-Sep | 15 de Octubre |
+| Cuarto trimestre | Oct-Dic | 15 de Enero |
+
+**Sistema de Semáforos:**
+
+| Color | Porcentaje | Estado |
+|-------|------------|--------|
+| 🟢 Verde | 80-100% | En cumplimiento |
+| 🟡 Amarillo | 50-79% | En riesgo |
+| 🔴 Rojo | 0-49% | Incumplimiento |
+
+---
+
+###### b.7) DASHBOARD Y REPORTES CIG
+
+| Componente | Descripción |
+|------------|-------------|
+| `DashboardEjecutivoCIG.tsx` | Dashboard ejecutivo |
+| `KPIsControlInterno.tsx` | Indicadores clave |
+| `GraficosAvance.tsx` | Gráficos de progreso |
+| `ReportePlanAnual.tsx` | Estado del plan anual |
+| `ReporteCumplimiento.tsx` | Cumplimiento de mejoras |
+
+**KPIs del Dashboard:**
+
+| Indicador | Descripción |
+|-----------|-------------|
+| Auditorías planificadas | Total del plan anual |
+| Auditorías ejecutadas | Completadas a la fecha |
+| % Avance plan | Porcentaje de ejecución |
+| Hallazgos abiertos | Pendientes de cierre |
+| Hallazgos cerrados | Cerrados satisfactoriamente |
+| % Cumplimiento mejoras | Avance de planes de mejora |
+
+---
+
+##### **c) GESTIÓN LEGAL (SIGL v5.0)**
+
+**Ubicación:** `/esap/gestion-legal/`
+**Archivos:** 96
+
+Sistema Integrado de Gestión Legal para procesos jurídicos y coactivos.
+
+---
+
+###### c.1) ESTRUCTURA DEL MÓDULO
+
+| Subcarpeta | Archivos | Descripción |
+|------------|----------|-------------|
+| `/modulos/` | 20 | Módulos funcionales principales |
+| `/procesos-coactivos/` | 18 | Gestión de cobro coactivo |
+| `/expedientes/` | 15 | Gestión de expedientes |
+| `/design-system/` | 12 | Componentes UI especializados |
+| `/services/` | 10 | Servicios API |
+| `/core/` | 8 | Núcleo del sistema |
+| `/config/` | 5 | Configuración |
+| `/data/` | 4 | Datos mock |
+| `/utils/` | 4 | Utilidades |
+
+---
+
+###### c.2) PROCESOS COACTIVOS
+
+| Componente | Descripción |
+|------------|-------------|
+| `ProcesosCoactivosModule.tsx` | Módulo principal |
+| `ListadoProcesos.tsx` | Listado de procesos activos |
+| `NuevoProceso.tsx` | Creación de nuevo proceso |
+| `DetalleProceso.tsx` | Vista detallada del proceso |
+| `FlujoProcesal.tsx` | Flujo del proceso coactivo |
+| `TerminosProcesales.tsx` | Control de términos |
+| `NotificacionesJuridicas.tsx` | Sistema de notificaciones |
+
+**Etapas del Proceso Coactivo:**
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  PERSUASIVO  │───▶│   COACTIVO   │───▶│  EJECUCIÓN   │───▶│    CIERRE    │
+│              │    │              │    │              │    │              │
+│ - Cobro      │    │ - Mandamiento│    │ - Embargo    │    │ - Pago total │
+│   persuasivo │    │   de pago    │    │ - Secuestro  │    │ - Acuerdo    │
+│ - Acuerdos   │    │ - Excepciones│    │ - Remate     │    │ - Archivo    │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+```
+
+**Gestión de Expedientes:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `ExpedienteDigital.tsx` | Expediente electrónico |
+| `DocumentosExpediente.tsx` | Documentos del caso |
+| `IndiceExpediente.tsx` | Índice automático |
+| `TrazabilidadExpediente.tsx` | Historial de acciones |
+| `CompartirExpediente.tsx` | Compartir con usuarios |
+
+**Control de Términos:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `TerminosAlertas.tsx` | Alertas de vencimiento |
+| `CalendarioTerminos.tsx` | Calendario de términos |
+| `SuspensionTerminos.tsx` | Gestión de suspensiones |
+| `ProrrogaTerminos.tsx` | Solicitudes de prórroga |
+
+Alertas automáticas:
+- 🔴 Vencido: Término expirado
+- 🟡 Por vencer: 3 días o menos
+- 🟢 Vigente: Más de 3 días
+
+---
+
+##### **d) CONTROL DISCIPLINARIO**
+
+**Ubicación:** `/esap/disciplinario/`
+**Archivos:** 30
+
+Sistema para gestión de procesos disciplinarios según el Código General Disciplinario.
+
+---
+
+###### d.1) COMPONENTES PRINCIPALES
+
+| Componente | Descripción |
+|------------|-------------|
+| `ControlDisciplinarioFull.tsx` | Módulo completo |
+| `DashboardKanbanOperativo.tsx` | Vista Kanban de procesos |
+| `GestionProcesos.tsx` | Gestión de procesos |
+| `GestionNoticias.tsx` | Noticias disciplinarias |
+| `GestionProfesionales.tsx` | Profesionales involucrados |
+| `GestionTerminosAlertas.tsx` | Términos y alertas |
+
+---
+
+###### d.2) FLUJO DISCIPLINARIO
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   NOTICIA   │───▶│ INDAGACIÓN  │───▶│INVESTIGACIÓN│───▶│   JUICIO    │
+│             │    │  PREVIA     │    │ DISCIPL.    │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+       │                  │                  │                  │
+       ▼                  ▼                  ▼                  ▼
+   Recepción          Verificación       Formulación        Decisión
+   de queja           de hechos          de cargos          final
+```
+
+**Gestión de Noticias Disciplinarias:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `NuevoNoticia.tsx` | Registro de nueva noticia |
+| `ClasificacionNoticia.tsx` | Clasificación por tipo |
+| `AsignacionAbogado.tsx` | Asignación de profesional |
+| `EvaluacionPreliminar.tsx` | Evaluación de procedibilidad |
+
+**Estados de Proceso:**
+
+| Estado | Descripción |
+|--------|-------------|
+| Recibido | Noticia ingresada al sistema |
+| En evaluación | Análisis de procedibilidad |
+| Indagación previa | Etapa de indagación |
+| Investigación | Investigación formal |
+| Juicio | Etapa de juzgamiento |
+| Fallo | Decisión emitida |
+| Archivado | Proceso cerrado |
+
+---
+
+##### **e) FIRMA ELECTRÓNICA**
+
+**Ubicación:** `/esap/firma-electronica/`
+**Archivos:** 18
+
+Sistema de firma electrónica con validez legal según Ley 527 de 1999.
+
+---
+
+###### e.1) COMPONENTES PRINCIPALES
+
+| Componente | Descripción |
+|------------|-------------|
+| `ModuloFirmaElectronicaWorldClass.tsx` | Módulo principal completo |
+| `PortalTransaccionalFirmaCompleto.tsx` | Portal para firmantes |
+| `GestionDocumentosFirma.tsx` | Gestión de documentos |
+| `FlujosFirma.tsx` | Configuración de flujos |
+| `VisorDocumentoFirmaOTP.tsx` | Visor con validación OTP |
+| `ModalHistorialFirmas.tsx` | Historial de firmas |
+| `ModalTrazabilidadDocumento.tsx` | Trazabilidad completa |
+
+---
+
+###### e.2) FLUJO DE FIRMA
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   CARGAR    │───▶│  ASIGNAR    │───▶│   FIRMAR    │───▶│  COMPLETAR  │
+│  DOCUMENTO  │    │  FIRMANTES  │    │   (OTP)     │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+**Proceso de Firma:**
+
+| Paso | Descripción |
+|------|-------------|
+| 1. Cargar documento | Subir PDF a firmar |
+| 2. Definir firmantes | Agregar firmantes en orden |
+| 3. Enviar solicitud | Notificar a firmantes |
+| 4. Recibir código OTP | Código enviado por correo/SMS |
+| 5. Validar identidad | Ingresar código OTP |
+| 6. Firmar documento | Aplicar firma electrónica |
+| 7. Generar certificado | Documento con certificado de firma |
+
+**Validación OTP:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `GeneradorOTP.tsx` | Generación de código único |
+| `ValidadorOTP.tsx` | Validación de código |
+| `ReenvioOTP.tsx` | Reenvío de código |
+| `ConfiguracionOTP.tsx` | Configuración de canal (email/SMS) |
+
+**Trazabilidad:**
+
+| Campo | Descripción |
+|-------|-------------|
+| Fecha/hora de firma | Timestamp exacto |
+| Firmante | Nombre e identificación |
+| IP de origen | Dirección IP |
+| Hash del documento | Hash SHA-256 |
+| Certificado | Certificado de firma |
+
+---
+
+##### **f) REGISTRO ACADÉMICO**
+
+**Ubicación:** `/esap/registro-academico/`
+
+Sistema para gestión de información académica de estudiantes.
+
+---
+
+###### f.1) COMPONENTES PRINCIPALES
+
+| Componente | Descripción |
+|------------|-------------|
+| `RegistroAcademicoModule.tsx` | Módulo principal |
+| `GestionMatriculas.tsx` | Gestión de matrículas |
+| `HistorialAcademico.tsx` | Consulta de historial |
+| `CertificacionesTitulos.tsx` | Certificación de títulos |
 | `GestionNotas.tsx` | Administración de calificaciones |
-| `ConsultaEstudiantes.tsx` | Consulta de información estudiantil |
-| Componentes auxiliares | Modales, formularios y utilidades |
+| `ConsultaEstudiantes.tsx` | Búsqueda de estudiantes |
+| `ReportesAcademicos.tsx` | Reportes académicos |
 
-**g) Certificados Laborales (`/esap/certificados-laborales/`) - 20 archivos**
+---
 
-Sistema completo de certificados laborales con QR:
+###### f.2) FUNCIONALIDADES
+
+**Gestión de Matrículas:**
+
+| Función | Descripción |
+|---------|-------------|
+| Registrar matrícula | Nueva matrícula de estudiante |
+| Renovar matrícula | Renovación por período |
+| Cancelar matrícula | Cancelación con motivo |
+| Transferir | Cambio de programa/sede |
+| Consultar estado | Estado actual de matrícula |
+
+**Historial Académico:**
+
+| Información | Descripción |
+|-------------|-------------|
+| Asignaturas cursadas | Lista completa |
+| Calificaciones | Notas por asignatura |
+| Créditos | Créditos aprobados/pendientes |
+| Promedio | Promedio acumulado |
+| Estado académico | Regular, Prueba, Suspendido |
+
+**Certificación de Títulos:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `SolicitudCertificado.tsx` | Solicitud de certificado |
+| `ValidacionTitulo.tsx` | Validación de requisitos |
+| `GeneracionCertificado.tsx` | Generación con QR |
+| `HistorialCertificados.tsx` | Certificados emitidos |
+
+---
+
+##### **g) CERTIFICADOS LABORALES**
+
+**Ubicación:** `/esap/certificados-laborales/`
+**Archivos:** 20
+
+Sistema de generación y validación de certificados laborales con código QR.
+
+---
+
+###### g.1) COMPONENTES PRINCIPALES
 
 | Componente | Descripción |
 |------------|-------------|
@@ -347,72 +1042,172 @@ Sistema completo de certificados laborales con QR:
 | `CertificadosLaboralesRouter.tsx` | Enrutador del módulo |
 | `GenerarCertificadoModal.tsx` | Generación de certificados |
 | `SolicitarCertificadoForm.tsx` | Formulario de solicitud |
-| `CertificadoDetalleModal.tsx` | Detalle del certificado |
-| `CertificadoDetallePanel.tsx` | Panel de detalles |
 | `ConfiguracionPlantilla.tsx` | Configuración de plantillas |
-| `ModalCodigoQR.tsx` | Modal de código QR |
-| `QRScannerModal.tsx` | Escáner de QR |
 | `ValidarCertificadoQR.tsx` | Validador de QR |
 | `HistorialVerificacionesQR.tsx` | Historial de verificaciones |
-| `HistoricoValidaciones.tsx` | Histórico de validaciones |
-| `PDFViewerModal.tsx` | Visor de PDF |
-| `NotificacionesValidacion.tsx` | Notificaciones |
-| `APIDocumentacion.tsx` | Documentación API |
 | `AnalyticsDashboard.tsx` | Dashboard de analíticas |
-| `GeneradorReportes.tsx` | Generador de reportes |
 
-**h) Arquitectura Empresarial (`/esap/arquitectura-empresarial/`) - 31 archivos**
+---
 
-Gestión de arquitectura empresarial y cumplimiento MinTIC:
+###### g.2) FLUJO DE CERTIFICACIÓN
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  SOLICITAR  │───▶│  VALIDAR    │───▶│  GENERAR    │───▶│  ENTREGAR   │
+│             │    │  DATOS      │    │  CON QR     │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+**Tipos de Certificados:**
+
+| Tipo | Descripción |
+|------|-------------|
+| Certificado laboral básico | Vinculación y cargo actual |
+| Certificado con funciones | Incluye funciones del cargo |
+| Certificado con salario | Incluye información salarial |
+| Constancia de trabajo | Certificación simple |
+
+**Validación por QR:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `QRGenerator.tsx` | Generador de código QR único |
+| `QRScannerModal.tsx` | Escáner de QR |
+| `ValidacionPublica.tsx` | Validación sin login |
+| `ResultadoValidacion.tsx` | Resultado de verificación |
+
+**Información del QR:**
+
+| Campo | Descripción |
+|-------|-------------|
+| Código único | Identificador del certificado |
+| Fecha emisión | Fecha de generación |
+| Empleado | Nombre del funcionario |
+| Cargo | Cargo certificado |
+| URL validación | Enlace de verificación |
+
+---
+
+##### **h) ARQUITECTURA EMPRESARIAL**
+
+**Ubicación:** `/esap/arquitectura-empresarial/`
+**Archivos:** 31
+
+Módulo para gestión de arquitectura empresarial según Marco de Referencia de Arquitectura Empresarial (MRAE) de MinTIC.
+
+---
+
+###### h.1) COMPONENTES PRINCIPALES
 
 | Componente | Descripción |
 |------------|-------------|
 | `ArquitecturaEmpresarialModule.tsx` | Módulo principal |
 | `DashboardEjecutivoAE.tsx` | Dashboard ejecutivo |
-| `GestionProyectosAE.tsx` | Gestión de proyectos |
+| `GestionProyectosAE.tsx` | Gestión de proyectos AE |
 | `MatrizMadurezCompleta.tsx` | Matriz de madurez |
-| `MatrizCumplimientoGlobal.tsx` | Cumplimiento global |
-| `RoadmapEstrategico.tsx` | Roadmap estratégico |
-| `SeguimientoMinTIC.tsx` | Seguimiento MinTIC |
-| `DominioEstrategiaTI.tsx` | Dominio estrategia TI |
-| `DominioGobiernoTI.tsx` | Dominio gobierno TI |
-| `DominioSeguridadPrivacidad.tsx` | Dominio seguridad |
-| `GestionRiesgosTI.tsx` | Gestión de riesgos TI |
-| `BibliotecaConocimiento.tsx` | Biblioteca de conocimiento |
-| `SeguimientoTerritorial.tsx` | Seguimiento territorial |
-| `Indicadores.tsx` | Sistema de indicadores |
-| Y componentes adicionales | |
+| `MatrizCumplimientoGlobal.tsx` | Cumplimiento por dominio |
+| `RoadmapEstrategico.tsx` | Roadmap de implementación |
+| `SeguimientoMinTIC.tsx` | Seguimiento reportes MinTIC |
 
-**i) Gestión Profesoral PTA (`/esap/gestion-profesoral/`) - 17 archivos**
+---
 
-Gestión de docentes y Plan de Trabajo Anual (PTA):
+###### h.2) DOMINIOS MRAE
+
+| Dominio | Componente | Descripción |
+|---------|------------|-------------|
+| Estrategia TI | `DominioEstrategiaTI.tsx` | Alineación estratégica |
+| Gobierno TI | `DominioGobiernoTI.tsx` | Gobernanza de TI |
+| Información | `DominioInformacion.tsx` | Gestión de información |
+| Sistemas de Información | `DominioSistemas.tsx` | Arquitectura de SI |
+| Servicios Tecnológicos | `DominioServicios.tsx` | Infraestructura |
+| Uso y Apropiación | `DominioUsoApropiacion.tsx` | Adopción tecnológica |
+| Seguridad y Privacidad | `DominioSeguridadPrivacidad.tsx` | Seguridad de la información |
+
+**Matriz de Madurez:**
+
+| Nivel | Descripción |
+|-------|-------------|
+| 1 - Inicial | Procesos ad-hoc |
+| 2 - Repetible | Procesos básicos definidos |
+| 3 - Definido | Procesos estandarizados |
+| 4 - Gestionado | Procesos medidos y controlados |
+| 5 - Optimizado | Mejora continua |
+
+---
+
+##### **i) GESTIÓN PROFESORAL PTA**
+
+**Ubicación:** `/esap/gestion-profesoral/`
+**Archivos:** 17
+
+Sistema para gestión del Plan de Trabajo Anual de docentes.
+
+---
+
+###### i.1) COMPONENTES PRINCIPALES
 
 | Componente | Descripción |
 |------------|-------------|
 | `GestionProfesoralApp.tsx` | Aplicación principal |
 | `GestionProfesoralDashboard.tsx` | Dashboard general |
-| `DashboardDocente.tsx` | Dashboard del docente |
-| `DashboardAprobador.tsx` | Dashboard del aprobador |
-| `WizardCrearPTA.tsx` | Asistente de creación PTA |
-| `VistaDetallePTA.tsx` | Vista detalle del PTA |
-| `FormularioDocencia.tsx` | Formulario de docencia |
-| `FormularioInvestigacion.tsx` | Formulario de investigación |
-| `FormularioExtension.tsx` | Formulario de extensión |
-| `FormularioActividadesComplementarias.tsx` | Actividades complementarias |
-| `ModalProrrateo.tsx` | Modal de prorrateo automático |
-| `PanelRevision.tsx` | Panel de revisión |
-| `PlanTrabajoAcademicoModule.tsx` | Módulo PTA |
-| `DocenteExpedientePanel.tsx` | Expediente del docente |
-| `HistoricoDesarrolloComponent.tsx` | Histórico de desarrollo |
+| `DashboardDocente.tsx` | Vista para docentes |
+| `DashboardAprobador.tsx` | Vista para aprobadores |
+| `WizardCrearPTA.tsx` | Asistente de creación |
+| `VistaDetallePTA.tsx` | Detalle del PTA |
 
-**j) Otras Subcarpetas**
+---
+
+###### i.2) SECCIONES DEL PTA
+
+| Sección | Componente | Descripción |
+|---------|------------|-------------|
+| Docencia | `FormularioDocencia.tsx` | Actividades de enseñanza |
+| Investigación | `FormularioInvestigacion.tsx` | Proyectos de investigación |
+| Extensión | `FormularioExtension.tsx` | Proyección social |
+| Complementarias | `FormularioActividadesComplementarias.tsx` | Otras actividades |
+
+**Distribución de Horas:**
+
+| Actividad | % Mínimo | % Máximo |
+|-----------|----------|----------|
+| Docencia | 40% | 70% |
+| Investigación | 10% | 30% |
+| Extensión | 10% | 20% |
+| Complementarias | 5% | 15% |
+
+**Flujo de Aprobación:**
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  BORRADOR   │───▶│  ENVIADO    │───▶│ EN REVISIÓN │───▶│  APROBADO   │
+│             │    │             │    │             │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+       │                                     │
+       │                                     ▼
+       │                              ┌─────────────┐
+       └──────────────────────────────│  REQUIERE   │
+                                      │  AJUSTES    │
+                                      └─────────────┘
+```
+
+**Prorrateo Automático:**
+
+| Componente | Descripción |
+|------------|-------------|
+| `ModalProrrateo.tsx` | Modal de cálculo automático |
+| `CalculadoraHoras.tsx` | Cálculo de distribución |
+| `ValidadorPorcentajes.tsx` | Validación de límites |
+
+---
+
+##### **j) OTRAS SUBCARPETAS**
 
 | Subcarpeta | Archivos | Descripción |
 |------------|----------|-------------|
-| `/admin/` | 3 | Componentes de administración |
-| `/alertas/` | - | Sistema de notificaciones |
-| `/auth/` | - | Componentes de autenticación |
-| `/shared/` | - | Componentes compartidos del backoffice |
+| `/admin/` | 3 | Componentes de administración avanzada |
+| `/alertas/` | 5 | Sistema de notificaciones y alertas |
+| `/auth/` | 4 | Componentes de autenticación |
+| `/shared/` | 8 | Componentes compartidos del backoffice |
 
 ---
 
