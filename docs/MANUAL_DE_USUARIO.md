@@ -1407,67 +1407,725 @@ Seleccione múltiples usuarios para realizar acciones en lote:
 
 #### 5.3.3 Carpeta Digital
 
-**Para qué sirve**: Gestionar documentos digitales de los usuarios.
+**Para qué sirve**: Gestionar documentos digitales de los usuarios, creando un expediente electrónico completo para cada persona.
 
-**Funciones principales**:
-- Almacenar documentos personales de cada usuario
-- Organizar archivos por categorías
-- Establecer permisos de acceso
-- Mantener un repositorio centralizado y seguro
+---
 
-**Cómo subir un documento**:
-1. Busque al usuario por nombre o documento
-2. Haga clic en **"Agregar Documento"**
-3. Seleccione el tipo de documento
-4. Adjunte el archivo (PDF, imagen, etc.)
-5. Haga clic en **"Guardar"**
+##### Pantalla Principal de Carpeta Digital
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CARPETA DIGITAL                                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  🔍 Buscar usuario: [Nombre o documento...                              ]  │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  USUARIO SELECCIONADO                                                       │
+│  ┌──────────┐                                                              │
+│  │  FOTO    │  JUAN CARLOS PÉREZ GARCÍA                                    │
+│  │          │  CC 1.234.567.890                                            │
+│  └──────────┘  Funcionario - Subdirección Académica                        │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  CATEGORÍAS DE DOCUMENTOS                                                   │
+│                                                                             │
+│  📁 Documentos de Identidad (3)     📁 Formación Académica (5)             │
+│  📁 Documentos Laborales (8)        📁 Seguridad Social (4)                │
+│  📁 Evaluaciones (2)                📁 Otros Documentos (1)                │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  DOCUMENTOS RECIENTES                                                       │
+│  | Nombre                    | Categoría      | Fecha     | Acciones      │ │
+│  |---------------------------|----------------|-----------|---------------│ │
+│  | Cédula_ampliada.pdf       | Identidad      | 20/01/26  | [Ver][Descar] │ │
+│  | Diploma_pregrado.pdf      | Formación      | 15/01/26  | [Ver][Descar] │ │
+│  | Contrato_2026.pdf         | Laborales      | 10/01/26  | [Ver][Descar] │ │
+│                                                                             │
+│                                              [+ Agregar Documento]          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Categorías de Documentos
+
+| Categoría | Documentos Típicos | Obligatorio |
+|-----------|-------------------|-------------|
+| **Documentos de Identidad** | Cédula, RUT, Libreta militar | Sí (Cédula) |
+| **Formación Académica** | Diplomas, actas de grado, certificados | Según cargo |
+| **Documentos Laborales** | Contrato, resoluciones, actas de posesión | Sí |
+| **Seguridad Social** | Afiliaciones EPS, ARL, Pensión | Sí |
+| **Evaluaciones** | Evaluaciones de desempeño, compromisos | Sí (anual) |
+| **Capacitaciones** | Certificados de cursos, diplomados | No |
+| **Otros Documentos** | Documentos adicionales | No |
+
+---
+
+##### Subir un Documento - Paso a Paso
+
+**Paso 1**: Busque al usuario
+- Ingrese nombre, apellido o número de documento
+- Seleccione al usuario de la lista de resultados
+
+**Paso 2**: Haga clic en **"+ Agregar Documento"**
+
+**Paso 3**: Complete el formulario
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  AGREGAR DOCUMENTO                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Usuario: JUAN CARLOS PÉREZ GARCÍA (CC 1.234.567.890)          │
+│                                                                 │
+│  Categoría*:        [Documentos Laborales                   ▼] │
+│                                                                 │
+│  Tipo de documento*: [Contrato de trabajo                   ▼] │
+│                                                                 │
+│  Descripción:       [Contrato inicial año 2026              ]  │
+│                                                                 │
+│  Fecha del documento: [15/01/2026                           ]  │
+│                                                                 │
+│  Archivo*:                                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                                                         │   │
+│  │     Arrastre el archivo aquí o haga clic para          │   │
+│  │                    seleccionar                          │   │
+│  │                                                         │   │
+│  │     Formatos: PDF, JPG, PNG, DOC, DOCX                 │   │
+│  │     Tamaño máximo: 10 MB                               │   │
+│  │                                                         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ☐ Documento confidencial (acceso restringido)                 │
+│  ☐ Notificar al usuario sobre este documento                   │
+│                                                                 │
+│                              [Cancelar]  [Guardar Documento]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Tipos de Documentos por Categoría
+
+**Documentos de Identidad**:
+| Tipo | Descripción |
+|------|-------------|
+| Cédula de ciudadanía | Documento de identidad ampliado |
+| RUT | Registro Único Tributario |
+| Libreta militar | Para hombres, si aplica |
+| Pasaporte | Si tiene |
+| Visa | Para extranjeros |
+
+**Formación Académica**:
+| Tipo | Descripción |
+|------|-------------|
+| Diploma de pregrado | Título profesional |
+| Diploma de posgrado | Especialización, maestría, doctorado |
+| Acta de grado | Documento oficial de graduación |
+| Certificado de estudios | Constancia de estudios |
+| Tarjeta profesional | Si la profesión lo requiere |
+
+**Documentos Laborales**:
+| Tipo | Descripción |
+|------|-------------|
+| Contrato de trabajo | Contrato vigente |
+| Resolución de nombramiento | Para funcionarios de planta |
+| Acta de posesión | Documento de posesión del cargo |
+| Certificaciones laborales | De empleos anteriores |
+| Hoja de vida | Formato función pública |
+
+---
+
+##### Gestión de Documentos
+
+**Ver documento**:
+- Haga clic en el ícono de ojo o en el nombre del archivo
+- Se abrirá un visor en pantalla
+- Puede hacer zoom y navegar por páginas
+
+**Descargar documento**:
+- Haga clic en el ícono de descarga
+- El archivo se descargará a su computador
+
+**Eliminar documento**:
+- Haga clic en el ícono de papelera
+- Confirme la eliminación
+- ⚠️ Esta acción queda registrada en auditoría
+
+**Reemplazar documento**:
+- Haga clic en "Reemplazar"
+- Suba la nueva versión
+- El documento anterior se archiva como versión anterior
+
+---
+
+##### Permisos de Acceso
+
+| Nivel | Puede Ver | Puede Subir | Puede Eliminar |
+|-------|-----------|-------------|----------------|
+| **Administrador** | Todos | Sí | Sí |
+| **Jefe de Área** | Su área | Sí | No |
+| **Talento Humano** | Todos | Sí | Con aprobación |
+| **Usuario** | Solo propios | No | No |
+
+---
+
+##### Documentos Confidenciales
+
+Los documentos marcados como confidenciales:
+- Solo son visibles para usuarios con permiso especial
+- No aparecen en búsquedas generales
+- Requieren justificación para acceder
+- Cada acceso queda registrado
 
 ---
 
 #### 5.3.4 Roles y Permisos
 
-**Para qué sirve**: Controlar qué puede hacer cada usuario en la plataforma.
+**Para qué sirve**: Controlar qué puede hacer cada usuario en la plataforma mediante un sistema RBAC (Role-Based Access Control).
 
-**Conceptos clave**:
-- **Rol**: Conjunto de permisos agrupados (ej: "Docente", "Auditor")
-- **Permiso**: Acción específica que puede realizar (ej: "Ver reportes")
+---
 
-**Funciones principales**:
-- Crear nuevos roles
-- Modificar permisos de roles existentes
-- Asignar roles a usuarios
-- Ver qué usuarios tienen cada rol
+##### Conceptos Clave
 
-**Cómo asignar un rol a un usuario**:
+| Concepto | Descripción | Ejemplo |
+|----------|-------------|---------|
+| **Rol** | Conjunto de permisos agrupados | "Auditor", "Docente", "Jefe de Área" |
+| **Permiso** | Acción específica que se puede realizar | "Ver reportes", "Crear usuarios" |
+| **Módulo** | Sección de la plataforma | "Control Interno", "Firma Electrónica" |
+
+---
+
+##### Pantalla Principal de Roles y Permisos
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ADMINISTRACIÓN DE ROLES Y PERMISOS                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PESTAÑAS: [Roles del Sistema]  [Matriz de Permisos]  [Asignaciones]       │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ROLES DEL SISTEMA                                         [+ Nuevo Rol]    │
+│                                                                             │
+│  | Rol              | Usuarios | Permisos | Estado  | Acciones            │ │
+│  |------------------|----------|----------|---------|---------------------│ │
+│  | Super Admin      | 2        | Todos    | Sistema | [Ver]               │ │
+│  | Administrador    | 5        | 45       | Activo  | [Ver][Editar]       │ │
+│  | Auditor CIG      | 8        | 28       | Activo  | [Ver][Editar]       │ │
+│  | Jefe de Área     | 23       | 18       | Activo  | [Ver][Editar]       │ │
+│  | Docente          | 156      | 12       | Activo  | [Ver][Editar]       │ │
+│  | Firmante         | 45       | 8        | Activo  | [Ver][Editar]       │ │
+│  | Usuario Básico   | 2,345    | 5        | Activo  | [Ver][Editar]       │ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Roles Predefinidos del Sistema
+
+| Rol | Descripción | Acceso Principal |
+|-----|-------------|------------------|
+| **Super Admin** | Control total del sistema | Todos los módulos, configuración |
+| **Administrador** | Gestión administrativa | Usuarios, roles, reportes |
+| **Auditor CIG** | Auditorías internas | Control Interno, hallazgos, planes de mejora |
+| **Auditor Líder** | Coordinación de auditorías | CIG + aprobación de informes |
+| **Jefe de Área** | Gestión de su dependencia | Su área, aprobaciones, auditorías |
+| **Coordinador Académico** | Gestión académica | PTAs, docentes, programas |
+| **Docente** | Actividades docentes | Mi PTA, Mi Perfil |
+| **Firmante** | Firma de documentos | Firma Electrónica |
+| **Abogado** | Gestión legal | Gestión Legal, Disciplinario |
+| **Talento Humano** | Recursos humanos | Usuarios, carpetas, certificados |
+| **Usuario Básico** | Acceso mínimo | Portal Transaccional básico |
+
+---
+
+##### Crear un Nuevo Rol
+
+**Paso 1**: Haga clic en **"+ Nuevo Rol"**
+
+**Paso 2**: Complete la información básica
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVO ROL                                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Nombre del rol*:     [Coordinador Territorial              ]  │
+│                                                                 │
+│  Descripción*:                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Rol para coordinadores de las sedes territoriales.     │   │
+│  │ Acceso a gestión de su territorial y reportes.         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Basado en rol existente: [Ninguno                         ▼]  │
+│  (Opcional: copiar permisos de otro rol como base)             │
+│                                                                 │
+│  Nivel de acceso:                                              │
+│  ○ Administrador (acceso amplio)                               │
+│  ● Operativo (acceso limitado a funciones específicas)        │
+│  ○ Consulta (solo lectura)                                     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 3**: Asigne permisos por módulo
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ASIGNAR PERMISOS - Coordinador Territorial                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  MÓDULO: GESTIÓN DE USUARIOS                                   │
+│  ────────────────────────────────────────────────────────────── │
+│  ☑ Ver listado de usuarios                                     │
+│  ☑ Ver detalle de usuario                                      │
+│  ☐ Crear usuarios                                              │
+│  ☐ Editar usuarios                                             │
+│  ☐ Eliminar usuarios                                           │
+│  ☑ Exportar listado                                            │
+│                                                                 │
+│  MÓDULO: REPORTES                                              │
+│  ────────────────────────────────────────────────────────────── │
+│  ☑ Ver reportes                                                │
+│  ☑ Generar reportes                                            │
+│  ☐ Programar reportes                                          │
+│  ☑ Exportar reportes                                           │
+│                                                                 │
+│  MÓDULO: ESTRUCTURA ORGANIZACIONAL                             │
+│  ────────────────────────────────────────────────────────────── │
+│  ☑ Ver estructura                                              │
+│  ☐ Editar sedes                                                │
+│  ☑ Ver su territorial                                          │
+│  ☐ Administrar CETAP                                           │
+│                                                                 │
+│  [Expandir todos]  [Contraer todos]  [Marcar todos]            │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Matriz de Permisos
+
+Vista consolidada de todos los permisos por rol:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  MATRIZ DE PERMISOS                                    [Exportar Excel]     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                    │SuperAd│Admin │Auditor│Jefe  │Docente│Usuario│          │
+│  Permiso           │       │      │ CIG   │ Área │       │Básico │          │
+│  ──────────────────┼───────┼──────┼───────┼──────┼───────┼───────┤          │
+│  Ver usuarios      │  ✓    │  ✓   │  ✓    │  ✓*  │   -   │   -   │          │
+│  Crear usuarios    │  ✓    │  ✓   │   -   │   -  │   -   │   -   │          │
+│  Editar usuarios   │  ✓    │  ✓   │   -   │   -  │   -   │   -   │          │
+│  Eliminar usuarios │  ✓    │   -  │   -   │   -  │   -   │   -   │          │
+│  ──────────────────┼───────┼──────┼───────┼──────┼───────┼───────┤          │
+│  Ver reportes      │  ✓    │  ✓   │  ✓    │  ✓   │   -   │   -   │          │
+│  Generar reportes  │  ✓    │  ✓   │  ✓    │  ✓*  │   -   │   -   │          │
+│  ──────────────────┼───────┼──────┼───────┼──────┼───────┼───────┤          │
+│  Gestión auditorías│  ✓    │   -  │  ✓    │   -  │   -   │   -   │          │
+│  Ver hallazgos     │  ✓    │  ✓   │  ✓    │  ✓*  │   -   │   -   │          │
+│                                                                             │
+│  ✓ = Permitido    - = No permitido    ✓* = Solo su área                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Asignar Roles a Usuarios
+
+**Método 1: Desde Gestión de Usuarios**
 1. Vaya a **Gestión de Usuarios**
 2. Busque y seleccione al usuario
 3. Haga clic en **"Editar Roles"**
 4. Marque los roles que debe tener
 5. Haga clic en **"Guardar"**
 
+**Método 2: Desde el módulo de Roles**
+1. Vaya a **Roles y Permisos**
+2. Seleccione el rol
+3. Haga clic en **"Ver Usuarios"**
+4. Haga clic en **"+ Agregar Usuario"**
+5. Busque y seleccione usuarios
+6. Confirme la asignación
+
+---
+
+##### Asignación Masiva de Roles
+
+Para asignar un rol a múltiples usuarios:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ASIGNACIÓN MASIVA DE ROL                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Rol a asignar: [Docente                                   ▼]  │
+│                                                                 │
+│  Filtrar usuarios por:                                         │
+│  Sede: [Todas                                              ▼]  │
+│  Tipo: [Docente                                            ▼]  │
+│  Estado: [Activo                                           ▼]  │
+│                                                                 │
+│  Usuarios encontrados: 45                                      │
+│                                                                 │
+│  ☑ Seleccionar todos                                           │
+│  ────────────────────────────────────────────────────────────── │
+│  ☑ María García López - maria.garcia@esap.edu.co              │
+│  ☑ Carlos Rodríguez P. - carlos.rodriguez@esap.edu.co         │
+│  ☑ Ana Martínez Silva - ana.martinez@esap.edu.co              │
+│  ...                                                           │
+│                                                                 │
+│  Usuarios seleccionados: 45                                    │
+│                                                                 │
+│                              [Cancelar]  [Asignar Rol]         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Permisos por Módulo
+
+**Módulo de Usuarios**:
+| Permiso | Descripción |
+|---------|-------------|
+| `usuarios.ver` | Ver listado de usuarios |
+| `usuarios.crear` | Crear nuevos usuarios |
+| `usuarios.editar` | Modificar datos de usuarios |
+| `usuarios.eliminar` | Eliminar usuarios |
+| `usuarios.exportar` | Exportar listados |
+| `usuarios.carga_masiva` | Carga masiva desde Excel |
+
+**Módulo de Reportes**:
+| Permiso | Descripción |
+|---------|-------------|
+| `reportes.ver` | Ver reportes existentes |
+| `reportes.generar` | Generar nuevos reportes |
+| `reportes.programar` | Programar reportes automáticos |
+| `reportes.exportar` | Exportar a PDF/Excel |
+
+**Módulo de Auditoría**:
+| Permiso | Descripción |
+|---------|-------------|
+| `auditoria.ver_logs` | Ver registros de auditoría |
+| `auditoria.exportar` | Exportar logs |
+| `auditoria.configurar` | Configurar parámetros |
+
+---
+
+##### Auditoría de Cambios en Roles
+
+Todos los cambios en roles y permisos quedan registrados:
+
+| Fecha | Usuario | Acción | Detalle |
+|-------|---------|--------|---------|
+| 27/01/2026 10:30 | admin@esap | Rol creado | "Coordinador Territorial" |
+| 27/01/2026 10:35 | admin@esap | Permiso agregado | reportes.generar → Coord. Terr. |
+| 27/01/2026 11:00 | admin@esap | Rol asignado | Juan Pérez → Coord. Terr. |
+
+---
+
+##### Recomendaciones de Seguridad
+
+1. **Principio de mínimo privilegio**: Asigne solo los permisos necesarios
+2. **Revisión periódica**: Revise roles asignados cada trimestre
+3. **Documentar cambios**: Justifique los cambios de roles críticos
+4. **Separación de funciones**: Evite concentrar permisos críticos en un solo rol
+5. **Roles temporales**: Use fechas de vigencia para accesos temporales
+
 ---
 
 #### 5.3.5 Reportes
 
-**Para qué sirve**: Generar informes y estadísticas del sistema.
+**Para qué sirve**: Generar informes, estadísticas y dashboards del sistema para la toma de decisiones.
 
-**Tipos de reportes disponibles**:
-- Usuarios activos por período
-- Trámites realizados
-- Certificados emitidos
-- Auditorías completadas
-- Y muchos más...
+---
 
-**Cómo generar un reporte**:
-1. Seleccione el tipo de reporte
-2. Configure los filtros (fechas, área, etc.)
-3. Haga clic en **"Generar"**
-4. Visualice el resultado en pantalla
-5. Exporte a PDF o Excel si lo necesita
+##### Pantalla Principal de Reportes
 
-**Reportes programados**:
-- Puede configurar reportes que se generen automáticamente
-- Se envían a su correo en la frecuencia que defina
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CENTRO DE REPORTES                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PESTAÑAS: [Catálogo]  [Mis Reportes]  [Programados]  [Constructor]        │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  REPORTES FRECUENTES                                                        │
+│                                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │ 📊 Usuarios │  │ 📋 Certif.  │  │ 🔍 Auditorías│  │ ✍ Firmas   │        │
+│  │   Activos   │  │  Emitidos   │  │   Estado    │  │ Pendientes │        │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  REPORTES RECIENTES                                                         │
+│  | Nombre                  | Fecha      | Estado    | Acciones            │ │
+│  |-------------------------|------------|-----------|---------------------│ │
+│  | Usuarios_Enero_2026     | 27/01/2026 | Generado  | [Ver][Descargar]   │ │
+│  | Certificados_Q4_2025    | 15/01/2026 | Generado  | [Ver][Descargar]   │ │
+│  | Auditorias_2025_Final   | 10/01/2026 | Generado  | [Ver][Descargar]   │ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Catálogo de Reportes Disponibles
+
+**Reportes de Usuarios**:
+| Reporte | Descripción | Filtros |
+|---------|-------------|---------|
+| Usuarios activos | Usuarios con sesión reciente | Período, sede, rol |
+| Usuarios por sede | Distribución geográfica | Sede, tipo usuario |
+| Usuarios por rol | Cantidad por cada rol | Rol, estado |
+| Nuevos registros | Usuarios creados en período | Fechas, tipo |
+| Usuarios inactivos | Sin acceso en X días | Días, sede |
+
+**Reportes de Certificados**:
+| Reporte | Descripción | Filtros |
+|---------|-------------|---------|
+| Certificados emitidos | Total de certificados | Período, tipo |
+| Certificados por tipo | Distribución por tipo | Tipo, sede |
+| Validaciones QR | Verificaciones realizadas | Período |
+| Tiempo de generación | Métricas de rendimiento | Período |
+
+**Reportes de Auditoría (CIG)**:
+| Reporte | Descripción | Filtros |
+|---------|-------------|---------|
+| Estado del Plan Anual | Avance de auditorías | Año, estado |
+| Hallazgos abiertos | Pendientes por cerrar | Área, antigüedad |
+| Cumplimiento mejoras | % de planes cumplidos | Área, período |
+| Indicadores DAFP | Formato oficial | Año, semestre |
+
+**Reportes de Gestión**:
+| Reporte | Descripción | Filtros |
+|---------|-------------|---------|
+| PTAs por estado | Docentes y sus PTAs | Período, estado |
+| Firmas pendientes | Documentos sin firmar | Área, antigüedad |
+| Trámites realizados | Actividad del portal | Período, tipo |
+| Logs de auditoría | Acciones del sistema | Período, usuario |
+
+---
+
+##### Generar un Reporte - Paso a Paso
+
+**Paso 1**: Seleccione el reporte del catálogo
+
+**Paso 2**: Configure los filtros
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  GENERAR REPORTE: Usuarios Activos por Período                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  FILTROS                                                       │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Período*:                                                     │
+│  Desde: [01/01/2026        📅]  Hasta: [31/01/2026       📅]  │
+│                                                                 │
+│  Sede:          [Todas las sedes                           ▼]  │
+│  Tipo usuario:  [Todos                                     ▼]  │
+│  Rol:           [Todos                                     ▼]  │
+│  Estado:        [● Activos  ○ Inactivos  ○ Todos          ]   │
+│                                                                 │
+│  OPCIONES DE SALIDA                                            │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Formato de salida:                                            │
+│  ☑ Vista en pantalla                                           │
+│  ☑ Exportar a Excel (.xlsx)                                    │
+│  ☐ Exportar a PDF                                              │
+│  ☐ Exportar a CSV                                              │
+│                                                                 │
+│  Incluir:                                                      │
+│  ☑ Gráficos                                                    │
+│  ☑ Totales y subtotales                                        │
+│  ☐ Datos detallados (puede ser extenso)                        │
+│                                                                 │
+│                              [Cancelar]  [Generar Reporte]     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 3**: Visualice el resultado
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  RESULTADO: Usuarios Activos - Enero 2026                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  RESUMEN EJECUTIVO                                             │
+│  ─────────────────                                             │
+│  Total usuarios activos: 1,847                                 │
+│  Nuevos en el período: 45                                      │
+│  Promedio sesiones/día: 892                                    │
+│                                                                 │
+│  DISTRIBUCIÓN POR TIPO                                         │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Funcionarios  ████████████████████  892 (48.3%)        │   │
+│  │ Docentes      ██████████           456 (24.7%)        │   │
+│  │ Estudiantes   ██████               312 (16.9%)        │   │
+│  │ Graduados     ███                  187 (10.1%)        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  DISTRIBUCIÓN POR SEDE                                         │
+│  | Sede              | Usuarios | % del Total |                │
+│  |-------------------|----------|-------------|                │
+│  | Bogotá Central    | 623      | 33.7%       |                │
+│  | Antioquia         | 156      | 8.4%        |                │
+│  | Valle             | 142      | 7.7%        |                │
+│  | ...               | ...      | ...         |                │
+│                                                                 │
+│  [Descargar Excel]  [Descargar PDF]  [Guardar en Mis Reportes] │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Reportes Programados
+
+Configure reportes que se generen y envíen automáticamente.
+
+**Crear Reporte Programado**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PROGRAMAR REPORTE                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Reporte base: [Usuarios Activos por Período               ▼]  │
+│                                                                 │
+│  Nombre del programa: [Reporte Semanal Usuarios            ]   │
+│                                                                 │
+│  FRECUENCIA                                                    │
+│  ────────────────────────────────────────────────────────────── │
+│  ○ Diario      (todos los días a las...)                       │
+│  ● Semanal     (cada semana el día...)                         │
+│  ○ Mensual     (cada mes el día...)                            │
+│  ○ Trimestral  (cada 3 meses)                                  │
+│                                                                 │
+│  Día de ejecución:    [Lunes                               ▼]  │
+│  Hora de ejecución:   [06:00 AM                            ▼]  │
+│                                                                 │
+│  DESTINATARIOS                                                 │
+│  ────────────────────────────────────────────────────────────── │
+│  Correos: [admin@esap.edu.co                               ]   │
+│           [+ Agregar destinatario]                             │
+│                                                                 │
+│  ☑ Enviarme copia a mí                                         │
+│  ☑ Adjuntar archivo Excel                                      │
+│  ☐ Adjuntar archivo PDF                                        │
+│                                                                 │
+│  Estado: ● Activo  ○ Pausado                                   │
+│                                                                 │
+│                              [Cancelar]  [Guardar Programa]    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Gestionar Reportes Programados**:
+
+| Nombre | Frecuencia | Próxima Ejecución | Estado | Acciones |
+|--------|------------|-------------------|--------|----------|
+| Semanal Usuarios | Lunes 6AM | 03/02/2026 | Activo | [Editar][Pausar][Eliminar] |
+| Mensual Certificados | Día 1 8AM | 01/02/2026 | Activo | [Editar][Pausar][Eliminar] |
+| Trimestral DAFP | Trim. | 01/04/2026 | Activo | [Editar][Pausar][Eliminar] |
+
+---
+
+##### Constructor de Reportes Personalizados
+
+Cree sus propios reportes seleccionando campos y filtros.
+
+**Paso 1**: Seleccione la fuente de datos
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONSTRUCTOR DE REPORTES - Paso 1: Fuente de Datos             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Seleccione la fuente principal:                               │
+│                                                                 │
+│  ○ Usuarios                                                    │
+│  ○ Certificados                                                │
+│  ● Auditorías y Hallazgos                                      │
+│  ○ Firma Electrónica                                           │
+│  ○ PTAs (Plan de Trabajo Anual)                                │
+│  ○ Estructura Organizacional                                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 2**: Seleccione los campos
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONSTRUCTOR DE REPORTES - Paso 2: Campos                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  CAMPOS DISPONIBLES          CAMPOS SELECCIONADOS              │
+│  ┌─────────────────────┐    ┌─────────────────────┐            │
+│  │ □ ID Auditoría      │    │ 1. Código Auditoría │            │
+│  │ ☑ Código Auditoría  │ ──▶│ 2. Proceso          │            │
+│  │ ☑ Proceso           │    │ 3. Estado           │            │
+│  │ □ Fecha Inicio      │    │ 4. Total Hallazgos  │            │
+│  │ □ Fecha Fin         │    │                     │            │
+│  │ ☑ Estado            │ ◀──│ [Subir] [Bajar]    │            │
+│  │ ☑ Total Hallazgos   │    │ [Quitar]           │            │
+│  │ □ Auditor           │    │                     │            │
+│  │ □ Área Auditada     │    │                     │            │
+│  └─────────────────────┘    └─────────────────────┘            │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 3**: Configure filtros y agrupaciones
+
+**Paso 4**: Guarde el reporte personalizado
+
+---
+
+##### Formatos de Exportación
+
+| Formato | Extensión | Uso Recomendado |
+|---------|-----------|-----------------|
+| **Excel** | .xlsx | Análisis de datos, tablas dinámicas |
+| **PDF** | .pdf | Presentaciones, archivo oficial |
+| **CSV** | .csv | Importación a otros sistemas |
+| **JSON** | .json | Integración con APIs |
+
+---
+
+##### Dashboards Predefinidos
+
+Además de reportes, puede acceder a dashboards interactivos:
+
+| Dashboard | Contenido | Actualización |
+|-----------|-----------|---------------|
+| **Ejecutivo** | KPIs generales de la plataforma | Tiempo real |
+| **Auditorías** | Estado de auditorías y hallazgos | Diaria |
+| **Usuarios** | Métricas de uso y actividad | Tiempo real |
+| **Certificados** | Emisiones y validaciones | Horaria |
+
+---
+
+##### Permisos de Reportes
+
+| Rol | Ver Reportes | Generar | Programar | Constructor |
+|-----|--------------|---------|-----------|-------------|
+| Super Admin | Todos | Sí | Sí | Sí |
+| Administrador | Todos | Sí | Sí | Sí |
+| Jefe de Área | Su área | Sí | No | No |
+| Auditor | CIG | Sí | Sí | No |
+| Usuario | Básicos | No | No | No |
 
 ---
 
@@ -1589,13 +2247,267 @@ Seleccione múltiples usuarios para realizar acciones en lote:
 
 #### 5.3.13 Estructura Organizacional
 
-**Para qué sirve**: Definir la estructura de la institución.
+**Para qué sirve**: Definir y administrar la estructura jerárquica de la institución, incluyendo sedes, territoriales, áreas y centros de formación.
 
-**Elementos que puede gestionar**:
-- **Sedes**: Ubicaciones físicas de la ESAP
-- **Territoriales**: Divisiones geográficas
-- **Áreas**: Dependencias administrativas
-- **CETAP**: Centros Territoriales de Administración Pública
+---
+
+##### Pantalla Principal de Estructura Organizacional
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ESTRUCTURA ORGANIZACIONAL                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PESTAÑAS: [Sedes]  [Territoriales]  [Áreas]  [CETAP]  [Organigrama]       │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  VISTA JERÁRQUICA                                                           │
+│                                                                             │
+│  📍 ESAP - Sede Nacional                                                   │
+│  ├── 📁 Dirección Nacional                                                 │
+│  │   ├── 📁 Subdirección Académica                                        │
+│  │   ├── 📁 Subdirección Administrativa                                   │
+│  │   ├── 📁 Subdirección de Proyección Institucional                      │
+│  │   └── 📁 Oficina de Control Interno                                    │
+│  │                                                                         │
+│  ├── 📍 Territorial Antioquia-Chocó                                       │
+│  │   ├── 📁 Coordinación Académica                                        │
+│  │   ├── 📁 Coordinación Administrativa                                   │
+│  │   └── 🏫 CETAP Medellín                                                │
+│  │                                                                         │
+│  ├── 📍 Territorial Valle del Cauca                                       │
+│  │   └── ...                                                              │
+│  └── ...                                                                   │
+│                                                                             │
+│                                    [+ Nueva Sede]  [+ Nueva Área]          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Elementos de la Estructura
+
+| Elemento | Descripción | Ejemplo |
+|----------|-------------|---------|
+| **Sede** | Ubicación física principal | Sede Nacional Bogotá |
+| **Territorial** | División geográfica con autonomía | Territorial Antioquia-Chocó |
+| **Área/Dependencia** | Unidad organizacional | Subdirección Académica |
+| **CETAP** | Centro Territorial de Administración Pública | CETAP Medellín |
+
+---
+
+##### Gestión de Sedes
+
+**Crear Nueva Sede**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVA SEDE                                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  INFORMACIÓN BÁSICA                                            │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Código de sede*:    [TER-ANT                              ]   │
+│  Nombre*:            [Territorial Antioquia-Chocó          ]   │
+│  Tipo*:              [Territorial                          ▼]  │
+│                                                                 │
+│  UBICACIÓN                                                     │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Departamento*:      [Antioquia                            ▼]  │
+│  Ciudad*:            [Medellín                             ▼]  │
+│  Dirección*:         [Calle 50 # 45-67                     ]   │
+│  Código postal:      [050001                               ]   │
+│                                                                 │
+│  CONTACTO                                                      │
+│  ────────────────────────────────────────────────────────────── │
+│                                                                 │
+│  Teléfono*:          [604-1234567                          ]   │
+│  Correo*:            [territorial.antioquia@esap.edu.co    ]   │
+│  Responsable*:       [Buscar usuario...                    🔍] │
+│                                                                 │
+│  Estado: ● Activa  ○ Inactiva                                  │
+│                                                                 │
+│                              [Cancelar]  [Guardar Sede]        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tipos de Sede**:
+| Tipo | Descripción |
+|------|-------------|
+| **Nacional** | Sede principal en Bogotá |
+| **Territorial** | Sedes regionales con autonomía |
+| **CETAP** | Centros de formación en municipios |
+| **Punto de atención** | Oficinas de atención al ciudadano |
+
+---
+
+##### Gestión de Territoriales
+
+Las territoriales son las divisiones regionales de la ESAP:
+
+| Código | Territorial | Departamentos | Sede Principal |
+|--------|-------------|---------------|----------------|
+| TER-ANT | Antioquia-Chocó | Antioquia, Chocó | Medellín |
+| TER-ATL | Atlántico | Atlántico, Magdalena, La Guajira | Barranquilla |
+| TER-BOL | Bolívar | Bolívar, Sucre, Córdoba | Cartagena |
+| TER-BOY | Boyacá | Boyacá, Casanare | Tunja |
+| TER-CAL | Caldas | Caldas, Risaralda, Quindío | Manizales |
+| TER-CAU | Cauca | Cauca, Nariño | Popayán |
+| TER-CUN | Cundinamarca | Cundinamarca | Bogotá |
+| TER-HUI | Huila | Huila, Caquetá, Putumayo | Neiva |
+| TER-MET | Meta | Meta, Guaviare, Vaupés, Vichada | Villavicencio |
+| TER-NDS | Norte de Santander | Norte de Santander, Arauca | Cúcuta |
+| TER-SAN | Santander | Santander | Bucaramanga |
+| TER-TOL | Tolima | Tolima | Ibagué |
+| TER-VAL | Valle del Cauca | Valle del Cauca | Cali |
+
+---
+
+##### Gestión de Áreas/Dependencias
+
+**Crear Nueva Área**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVA ÁREA/DEPENDENCIA                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Sede*:              [Sede Nacional - Bogotá               ▼]  │
+│                                                                 │
+│  Código de área*:    [SUB-ACA                              ]   │
+│  Nombre*:            [Subdirección Académica               ]   │
+│                                                                 │
+│  Área padre:         [Dirección Nacional                   ▼]  │
+│  (Dejar vacío si es área de primer nivel)                      │
+│                                                                 │
+│  Nivel jerárquico:   [2 - Subdirección                     ▼]  │
+│                                                                 │
+│  Jefe del área*:     [Buscar usuario...                    🔍] │
+│  Correo del área:    [subdiracademica@esap.edu.co          ]   │
+│                                                                 │
+│  Funciones principales:                                        │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Gestionar los programas académicos de pregrado y       │   │
+│  │ posgrado, así como la formación de docentes...         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Estado: ● Activa  ○ Inactiva                                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Niveles Jerárquicos**:
+| Nivel | Descripción | Ejemplos |
+|-------|-------------|----------|
+| 1 | Dirección | Dirección Nacional |
+| 2 | Subdirección | Subdirección Académica, Administrativa |
+| 3 | Oficina | Oficina de Control Interno, Jurídica |
+| 4 | Grupo | Grupo de Talento Humano |
+| 5 | Coordinación | Coordinación de Programas |
+
+---
+
+##### Gestión de CETAP
+
+Los CETAP (Centros Territoriales de Administración Pública) son puntos de formación en municipios.
+
+**Información del CETAP**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CETAP MEDELLÍN                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Código: CETAP-MED                                             │
+│  Territorial: Antioquia-Chocó                                  │
+│  Estado: ● Activo                                              │
+│                                                                 │
+│  UBICACIÓN                                                     │
+│  Dirección: Carrera 45 # 67-89, Medellín                       │
+│  Teléfono: 604-9876543                                         │
+│                                                                 │
+│  RESPONSABLE                                                   │
+│  Coordinador: MARÍA ELENA LÓPEZ                                │
+│  Correo: cetap.medellin@esap.edu.co                            │
+│                                                                 │
+│  ESTADÍSTICAS                                                  │
+│  ────────────────────────────────────────────────────────────── │
+│  Estudiantes activos: 245                                      │
+│  Programas ofertados: 3                                        │
+│  Docentes asignados: 12                                        │
+│                                                                 │
+│  PROGRAMAS ACADÉMICOS                                          │
+│  • Administración Pública Territorial (pregrado)               │
+│  • Especialización en Alta Gerencia                            │
+│  • Especialización en Gestión Pública                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Organigrama Visual
+
+El módulo incluye una vista de organigrama interactivo:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ORGANIGRAMA - ESAP                                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│                    ┌─────────────────┐                         │
+│                    │   DIRECCIÓN     │                         │
+│                    │   NACIONAL      │                         │
+│                    └────────┬────────┘                         │
+│           ┌─────────────────┼─────────────────┐                │
+│           │                 │                 │                │
+│    ┌──────┴──────┐   ┌──────┴──────┐   ┌──────┴──────┐        │
+│    │ SUBDIR.     │   │ SUBDIR.     │   │ SUBDIR.     │        │
+│    │ ACADÉMICA   │   │ ADMIN.      │   │ PROYECCIÓN  │        │
+│    └──────┬──────┘   └─────────────┘   └─────────────┘        │
+│           │                                                    │
+│    ┌──────┴──────┐                                            │
+│    │ FACULTAD    │                                            │
+│    │ PREGRADO    │                                            │
+│    └─────────────┘                                            │
+│                                                                 │
+│  [Zoom +]  [Zoom -]  [Expandir Todo]  [Colapsar]  [Exportar]  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Funcionalidades del organigrama**:
+- Hacer clic en un nodo para ver detalles
+- Arrastrar para navegar
+- Zoom para ajustar vista
+- Exportar como imagen o PDF
+- Filtrar por sede o territorial
+
+---
+
+##### Mover Usuarios entre Áreas
+
+Cuando un funcionario cambia de área:
+
+1. Vaya a **Gestión de Usuarios**
+2. Busque al usuario
+3. Haga clic en **"Editar"**
+4. Cambie el campo **"Área/Dependencia"**
+5. Guarde los cambios
+6. El sistema actualiza automáticamente los permisos según el área
+
+---
+
+##### Reportes de Estructura
+
+| Reporte | Descripción |
+|---------|-------------|
+| Usuarios por área | Cantidad de usuarios en cada dependencia |
+| Áreas sin jefe | Dependencias sin responsable asignado |
+| Distribución territorial | Usuarios por territorial/CETAP |
+| Histórico de cambios | Cambios en la estructura organizacional |
 
 ---
 
