@@ -187,11 +187,117 @@ Aquí puede ver y editar su información personal:
 - Cambiar su contraseña
 - Ver su historial de actividad en la plataforma
 
-**Pasos para actualizar su foto**:
+---
+
+##### Pantalla de Mi Perfil - Secciones Detalladas
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  MI PERFIL                                          [Editar]    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────┐   JUAN CARLOS PÉREZ GARCÍA                       │
+│  │  FOTO    │   Cargo: Profesional Universitario               │
+│  │  DE      │   Área: Subdirección Académica                   │
+│  │ PERFIL   │   Sede: Bogotá - Sede Central                    │
+│  └──────────┘   Correo: juan.perez@esap.edu.co                 │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  PESTAÑAS: [Datos Personales] [Contacto] [Seguridad] [Actividad]│
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Contenido de la pestaña seleccionada...                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Pestaña: Datos Personales
+
+| Campo | Descripción | Editable |
+|-------|-------------|----------|
+| **Tipo de documento** | CC, CE, Pasaporte, etc. | No |
+| **Número de documento** | Su número de identificación | No |
+| **Primer nombre** | Su primer nombre | Sí |
+| **Segundo nombre** | Su segundo nombre (opcional) | Sí |
+| **Primer apellido** | Su primer apellido | Sí |
+| **Segundo apellido** | Su segundo apellido | Sí |
+| **Fecha de nacimiento** | Fecha en formato DD/MM/AAAA | Sí |
+| **Género** | Masculino, Femenino, Otro | Sí |
+| **Estado civil** | Soltero, Casado, etc. | Sí |
+
+**Nota**: El tipo y número de documento no pueden modificarse. Si hay un error, contacte a soporte.
+
+---
+
+##### Pestaña: Información de Contacto
+
+| Campo | Descripción | Formato |
+|-------|-------------|---------|
+| **Correo principal** | Su correo institucional | nombre@esap.edu.co |
+| **Correo alternativo** | Correo personal (opcional) | correo@dominio.com |
+| **Teléfono celular** | Número de celular | 10 dígitos |
+| **Teléfono fijo** | Número fijo con indicativo | ej: 601-1234567 |
+| **Dirección** | Dirección de residencia | Texto libre |
+| **Ciudad** | Ciudad de residencia | Seleccione de lista |
+| **Departamento** | Departamento | Seleccione de lista |
+
+**Cómo actualizar su información de contacto**:
+1. Haga clic en **"Editar"** en la esquina superior
+2. Modifique los campos necesarios
+3. Haga clic en **"Guardar Cambios"**
+4. Verá un mensaje de confirmación
+
+---
+
+##### Pestaña: Seguridad
+
+**Cambiar Contraseña**:
+
+1. Haga clic en **"Cambiar Contraseña"**
+2. Ingrese su contraseña actual
+3. Ingrese la nueva contraseña (mínimo 8 caracteres)
+4. Confirme la nueva contraseña
+5. Haga clic en **"Actualizar"**
+
+**Requisitos de la contraseña**:
+- Mínimo 8 caracteres
+- Al menos una letra mayúscula (A-Z)
+- Al menos una letra minúscula (a-z)
+- Al menos un número (0-9)
+- Al menos un carácter especial (!@#$%^&*)
+
+**Sesiones Activas**:
+- Puede ver desde qué dispositivos ha iniciado sesión
+- Opción de cerrar sesiones en otros dispositivos
+
+---
+
+##### Pestaña: Historial de Actividad
+
+Muestra las últimas acciones realizadas en su cuenta:
+
+| Fecha/Hora | Acción | Detalle |
+|------------|--------|---------|
+| 27/01/2026 10:30 | Inicio de sesión | Desde Chrome - Windows |
+| 27/01/2026 09:15 | Certificado solicitado | Certificado laboral |
+| 26/01/2026 16:45 | Perfil actualizado | Teléfono modificado |
+
+---
+
+##### Pasos para actualizar su foto de perfil
+
 1. Haga clic en el ícono de cámara sobre su foto actual
 2. Seleccione una imagen de su computador
 3. Ajuste el encuadre si es necesario
 4. Haga clic en **"Guardar"**
+
+**Requisitos de la imagen**:
+- Formatos permitidos: JPG, PNG
+- Tamaño máximo: 5 MB
+- Resolución recomendada: 400x400 píxeles
+- Fondo preferible: neutro o profesional
 
 ---
 
@@ -201,18 +307,142 @@ Aquí puede ver y editar su información personal:
 
 Permite solicitar certificaciones de sus estudios o títulos.
 
-**Cómo solicitar un certificado**:
-1. Haga clic en **"Certificados Académicos"**
-2. Seleccione el tipo de certificado que necesita
-3. Verifique que sus datos sean correctos
-4. Haga clic en **"Solicitar"**
-5. Recibirá el certificado en su correo o podrá descargarlo directamente
+---
 
-**Tipos de certificados disponibles**:
-- Certificado de estudios
-- Certificado de título
-- Constancia de matrícula
-- Historial académico
+##### Pantalla Principal de Certificados Académicos
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CERTIFICADOS ACADÉMICOS                                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Seleccione el tipo de certificado:                            │
+│                                                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │ Certificado de  │  │ Certificado de  │  │   Constancia    │ │
+│  │    Estudios     │  │     Título      │  │  de Matrícula   │ │
+│  │                 │  │                 │  │                 │ │
+│  │ [Solicitar]     │  │ [Solicitar]     │  │ [Solicitar]     │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+│                                                                 │
+│  ┌─────────────────┐                                           │
+│  │   Historial     │                                           │
+│  │   Académico     │                                           │
+│  │                 │                                           │
+│  │ [Solicitar]     │                                           │
+│  └─────────────────┘                                           │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  HISTORIAL DE SOLICITUDES                                       │
+│  ────────────────────────────────────────────────────────────── │
+│  | Fecha      | Tipo           | Estado      | Acciones      | │
+│  |------------|----------------|-------------|---------------| │
+│  | 25/01/2026 | Cert. Estudios | Generado    | [Descargar]   | │
+│  | 20/01/2026 | Cert. Título   | Generado    | [Descargar]   | │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Tipos de Certificados Disponibles
+
+| Tipo | Descripción | Tiempo de Generación | Costo |
+|------|-------------|---------------------|-------|
+| **Certificado de Estudios** | Confirma que cursó o cursa un programa académico | Inmediato | Gratuito |
+| **Certificado de Título** | Confirma la obtención de un título académico | Inmediato | Gratuito |
+| **Constancia de Matrícula** | Confirma que está matriculado actualmente | Inmediato | Gratuito |
+| **Historial Académico** | Detalle de todas las asignaturas cursadas con notas | Inmediato | Gratuito |
+
+---
+
+##### Paso a Paso: Solicitar Certificado de Estudios
+
+**Paso 1**: Haga clic en la tarjeta **"Certificado de Estudios"**
+
+**Paso 2**: Seleccione el programa académico
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SOLICITAR CERTIFICADO DE ESTUDIOS                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Programa Académico: [Seleccione...                         ▼] │
+│                                                                 │
+│  Opciones disponibles:                                         │
+│  • Administración Pública Territorial (2018-2023)              │
+│  • Especialización en Alta Gerencia (2024-actual)              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 3**: Verifique sus datos personales
+- Revise que su nombre completo esté correcto
+- Verifique su número de documento
+- Si hay algún error, debe corregirlo en **Mi Perfil** antes de continuar
+
+**Paso 4**: Seleccione opciones adicionales (si aplica)
+- Idioma del certificado: Español / Inglés
+- Incluir foto: Sí / No
+- Propósito: Trámite personal / Entidad externa
+
+**Paso 5**: Haga clic en **"Generar Certificado"**
+
+**Paso 6**: Descargue o envíe el certificado
+- **Descargar PDF**: Descarga el archivo a su computador
+- **Enviar por correo**: Envía a su correo institucional
+- **Compartir enlace**: Genera un enlace de verificación
+
+---
+
+##### Información incluida en cada certificado
+
+**Certificado de Estudios**:
+- Nombre completo del estudiante
+- Número de documento de identidad
+- Nombre del programa académico
+- Código SNIES del programa
+- Fechas de inicio y fin (o "cursando actualmente")
+- Número total de créditos
+- Código QR de verificación
+- Firma digital del Registrador
+
+**Certificado de Título**:
+- Nombre completo del graduado
+- Número de documento de identidad
+- Título otorgado
+- Nombre del programa académico
+- Número de acta de grado
+- Fecha de grado
+- Número de diploma
+- Código QR de verificación
+- Firma digital del Rector
+
+---
+
+##### Validación de Certificados
+
+Todos los certificados incluyen un **código QR** que permite verificar su autenticidad:
+
+1. Cualquier persona puede escanear el código QR con su celular
+2. Será dirigido a la página de validación de la ESAP
+3. El sistema confirmará si el certificado es auténtico
+4. Mostrará los datos del certificado para verificación
+
+**También puede validar ingresando el código manualmente**:
+1. Vaya a la página de inicio de la plataforma
+2. Haga clic en **"Validar Certificado"**
+3. Ingrese el código único (aparece debajo del QR)
+4. Haga clic en **"Verificar"**
+
+---
+
+##### Solución de Problemas Comunes
+
+| Problema | Causa Posible | Solución |
+|----------|---------------|----------|
+| No aparece mi programa | No está registrado en el sistema | Contacte a Registro y Control |
+| Mis datos están incorrectos | Error en la base de datos | Actualice su perfil o contacte soporte |
+| El certificado no descarga | Bloqueador de pop-ups | Permita ventanas emergentes en su navegador |
+| El QR no funciona | Certificado muy antiguo | Genere uno nuevo actualizado |
 
 ---
 
@@ -222,17 +452,176 @@ Permite solicitar certificaciones de sus estudios o títulos.
 
 Para solicitar certificados de su vinculación laboral con la ESAP.
 
-**Cómo solicitar**:
-1. Haga clic en **"Certificados Laborales"**
-2. Seleccione el tipo de certificado
-3. Indique el período laboral (si aplica)
-4. Haga clic en **"Generar Certificado"**
-5. El certificado incluirá un código QR para validación
+---
 
-**Validación del certificado**:
-- Cualquier persona puede validar su certificado usando el código QR
-- Solo necesitan escanear el código con su celular
-- El sistema confirmará la autenticidad del documento
+##### Pantalla Principal de Certificados Laborales
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CERTIFICADOS LABORALES                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Bienvenido, JUAN CARLOS PÉREZ GARCÍA                          │
+│  Vinculación actual: Profesional Universitario Grado 11        │
+│  Área: Subdirección Académica                                  │
+│  Fecha de ingreso: 15/03/2020                                  │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  SOLICITAR NUEVO CERTIFICADO                                    │
+│                                                                 │
+│  Tipo de certificado:                                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ ○ Certificado laboral básico                            │   │
+│  │ ○ Certificado con funciones                             │   │
+│  │ ○ Certificado con información salarial                  │   │
+│  │ ○ Constancia de trabajo                                 │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Dirigido a: [Entidad o persona...                          ]  │
+│                                                                 │
+│                              [Generar Certificado]              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Tipos de Certificados Laborales
+
+| Tipo | Contenido | Uso Típico |
+|------|-----------|------------|
+| **Básico** | Confirma vinculación, cargo y fechas | Trámites generales |
+| **Con Funciones** | Incluye las funciones del cargo | Procesos de selección |
+| **Con Salario** | Incluye información de remuneración | Trámites financieros, créditos |
+| **Constancia de Trabajo** | Certificación simple y corta | Verificación rápida |
+
+---
+
+##### Paso a Paso: Generar Certificado Laboral
+
+**Paso 1**: Acceda al módulo
+- Desde el Portal Transaccional, haga clic en **"Certificados Laborales"**
+
+**Paso 2**: Seleccione el tipo de certificado
+- Marque la opción que corresponda a su necesidad
+
+**Paso 3**: Complete información adicional
+
+| Campo | Descripción | Obligatorio |
+|-------|-------------|-------------|
+| **Dirigido a** | Nombre de la entidad o persona destinataria | Opcional |
+| **Propósito** | Para qué requiere el certificado | Opcional |
+| **Período específico** | Si necesita un rango de fechas particular | Solo si aplica |
+
+**Paso 4**: Verifique la información
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  VISTA PREVIA DEL CERTIFICADO                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  La ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA                  │
+│                                                                 │
+│  CERTIFICA QUE:                                                 │
+│                                                                 │
+│  JUAN CARLOS PÉREZ GARCÍA, identificado con C.C. 1.234.567     │
+│  de Bogotá, labora en esta Entidad como PROFESIONAL            │
+│  UNIVERSITARIO GRADO 11, en la Subdirección Académica,         │
+│  desde el 15 de marzo de 2020 hasta la fecha.                  │
+│                                                                 │
+│  Tipo de vinculación: Carrera Administrativa                   │
+│  Estado: Activo                                                │
+│                                                                 │
+│  [Código QR]                                                   │
+│                                                                 │
+│  Código de verificación: CERT-LAB-2026-00123                   │
+│                                                                 │
+│                                 [Cancelar]  [Confirmar y Generar]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 5**: Genere y descargue
+- Haga clic en **"Confirmar y Generar"**
+- El certificado se generará en PDF
+- Puede descargarlo o enviarlo por correo
+
+---
+
+##### Información del Certificado con Funciones
+
+Además de la información básica, incluye:
+
+```
+FUNCIONES DEL CARGO:
+
+1. Participar en la formulación, diseño, organización, ejecución
+   y control de planes y programas del área.
+2. Proyectar actos administrativos y documentos relacionados con
+   las funciones del área.
+3. Realizar estudios e investigaciones tendientes al logro de
+   los objetivos del área.
+4. Las demás funciones asignadas por el superior inmediato.
+```
+
+---
+
+##### Información del Certificado con Salario
+
+Incluye información detallada de remuneración:
+
+| Concepto | Valor Mensual |
+|----------|---------------|
+| Asignación básica | $X.XXX.XXX |
+| Bonificación por servicios | $XXX.XXX |
+| Subsidio de alimentación | $XXX.XXX |
+| Prima técnica (si aplica) | $XXX.XXX |
+| **Total devengado** | **$X.XXX.XXX** |
+
+> **Nota**: Este certificado solo se genera para funcionarios con autorización especial o para trámites financieros verificables.
+
+---
+
+##### Validación por Código QR
+
+El certificado incluye un código QR único que permite:
+
+1. **Verificación inmediata**: Cualquier persona puede escanear el QR
+2. **Autenticidad garantizada**: El sistema confirma si es válido
+3. **Información en tiempo real**: Muestra los datos actualizados
+4. **Historial de verificaciones**: Se registra cada consulta
+
+**Proceso de validación**:
+```
+Escanear QR → Sistema verifica → Muestra resultado
+                                 ├─ ✓ VÁLIDO: Muestra datos
+                                 └─ ✗ INVÁLIDO: Alerta de documento no reconocido
+```
+
+---
+
+##### Historial de Certificados
+
+Puede ver todos los certificados que ha generado:
+
+| Fecha | Tipo | Código | Estado | Acciones |
+|-------|------|--------|--------|----------|
+| 27/01/2026 | Básico | CERT-LAB-2026-00123 | Vigente | [Ver] [Descargar] |
+| 15/12/2025 | Con funciones | CERT-LAB-2025-00098 | Vigente | [Ver] [Descargar] |
+| 10/06/2025 | Con salario | CERT-LAB-2025-00045 | Vigente | [Ver] [Descargar] |
+
+---
+
+##### Preguntas Frecuentes sobre Certificados Laborales
+
+**¿Cuánto tiempo es válido el certificado?**
+> Los certificados no tienen fecha de vencimiento, pero reflejan la información al momento de generación. Para trámites actuales, se recomienda generar uno nuevo.
+
+**¿Puedo solicitar un certificado de un cargo anterior?**
+> Sí, puede solicitar certificados de todas sus vinculaciones anteriores con la ESAP.
+
+**¿El certificado tiene costo?**
+> No, la generación de certificados laborales es gratuita.
+
+**¿Cuántos certificados puedo generar?**
+> No hay límite en la cantidad de certificados que puede generar.
 
 ---
 
@@ -288,30 +677,328 @@ Acceso a oportunidades laborales exclusivas para egresados de la ESAP.
 
 Módulo para crear y gestionar su Plan de Trabajo Anual.
 
-**¿Qué es el PTA?**
-Es el documento donde los docentes planifican sus actividades académicas del año, incluyendo:
-- Actividades de docencia (clases, tutorías)
-- Proyectos de investigación
-- Actividades de extensión
-- Actividades complementarias
+---
 
-**Cómo crear su PTA**:
-1. Haga clic en **"Mi PTA"**
-2. Si no tiene un PTA activo, haga clic en **"Crear nuevo PTA"**
-3. Complete cada sección del asistente:
-   - **Docencia**: Registre cursos, horarios, grupos
-   - **Investigación**: Proyectos y publicaciones planificadas
-   - **Extensión**: Actividades con la comunidad
-   - **Complementarias**: Otras actividades académicas
-4. Use el **"Prorrateo Automático"** para distribuir horas
-5. Haga clic en **"Guardar"** para guardar borrador
-6. Cuando esté listo, haga clic en **"Enviar a Aprobación"**
+##### ¿Qué es el PTA?
 
-**Estado de su PTA**:
-- **Borrador**: Aún puede editarlo
-- **Enviado**: En espera de revisión
-- **Aprobado**: Fue aprobado por su coordinador
-- **Requiere Ajustes**: Debe realizar correcciones
+El **Plan de Trabajo Anual (PTA)** es el documento donde los docentes planifican todas sus actividades académicas para el año. Es un requisito obligatorio que debe ser aprobado por su coordinador académico.
+
+El PTA se divide en cuatro grandes áreas:
+
+| Área | Descripción | % Mínimo | % Máximo |
+|------|-------------|----------|----------|
+| **Docencia** | Clases, tutorías, evaluaciones | 40% | 70% |
+| **Investigación** | Proyectos de investigación, publicaciones | 10% | 30% |
+| **Extensión** | Actividades con comunidad externa | 10% | 20% |
+| **Complementarias** | Comités, capacitaciones, administrativas | 5% | 15% |
+
+---
+
+##### Pantalla Principal de Mi PTA
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  MI PLAN DE TRABAJO ANUAL (PTA)                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Período académico: 2026-I                                     │
+│  Estado actual: ● BORRADOR                                     │
+│  Última modificación: 27/01/2026 10:30                         │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  RESUMEN DE DISTRIBUCIÓN DE HORAS                               │
+│                                                                 │
+│  Docencia        ████████████████████░░░░░  320h (53.3%)       │
+│  Investigación   ██████░░░░░░░░░░░░░░░░░░░  120h (20.0%)       │
+│  Extensión       ████░░░░░░░░░░░░░░░░░░░░░   80h (13.3%)       │
+│  Complementarias ██░░░░░░░░░░░░░░░░░░░░░░░   80h (13.3%)       │
+│  ────────────────────────────────────────────────────           │
+│  TOTAL                                       600h (100%)        │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  [Continuar Editando]  [Prorrateo Automático]  [Enviar]        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Flujo de Estados del PTA
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  BORRADOR   │────▶│   ENVIADO   │────▶│ EN REVISIÓN │────▶│  APROBADO   │
+│             │     │             │     │             │     │             │
+│ Puede       │     │ Esperando   │     │ Coordinador │     │ PTA         │
+│ editar      │     │ revisión    │     │ revisando   │     │ vigente     │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+                                               │
+                                               ▼
+                                        ┌─────────────┐
+                                        │  REQUIERE   │
+                                        │  AJUSTES    │
+                                        │             │
+                                        │ Vuelve a    │
+                                        │ BORRADOR    │
+                                        └─────────────┘
+```
+
+| Estado | Descripción | ¿Puede editar? |
+|--------|-------------|----------------|
+| **Borrador** | PTA en construcción | Sí |
+| **Enviado** | Enviado al coordinador | No |
+| **En Revisión** | Coordinador está evaluando | No |
+| **Requiere Ajustes** | Debe hacer correcciones | Sí |
+| **Aprobado** | PTA aprobado y vigente | No |
+
+---
+
+##### Paso a Paso: Crear un Nuevo PTA
+
+**Paso 1**: Acceda al módulo
+- Haga clic en **"Mi PTA"** desde el Portal Transaccional
+
+**Paso 2**: Inicie un nuevo PTA
+- Si no tiene uno activo, haga clic en **"Crear Nuevo PTA"**
+- Seleccione el período académico
+
+**Paso 3**: Complete la información básica
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  INFORMACIÓN GENERAL DEL PTA                                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Período académico:    [2026-I                              ▼] │
+│  Programa académico:   [Administración Pública              ▼] │
+│  Sede/Territorial:     [Bogotá - Sede Central               ▼] │
+│  Dedicación semanal:   [40 horas                            ▼] │
+│                                                                 │
+│  Total horas año:      1920 horas                              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Sección 1: Actividades de DOCENCIA
+
+Esta sección cubre todas las actividades relacionadas con la enseñanza.
+
+**Tipos de actividades de docencia**:
+
+| Actividad | Descripción | Horas típicas |
+|-----------|-------------|---------------|
+| **Clases presenciales** | Sesiones de clase en aula | 2-4h por sesión |
+| **Clases virtuales** | Sesiones sincrónicas en línea | 2-3h por sesión |
+| **Tutorías** | Atención individual a estudiantes | 1-2h por estudiante |
+| **Preparación de clase** | Planeación y materiales | 1-2h por clase |
+| **Evaluación** | Calificación de trabajos y exámenes | Variable |
+| **Asesoría de trabajos** | Dirección de trabajos de grado | 2-4h por trabajo |
+
+**Cómo registrar una actividad de docencia**:
+
+1. Haga clic en **"+ Agregar Actividad de Docencia"**
+2. Complete el formulario:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  NUEVA ACTIVIDAD DE DOCENCIA                                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Tipo de actividad: [Clases presenciales                    ▼] │
+│                                                                 │
+│  Asignatura:        [Administración Pública I               ▼] │
+│  Grupo:             [Grupo A - Diurno                       ▼] │
+│  Código de curso:   APT-101                                    │
+│                                                                 │
+│  Número de estudiantes:  [35]                                  │
+│                                                                 │
+│  Horario:                                                      │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │ Día         Hora Inicio    Hora Fin                    │    │
+│  │ [Lunes  ▼]  [08:00    ▼]   [10:00   ▼]  [+ Agregar]   │    │
+│  │ [Miérc. ▼]  [08:00    ▼]   [10:00   ▼]  [x Eliminar]  │    │
+│  └────────────────────────────────────────────────────────┘    │
+│                                                                 │
+│  Horas semanales:     4 horas                                  │
+│  Horas semestrales:   64 horas (16 semanas)                    │
+│                                                                 │
+│  Observaciones: [                                           ]  │
+│                                                                 │
+│                              [Cancelar]  [Guardar Actividad]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Sección 2: Actividades de INVESTIGACIÓN
+
+Aquí registra sus proyectos y actividades investigativas.
+
+**Tipos de actividades de investigación**:
+
+| Actividad | Descripción |
+|-----------|-------------|
+| **Proyecto de investigación** | Proyecto formal registrado |
+| **Publicación de artículo** | Escritura de artículos científicos |
+| **Participación en grupo** | Membresía en grupos de investigación |
+| **Ponencia** | Presentación en eventos académicos |
+| **Libro o capítulo** | Autoría de publicaciones |
+
+**Campos del formulario de investigación**:
+
+| Campo | Descripción |
+|-------|-------------|
+| Tipo de actividad | Seleccione de la lista |
+| Nombre del proyecto | Título del proyecto/publicación |
+| Grupo de investigación | Si aplica |
+| Rol | Investigador principal, coinvestigador, etc. |
+| Productos esperados | Artículos, ponencias, etc. |
+| Horas dedicadas | Estimación de horas |
+| Período | Fechas de desarrollo |
+
+---
+
+##### Sección 3: Actividades de EXTENSIÓN
+
+Actividades de proyección social y vinculación con la comunidad.
+
+**Tipos de actividades de extensión**:
+
+| Actividad | Descripción |
+|-----------|-------------|
+| **Consultoría** | Asesoría a entidades externas |
+| **Capacitación externa** | Cursos a comunidad o entidades |
+| **Convenios** | Participación en convenios interinstitucionales |
+| **Proyectos sociales** | Proyectos con comunidades |
+| **Eventos externos** | Organización/participación en eventos |
+
+---
+
+##### Sección 4: Actividades COMPLEMENTARIAS
+
+Otras actividades académicas y administrativas.
+
+**Tipos de actividades complementarias**:
+
+| Actividad | Descripción |
+|-----------|-------------|
+| **Comités institucionales** | Participación en comités |
+| **Capacitación docente** | Formación y actualización |
+| **Evaluación de pares** | Revisión de trabajos |
+| **Representación** | Representación en consejos |
+| **Actividades administrativas** | Coordinaciones, jefaturas |
+
+---
+
+##### Prorrateo Automático
+
+El sistema puede distribuir automáticamente las horas según los porcentajes establecidos.
+
+**Cómo usar el prorrateo automático**:
+
+1. Haga clic en **"Prorrateo Automático"**
+2. El sistema mostrará la distribución sugerida:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PRORRATEO AUTOMÁTICO DE HORAS                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Total de horas disponibles: 1920 horas/año                    │
+│                                                                 │
+│  Distribución sugerida:                                        │
+│                                                                 │
+│  Área              Min    Max     Sugerido    Ajustar          │
+│  ─────────────────────────────────────────────────────         │
+│  Docencia          40%    70%     [55%   ▼]   1056h            │
+│  Investigación     10%    30%     [20%   ▼]    384h            │
+│  Extensión         10%    20%     [15%   ▼]    288h            │
+│  Complementarias    5%    15%     [10%   ▼]    192h            │
+│  ─────────────────────────────────────────────────────         │
+│  TOTAL                            100%        1920h            │
+│                                                                 │
+│  ⚠ Ajuste los porcentajes según sus actividades planificadas   │
+│                                                                 │
+│                              [Cancelar]  [Aplicar Prorrateo]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+3. Ajuste los porcentajes si es necesario
+4. Haga clic en **"Aplicar Prorrateo"**
+
+---
+
+##### Enviar PTA a Aprobación
+
+Cuando haya completado todas las secciones:
+
+1. Revise el resumen de su PTA
+2. Verifique que los porcentajes estén dentro de los rangos permitidos
+3. Haga clic en **"Enviar a Aprobación"**
+4. Confirme el envío
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CONFIRMAR ENVÍO                                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ⚠ Una vez enviado, no podrá modificar su PTA hasta que        │
+│    el coordinador lo revise.                                   │
+│                                                                 │
+│  Coordinador asignado: MARÍA HELENA GÓMEZ                      │
+│  Correo: maria.gomez@esap.edu.co                               │
+│                                                                 │
+│  ¿Está seguro de enviar su PTA?                                │
+│                                                                 │
+│                              [Cancelar]  [Confirmar Envío]     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Responder a "Requiere Ajustes"
+
+Si su coordinador solicita correcciones:
+
+1. Recibirá una notificación por correo
+2. En el sistema, verá el estado **"Requiere Ajustes"**
+3. Haga clic en **"Ver Observaciones"** para ver los comentarios
+4. Realice las correcciones solicitadas
+5. Envíe nuevamente a aprobación
+
+**Ejemplo de observaciones del coordinador**:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  OBSERVACIONES DEL COORDINADOR                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Fecha: 28/01/2026                                             │
+│  Coordinador: MARÍA HELENA GÓMEZ                               │
+│                                                                 │
+│  Observaciones:                                                │
+│                                                                 │
+│  1. En la sección de Docencia, falta especificar el grupo     │
+│     para la asignatura "Gestión Pública".                     │
+│                                                                 │
+│  2. Las horas de investigación exceden el máximo permitido.   │
+│     Por favor ajuste al 30% máximo.                           │
+│                                                                 │
+│  3. Agregue el proyecto de extensión que comentamos en        │
+│     la reunión del 15 de enero.                               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Consultar PTA Aprobado
+
+Una vez aprobado, puede consultar su PTA vigente:
+
+1. El estado cambiará a **"Aprobado"**
+2. Puede descargar el PTA en PDF
+3. Puede ver el documento firmado por su coordinador
+4. El PTA queda vigente para el período académico
 
 ---
 
@@ -436,27 +1123,285 @@ La pantalla inicial muestra:
 
 **Para qué sirve**: Administrar las cuentas de todos los usuarios de la plataforma.
 
-**Funciones principales**:
+---
+
+##### Pantalla Principal de Gestión de Usuarios
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  GESTIÓN DE USUARIOS Y PERSONAS                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [+ Nuevo Usuario]  [Carga Masiva]  [Exportar]           🔍 Buscar...      │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  FILTROS:                                                                   │
+│  Estado: [Todos ▼]  Rol: [Todos ▼]  Sede: [Todas ▼]  Tipo: [Todos ▼]       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  □ | Documento    | Nombre              | Correo          | Rol    | Estado│
+│  ──┼──────────────┼─────────────────────┼─────────────────┼────────┼───────│
+│  □ | 1234567890   | Juan Pérez García   | juan@esap...    | Admin  | ● Act │
+│  □ | 9876543210   | María López Torres  | maria@esap...   | Docente| ● Act │
+│  □ | 5555555555   | Carlos Rodríguez    | carlos@esap...  | Est.   | ○ Ina │
+│                                                                             │
+│  Mostrando 1-50 de 2,345 usuarios         [◄ Anterior] Página 1 [Siguiente ►]│
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Funciones Principales
+
+| Acción | Descripción | Acceso |
+|--------|-------------|--------|
+| **Ver usuarios** | Lista completa con filtros y búsqueda | Todos los admin |
+| **Crear usuario** | Registrar nuevo usuario manualmente | Admin |
+| **Editar usuario** | Modificar datos existentes | Admin |
+| **Desactivar** | Inhabilitar cuenta temporalmente | Admin |
+| **Eliminar** | Remover permanentemente (requiere confirmación) | Super Admin |
+| **Carga masiva** | Importar desde Excel | Admin |
+| **Exportar** | Descargar listado en Excel/PDF | Admin |
+
+---
+
+##### Crear Nuevo Usuario - Paso a Paso
+
+**Paso 1**: Haga clic en **"+ Nuevo Usuario"**
+
+**Paso 2**: Complete la información del documento
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVO USUARIO - Paso 1 de 4: Identificación             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Tipo de documento: [Cédula de Ciudadanía               ▼]     │
+│                                                                 │
+│  Número de documento: [                                    ]    │
+│                                                                 │
+│  [Verificar en BD]  ← Verifica si ya existe en el sistema      │
+│                                                                 │
+│  Resultado: ✓ Usuario no existe, puede continuar               │
+│                                                                 │
+│                                           [Cancelar] [Siguiente]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tipos de documento disponibles**:
+- Cédula de Ciudadanía (CC)
+- Cédula de Extranjería (CE)
+- Tarjeta de Identidad (TI)
+- Pasaporte (PA)
+- Permiso Especial de Permanencia (PEP)
+
+**Paso 3**: Complete los datos personales
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVO USUARIO - Paso 2 de 4: Datos Personales           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Primer nombre*:     [                                     ]   │
+│  Segundo nombre:     [                                     ]   │
+│  Primer apellido*:   [                                     ]   │
+│  Segundo apellido:   [                                     ]   │
+│                                                                 │
+│  Fecha de nacimiento*: [DD/MM/AAAA                         ]   │
+│  Género*:              [Seleccione...                      ▼]  │
+│                                                                 │
+│  Correo institucional*: [                    ] @esap.edu.co    │
+│  Correo alternativo:    [                                  ]   │
+│                                                                 │
+│  Teléfono celular*:    [                                   ]   │
+│  Teléfono fijo:        [                                   ]   │
+│                                                                 │
+│  * Campos obligatorios                                         │
+│                                                                 │
+│                              [Anterior] [Cancelar] [Siguiente] │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 4**: Asigne ubicación y tipo de usuario
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVO USUARIO - Paso 3 de 4: Ubicación y Tipo           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Tipo de usuario*:    [Funcionario                         ▼]  │
+│                                                                 │
+│  Sede/Territorial*:   [Bogotá - Sede Central               ▼]  │
+│  Área/Dependencia*:   [Subdirección Académica              ▼]  │
+│                                                                 │
+│  Cargo:               [Profesional Universitario           ▼]  │
+│  Grado:               [11                                  ▼]  │
+│                                                                 │
+│  Fecha de ingreso:    [DD/MM/AAAA                          ]   │
+│                                                                 │
+│  Tipo de vinculación: [Carrera Administrativa              ▼]  │
+│                                                                 │
+│                              [Anterior] [Cancelar] [Siguiente] │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tipos de usuario**:
+| Tipo | Descripción |
+|------|-------------|
+| Funcionario | Personal de planta |
+| Contratista | Prestación de servicios |
+| Docente | Docente de planta o cátedra |
+| Estudiante | Estudiante matriculado |
+| Graduado | Egresado de la ESAP |
+| Externo | Usuario externo autorizado |
+
+**Paso 5**: Asigne roles
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR NUEVO USUARIO - Paso 4 de 4: Roles                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Seleccione los roles para este usuario:                       │
+│                                                                 │
+│  ☑ Usuario básico (obligatorio)                                │
+│  ☐ Administrador                                               │
+│  ☐ Auditor                                                     │
+│  ☐ Jefe de Área                                                │
+│  ☐ Docente                                                     │
+│  ☐ Firmante                                                    │
+│  ☐ Coordinador Académico                                       │
+│                                                                 │
+│  Rol principal*: [Usuario básico                           ▼]  │
+│                                                                 │
+│  ⚠ Los permisos se aplicarán según los roles seleccionados     │
+│                                                                 │
+│  RESUMEN:                                                      │
+│  ─────────────────────────────────────────────────────────────  │
+│  Nombre: JUAN CARLOS PÉREZ GARCÍA                              │
+│  Documento: CC 1.234.567.890                                   │
+│  Correo: juan.perez@esap.edu.co                                │
+│  Sede: Bogotá - Sede Central                                   │
+│  Roles: Usuario básico                                         │
+│                                                                 │
+│                              [Anterior] [Cancelar] [Crear Usuario]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 6**: Confirmación
+- El sistema crea el usuario
+- Se envía correo de activación al usuario
+- El usuario debe hacer clic en el enlace para activar su cuenta
+
+---
+
+##### Carga Masiva de Usuarios
+
+**Requisitos del archivo Excel**:
+
+| Columna | Descripción | Obligatorio | Formato |
+|---------|-------------|-------------|---------|
+| A | Tipo documento | Sí | CC, CE, TI, PA |
+| B | Número documento | Sí | Solo números |
+| C | Primer nombre | Sí | Texto |
+| D | Segundo nombre | No | Texto |
+| E | Primer apellido | Sí | Texto |
+| F | Segundo apellido | No | Texto |
+| G | Correo | Sí | nombre@esap.edu.co |
+| H | Teléfono | Sí | 10 dígitos |
+| I | Sede | Sí | Código de sede |
+| J | Tipo usuario | Sí | FUNCIONARIO, DOCENTE, etc. |
+| K | Rol | Sí | Código de rol |
+
+**Proceso de carga masiva**:
+
+1. Descargue la plantilla haciendo clic en **"Descargar Plantilla"**
+2. Complete la información siguiendo el formato
+3. Haga clic en **"Carga Masiva"**
+4. Seleccione el archivo Excel
+5. El sistema validará los datos:
+   - Documentos duplicados
+   - Correos ya existentes
+   - Formatos incorrectos
+6. Revise el resumen de validación
+7. Confirme la carga
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  RESULTADO DE VALIDACIÓN                                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Total de registros en archivo: 150                            │
+│                                                                 │
+│  ✓ Registros válidos: 142                                      │
+│  ✗ Registros con errores: 8                                    │
+│                                                                 │
+│  ERRORES ENCONTRADOS:                                          │
+│  Fila 23: Documento ya existe en el sistema                    │
+│  Fila 45: Correo con formato inválido                          │
+│  Fila 67: Sede no encontrada                                   │
+│  ...                                                           │
+│                                                                 │
+│  [Descargar reporte de errores]                                │
+│                                                                 │
+│  ¿Desea continuar con los 142 registros válidos?               │
+│                                                                 │
+│                              [Cancelar] [Continuar con válidos]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+##### Editar Usuario
+
+Para modificar los datos de un usuario existente:
+
+1. Busque al usuario en la lista
+2. Haga clic en el ícono de editar (lápiz) o en su nombre
+3. Modifique los campos necesarios
+4. Haga clic en **"Guardar Cambios"**
+
+**Campos que NO se pueden modificar**:
+- Tipo de documento
+- Número de documento
+
+**Campos que requieren verificación especial**:
+- Correo electrónico (envía verificación)
+- Roles (requiere aprobación según el rol)
+
+---
+
+##### Acciones Masivas
+
+Seleccione múltiples usuarios para realizar acciones en lote:
 
 | Acción | Descripción |
 |--------|-------------|
-| **Ver usuarios** | Lista completa de usuarios registrados |
-| **Crear usuario** | Registrar un nuevo usuario en el sistema |
-| **Editar usuario** | Modificar datos de un usuario existente |
-| **Desactivar usuario** | Inhabilitar temporalmente una cuenta |
-| **Eliminar usuario** | Remover permanentemente una cuenta |
-| **Carga masiva** | Crear múltiples usuarios desde un archivo Excel |
+| **Activar seleccionados** | Activa las cuentas seleccionadas |
+| **Desactivar seleccionados** | Desactiva las cuentas seleccionadas |
+| **Asignar rol** | Asigna un rol a todos los seleccionados |
+| **Cambiar sede** | Cambia la sede de los seleccionados |
+| **Exportar seleccionados** | Exporta solo los usuarios seleccionados |
 
-**Cómo crear un nuevo usuario**:
-1. Haga clic en **"Nuevo Usuario"**
-2. Complete los datos obligatorios:
-   - Tipo y número de documento
-   - Nombres y apellidos
-   - Correo electrónico
-   - Tipo de usuario
-3. Asigne los roles correspondientes
-4. Haga clic en **"Guardar"**
-5. El usuario recibirá un correo para activar su cuenta
+---
+
+##### Búsqueda y Filtros Avanzados
+
+**Búsqueda rápida**:
+- Por nombre o apellido
+- Por número de documento
+- Por correo electrónico
+
+**Filtros disponibles**:
+
+| Filtro | Opciones |
+|--------|----------|
+| Estado | Activo, Inactivo, Todos |
+| Rol | Lista de roles disponibles |
+| Sede | Lista de sedes/territoriales |
+| Tipo de usuario | Funcionario, Docente, Estudiante, etc. |
+| Fecha de creación | Rango de fechas |
+| Último acceso | Rango de fechas |
 
 ---
 
@@ -675,43 +1620,470 @@ Estos módulos están diseñados para áreas específicas de la ESAP y tienen ac
 **Acceso**: Oficina de Control Interno (OCIG@esap.edu.co)
 
 **¿Qué es?**
-Sistema completo para la gestión de auditorías internas según el Decreto 648.
+Sistema completo para la gestión de auditorías internas según el Decreto 648 de 2017 y los lineamientos del Departamento Administrativo de la Función Pública (DAFP).
 
-**Funcionalidades principales**:
+---
 
-#### Plan Anual de Auditorías
-- Crear el plan anual de auditorías
-- Definir los procesos a auditar
-- Asignar equipos auditores
+#### 6.1.1 Dashboard Principal de Control Interno
 
-#### Universo de Auditorías
-- Catálogo de todos los procesos auditables
-- Referencias normativas (DAFP)
-- Histórico de auditorías
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CONTROL INTERNO DE GESTIÓN (CIG)                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  INDICADORES GENERALES - Año 2026                                          │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌────────────┐│
+│  │      12        │  │       5        │  │      23        │  │    78%     ││
+│  │  Auditorías    │  │  En Ejecución  │  │   Hallazgos    │  │ Cumplimiento│
+│  │  Planificadas  │  │                │  │   Abiertos     │  │ Plan Mejora││
+│  └────────────────┘  └────────────────┘  └────────────────┘  └────────────┘│
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ACCESOS RÁPIDOS                                                            │
+│                                                                             │
+│  [Plan Anual]  [Nueva Auditoría]  [Hallazgos]  [Seguimiento]  [Reportes]   │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  AUDITORÍAS EN CURSO                                                        │
+│  ─────────────────────────────────────────────────────────────────────────  │
+│  | Código    | Proceso              | Etapa      | Avance | Responsable   │ │
+│  |-----------|----------------------|------------|--------|---------------│ │
+│  | AUD-2026-03| Gestión Financiera  | Ejecución  | 65%    | J. Rodríguez  │ │
+│  | AUD-2026-04| Gestión Documental  | Planeación | 30%    | M. García     │ │
+│  | AUD-2026-05| Talento Humano      | Inicio     | 10%    | L. Martínez   │ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-#### Ejecución de Auditorías
-El proceso de auditoría tiene tres etapas:
+---
 
-1. **Inicio**
-   - Generación de oficios y cartas
-   - Notificación a áreas auditadas
+#### 6.1.2 Plan Anual de Auditorías
 
-2. **Planeación**
-   - Definir alcance y objetivos
-   - Elaborar programa de trabajo
-   - Duración: 5-10 días (sede) o 3 días (territorial)
+El Plan Anual de Auditorías es el documento rector que define todas las auditorías a realizar durante el año fiscal.
 
-3. **Ejecución**
-   - Aplicar listas de verificación
-   - Recopilar evidencias
-   - Registrar hallazgos
-   - Duración: 10-30 días (sede) o 4 días (territorial)
+##### Crear Plan Anual
 
-#### Planes de Mejoramiento
-- Registrar acciones correctivas
-- Asignar responsables y fechas
-- Seguimiento trimestral (julio, octubre, enero, abril)
-- Indicadores de cumplimiento tipo semáforo
+**Paso 1**: Acceda a **"Plan Anual"** desde el menú principal
+
+**Paso 2**: Haga clic en **"Crear Plan Anual"**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CREAR PLAN ANUAL DE AUDITORÍAS                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Año fiscal*:              [2026                            ▼] │
+│                                                                 │
+│  Objetivo general del plan:                                    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Evaluar la efectividad de los controles internos de    │   │
+│  │ los procesos misionales y de apoyo de la ESAP...       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Alcance:                                                      │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Sede central y 16 territoriales                        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Normativa aplicable:                                          │
+│  ☑ Decreto 648 de 2017                                         │
+│  ☑ Ley 87 de 1993                                              │
+│  ☑ Normas internacionales de auditoría                         │
+│                                                                 │
+│  Presupuesto asignado: [$ 150.000.000                      ]   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 3**: Agregue las auditorías planificadas
+
+| Campo | Descripción |
+|-------|-------------|
+| Proceso a auditar | Seleccione del Universo de Auditorías |
+| Tipo de auditoría | Integral, Seguimiento, Especial |
+| Sede/Territorial | Ubicación a auditar |
+| Mes programado | Mes de ejecución |
+| Duración estimada | Días hábiles |
+| Equipo auditor | Asigne auditores |
+
+**Paso 4**: Revise el calendario
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CALENDARIO DE AUDITORÍAS 2026                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ENE  FEB  MAR  ABR  MAY  JUN  JUL  AGO  SEP  OCT  NOV  DIC   │
+│  ─────────────────────────────────────────────────────────────  │
+│       ████      ████           ████                     ████   │
+│       G.Fin     G.Doc          T.Hum                    G.Con  │
+│                                                                 │
+│            ████████                 ████████                   │
+│            Control Interno Contable                            │
+│                                                                 │
+│  ████ = Auditoría programada                                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Paso 5**: Envíe a aprobación
+- El plan debe ser aprobado por el Jefe de la OCIG
+- Una vez aprobado, queda vigente para el año
+
+---
+
+#### 6.1.3 Universo de Auditorías
+
+Catálogo de todos los procesos que pueden ser auditados en la entidad.
+
+##### Procesos Auditables
+
+| Proceso | Tipo | Frecuencia Recomendada | Última Auditoría |
+|---------|------|------------------------|------------------|
+| Gestión Financiera | Misional | Anual | Dic 2025 |
+| Gestión Documental | Apoyo | Anual | Oct 2025 |
+| Gestión de Talento Humano | Apoyo | Anual | Ago 2025 |
+| Gestión Contractual | Apoyo | Semestral | Nov 2025 |
+| Gestión Académica | Misional | Anual | Sep 2025 |
+| Gestión de Tecnología | Apoyo | Anual | Jul 2025 |
+| Gestión de Bienes | Apoyo | Anual | Jun 2025 |
+| Atención al Ciudadano | Misional | Anual | May 2025 |
+| Control Interno Contable | Obligatorio | Semestral | Dic 2025 |
+
+---
+
+#### 6.1.4 Ejecución de Auditorías - Proceso Completo
+
+##### Flujo de la Auditoría
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   INICIO    │───▶│ PLANEACIÓN  │───▶│  EJECUCIÓN  │───▶│COMUNICACIÓN │
+│  (3-5 días) │    │ (5-10 días) │    │ (10-30 días)│    │  (5 días)   │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+      │                  │                  │                  │
+      ▼                  ▼                  ▼                  ▼
+   Oficios           Programa de       Papeles de        Informe
+   Notificación      Trabajo           Trabajo           Final
+```
+
+---
+
+##### ETAPA 1: INICIO DE AUDITORÍA
+
+**Duración**: 3-5 días hábiles
+
+**Pasos**:
+
+1. **Crear nueva auditoría**
+   - Haga clic en **"Nueva Auditoría"**
+   - Seleccione el proceso del Plan Anual
+   - Asigne el equipo auditor
+
+2. **Generar Oficio de Inicio**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  GENERAR OFICIO DE INICIO                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Auditoría: AUD-2026-03 - Gestión Financiera                   │
+│  Área auditada: Subdirección Financiera                        │
+│  Jefe del área: MARTHA ELENA LÓPEZ GARCÍA                      │
+│                                                                 │
+│  Contenido del oficio:                                         │
+│  ☑ Comunicación de inicio de auditoría                         │
+│  ☑ Objetivo de la auditoría                                    │
+│  ☑ Alcance y período a evaluar                                 │
+│  ☑ Equipo auditor asignado                                     │
+│  ☑ Solicitud de información inicial                            │
+│  ☑ Fechas programadas                                          │
+│                                                                 │
+│  Fecha del oficio: [27/01/2026                              ]  │
+│                                                                 │
+│                              [Vista Previa]  [Generar Oficio]  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+3. **Enviar notificación al área auditada**
+   - El sistema envía correo automático
+   - Se registra la fecha de notificación
+   - Se activa el estado "En Inicio"
+
+**Documentos generados en esta etapa**:
+- Oficio de comunicación de inicio
+- Carta de presentación del equipo
+- Solicitud de información inicial
+- Cronograma preliminar
+
+---
+
+##### ETAPA 2: PLANEACIÓN
+
+**Duración**: 5-10 días (Sede) / 3 días (Territorial)
+
+**Actividades**:
+
+1. **Definir Alcance y Objetivos**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DEFINICIÓN DE ALCANCE                                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Objetivo de la auditoría:                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Evaluar la efectividad de los controles del proceso    │   │
+│  │ de Gestión Financiera en la vigencia 2025              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Período a evaluar:                                            │
+│  Desde: [01/01/2025]  Hasta: [31/12/2025]                     │
+│                                                                 │
+│  Actividades a evaluar:                                        │
+│  ☑ Ejecución presupuestal                                      │
+│  ☑ Gestión de tesorería                                        │
+│  ☑ Control de pagos                                            │
+│  ☑ Conciliaciones bancarias                                    │
+│  ☑ Gestión de cartera                                          │
+│                                                                 │
+│  Criterios de auditoría:                                       │
+│  ☑ Normativa interna vigente                                   │
+│  ☑ Decreto 1068 de 2015                                        │
+│  ☑ Estatuto Orgánico del Presupuesto                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+2. **Elaborar Matriz de Riesgos**
+
+| Proceso | Riesgo Identificado | Probabilidad | Impacto | Nivel |
+|---------|---------------------|--------------|---------|-------|
+| Pagos | Pagos sin soportes completos | Alta | Alto | Crítico |
+| Tesorería | Faltantes de caja | Media | Alto | Alto |
+| Presupuesto | Sobrecostos | Media | Medio | Medio |
+
+3. **Crear Programa de Trabajo**
+
+| # | Actividad | Responsable | Días | Inicio | Fin |
+|---|-----------|-------------|------|--------|-----|
+| 1 | Revisión documental | Auditor Sr. | 3 | 03/02 | 05/02 |
+| 2 | Entrevistas | Auditor Jr. | 2 | 06/02 | 07/02 |
+| 3 | Verificación de controles | Auditor Sr. | 5 | 10/02 | 14/02 |
+| 4 | Pruebas sustantivas | Equipo | 8 | 17/02 | 26/02 |
+| 5 | Consolidación hallazgos | Líder | 2 | 27/02 | 28/02 |
+
+---
+
+##### ETAPA 3: EJECUCIÓN
+
+**Duración**: 10-30 días (Sede) / 4 días (Territorial)
+
+**Herramientas principales**:
+
+1. **Listas de Chequeo Digitales**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LISTA DE VERIFICACIÓN - GESTIÓN FINANCIERA                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Proceso: Ejecución Presupuestal                               │
+│  Auditor: JUAN CARLOS RODRÍGUEZ                                │
+│  Fecha: 10/02/2026                                             │
+│                                                                 │
+│  # │ Criterio                      │ Cumple │ Evidencia │ Obs  │
+│  ──┼───────────────────────────────┼────────┼───────────┼──────│
+│  1 │ ¿Existe CDP previo a         │ ● Sí   │ [Adjuntar]│      │
+│    │ compromisos?                  │ ○ No   │           │      │
+│    │                               │ ○ N/A  │           │      │
+│  ──┼───────────────────────────────┼────────┼───────────┼──────│
+│  2 │ ¿Se verifica disponibilidad  │ ● Sí   │ [Adjuntar]│      │
+│    │ presupuestal?                 │ ○ No   │           │      │
+│  ──┼───────────────────────────────┼────────┼───────────┼──────│
+│  3 │ ¿Los registros contables     │ ○ Sí   │ [Adjuntar]│ Ver  │
+│    │ son oportunos?                │ ● No   │           │hallaz│
+│  ──┼───────────────────────────────┼────────┼───────────┼──────│
+│                                                                 │
+│  Progreso: ████████░░░░░░░░░░░░ 40% (8 de 20 items)            │
+│                                                                 │
+│                                           [Guardar] [Siguiente]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Estados de cumplimiento**:
+| Estado | Significado |
+|--------|-------------|
+| ✓ Cumple | El criterio se cumple completamente |
+| ✗ No Cumple | Incumplimiento identificado (genera hallazgo) |
+| N/A | No aplica para este caso |
+| Parcial | Cumplimiento parcial |
+
+2. **Registro de Hallazgos**
+
+Cuando identifique un incumplimiento:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  REGISTRAR NUEVO HALLAZGO                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Código del hallazgo: HAL-2026-015 (automático)                │
+│                                                                 │
+│  Tipo de hallazgo*:                                            │
+│  ○ No Conformidad Mayor                                        │
+│  ● No Conformidad Menor                                        │
+│  ○ Observación                                                 │
+│  ○ Fortaleza                                                   │
+│                                                                 │
+│  Criterio incumplido*:                                         │
+│  [Art. 23 del Decreto 1068 de 2015                         ▼]  │
+│                                                                 │
+│  Condición (situación encontrada)*:                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Se evidenció que el 15% de los registros contables     │   │
+│  │ se realizaron con más de 5 días de retraso...          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Causa*:                                                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Falta de personal suficiente para procesar el volumen  │   │
+│  │ de transacciones en el período de cierre...            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Efecto (consecuencia)*:                                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Riesgo de presentar información financiera no          │   │
+│  │ actualizada para la toma de decisiones...              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Recomendación*:                                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Implementar un cronograma de cierre que garantice el   │   │
+│  │ registro oportuno de las transacciones...              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Evidencias: [+ Adjuntar archivo]                              │
+│  ─ Reporte de registros tardíos.xlsx                          │
+│  ─ Captura de pantalla del sistema.png                        │
+│                                                                 │
+│                              [Cancelar]  [Guardar Hallazgo]    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Clasificación de Hallazgos**:
+
+| Tipo | Descripción | Requiere Plan de Mejora |
+|------|-------------|-------------------------|
+| **No Conformidad Mayor** | Incumplimiento total de un requisito | Sí - Inmediato |
+| **No Conformidad Menor** | Incumplimiento parcial | Sí |
+| **Observación** | Oportunidad de mejora | Opcional |
+| **Fortaleza** | Buena práctica identificada | No |
+
+---
+
+##### ETAPA 4: COMUNICACIÓN DE RESULTADOS
+
+**Duración**: 5 días hábiles
+
+1. **Generar Informe Preliminar**
+   - Consolida todos los hallazgos
+   - Incluye evidencias y recomendaciones
+   - Se envía al área auditada para comentarios
+
+2. **Mesa de Trabajo**
+   - Reunión con el área auditada
+   - Discusión de hallazgos
+   - Se registran acuerdos y compromisos
+
+3. **Informe Final**
+   - Incorpora respuestas del área
+   - Firma del Jefe OCIG
+   - Se oficializa y archiva
+
+---
+
+#### 6.1.5 Planes de Mejoramiento
+
+Cada hallazgo debe tener un Plan de Mejoramiento asociado.
+
+##### Crear Plan de Mejoramiento
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PLAN DE MEJORAMIENTO                                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Hallazgo: HAL-2026-015                                        │
+│  Descripción: Registros contables no oportunos                 │
+│                                                                 │
+│  ─────────────────────────────────────────────────────────────  │
+│                                                                 │
+│  Acción correctiva*:                                           │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Implementar cronograma de cierre mensual con fechas    │   │
+│  │ límite para cada tipo de registro contable             │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Responsable*:        [María García - Contadora           ▼]   │
+│  Fecha compromiso*:   [30/04/2026                          ]   │
+│                                                                 │
+│  Recursos necesarios:                                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Actualización del software contable                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  Indicador de cumplimiento:                                    │
+│  Nombre: % de registros oportunos                              │
+│  Meta: 95%                                                     │
+│  Fórmula: (Registros a tiempo / Total registros) x 100        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### 6.1.6 Seguimiento Trimestral
+
+El seguimiento se realiza cada trimestre según el calendario:
+
+| Trimestre | Período | Fecha Límite Carga Evidencias |
+|-----------|---------|-------------------------------|
+| 1er Trimestre | Enero - Marzo | 15 de Abril |
+| 2do Trimestre | Abril - Junio | 15 de Julio |
+| 3er Trimestre | Julio - Septiembre | 15 de Octubre |
+| 4to Trimestre | Octubre - Diciembre | 15 de Enero |
+
+##### Para Áreas Auditadas
+
+1. Ingrese al módulo **"Mis Auditorías"** en el Portal Transaccional
+2. Vea los hallazgos asignados a su área
+3. Cargue las evidencias de avance
+4. Registre el porcentaje de avance
+
+##### Para Auditores
+
+1. Revise las evidencias cargadas
+2. Valide el cumplimiento
+3. Actualice el estado del hallazgo:
+
+**Sistema de Semáforos**:
+
+| Color | % Avance | Estado | Acción |
+|-------|----------|--------|--------|
+| 🟢 Verde | 80-100% | En cumplimiento | Mantener seguimiento |
+| 🟡 Amarillo | 50-79% | En riesgo | Alertar al área |
+| 🔴 Rojo | 0-49% | Incumplimiento | Escalar a Dirección |
+
+---
+
+#### 6.1.7 Reportes del Módulo CIG
+
+| Reporte | Descripción | Frecuencia |
+|---------|-------------|------------|
+| Estado del Plan Anual | Avance de auditorías planificadas | Mensual |
+| Hallazgos Abiertos | Hallazgos pendientes de cierre | Semanal |
+| Cumplimiento de Mejoras | Estado de planes de mejoramiento | Trimestral |
+| Informe Ejecutivo | Resumen para la Alta Dirección | Trimestral |
+| Indicadores DAFP | Reportes para el DAFP | Semestral |
 
 ---
 
