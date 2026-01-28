@@ -812,7 +812,7 @@
     transform: translateZ(0);
   }
 
-  @media (width >= 1920px) {
+  /* @media (width >= 1920px) {
     * {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -823,7 +823,7 @@
       will-change: transform;
       transform: translateZ(0);
     }
-  }
+  } */
 
   @media (prefers-reduced-motion: no-preference) {
     * {

@@ -627,11 +627,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         className="bg-white rounded-xl border border-[#E5E7EB] p-3 sm:p-4"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
-        <div className="space-y-3">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* Búsqueda - Siempre full width en mobile */}
-          <div className="relative">
+          <div className="flex-1 relative">
             <Search 
-              className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
               style={{ color: '#9CA3AF' }}
             />
             <input

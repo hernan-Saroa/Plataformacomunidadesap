@@ -374,7 +374,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 {validationResult.isValid && validationResult.certificado ? (
                   <>
                     {/* Logo ESAP en Header del Certificado */}
-                    <div className="flex justify-center pt-4 pb-2">
+                    <div className="flex justify-center pt-4 pb-2" style={{display:'none'}}>
                       <img 
                         src={logoESAP} 
                         alt="ESAP Logo" 
@@ -790,7 +790,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
       </div>
       
       {/* Footer WorldClass - Consistencia con Landing Page */}
-      <FooterWorldClass />
+      {/* <FooterWorldClass /> */}
       
       <QRScannerModal
         isOpen={isScannerOpen}
