@@ -221,5 +221,15 @@ export class PlanAnual5RolesController {
     
     return esJefeOCI || esAdmin;
   }
+
+  // ============ ENDPOINT DE INDICADORES (US-003) ============
+  
+  @Get(':planId/indicadores')
+  async getIndicadores(@Param('planId') planId: string) {
+    if (!planId || planId === 'undefined') {
+      throw new BadRequestException('planId es requerido');
+    }
+    return this.service.getIndicadores(planId);
+  }
 }
 

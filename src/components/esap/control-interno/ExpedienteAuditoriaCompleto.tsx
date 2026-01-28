@@ -95,6 +95,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 // Sub-módulos de fases
 import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
+import { ModalAgregarHallazgoRapido } from './ModalAgregarHallazgoRapido';
 import {
   ActividadesIntegradas,
   ACTIVIDADES_PLANEACION,
@@ -1887,6 +1888,9 @@ function TabEjecucion({
 }) {
   // Verificar si la fase está enviada/completada y no se puede editar
   const puedeEditar = auditoria.estado !== 'comunicacion' && auditoria.estado !== 'seguimiento' && auditoria.estado !== 'finalizada';
+  
+  // Estado para el modal de agregar hallazgos
+  const [modalHallazgoAbierto, setModalHallazgoAbierto] = useState(false);
 
   // Mapear listas de chequeo a actividades
   const actividadesEjecucion = useMemo(() => {
@@ -1930,19 +1934,48 @@ function TabEjecucion({
 
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
+      {/* Banner informativo con botón de hallazgos */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <Info className="w-5 h-5 text-amber-600" />
-          <div>
-            <p className="text-sm text-amber-900">
-              <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
-            </p>
-            <p className="text-xs text-amber-700 mt-1">
-              Completa las {actividadesEjecucion.length} actividades para avanzar a la fase de Comunicación
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Info className="w-5 h-5 text-amber-600" />
+            <div>
+              <p className="text-sm text-amber-900">
+                <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Completa las {actividadesEjecucion.length} actividades para avanzar a la fase de Comunicación
+              </p>
+            </div>
           </div>
+          
+          {/* Botón para agregar hallazgos - Solo visible cuando la auditoría está en Ejecución */}
+          {auditoria.estado === 'Ejecución' && auditoriaId && authService.hasPermission(Permissions.CONTROL_INTERNO_HALLAZGOS_CREATE) && (
+            <ButtonSIGL
+              onClick={() => setModalHallazgoAbierto(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              Registrar Hallazgo
+            </ButtonSIGL>
+          )}
         </div>
       </div>
+
+      {/* Modal de agregar hallazgo */}
+      {auditoriaId && (
+        <ModalAgregarHallazgoRapido
+          isOpen={modalHallazgoAbierto}
+          onClose={() => setModalHallazgoAbierto(false)}
+          auditoriaId={auditoriaId}
+          codigoAuditoria={auditoria.codigo}
+          onHallazgoCreado={() => {
+            toast.success('Hallazgo registrado', {
+              description: 'El hallazgo ha sido registrado exitosamente',
+            });
+          }}
+        />
+      )}
 
       <ActividadesIntegradas
         actividades={actividadesEjecucion}

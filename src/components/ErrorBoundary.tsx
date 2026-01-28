@@ -76,10 +76,19 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      const debug = import.meta.env?.DEV
+        ? {
+            message: this.state.error?.message,
+            stack: this.state.error?.stack,
+            componentStack: this.state.errorInfo?.componentStack,
+          }
+        : undefined;
+
       return (
         <ErrorGamePage
           onRetry={this.handleReset}
           onGoHome={this.handleGoHome}
+          debug={debug}
         />
       );
     }
