@@ -7,6 +7,7 @@ import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
 import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
+import { ConfiguracionPlantillasOficios } from './components/esap/gestion-legal/configuracion/ConfiguracionPlantillasOficios';
 // import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 // import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
@@ -36,7 +37,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * - Alerta previa antes de cerrar sesión
  */
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo' | 'config-plantillas-demo';
 
 interface Usuario {
   id: string;
@@ -376,8 +377,8 @@ export default function App() {
       case 'procesos-coactivos-demo':
         return <DemoReprogramacionAudiencia />;
       
-      // case 'edicion-foto-perfil-demo':
-      //   return <DemoEdicionFotoPerfil />;
+      case 'config-plantillas-demo':
+        return <ConfiguracionPlantillasOficios />;
       
       default:
         return <LandingPage onIrALogin={handleIrALogin} />;

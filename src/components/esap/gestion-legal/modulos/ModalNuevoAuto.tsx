@@ -216,7 +216,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="max-w-2xl max-h-[75vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-full !max-w-[680px] !max-h-[60vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Nuevo Auto Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar un nuevo auto procesal al expediente judicial
@@ -230,8 +230,8 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
           colorIcono="indigo"
           badges={
             <>
-              <Badge variant="outline" className="font-semibold text-xs border-indigo-300 text-indigo-700">
-                <FileText className="w-3 h-3 mr-1" />
+              <Badge variant="outline" className="font-semibold text-[10px] border-indigo-300 text-indigo-700 px-1.5 py-0.5">
+                <FileText className="w-2.5 h-2.5 mr-0.5" />
                 Formulario
               </Badge>
             </>
@@ -240,8 +240,8 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
         />
 
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="space-y-5">
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="space-y-3.5">
             
             {/* Información del expediente */}
             <Card className="p-4 bg-blue-50 border-blue-200">
