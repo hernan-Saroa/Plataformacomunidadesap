@@ -4,13 +4,13 @@
  * Inbox style similar a MOD-04 (Buzón Notificaciones Judiciales)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star
+  Filter, Star, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -231,132 +231,211 @@ function VistaInbox({
   totalPendientes,
   totalUrgentes
 }: VistaInboxProps) {
+  // ✨ Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 50;
+
+  // Aplicar paginación
+  const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
+  const comunicacionesPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    const fin = inicio + ITEMS_POR_PAGINA;
+    return comunicacionesFiltradas.slice(inicio, fin);
+  }, [comunicacionesFiltradas, paginaActual]);
+
+  // Resetear página cuando cambian filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [tabActiva, busqueda]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Panel izquierdo: Tabs y Lista */}
-      <div className="lg:col-span-2 space-y-3">
-        <Card className="bg-white border border-gray-200">
-          {/* Tabs */}
-          <div className="flex items-center gap-2 p-3 border-b border-gray-200 overflow-x-auto">
-            <button
-              onClick={() => setTabActiva('pendientes')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <Inbox className="w-4 h-4" />
-              Pendientes
-              {totalPendientes > 0 && <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>}
-            </button>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Panel izquierdo: Tabs y Lista */}
+        <div className="lg:col-span-2 space-y-3">
+          <Card className="bg-white border border-gray-200">
+            {/* Tabs */}
+            <div className="flex items-center gap-2 p-3 border-b border-gray-200 overflow-x-auto">
+              <button
+                onClick={() => setTabActiva('pendientes')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
+                  tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Inbox className="w-4 h-4" />
+                Pendientes
+                {totalPendientes > 0 && <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>}
+              </button>
 
-            <button
-              onClick={() => setTabActiva('leidas')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <MailOpen className="w-4 h-4" />
-              Leídas
-            </button>
+              <button
+                onClick={() => setTabActiva('leidas')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
+                  tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <MailOpen className="w-4 h-4" />
+                Leídas
+              </button>
 
-            <button
-              onClick={() => setTabActiva('archivadas')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <Archive className="w-4 h-4" />
-              Archivadas
-            </button>
+              <button
+                onClick={() => setTabActiva('archivadas')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
+                  tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Archive className="w-4 h-4" />
+                Archivadas
+              </button>
 
-            <button
-              onClick={() => setTabActiva('urgentes')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              Urgentes
-              {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
-            </button>
-          </div>
-
-          {/* Búsqueda y acciones masivas */}
-          <div className="p-3 space-y-2 border-b border-gray-200">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                placeholder="Buscar comunicaciones..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-9"
-              />
+              <button
+                onClick={() => setTabActiva('urgentes')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
+                  tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Urgentes
+                {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
+              </button>
             </div>
 
-            {seleccionadas.size > 0 && (
-              <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
-                <span className="text-sm font-semibold text-blue-700">
-                  {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
-                </span>
-                <Button
-                  onClick={marcarComoLeidas}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  <Check className="w-3 h-3 mr-1" />
-                  Marcar como leídas
-                </Button>
-                <Button
-                  onClick={archivarSeleccionadas}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  <Archive className="w-3 h-3 mr-1" />
-                  Archivar
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Lista de comunicaciones */}
-          <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
-            {comunicacionesFiltradas.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-semibold">No hay comunicaciones</p>
-              </div>
-            ) : (
-              comunicacionesFiltradas.map((com) => (
-                <ItemComunicacion
-                  key={com.id}
-                  comunicacion={com}
-                  seleccionada={seleccionadas.has(com.id)}
-                  onToggleSeleccion={toggleSeleccion}
-                  onSeleccionar={() => setComunicacionSeleccionada(com)}
-                  activa={comunicacionSeleccionada?.id === com.id}
+            {/* Búsqueda y acciones masivas */}
+            <div className="p-3 space-y-2 border-b border-gray-200">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar comunicaciones..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="pl-9"
                 />
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
+              </div>
 
-      {/* Panel derecho: Vista previa */}
-      <div className="lg:col-span-1">
-        {comunicacionSeleccionada ? (
-          <TarjetaDetalleComunicacion comunicacion={comunicacionSeleccionada} />
-        ) : (
-          <Card className="bg-white border border-gray-200 p-6">
-            <div className="text-center text-gray-400">
-              <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-semibold">Selecciona una comunicación</p>
-              <p className="text-xs mt-1">para ver los detalles</p>
+              {seleccionadas.size > 0 && (
+                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                  <span className="text-sm font-semibold text-blue-700">
+                    {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
+                  </span>
+                  <Button
+                    onClick={marcarComoLeidas}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Marcar como leídas
+                  </Button>
+                  <Button
+                    onClick={archivarSeleccionadas}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    <Archive className="w-3 h-3 mr-1" />
+                    Archivar
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Lista de comunicaciones */}
+            <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+              {comunicacionesPaginadas.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">No hay comunicaciones</p>
+                </div>
+              ) : (
+                comunicacionesPaginadas.map((com) => (
+                  <ItemComunicacion
+                    key={com.id}
+                    comunicacion={com}
+                    seleccionada={seleccionadas.has(com.id)}
+                    onToggleSeleccion={toggleSeleccion}
+                    onSeleccionar={() => setComunicacionSeleccionada(com)}
+                    activa={comunicacionSeleccionada?.id === com.id}
+                  />
+                ))
+              )}
             </div>
           </Card>
-        )}
+        </div>
+
+        {/* Panel derecho: Vista previa */}
+        <div className="lg:col-span-1">
+          {comunicacionSeleccionada ? (
+            <TarjetaDetalleComunicacion comunicacion={comunicacionSeleccionada} />
+          ) : (
+            <Card className="bg-white border border-gray-200 p-6">
+              <div className="text-center text-gray-400">
+                <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-semibold">Selecciona una comunicación</p>
+                <p className="text-xs mt-1">para ver los detalles</p>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
+
+      {/* Controles de Paginación */}
+      {totalPaginas > 1 && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600">
+              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, comunicacionesFiltradas.length)} de {comunicacionesFiltradas.length} comunicaciones
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1 || totalPaginas <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={paginaActual === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                      disabled={totalPaginas <= 1}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+              >
+                Siguiente
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

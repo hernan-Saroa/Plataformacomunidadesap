@@ -419,44 +419,43 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
   };
 
   return (
-    <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-          <DialogTitle className="sr-only">
-            Actas de Audiencias - Expediente {expediente.id}
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Gestión de actas de audiencias y diligencias del expediente {expediente.id}
-          </DialogDescription>
-          
-          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
-          <ModalHeaderClean
-            titulo="Actas de Audiencias y Diligencias"
-            subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
-            icono={FileCheck}
-            colorIcono="purple"
-            badgePrincipal="CONTESTACIÓN"
-            badges={
-              <>
-                <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
-                  {expediente.etapa}
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
-                  <FileCheck className="w-3 h-3 mr-1" />
-                  {actas.length} actas
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {actas.filter(a => a.estado === 'Firmada').length} firmadas
-                </Badge>
-                <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
-                  <Clock className="w-3 h-3 mr-1" />
-                  {actas.filter(a => a.estado === 'Programada').length} programadas
-                </Badge>
-              </>
-            }
-            onClose={onClose}
-          />
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogTitle className="sr-only">
+          Actas de Audiencias - Expediente {expediente.id}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Gestión de actas de audiencias y diligencias del expediente {expediente.id}
+        </DialogDescription>
+        
+        {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+        <ModalHeaderClean
+          titulo="Actas de Audiencias y Diligencias"
+          subtitulo={`Registro oficial de diligencias del expediente ${expediente.id}`}
+          icono={FileCheck}
+          colorIcono="purple"
+          badgePrincipal="CONTESTACIÓN"
+          badges={
+            <>
+              <Badge variant="outline" className="font-semibold text-xs border-gray-300 text-gray-700">
+                {expediente.etapa}
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-purple-300 text-purple-700">
+                <FileCheck className="w-3 h-3 mr-1" />
+                {actas.length} actas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-green-300 text-green-700">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Firmada').length} firmadas
+              </Badge>
+              <Badge variant="outline" className="font-semibold text-xs border-orange-300 text-orange-700">
+                <Clock className="w-3 h-3 mr-1" />
+                {actas.filter(a => a.estado === 'Programada').length} programadas
+              </Badge>
+            </>
+          }
+          onClose={onClose}
+        />
 
           {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean

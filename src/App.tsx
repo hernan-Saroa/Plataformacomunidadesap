@@ -16,6 +16,8 @@ import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 // import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
+// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 // import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
@@ -939,7 +941,8 @@ export default function App() {
       //   return <DemoPasswordStrength />;
 
       case 'procesos-coactivos-demo':
-        return <DemoProcesosCoactivos />;
+        return <DemoReprogramacionAudiencia />;
+        // return <DemoProcesosCoactivos />;
       
       // case 'edicion-foto-perfil-demo':
       //   return <DemoEdicionFotoPerfil />;

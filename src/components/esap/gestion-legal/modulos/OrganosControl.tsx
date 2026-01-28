@@ -950,8 +950,8 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
   const [etapa, setEtapa] = useState('RECIBIDO');
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 pt-20">
+      <Card className="w-[90vw] !max-w-[380px] max-h-[85vh] overflow-y-auto">
         <ModalHeaderClean
           titulo="Nuevo Requerimiento"
           subtitulo="Registro de requerimiento de órgano de control"
@@ -961,79 +961,74 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
         />
 
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Número de Oficio</label>
-              <Input
-                value={numeroOficio}
-                onChange={(e) => setNumeroOficio(e.target.value)}
-                placeholder="Ej. CGR-OF-2024-00125"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Organismo</label>
-              <Input
-                value={organismo}
-                onChange={(e) => setOrganismo(e.target.value)}
-                placeholder="Ej. CGR"
-              />
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Número de Oficio</label>
+            <Input
+              value={numeroOficio}
+              onChange={(e) => setNumeroOficio(e.target.value)}
+              placeholder="Ej. CGR-OF-2024-00125"
+            />
+          </div>
+          
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Organismo</label>
+            <Input
+              value={organismo}
+              onChange={(e) => setOrganismo(e.target.value)}
+              placeholder="Ej. CGR"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
-              <Textarea
-                value={asunto}
-                onChange={(e) => setAsunto(e.target.value)}
-                placeholder="Ej. Solicitud de información sobre contratación 2024"
-                rows={3}
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Responsable</label>
-              <Input
-                value={responsable}
-                onChange={(e) => setResponsable(e.target.value)}
-                placeholder="Ej. Dra. María Fernández"
-              />
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+            <Textarea
+              value={asunto}
+              onChange={(e) => setAsunto(e.target.value)}
+              placeholder="Ej. Solicitud de información sobre contratación 2024"
+              rows={3}
+              className="w-full"
+            />
+          </div>
+          
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Responsable</label>
+            <Input
+              value={responsable}
+              onChange={(e) => setResponsable(e.target.value)}
+              placeholder="Ej. Dra. María Fernández"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Radicación</label>
-              <Input
-                type="date"
-                value={fechaRadicacion}
-                onChange={(e) => setFechaRadicacion(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Vencimiento</label>
-              <Input
-                type="date"
-                value={fechaVencimiento}
-                onChange={(e) => setFechaVencimiento(e.target.value)}
-              />
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Radicación</label>
+            <Input
+              type="date"
+              value={fechaRadicacion}
+              onChange={(e) => setFechaRadicacion(e.target.value)}
+            />
+          </div>
+          
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Vencimiento</label>
+            <Input
+              type="date"
+              value={fechaVencimiento}
+              onChange={(e) => setFechaVencimiento(e.target.value)}
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Etapa</label>
-              <select
-                value={etapa}
-                onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="RECIBIDO">Recibido</option>
-                <option value="ANALISIS">Análisis</option>
-                <option value="RESPUESTA">Respuesta</option>
-                <option value="ENVIADO">Enviado</option>
-              </select>
-            </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Etapa</label>
+            <select
+              value={etapa}
+              onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="RECIBIDO">Recibido</option>
+              <option value="ANALISIS">Análisis</option>
+              <option value="RESPUESTA">Respuesta</option>
+              <option value="ENVIADO">Enviado</option>
+            </select>
           </div>
         </div>
 

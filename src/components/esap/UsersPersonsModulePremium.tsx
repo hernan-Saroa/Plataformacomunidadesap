@@ -37,7 +37,6 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  QrCode, // ✅ AGREGADO para gestión de QR
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
@@ -72,6 +71,9 @@ import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect } from 'react';
 import { useAuth } from '../../hooks';
+
+import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPasswordTracking"; // ✅ GESTIÓN DE CONTRASEÑAS
+import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -935,34 +937,6 @@ export function UsersPersonsModulePremium() {
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar por Sede</span>
-          </button>
-
-          {/* ✅ Botón Configurar Enrolamiento QR */}
-          <button
-            onClick={() => setShowEnrollmentConfig(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#003DA5",
-              border: "2px solid #003DA5",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#F0F6FF";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
-            <span>Configurar Enrolamiento</span>
           </button>
 
           {/* Botón Primario - Crear Usuario */}
@@ -2136,31 +2110,35 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
+                  );
 
-                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
-                      {expandedUserId === user.id && (
-                        <motion.tr
-                          key={`${user.id}-expanded`}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                        >
-                          <td colSpan={8} className="p-0">
-                            <UserExpandedView
-                              user={user}
-                              getStatusBadge={getStatusBadge}
-                              getRoleBadge={getRoleBadge}
-                              onOpenDigitalFolder={() => {
-                                setSelectedUser(user);
-                                setViewMode("digital-folder");
-                              }}
-                            />
-                          </td>
-                        </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
+                  // Return array with main row and conditionally expanded row
+                  if (isExpanded) {
+                    const expandedRow = (
+                      <motion.tr
+                        key={`user-expanded-${user.id}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                      >
+                        <td colSpan={8} className="p-0">
+                          <UserExpandedView
+                            user={user}
+                            getStatusBadge={getStatusBadge}
+                            getRoleBadge={getRoleBadge}
+                            onOpenDigitalFolder={() => {
+                              setSelectedUser(user);
+                              setViewMode("digital-folder");
+                            }}
+                          />
+                        </td>
+                      </motion.tr>
+                    );
+                    return [mainRow, expandedRow];
+                  }
+                  
+                  return [mainRow];
+                })}
               </tbody>
             </table>
           </div>
@@ -2537,14 +2515,6 @@ export function UsersPersonsModulePremium() {
         onClose={() => setShowExportModal(false)}
         usuarios={filteredUsers}
       />
-
-      {/* Modal Configuración de Enrolamiento */}
-      {showEnrollmentConfig && (
-        <EnrollmentConfigModal
-          onClose={() => setShowEnrollmentConfig(false)}
-          enrollmentStats={enrollmentStats}
-        />
-      )}
 
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (

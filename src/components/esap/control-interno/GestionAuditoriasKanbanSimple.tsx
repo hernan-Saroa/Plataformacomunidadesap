@@ -91,6 +91,9 @@ import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAud
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+// ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
+import { useHallazgos } from './HallazgosContext';
+import { useTareas } from './TareasContext';
 
 // ============ TIPOS ============
 
@@ -1032,6 +1035,10 @@ interface TarjetaAuditoriaProps {
   onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   colapsada?: boolean; // NUEVO: Estado de colapso
   onToggleColapso?: (id: string) => void; // NUEVO: Toggle colapso
+  // ✅ Funciones de conteo dinámico
+  contarHallazgos: (auditoriaId: string) => number;
+  contarHallazgosCriticos: (auditoriaId: string) => number;
+  contarTareasPendientes: (auditoriaId: string) => number;
 }
 
 function TarjetaAuditoria({ 
@@ -1051,7 +1058,10 @@ function TarjetaAuditoria({
   onEditar,
   onCrearPlan,
   colapsada = false,
-  onToggleColapso
+  onToggleColapso,
+  contarHallazgos,
+  contarHallazgosCriticos,
+  contarTareasPendientes
 }: TarjetaAuditoriaProps) {
   // ✅ Permitir drag si:
   // - No está aprobada (puede moverse a cualquier estado)
@@ -1160,7 +1170,7 @@ function TarjetaAuditoria({
 
             <div className="flex items-center justify-between text-[10px] text-gray-500 mb-2">
               <span className="truncate">{auditoria.auditorLider.iniciales}</span>
-              <span>{auditoria.hallazgos} hallazgos</span>
+              <span>{contarHallazgos(auditoria.id)} hallazgos</span>
             </div>
 
             <div className="flex justify-center pt-2 border-t border-gray-200">
@@ -1447,14 +1457,19 @@ function TarjetaAuditoria({
               />
               {auditoria.diasRestantes} días
             </Badge>
-            {auditoria.hallazgos > 0 && (
+            {contarHallazgos(auditoria.id) > 0 && (
               <Badge className="text-xs bg-red-50 text-red-700 border border-red-200 flex items-center gap-1 font-semibold">
                 <AlertCircle className="w-3 h-3" />
-                {auditoria.hallazgos} hallazgos
+                {contarHallazgos(auditoria.id)} hallazgos
+                {contarHallazgosCriticos(auditoria.id) > 0 && (
+                  <span className="ml-1 text-red-900 font-bold">
+                    ({contarHallazgosCriticos(auditoria.id)} críticos)
+                  </span>
+                )}
               </Badge>
             )}
-            {/* ⚠️ ALERTA: Actividades Pendientes */}
-            {auditoria.actividadesCompletas === false && auditoria.actividadesPendientes && auditoria.actividadesPendientes > 0 && (
+            {/* ⚠️ ALERTA: Actividades/Tareas Pendientes */}
+            {contarTareasPendientes(auditoria.id) > 0 && (
               <Badge 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1464,7 +1479,7 @@ function TarjetaAuditoria({
                 title="Click para ver y completar actividades"
               >
                 <AlertCircle className="w-3 h-3" />
-                {auditoria.actividadesPendientes} actividad{auditoria.actividadesPendientes > 1 ? 'es' : ''} pendiente{auditoria.actividadesPendientes > 1 ? 's' : ''}
+                {contarTareasPendientes(auditoria.id)} tarea{contarTareasPendientes(auditoria.id) !== 1 ? 's' : ''} pendiente{contarTareasPendientes(auditoria.id) !== 1 ? 's' : ''}
               </Badge>
             )}
             {/* Badge de Tareas */}
@@ -1817,6 +1832,10 @@ interface ColumnaKanbanProps {
   onRegistrarHallazgo?: (aud: Auditoria) => void; // ← NUEVO: Registrar hallazgo
   tarjetasColapsadas?: Set<string>; // ← NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // ← NUEVO: Toggle para tarjetas individuales
+  // ✅ Funciones de conteo dinámico
+  contarHallazgos: (auditoriaId: string) => number;
+  contarHallazgosCriticos: (auditoriaId: string) => number;
+  contarTareasPendientes: (auditoriaId: string) => number;
 }
 
 function ColumnaKanban({ 
@@ -1839,7 +1858,10 @@ function ColumnaKanban({
   onSolicitarAmpliacion,
   onRegistrarHallazgo,
   tarjetasColapsadas,
-  onToggleColapsoTarjeta
+  onToggleColapsoTarjeta,
+  contarHallazgos,
+  contarHallazgosCriticos,
+  contarTareasPendientes
 }: ColumnaKanbanProps) {
   // Verificar si tiene permiso para cambiar estado (drop)
   const puedeRecibir = authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_STATE_CHANGE);
@@ -2019,6 +2041,9 @@ function ColumnaKanban({
               onEliminar={onEliminar}
               onEditar={onEditar}
               onCrearPlan={onCrearPlan}
+              contarHallazgos={contarHallazgos}
+              contarHallazgosCriticos={contarHallazgosCriticos}
+              contarTareasPendientes={contarTareasPendientes}
             />
           ))}
         </AnimatePresence>
@@ -2051,6 +2076,10 @@ export function GestionAuditoriasKanbanSimple() {
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  // ✅ CONTEXTOS GLOBALES
+  const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
+  const { contarTareas, contarTareasPendientes, contarTareasCompletadas } = useTareas();
+  
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
   const [etapasKanban, setEtapasKanban] = useState<EtapaKanban[]>([]);
   const [columnasKanban, setColumnasKanban] = useState(COLUMNAS_KANBAN_DEFAULT);
@@ -4183,6 +4212,9 @@ export function GestionAuditoriasKanbanSimple() {
                     onRegistrarHallazgo={handleRegistrarHallazgo}
                     tarjetasColapsadas={tarjetasColapsadas}
                     onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                    contarHallazgos={contarHallazgos}
+                    contarHallazgosCriticos={contarHallazgosCriticos}
+                    contarTareasPendientes={contarTareasPendientes}
                   />
                 );
               })}
@@ -4464,8 +4496,8 @@ export function GestionAuditoriasKanbanSimple() {
                       <p className="text-sm text-gray-700 ml-6">{auditoria.ultimaActuacion}</p>
                     </div>
 
-                    {/* ⚠️ ALERTA: Actividades Pendientes (VISTA LISTA) */}
-                    {auditoria.actividadesCompletas === false && auditoria.actividadesPendientes && auditoria.actividadesPendientes > 0 && (
+                    {/* ⚠️ ALERTA: Tareas Pendientes (VISTA LISTA) */}
+                    {contarTareasPendientes(auditoria.id) > 0 && (
                       <div className="mb-4 bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
                         <div className="flex items-start gap-3">
                           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5 animate-pulse" />
@@ -4473,20 +4505,20 @@ export function GestionAuditoriasKanbanSimple() {
                             <div className="flex items-start justify-between gap-4 mb-2">
                               <div className="flex-1">
                                 <p className="text-sm text-amber-900 mb-1">
-                                  <strong>⚠️ Actividades pendientes de la fase "{auditoria.estado}"</strong>
+                                  <strong>⚠️ Tareas pendientes de la fase "{auditoria.estado}"</strong>
                                 </p>
                                 <p className="text-xs text-amber-700 mb-2">
-                                  Faltan <strong>{auditoria.actividadesPendientes} de 3 actividades</strong> por completar antes de avanzar al siguiente estado
+                                  Faltan <strong>{contarTareasPendientes(auditoria.id)} tareas</strong> por completar antes de avanzar al siguiente estado
                                 </p>
                                 <div className="flex items-center gap-2 mb-2">
                                   <div className="flex-1 bg-amber-200 rounded-full h-2 overflow-hidden">
                                     <div 
                                       className="h-full bg-amber-600 rounded-full transition-all"
-                                      style={{ width: `${((3 - (auditoria.actividadesPendientes || 0)) / 3) * 100}%` }}
+                                      style={{ width: `${((contarTareas(auditoria.id) - contarTareasPendientes(auditoria.id)) / Math.max(contarTareas(auditoria.id), 1)) * 100}%` }}
                                     />
                                   </div>
                                   <span className="text-xs text-amber-800 font-semibold whitespace-nowrap">
-                                    {3 - (auditoria.actividadesPendientes || 0)}/3 completadas
+                                    {contarTareasCompletadas(auditoria.id)}/{contarTareas(auditoria.id)} completadas
                                   </span>
                                 </div>
                               </div>
@@ -4517,7 +4549,7 @@ export function GestionAuditoriasKanbanSimple() {
                       <div className="text-center p-3 rounded-lg" style={{ background: '#F0FDF4' }}>
                         <CheckSquare className="w-4 h-4 mx-auto mb-1 text-green-600" />
                         <p className="text-xs text-gray-600 mb-1">Tareas</p>
-                        <p className="font-bold text-green-700">{auditoria.tareas || 0}</p>
+                        <p className="font-bold text-green-700">{contarTareas(auditoria.id)}</p>
                       </div>
                       <div className="text-center p-3 rounded-lg" style={{ background: '#FEF3C7' }}>
                         <FileText className="w-4 h-4 mx-auto mb-1 text-yellow-600" />

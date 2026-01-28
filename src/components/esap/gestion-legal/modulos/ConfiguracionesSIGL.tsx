@@ -3,10 +3,11 @@
  * Permite configurar estados, columnas y tiempos de todos los tableros Kanban
  * DISEÑO 100% COHERENTE CON EL ESTÁNDAR DEL PROYECTO (Modal Comunicaciones del Proceso)
  * CONECTADO A CONTEXT API - Los cambios afectan a todos los módulos de Gestión Legal
+ * ✅ ORGANIZADO CON TABS para mejor usabilidad
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText } from 'lucide-react';
 import { legalService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
 import {
@@ -36,18 +37,28 @@ import {
   EstadoKanban,
   ConfiguracionModulo,
   TipoProcesoJudicial,
-  ConfiguracionTiempo
+  TipoAuto,
+  ConfiguracionTiempo,
+  EjeEstrategico,
+  TipoIndicador,
+  TipoRequerimiento
 } from '../config/ConfiguracionesSIGLContext';
 
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ConfiguracionesSIGL() {
   // ✅ Usar Context API en lugar de useState local
-  const {
-    configuraciones,
+  const { 
+    configuraciones, 
+    ejesEstrategicos,
+    tiposIndicadores,
+    tiposRequerimientos,
     cambiosPendientes,
     setCambiosPendientes,
     actualizarConfiguraciones,
+    actualizarEjesEstrategicos,
+    actualizarTiposIndicadores,
+    actualizarTiposRequerimientos,
     guardarConfiguraciones,
     restablecerDefecto
   } = useConfiguracionesSIGL();
@@ -61,6 +72,27 @@ export function ConfiguracionesSIGL() {
   const [showModalAgregarTipoProceso, setShowModalAgregarTipoProceso] = useState(false);
   const [showModalEliminarTipoProceso, setShowModalEliminarTipoProceso] = useState(false);
   const [tipoProcesoAEliminar, setTipoProcesoAEliminar] = useState<TipoProcesoJudicial | null>(null);
+  const [showModalAgregarTipoAuto, setShowModalAgregarTipoAuto] = useState(false);
+  const [showModalEliminarTipoAuto, setShowModalEliminarTipoAuto] = useState(false);
+  const [tipoAutoAEliminar, setTipoAutoAEliminar] = useState<TipoAuto | null>(null);
+
+  // Estado para tabs de configuración
+  const [tabActivo, setTabActivo] = useState<'estados' | 'procesos' | 'autos' | 'tiempos' | 'ejes'>('estados');
+
+  // Estados para Ejes Estratégicos
+  const [showModalAgregarEje, setShowModalAgregarEje] = useState(false);
+  const [showModalEliminarEje, setShowModalEliminarEje] = useState(false);
+  const [ejeAEliminar, setEjeAEliminar] = useState<EjeEstrategico | null>(null);
+
+  // Estados para Tipos de Indicadores
+  const [showModalAgregarIndicador, setShowModalAgregarIndicador] = useState(false);
+  const [showModalEliminarIndicador, setShowModalEliminarIndicador] = useState(false);
+  const [indicadorAEliminar, setIndicadorAEliminar] = useState<TipoIndicador | null>(null);
+
+  // Estados para Tipos de Requerimientos
+  const [showModalAgregarRequerimiento, setShowModalAgregarRequerimiento] = useState(false);
+  const [showModalEliminarRequerimiento, setShowModalEliminarRequerimiento] = useState(false);
+  const [requerimientoAEliminar, setRequerimientoAEliminar] = useState<TipoRequerimiento | null>(null);
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
@@ -168,8 +200,8 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarEstado = () => {
     if (!estadoAEliminar) return;
 
-    actualizarConfiguraciones(configuraciones.map(m =>
-      m.id === moduloActivo
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
         ? { ...m, estados: m.estados.filter(e => e.id !== estadoAEliminar.id) }
         : m
     ));
@@ -184,14 +216,14 @@ export function ConfiguracionesSIGL() {
   };
 
   const actualizarEstado = (estadoId: string, cambios: Partial<EstadoKanban>) => {
-    actualizarConfiguraciones(configuraciones.map(m =>
-      m.id === moduloActivo
-        ? {
-          ...m,
-          estados: m.estados.map(e =>
-            e.id === estadoId ? { ...e, ...cambios } : e
-          )
-        }
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            estados: m.estados.map(e => 
+              e.id === estadoId ? { ...e, ...cambios } : e
+            )
+          }
         : m
     ));
   };
@@ -209,30 +241,30 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    actualizarConfiguraciones(configuraciones.map(m =>
-      m.id === moduloActivo
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
         ? { ...m, tiempos: [...m.tiempos, nuevoTiempo] }
         : m
     ));
   };
 
   const eliminarTiempo = (tiempoId: string) => {
-    actualizarConfiguraciones(configuraciones.map(m =>
-      m.id === moduloActivo
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
         ? { ...m, tiempos: m.tiempos.filter(t => t.id !== tiempoId) }
         : m
     ));
   };
 
   const actualizarTiempo = (tiempoId: string, cambios: Partial<ConfiguracionTiempo>) => {
-    actualizarConfiguraciones(configuraciones.map(m =>
-      m.id === moduloActivo
-        ? {
-          ...m,
-          tiempos: m.tiempos.map(t =>
-            t.id === tiempoId ? { ...t, ...cambios } : t
-          )
-        }
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            tiempos: m.tiempos.map(t => 
+              t.id === tiempoId ? { ...t, ...cambios } : t
+            )
+          }
         : m
     ));
   };
@@ -305,6 +337,77 @@ export function ConfiguracionesSIGL() {
         }
         : m
     ));
+  };
+
+  // ============ FUNCIONES DE TIPOS DE AUTOS ============
+
+  const agregarTipoAuto = () => {
+    setShowModalAgregarTipoAuto(true);
+  };
+
+  const confirmarAgregarTipoAuto = () => {
+    if (!moduloActual || !moduloActual.tiposAutos) return;
+    
+    const nuevoTipo: TipoAuto = {
+      id: `auto-${Date.now()}`,
+      nombre: 'Nuevo Tipo de Auto',
+      descripcion: 'Descripción del nuevo tipo de auto procesal',
+      activo: true,
+    };
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposAutos: [...(m.tiposAutos || []), nuevoTipo] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalAgregarTipoAuto(false);
+    
+    toast.success('Tipo de auto agregado correctamente', {
+      description: 'Se ha agregado un nuevo tipo de auto procesal',
+      duration: 3000
+    });
+  };
+
+  const solicitarEliminarTipoAuto = (tipoId: string) => {
+    const tipo = moduloActual?.tiposAutos?.find(t => t.id === tipoId);
+    if (tipo) {
+      setTipoAutoAEliminar(tipo);
+      setShowModalEliminarTipoAuto(true);
+    }
+  };
+
+  const confirmarEliminarTipoAuto = () => {
+    if (!tipoAutoAEliminar) return;
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposAutos: (m.tiposAutos || []).filter(t => t.id !== tipoAutoAEliminar.id) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalEliminarTipoAuto(false);
+    
+    toast.success('Tipo de auto eliminado correctamente', {
+      description: `"${tipoAutoAEliminar.nombre}" ha sido eliminado de los tipos de autos procesales`,
+      duration: 3000
+    });
+    
+    setTipoAutoAEliminar(null);
+  };
+
+  const actualizarTipoAuto = (tipoId: string, cambios: Partial<TipoAuto>) => {
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            tiposAutos: (m.tiposAutos || []).map(t => 
+              t.id === tipoId ? { ...t, ...cambios } : t
+            )
+          }
+        : m
+    ));
+    setCambiosPendientes(true);
   };
 
   // ============ DRAG AND DROP ============
@@ -424,10 +527,515 @@ export function ConfiguracionesSIGL() {
               ))}
             </div>
           </div>
+
+          {/* 🆕 NUEVA SECCIÓN: Configuraciones Globales */}
+          <div className="p-3 sm:p-4 border-t border-gray-200">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2 sm:mb-3">
+              Configuraciones Globales
+            </h3>
+            <div className="space-y-1">
+              <button
+                onClick={() => setModuloActivo('plan-accion')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
+                  moduloActivo === 'plan-accion'
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Plan de Acción</span>
+                </div>
+                <div className="flex flex-col gap-0.5 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    {ejesEstrategicos.filter(e => e.activo).length} ejes • {tiposIndicadores.filter(t => t.activo).length} indicadores
+                  </span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setModuloActivo('organos-control')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
+                  moduloActivo === 'organos-control'
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Órganos de Control</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    {tiposRequerimientos.filter(t => t.activo).length} tipos de requerimientos
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Panel Principal */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+          
+          {/* 🆕 Panel de Plan de Acción - Ejes Estratégicos */}
+          {moduloActivo === 'plan-accion' && (
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Configuración de Ejes Estratégicos */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Target className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                        Ejes Estratégicos del PEI
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Configurar los ejes estratégicos que estarán disponibles en el formulario de Nuevo Indicador
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowModalAgregarEje(true)}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{ 
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Eje</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {ejesEstrategicos.map((eje, index) => (
+                      <div 
+                        key={eje.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                      >
+                        {/* Fila 1: Orden + Ícono + Nombre + Eliminar */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={eje.icono}
+                            onChange={(e) => {
+                              const nuevosEjes = ejesEstrategicos.map(e => 
+                                e.id === eje.id ? { ...e, icono: e.target.value } : e
+                              );
+                              actualizarEjesEstrategicos(nuevosEjes);
+                            }}
+                            className="w-12 sm:w-14 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="🏛️"
+                            maxLength={2}
+                          />
+
+                          <input
+                            type="text"
+                            value={eje.nombre}
+                            onChange={(e) => {
+                              const nuevosEjes = ejesEstrategicos.map(e => 
+                                e.id === eje.id ? { ...e, nombre: e.target.value } : e
+                              );
+                              actualizarEjesEstrategicos(nuevosEjes);
+                            }}
+                            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nombre del eje estratégico"
+                          />
+
+                          <button
+                            onClick={() => {
+                              setEjeAEliminar(eje);
+                              setShowModalEliminarEje(true);
+                            }}
+                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Fila 2: Descripción */}
+                        <div className="mb-3">
+                          <textarea
+                            value={eje.descripcion}
+                            onChange={(e) => {
+                              const nuevosEjes = ejesEstrategicos.map(e => 
+                                e.id === eje.id ? { ...e, descripcion: e.target.value } : e
+                              );
+                              actualizarEjesEstrategicos(nuevosEjes);
+                            }}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            placeholder="Descripción del eje estratégico..."
+                            rows={2}
+                          />
+                        </div>
+
+                        {/* Fila 3: Color + Activo */}
+                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                          {/* Color */}
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                              Color:
+                            </label>
+                            <input
+                              type="color"
+                              value={eje.color}
+                              onChange={(e) => {
+                                const nuevosEjes = ejesEstrategicos.map(e => 
+                                  e.id === eje.id ? { ...e, color: e.target.value } : e
+                                );
+                                actualizarEjesEstrategicos(nuevosEjes);
+                              }}
+                              className="w-10 h-8 rounded border border-gray-300 cursor-pointer"
+                            />
+                            <span className="text-xs text-gray-600">{eje.color}</span>
+                          </div>
+
+                          {/* Toggle Activo */}
+                          <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                            <input
+                              type="checkbox"
+                              checked={eje.activo}
+                              onChange={(e) => {
+                                const nuevosEjes = ejesEstrategicos.map(e => 
+                                  e.id === eje.id ? { ...e, activo: e.target.checked } : e
+                                );
+                                actualizarEjesEstrategicos(nuevosEjes);
+                              }}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                              Activo
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Info adicional */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-6 bg-blue-50 border-l-4 border-blue-500">
+                  <div className="flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-blue-900 mb-1">
+                        Información Importante
+                      </h3>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• Los ejes estratégicos se utilizan en el módulo de Plan de Acción</li>
+                        <li>• Solo los ejes activos aparecerán en el formulario de Nuevo Indicador</li>
+                        <li>• El ícono debe ser un emoji (copia y pega desde emojipedia.org)</li>
+                        <li>• Los cambios se guardarán al hacer click en "Guardar Cambios"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Configuración de Tipos de Indicadores */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Target className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                        Tipos de Indicadores
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Configurar los tipos de indicadores que estarán disponibles en el formulario de Nuevo Indicador
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowModalAgregarIndicador(true)}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{ 
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Tipo</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {tiposIndicadores.map((tipo, index) => (
+                      <div 
+                        key={tipo.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                      >
+                        {/* Fila 1: Orden + Ícono + Nombre + Eliminar */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={tipo.icono}
+                            onChange={(e) => {
+                              const nuevosIndicadores = tiposIndicadores.map(t => 
+                                t.id === tipo.id ? { ...t, icono: e.target.value } : t
+                              );
+                              actualizarTiposIndicadores(nuevosIndicadores);
+                            }}
+                            className="w-12 sm:w-14 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="🎯"
+                            maxLength={2}
+                          />
+
+                          <input
+                            type="text"
+                            value={tipo.nombre}
+                            onChange={(e) => {
+                              const nuevosIndicadores = tiposIndicadores.map(t => 
+                                t.id === tipo.id ? { ...t, nombre: e.target.value } : t
+                              );
+                              actualizarTiposIndicadores(nuevosIndicadores);
+                            }}
+                            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nombre del tipo de indicador"
+                          />
+
+                          <button
+                            onClick={() => {
+                              setIndicadorAEliminar(tipo);
+                              setShowModalEliminarIndicador(true);
+                            }}
+                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Fila 2: Descripción */}
+                        <div className="mb-3">
+                          <textarea
+                            value={tipo.descripcion}
+                            onChange={(e) => {
+                              const nuevosIndicadores = tiposIndicadores.map(t => 
+                                t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
+                              );
+                              actualizarTiposIndicadores(nuevosIndicadores);
+                            }}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            placeholder="Descripción del tipo de indicador..."
+                            rows={2}
+                          />
+                        </div>
+
+                        {/* Fila 3: Color + Activo */}
+                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                          {/* Color */}
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                              Color:
+                            </label>
+                            <input
+                              type="color"
+                              value={tipo.color}
+                              onChange={(e) => {
+                                const nuevosIndicadores = tiposIndicadores.map(t => 
+                                  t.id === tipo.id ? { ...t, color: e.target.value } : t
+                                );
+                                actualizarTiposIndicadores(nuevosIndicadores);
+                              }}
+                              className="w-10 h-8 rounded border border-gray-300 cursor-pointer"
+                            />
+                            <span className="text-xs text-gray-600">{tipo.color}</span>
+                          </div>
+
+                          {/* Toggle Activo */}
+                          <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                            <input
+                              type="checkbox"
+                              checked={tipo.activo}
+                              onChange={(e) => {
+                                const nuevosIndicadores = tiposIndicadores.map(t => 
+                                  t.id === tipo.id ? { ...t, activo: e.target.checked } : t
+                                );
+                                actualizarTiposIndicadores(nuevosIndicadores);
+                              }}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                              Activo
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* 🆕 Panel de Órganos de Control - Tipos de Requerimientos */}
+          {moduloActivo === 'organos-control' && (
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Configuración de Tipos de Requerimientos */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <FileText className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                        Tipos de Requerimientos
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Configurar los tipos de requerimientos disponibles para el módulo de Órganos de Control
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowModalAgregarRequerimiento(true)}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{ 
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Tipo</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {tiposRequerimientos.map((tipo, index) => (
+                      <div 
+                        key={tipo.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                      >
+                        {/* Fila 1: Orden + Ícono + Nombre + Eliminar */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={tipo.icono}
+                            onChange={(e) => {
+                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                t.id === tipo.id ? { ...t, icono: e.target.value } : t
+                              );
+                              actualizarTiposRequerimientos(nuevosRequerimientos);
+                            }}
+                            className="w-12 sm:w-14 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="📄"
+                            maxLength={2}
+                          />
+
+                          <input
+                            type="text"
+                            value={tipo.nombre}
+                            onChange={(e) => {
+                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                t.id === tipo.id ? { ...t, nombre: e.target.value } : t
+                              );
+                              actualizarTiposRequerimientos(nuevosRequerimientos);
+                            }}
+                            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Nombre del tipo de requerimiento"
+                          />
+
+                          <button
+                            onClick={() => {
+                              setRequerimientoAEliminar(tipo);
+                              setShowModalEliminarRequerimiento(true);
+                            }}
+                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Fila 2: Descripción */}
+                        <div className="mb-3">
+                          <textarea
+                            value={tipo.descripcion}
+                            onChange={(e) => {
+                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
+                              );
+                              actualizarTiposRequerimientos(nuevosRequerimientos);
+                            }}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            placeholder="Descripción del tipo de requerimiento..."
+                            rows={2}
+                          />
+                        </div>
+
+                        {/* Fila 3: Color + Activo */}
+                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                          {/* Color */}
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                              Color:
+                            </label>
+                            <input
+                              type="color"
+                              value={tipo.color}
+                              onChange={(e) => {
+                                const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                  t.id === tipo.id ? { ...t, color: e.target.value } : t
+                                );
+                                actualizarTiposRequerimientos(nuevosRequerimientos);
+                              }}
+                              className="w-10 h-8 rounded border border-gray-300 cursor-pointer"
+                            />
+                            <span className="text-xs text-gray-600">{tipo.color}</span>
+                          </div>
+
+                          {/* Toggle Activo */}
+                          <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                            <input
+                              type="checkbox"
+                              checked={tipo.activo}
+                              onChange={(e) => {
+                                const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                  t.id === tipo.id ? { ...t, activo: e.target.checked } : t
+                                );
+                                actualizarTiposRequerimientos(nuevosRequerimientos);
+                              }}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                              Activo
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Información Importante */}
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div>
+                      <h3 className="font-semibold text-blue-900 mb-1">
+                        Información Importante
+                      </h3>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• Los tipos de requerimientos se utilizan en el módulo de Órganos de Control</li>
+                        <li>• Solo los tipos activos aparecerán en el formulario de Nuevo Requerimiento</li>
+                        <li>• El ícono debe ser un emoji (copia y pega desde emojipedia.org)</li>
+                        <li>• Los cambios se guardarán al hacer click en "Guardar Cambios"</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Panel de módulos Kanban (YA EXISTE) */}
           {moduloActual && (
             <div className="max-w-6xl mx-auto space-y-6">
               {/* Configuración de Estados/Columnas Kanban */}
@@ -595,6 +1203,89 @@ export function ConfiguracionesSIGL() {
                                 type="checkbox"
                                 checked={tipo.activo}
                                 onChange={(e) => actualizarTipoProceso(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Tipos de Autos - SOLO PARA DEFENSA JUDICIAL */}
+              {moduloActual.tiposAutos && moduloActual.tiposAutos.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Tipos de Autos Procesales
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de autos que estarán disponibles en el formulario de Nueva Demanda
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarTipoAuto}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Tipo</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.tiposAutos.map((tipo) => (
+                        <div 
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                        >
+                          {/* Fila 1: Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoAuto(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nombre del tipo de auto"
+                            />
+                            <button
+                              onClick={() => solicitarEliminarTipoAuto(tipo.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={tipo.descripcion}
+                              onChange={(e) => actualizarTipoAuto(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              placeholder="Descripción del tipo de auto..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            {/* Toggle Activo */}
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoAuto(tipo.id, { activo: e.target.checked })}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                               <span className="text-xs sm:text-sm text-gray-700 font-medium">
@@ -895,6 +1586,487 @@ export function ConfiguracionesSIGL() {
                 </button>
                 <button
                   onClick={confirmarEliminarTipoProceso}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Agregar Tipo de Auto */}
+      {showModalAgregarTipoAuto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Tipo de Auto</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de auto procesal?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarTipoAuto(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo tipo de auto con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarTipoAuto(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarTipoAuto}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar Tipo de Auto */}
+      {showModalEliminarTipoAuto && tipoAutoAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Auto</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de auto?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarTipoAuto(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Tipo: "{tipoAutoAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {tipoAutoAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de nueva demanda.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarTipoAuto(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarTipoAuto}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Agregar Eje Estratégico */}
+      {showModalAgregarEje && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nuevo Eje Estratégico</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo eje estratégico al Plan de Acción?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarEje(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo eje con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Indicador PEI.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarEje(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevoEje: EjeEstrategico = {
+                      id: `eje-${Date.now()}`,
+                      nombre: 'Nuevo Eje Estratégico',
+                      icono: '🎯',
+                      descripcion: 'Descripción del nuevo eje estratégico',
+                      color: '#2962FF',
+                      activo: true,
+                      orden: ejesEstrategicos.length + 1
+                    };
+                    actualizarEjesEstrategicos([...ejesEstrategicos, nuevoEje]);
+                    setShowModalAgregarEje(false);
+                    
+                    toast.success('Eje estratégico agregado correctamente', {
+                      description: 'Se ha agregado un nuevo eje al Plan de Acción',
+                      duration: 3000
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Eje
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Eliminar Eje Estratégico */}
+      {showModalEliminarEje && ejeAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Eje Estratégico</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente eje estratégico?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarEje(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  {ejeAEliminar.icono} {ejeAEliminar.nombre}
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {ejeAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Los indicadores asociados a este eje deberán ser reasignados a otro eje estratégico.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarEje(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevosEjes = ejesEstrategicos.filter(e => e.id !== ejeAEliminar.id);
+                    actualizarEjesEstrategicos(nuevosEjes);
+                    setShowModalEliminarEje(false);
+                    setEjeAEliminar(null);
+                    
+                    toast.success('Eje estratégico eliminado correctamente', {
+                      description: `"${ejeAEliminar.nombre}" ha sido eliminado del Plan de Acción`,
+                      duration: 3000
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Eje
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Agregar Tipo de Indicador */}
+      {showModalAgregarIndicador && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nuevo Tipo de Indicador</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de indicador al Plan de Acción?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarIndicador(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo tipo de indicador con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Indicador PEI.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarIndicador(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevoIndicador: TipoIndicador = {
+                      id: `tipo-${Date.now()}`,
+                      nombre: 'Nuevo Tipo de Indicador',
+                      icono: '📊',
+                      descripcion: 'Descripción del nuevo tipo de indicador',
+                      color: '#2962FF',
+                      activo: true,
+                      orden: tiposIndicadores.length + 1
+                    };
+                    actualizarTiposIndicadores([...tiposIndicadores, nuevoIndicador]);
+                    setShowModalAgregarIndicador(false);
+                    
+                    toast.success('Tipo de indicador agregado correctamente', {
+                      description: 'Se ha agregado un nuevo tipo al Plan de Acción',
+                      duration: 3000
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Eliminar Tipo de Indicador */}
+      {showModalEliminarIndicador && indicadorAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Indicador</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de indicador?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarIndicador(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  {indicadorAEliminar.icono} {indicadorAEliminar.nombre}
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {indicadorAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Los indicadores que usan este tipo deberán ser reclasificados.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarIndicador(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevosIndicadores = tiposIndicadores.filter(t => t.id !== indicadorAEliminar.id);
+                    actualizarTiposIndicadores(nuevosIndicadores);
+                    setShowModalEliminarIndicador(false);
+                    setIndicadorAEliminar(null);
+                    
+                    toast.success('Tipo de indicador eliminado correctamente', {
+                      description: `"${indicadorAEliminar.nombre}" ha sido eliminado del Plan de Acción`,
+                      duration: 3000
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Agregar Tipo de Requerimiento */}
+      {showModalAgregarRequerimiento && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nuevo Tipo de Requerimiento</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de requerimiento para Órganos de Control?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarRequerimiento(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Se creará un nuevo tipo de requerimiento con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Requerimiento.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarRequerimiento(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevoRequerimiento: TipoRequerimiento = {
+                      id: `tipo-req-${Date.now()}`,
+                      nombre: 'Nuevo Tipo de Requerimiento',
+                      icono: '📋',
+                      descripcion: 'Descripción del nuevo tipo de requerimiento',
+                      color: '#2962FF',
+                      activo: true,
+                      orden: tiposRequerimientos.length + 1
+                    };
+                    actualizarTiposRequerimientos([...tiposRequerimientos, nuevoRequerimiento]);
+                    setShowModalAgregarRequerimiento(false);
+                    
+                    toast.success('Tipo de requerimiento agregado correctamente', {
+                      description: 'Se ha agregado un nuevo tipo para Órganos de Control',
+                      duration: 3000
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Eliminar Tipo de Requerimiento */}
+      {showModalEliminarRequerimiento && requerimientoAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Requerimiento</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de requerimiento?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarRequerimiento(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  {requerimientoAEliminar.icono} {requerimientoAEliminar.nombre}
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {requerimientoAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  <strong>⚠️ Advertencia:</strong> Esta acción no se puede deshacer. Los requerimientos que usan este tipo deberán ser reclasificados.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarRequerimiento(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const nuevosRequerimientos = tiposRequerimientos.filter(t => t.id !== requerimientoAEliminar.id);
+                    actualizarTiposRequerimientos(nuevosRequerimientos);
+                    setShowModalEliminarRequerimiento(false);
+                    setRequerimientoAEliminar(null);
+                    
+                    toast.success('Tipo de requerimiento eliminado correctamente', {
+                      description: `"${requerimientoAEliminar.nombre}" ha sido eliminado de Órganos de Control`,
+                      duration: 3000
+                    });
+                  }}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
                 >
                   Eliminar Tipo

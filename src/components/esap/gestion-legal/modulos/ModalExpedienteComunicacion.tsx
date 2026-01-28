@@ -27,7 +27,7 @@ import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api
 
 interface ComunicacionUnificada {
   id: string;
-  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
   tipoProceso?: string;
   asunto: string;
   descripcion: string;
@@ -207,14 +207,16 @@ export function ModalExpedienteComunicacion({
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700', icon: '⚖️' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700', icon: '📧' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' }
-  }[comunicacion.tipo];
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700', icon: '📤' }
+  }[comunicacion.tipo] || { label: 'Otro', color: 'bg-gray-100 text-gray-700', icon: '📋' };
 
   const getIcono = () => {
     switch (comunicacion.tipo) {
       case 'JUDICIAL': return Gavel;
       case 'CORREO': return Mail;
       case 'OFICIO': return FileText;
+      case 'ENVIADO': return Send;
       default: return Mail;
     }
   };

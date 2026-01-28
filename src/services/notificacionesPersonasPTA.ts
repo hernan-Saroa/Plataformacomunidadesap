@@ -10,7 +10,7 @@
 
 import { personasPTAIntegrationService } from './personasPTAIntegrationService';
 import type { DocentePTA } from '../types/integracion-personas-pta';
-import { MOCK_USERS_WITH_SEDES } from '../data/mockUsersWithSedes';
+import { USUARIOS_EJEMPLO } from '../data/mockUsersWithSedes';
 
 // ============================================================================
 // TIPOS

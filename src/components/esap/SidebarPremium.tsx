@@ -142,7 +142,6 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     dashboard: true,            // Dashboard siempre visible
     'estructura-org': true,     // Estructura Organizacional ABIERTA por defecto
     'gestion-usuarios': true,  // Gestión Académica ABIERTA por defecto (cambiado de false a true)
-    'arquitectura': false,      // Arquitectura Empresarial CERRADA por defecto
   });
 
   // Persistir estado colapsado en localStorage

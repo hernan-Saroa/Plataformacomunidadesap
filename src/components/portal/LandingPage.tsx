@@ -24,6 +24,7 @@ interface LandingPageProps {
 export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   
   const handleLoginClick = () => {
     if (onIrALogin) {
@@ -433,29 +434,46 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               >
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white/20">
+                  {/* Skeleton Placeholder mientras carga la imagen */}
+                  {!imageLoaded && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-200 via-gray-300 to-gray-200 animate-pulse">
+                      <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                        <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-white/80 text-sm font-semibold">Cargando imagen...</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   <img
                     src={esapStudentsReal}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
-                    className="w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover"
+                    className={`w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    loading="lazy"
+                    decoding="async"
+                    onLoad={() => setImageLoaded(true)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
                   
-                  {/* Floating Stats */}
-                  <motion.div
-                    className="absolute top-4 right-4 sm:top-6 sm:right-6 bg-white/95 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xl"
-                    animate={{ y: [0, -10, 0] }}
-                    transition={{ duration: 3, repeat: Infinity, delay: 0.5 }}
-                  >
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center">
-                        <Globe className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  {/* Floating Stats - Solo mostrar cuando la imagen ha cargado */}
+                  {imageLoaded && (
+                    <motion.div
+                      className="absolute top-4 right-4 sm:top-6 sm:right-6 bg-white/95 backdrop-blur-md rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xl"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                    >
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center">
+                          <Globe className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-xl sm:text-2xl font-bold text-gray-900">84%</p>
+                          <p className="text-[10px] sm:text-xs text-gray-600">Cobertura Nacional</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xl sm:text-2xl font-bold text-gray-900">84%</p>
-                        <p className="text-[10px] sm:text-xs text-gray-600">Cobertura Nacional</p>
-                      </div>
-                    </div>
-                  </motion.div>
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Decorative Elements */}

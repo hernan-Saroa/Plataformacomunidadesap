@@ -1274,6 +1274,68 @@ export function ReviewRequestsModule() {
                           </div>
                         </div>
 
+                        {/* Botones de Acción Rápida */}
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                            Acciones Rápidas
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {request.status === 'pending' && (
+                              <button
+                                onClick={() => handleStartReview(request)}
+                                className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                                style={{
+                                  background: '#F57C00',
+                                  color: '#FFFFFF'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#E65100';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#F57C00';
+                                }}
+                              >
+                                <Eye className="w-4 h-4" />
+                                Revisar Solicitud
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleCopyToClipboard(request.graduateDocumentNumber, 'Cédula')}
+                              className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                              style={{
+                                background: '#E0EDFF',
+                                color: '#003DA5'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#C5DDFF';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#E0EDFF';
+                              }}
+                            >
+                              <Copy className="w-4 h-4" />
+                              Copiar Cédula
+                            </button>
+                            <button
+                              onClick={() => handleCopyToClipboard(request.requestNumber, 'Número de solicitud')}
+                              className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+                              style={{
+                                background: '#E0EDFF',
+                                color: '#003DA5'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#C5DDFF';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = '#E0EDFF';
+                              }}
+                            >
+                              <Copy className="w-4 h-4" />
+                              Copiar Número de Solicitud
+                            </button>
+                          </div>
+                        </div>
+
                         {/* Detalles de Revisión */}
                         {request.reviewedAt && (
                           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">

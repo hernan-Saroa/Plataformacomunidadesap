@@ -4,6 +4,7 @@
  * ✅ Validación completa de campos
  * ✅ Funcionalidad real de guardado
  * ✅ Carga de archivos PDF
+ * ✅ Tipos de auto parametrizables desde Configuraciones
  */
 
 import { useState, useRef } from 'react';
@@ -12,12 +13,13 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import {
-  FileText, Calendar, Upload, X, AlertCircle, CheckCircle,
-  Save, Scale, Building2, User, Hash, FileUp, Paperclip
+import { 
+  FileText, Calendar, Upload, X, AlertCircle, CheckCircle, 
+  Save, Scale, Building2, User, Hash, FileUp, Paperclip, Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalNuevoAutoProps {
   isOpen: boolean;
@@ -25,18 +27,6 @@ interface ModalNuevoAutoProps {
   onGuardar: (nuevoAuto: any) => void;
   expedienteId: string;
 }
-
-// Tipos de autos judiciales
-const TIPOS_AUTO = [
-  'Auto Admisorio',
-  'Auto de Pruebas',
-  'Auto de Traslado',
-  'Auto de Archivo',
-  'Auto de Nulidad',
-  'Auto de Corrección',
-  'Auto Interlocutorio',
-  'Auto de Sustanciación'
-];
 
 // Estados posibles
 const ESTADOS_AUTO = [
@@ -47,6 +37,9 @@ const ESTADOS_AUTO = [
 ];
 
 export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: ModalNuevoAutoProps) {
+  // ✅ Obtener tipos de autos desde configuración
+  const { tiposAutosActivos } = useConfiguracionModulo('defensa-judicial');
+  
   // Estados del formulario
   const [tipo, setTipo] = useState('');
   const [numero, setNumero] = useState('');
@@ -223,7 +216,7 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
 
   return (
     <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="max-w-2xl max-h-[75vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">Registrar Nuevo Auto Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar un nuevo auto procesal al expediente judicial
@@ -275,14 +268,22 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
                   }`}
               >
                 <option value="">Selecciona el tipo de auto...</option>
-                {TIPOS_AUTO.map(t => (
-                  <option key={t} value={t}>{t}</option>
+                {tiposAutosActivos.map(tipoAuto => (
+                  <option key={tipoAuto.id} value={tipoAuto.nombre}>
+                    {tipoAuto.nombre}
+                  </option>
                 ))}
               </select>
               {errores.tipo && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   {errores.tipo}
+                </p>
+              )}
+              {tiposAutosActivos.length === 0 && (
+                <p className="text-xs text-orange-600 mt-2 flex items-center gap-1">
+                  <Settings className="w-3 h-3" />
+                  No hay tipos de auto configurados. Ve a Configuraciones para agregar tipos.
                 </p>
               )}
             </div>

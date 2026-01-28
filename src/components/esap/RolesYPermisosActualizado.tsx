@@ -88,7 +88,6 @@ const MODULOS_SISTEMA = [
   
   // Estructura y Organización
   'Estructura Organizacional',
-  'Arquitectura Empresarial',
   
   // Gestión Académica
   'Programas Académicos',

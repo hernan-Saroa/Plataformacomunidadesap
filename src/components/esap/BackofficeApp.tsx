@@ -53,6 +53,8 @@ import { ProfileModal } from './ProfileModal';
 
 // Importar módulo de Arquitectura Empresarial
 import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
+// Importar Provider de Notificaciones
+import { NotificationsProvider } from './NotificationsContext';
 
 // ✅ NUEVO: Provider de Tour Guiado
 import { TourProvider } from './gestion-legal/design-system/TourContext';
@@ -86,7 +88,6 @@ type ModuleView =
   | 'certificados-laborales'
   | 'estructura-organizacional'
   | 'programas-academicos'
-  | 'arquitectura-empresarial'
   | 'gestion-passwords'
   | 'demo-pta-motor'
   | 'gestion-profesoral'
@@ -175,7 +176,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       'control-interno': 'control-interno',
       'control-disciplinario': 'control-disciplinario',
       'gestion-legal': 'gestion-legal',
-      'arquitectura-empresarial': 'arquitectura-empresarial',
       'gestion-passwords': 'gestion-passwords',
       'gestion-profesoral': 'gestion-profesoral'
     };
@@ -328,9 +328,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'programas-academicos':
         return <ProgramasAcademicosModule />;
       
-      case 'arquitectura-empresarial':
-        return <ArquitecturaEmpresarialModule />;
-      
       case 'gestion-passwords':
         return <GestionUsuariosPasswordTracking />;
       
@@ -383,8 +380,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                   ? 'registro-academico'
                   : userData?.module === 'certificados-laborales' 
                   ? 'certificados-laborales' 
-                  : userData?.module === 'arquitectura-empresarial'
-                  ? 'arquitectura-empresarial'
                   : userData?.module === 'gestion-legal'
                   ? 'gestion-legal'
                   : undefined

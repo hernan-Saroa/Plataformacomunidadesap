@@ -12,6 +12,9 @@ import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
 import { useControlInternoPermissions } from "./hooks/useControlInternoPermissions";
+import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
+import { HallazgosProvider } from "./HallazgosContext";
+import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 import { planesMejoramientoApi } from "./services/api";
 
@@ -26,10 +29,12 @@ import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { ListasChequeoModule } from "./listas-chequeo/ListasChequeoModuleComplete";  // RF007 - LISTAS DE CHEQUEO DIGITALES - VERSIÓN COMPLETA
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
   | "planificacion"                  // RF001-004 (4 tabs)
+  | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
@@ -47,14 +52,20 @@ export function ControlInternoFull({ userData, userRoles }: ControlInternoFullPr
   return (
     <ControlInternoProvider>
       <IntegracionAuditoriasPlanesProvider>
-        <ControlInternoContent
-          seccionActiva={seccionActiva}
-          setSeccionActiva={setSeccionActiva}
-          navegacionManual={navegacionManual}
-          setNavegacionManual={setNavegacionManual}
-          userData={userData}
-          userRoles={userRoles}
-        />
+        <ListasChequeoProvider>
+          <HallazgosProvider>
+            <TareasProvider>
+              <ControlInternoContent
+                seccionActiva={seccionActiva}
+                setSeccionActiva={setSeccionActiva}
+                navegacionManual={navegacionManual}
+                setNavegacionManual={setNavegacionManual}
+                userData={userData}
+                userRoles={userRoles}
+              />
+            </TareasProvider>
+          </HallazgosProvider>
+        </ListasChequeoProvider>
       </IntegracionAuditoriasPlanesProvider>
     </ControlInternoProvider>
   );
@@ -130,7 +141,16 @@ function ControlInternoContent({
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_MANAGE)
     },
     
-    // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 3. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
+    {
+      id: "listas-chequeo",
+      label: "Listas de Chequeo",
+      subtitle: "Digitales • Requisitos • Cumplimiento",
+      icon: <FileText className="w-5 h-5" />,
+      color: "#6366F1", // Azul claro - Requisitos
+    },
+    
+    // ━━━━━━━━━━━ 4. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
       id: "planes-mejoramiento",
       label: "Planes de Mejoramiento",
@@ -141,7 +161,7 @@ function ControlInternoContent({
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE)
     },
     
-    // ━━━━━━━━━━━ 4. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
@@ -151,7 +171,7 @@ function ControlInternoContent({
       visible: authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_MANAGE)
     },
     
-    // ━━━━━━━━━━━ 5. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 6. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -221,6 +241,9 @@ function ControlInternoContent({
       
       case "planificacion":
         return <PlanificacionModuleRediseno />;
+      
+      case "listas-chequeo":
+        return <ListasChequeoModule />;
       
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;

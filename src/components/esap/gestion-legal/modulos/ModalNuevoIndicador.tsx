@@ -11,6 +11,7 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 
 interface ModalNuevoIndicadorProps {
   isOpen: boolean;
@@ -19,6 +20,13 @@ interface ModalNuevoIndicadorProps {
 }
 
 export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIndicadorProps) {
+  // Obtener ejes estratégicos desde el Context
+  const { getEjesEstrategicosActivos } = useConfiguracionesSIGL();
+  const ejesActivos = getEjesEstrategicosActivos();
+
+  // 🐛 DEBUG: Ver si los ejes están cargando
+  console.log('🔍 Ejes Estratégicos Activos:', ejesActivos);
+
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
@@ -134,10 +142,9 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     required
                   >
-                    <option value="GESTION_INSTITUCIONAL">🏛️ Gestión Institucional</option>
-                    <option value="TALENTO_HUMANO">👥 Talento Humano</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
-                    <option value="TECNOLOGIA">💻 Tecnología</option>
+                    {ejesActivos.map(eje => (
+                      <option key={eje.id} value={eje.id}>{eje.icono} {eje.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>

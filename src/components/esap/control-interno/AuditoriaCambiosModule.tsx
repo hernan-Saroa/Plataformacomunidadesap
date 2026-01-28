@@ -73,6 +73,453 @@ interface AuditoriaFiltros {
 const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '/api/v1';
 const MICROSERVICIO_PORT = 3007; // Puerto del control-institucional-service
+  const acciones: { 
+    accion: TipoAccion; 
+    descripcion: string; 
+    tabla: TipoEntidad; 
+    registroId: string;
+    cambios: any;
+    modulo: string;
+  }[] = [
+    // ========== CONTROL INTERNO ==========
+    {
+      accion: 'aprobar',
+      descripcion: 'Aprobar Plan Anual de Auditoría 2025',
+      tabla: 'plan_anual',
+      registroId: 'plan-2025-001',
+      modulo: 'Control Interno',
+      cambios: {
+        antes: { estado: 'EN_REVISION' },
+        despues: { estado: 'APROBADO', fechaAprobacion: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'crear_auditoria',
+      descripcion: 'Crear auditoría de Gestión Financiera',
+      tabla: 'auditoria',
+      registroId: 'aud-2026-015',
+      modulo: 'Control Interno',
+      cambios: {
+        despues: { codigo: 'AUD-2026-015', nombre: 'Auditoría Gestión Financiera', estado: 'PLANEACION' }
+      }
+    },
+    {
+      accion: 'crear_hallazgo',
+      descripcion: 'Registrar hallazgo crítico: Falta de segregación de funciones',
+      tabla: 'hallazgo',
+      registroId: 'hall-2026-023',
+      modulo: 'Control Interno',
+      cambios: {
+        despues: { tipo: 'NO_CONFORMIDAD', criticidad: 'CRITICA', descripcion: 'Falta de segregación de funciones en tesorería' }
+      }
+    },
+    {
+      accion: 'validar_evidencia',
+      descripcion: 'Validar evidencia de plan de mejoramiento',
+      tabla: 'evidencia',
+      registroId: 'ev-2026-089',
+      modulo: 'Control Interno',
+      cambios: {
+        antes: { estado: 'CARGADA' },
+        despues: { estado: 'VALIDADA', validadoPor: 'María González' }
+      }
+    },
+    
+    // ========== GESTIÓN DE USUARIOS Y PERSONAS ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear nuevo usuario: Juan Pablo García',
+      tabla: 'usuario',
+      registroId: 'usr-2026-458',
+      modulo: 'Gestión de Usuarios',
+      cambios: {
+        despues: { nombre: 'Juan Pablo García', email: 'jgarcia@esap.edu.co', rol: 'Docente', estado: 'ACTIVO' }
+      }
+    },
+    {
+      accion: 'actualizar',
+      descripcion: 'Actualizar información de perfil de usuario',
+      tabla: 'persona',
+      registroId: 'per-2026-789',
+      modulo: 'Gestión de Usuarios',
+      cambios: {
+        antes: { telefono: '3001234567', direccion: 'Calle 45 #23-12' },
+        despues: { telefono: '3109876543', direccion: 'Carrera 7 #45-89' }
+      }
+    },
+    {
+      accion: 'asignar_rol',
+      descripcion: 'Asignar rol de Coordinador Académico',
+      tabla: 'usuario',
+      registroId: 'usr-2026-234',
+      modulo: 'Roles y Permisos',
+      cambios: {
+        antes: { roles: ['Docente'] },
+        despues: { roles: ['Docente', 'Coordinador Académico'] }
+      }
+    },
+    {
+      accion: 'cargar_documento',
+      descripcion: 'Cargar cédula de ciudadanía en carpeta digital',
+      tabla: 'carpeta_digital',
+      registroId: 'doc-2026-991',
+      modulo: 'Carpeta Digital',
+      cambios: {
+        despues: { tipoDocumento: 'Cédula', nombreArchivo: 'cedula-123456789.pdf', tamaño: '2.4 MB' }
+      }
+    },
+    
+    // ========== GRADUADOS Y REGISTRO ACADÉMICO ==========
+    {
+      accion: 'crear',
+      descripcion: 'Registrar nuevo graduado: María Fernanda López',
+      tabla: 'graduado',
+      registroId: 'grad-2026-341',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { nombre: 'María Fernanda López', programa: 'Administración Pública', fechaGrado: '2025-12-15', promedio: 4.2 }
+      }
+    },
+    {
+      accion: 'generar_certificado',
+      descripcion: 'Generar certificado de título profesional',
+      tabla: 'certificado_titulo',
+      registroId: 'cert-titulo-2026-124',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { graduadoId: 'grad-2026-341', consecutivo: 'CT-2026-124', qrCode: 'QR-CT124', estado: 'ACTIVO' }
+      }
+    },
+    {
+      accion: 'validar_certificado',
+      descripcion: 'Validar autenticidad de certificado de título',
+      tabla: 'certificado_titulo',
+      registroId: 'cert-titulo-2026-098',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { validado: true, validadoPor: 'Sistema', fechaValidacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== ENROLAMIENTO ==========
+    {
+      accion: 'enrolar_usuario',
+      descripcion: 'Enrolar usuario individual: Carlos Méndez',
+      tabla: 'enrolamiento',
+      registroId: 'enr-2026-556',
+      modulo: 'Enrolamiento',
+      cambios: {
+        despues: { usuarioId: 'usr-2026-556', rol: 'Estudiante', programaId: 'prog-adm-pub', estado: 'COMPLETADO' }
+      }
+    },
+    {
+      accion: 'enrolamiento_masivo',
+      descripcion: 'Enrolamiento masivo: 45 estudiantes nuevos',
+      tabla: 'enrolamiento_masivo',
+      registroId: 'enr-masivo-2026-003',
+      modulo: 'Enrolamiento',
+      cambios: {
+        despues: { archivo: 'estudiantes-2026-01.xlsx', cantidadRegistros: 45, exitosos: 43, fallidos: 2 }
+      }
+    },
+    
+    // ========== COMUNIDAD ==========
+    {
+      accion: 'crear_publicacion',
+      descripcion: 'Crear publicación: "Convocatoria Semilleros de Investigación"',
+      tabla: 'publicacion',
+      registroId: 'pub-2026-234',
+      modulo: 'Comunidad',
+      cambios: {
+        despues: { titulo: 'Convocatoria Semilleros de Investigación', contenido: '...', categoria: 'Investigación', estado: 'PUBLICADA' }
+      }
+    },
+    {
+      accion: 'crear_evento',
+      descripcion: 'Crear evento: "Foro de Administración Pública 2026"',
+      tabla: 'evento',
+      registroId: 'evt-2026-089',
+      modulo: 'Eventos',
+      cambios: {
+        despues: { titulo: 'Foro de Administración Pública 2026', fecha: '2026-03-15', lugar: 'Auditorio Principal', cupos: 200 }
+      }
+    },
+    {
+      accion: 'crear_anuncio',
+      descripcion: 'Crear anuncio: "Modificación calendario académico"',
+      tabla: 'anuncio',
+      registroId: 'anun-2026-045',
+      modulo: 'Anuncios',
+      cambios: {
+        despues: { titulo: 'Modificación calendario académico', contenido: '...', prioridad: 'ALTA', destinatarios: 'TODOS' }
+      }
+    },
+    
+    // ========== BOLSA DE EMPLEO ==========
+    {
+      accion: 'crear',
+      descripcion: 'Publicar oferta de empleo: Analista de Presupuesto',
+      tabla: 'oferta_empleo',
+      registroId: 'emp-2026-178',
+      modulo: 'Bolsa de Empleo',
+      cambios: {
+        despues: { cargo: 'Analista de Presupuesto', empresa: 'Ministerio de Hacienda', salario: '$4.500.000', estado: 'ACTIVA' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Registrar postulación a oferta de empleo',
+      tabla: 'postulacion',
+      registroId: 'post-2026-445',
+      modulo: 'Bolsa de Empleo',
+      cambios: {
+        despues: { ofertaId: 'emp-2026-178', graduadoId: 'grad-2026-341', estado: 'ENVIADA', fechaPostulacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== CERTIFICADOS LABORALES ==========
+    {
+      accion: 'generar_certificado',
+      descripcion: 'Generar certificado laboral para Pedro Sánchez',
+      tabla: 'certificado_laboral',
+      registroId: 'cert-lab-2026-089',
+      modulo: 'Certificados Laborales',
+      cambios: {
+        despues: { empleadoId: 'emp-2026-567', consecutivo: '001-2026-TH', cargo: 'Docente TC', dependencia: 'Territorial Bogotá' }
+      }
+    },
+    {
+      accion: 'validar_certificado',
+      descripcion: 'Validar autenticidad de certificado laboral',
+      tabla: 'certificado_laboral',
+      registroId: 'cert-lab-2026-078',
+      modulo: 'Certificados Laborales',
+      cambios: {
+        despues: { validado: true, codigoQR: 'QR-CL078', fechaValidacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== FIRMA ELECTRÓNICA ==========
+    {
+      accion: 'solicitar_firma',
+      descripcion: 'Solicitar firma electrónica para resolución',
+      tabla: 'solicitud_firma',
+      registroId: 'firma-2026-234',
+      modulo: 'Firma Electrónica',
+      cambios: {
+        despues: { documentoId: 'doc-res-2026-045', solicitante: 'Coordinador Académico', destinatarios: ['Director', 'Decano'], estado: 'PENDIENTE' }
+      }
+    },
+    {
+      accion: 'firmar_documento',
+      descripcion: 'Firmar digitalmente acta de comité',
+      tabla: 'firma_digital',
+      registroId: 'firma-dig-2026-112',
+      modulo: 'Firma Electrónica',
+      cambios: {
+        despues: { documentoId: 'doc-acta-2026-008', firmante: 'María González', timestamp: '2026-01-14T10:30:00Z', hash: 'SHA256:abc123...' }
+      }
+    },
+    
+    // ========== CONTROL DISCIPLINARIO ==========
+    {
+      accion: 'iniciar_proceso',
+      descripcion: 'Iniciar proceso disciplinario PD-2026-015',
+      tabla: 'proceso_disciplinario',
+      registroId: 'pd-2026-015',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { codigo: 'PD-2026-015', quejoso: 'Anónimo', investigado: 'Servidor Público X', etapa: 'INDAGACION_PRELIMINAR' }
+      }
+    },
+    {
+      accion: 'crear_auto',
+      descripcion: 'Crear auto de apertura de investigación',
+      tabla: 'auto_disciplinario',
+      registroId: 'auto-2026-023',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { procesoId: 'pd-2026-015', numero: 'AUTO-023-2026', tipo: 'APERTURA', fechaExpedicion: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'aplicar_sancion',
+      descripcion: 'Aplicar sanción disciplinaria: Suspensión 30 días',
+      tabla: 'sancion',
+      registroId: 'sanc-2026-007',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { procesoId: 'pd-2026-012', tipo: 'SUSPENSION', duracionDias: 30, fechaInicio: '2026-01-20', estado: 'EJECUTORIA' }
+      }
+    },
+    
+    // ========== GESTIÓN LEGAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear expediente legal: Acción de tutela',
+      tabla: 'expediente_legal',
+      registroId: 'exp-legal-2026-034',
+      modulo: 'Gestión Legal',
+      cambios: {
+        despues: { codigo: 'EXP-TUT-2026-034', tipo: 'TUTELA', demandante: 'Ciudadano X', demandado: 'ESAP', estado: 'ACTIVO' }
+      }
+    },
+    {
+      accion: 'asignar_abogado',
+      descripcion: 'Asignar abogado externo a proceso legal',
+      tabla: 'expediente_legal',
+      registroId: 'exp-legal-2026-034',
+      modulo: 'Gestión Legal',
+      cambios: {
+        antes: { abogado: null },
+        despues: { abogado: 'Dr. Carlos Mendoza', tipo: 'EXTERNO', fechaAsignacion: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Crear concepto jurídico sobre normatividad académica',
+      tabla: 'concepto_juridico',
+      registroId: 'conc-jur-2026-018',
+      modulo: 'Gestión Legal',
+      cambios: {
+        despues: { codigo: 'CJ-2026-018', tema: 'Normatividad Académica', solicitante: 'Registro Académico', estado: 'EN_REVISION' }
+      }
+    },
+    
+    // ========== ESTRUCTURA ORGANIZACIONAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear nueva dependencia: Dirección de Innovación',
+      tabla: 'dependencia',
+      registroId: 'dep-2026-045',
+      modulo: 'Estructura Organizacional',
+      cambios: {
+        despues: { codigo: 'DEP-INNOV', nombre: 'Dirección de Innovación', nivel: 'DIRECCION', dependePadre: 'RECTORIA' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Crear nuevo cargo: Coordinador de Transformación Digital',
+      tabla: 'cargo',
+      registroId: 'cargo-2026-089',
+      modulo: 'Estructura Organizacional',
+      cambios: {
+        despues: { codigo: 'COORD-TD', nombre: 'Coordinador Transformación Digital', nivel: 'COORDINACION', dependenciaId: 'dep-2026-045' }
+      }
+    },
+    
+    // ========== PROGRAMAS ACADÉMICOS ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear nuevo programa académico: Maestría en Gobernanza',
+      tabla: 'programa_academico',
+      registroId: 'prog-2026-012',
+      modulo: 'Programas Académicos',
+      cambios: {
+        despues: { codigo: 'MAES-GOB', nombre: 'Maestría en Gobernanza', nivel: 'POSGRADO', modalidad: 'PRESENCIAL', creditos: 48 }
+      }
+    },
+    
+    // ========== ARQUITECTURA EMPRESARIAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Documentar capacidad: Gestión de Talento Humano',
+      tabla: 'capacidad',
+      registroId: 'cap-2026-023',
+      modulo: 'Arquitectura Empresarial',
+      cambios: {
+        despues: { codigo: 'CAP-GTH', nombre: 'Gestión de Talento Humano', nivel: 'NIVEL_2', macroproceso: 'APOYO' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Registrar sistema de información: SIGL',
+      tabla: 'sistema_informacion',
+      registroId: 'si-2026-008',
+      modulo: 'Arquitectura Empresarial',
+      cambios: {
+        despues: { codigo: 'SIGL', nombre: 'Sistema de Gestión Legal', estado: 'PRODUCCION', criticidad: 'ALTA' }
+      }
+    },
+    
+    // ========== GESTIÓN PROFESORAL ==========
+    {
+      accion: 'crear_convocatoria',
+      descripcion: 'Crear convocatoria docente: Administración Pública',
+      tabla: 'convocatoria',
+      registroId: 'conv-doc-2026-004',
+      modulo: 'Gestión Profesoral',
+      cambios: {
+        despues: { codigo: 'CONV-DOC-2026-004', area: 'Administración Pública', plazas: 3, fechaCierre: '2026-02-15', estado: 'ABIERTA' }
+      }
+    },
+    {
+      accion: 'evaluar_desempeño',
+      descripcion: 'Evaluar desempeño docente: Luis Martínez',
+      tabla: 'evaluacion_desempeño',
+      registroId: 'eval-doc-2026-078',
+      modulo: 'Gestión Profesoral',
+      cambios: {
+        despues: { docenteId: 'doc-2026-234', periodo: '2025-02', puntaje: 4.5, estado: 'APROBADA' }
+      }
+    },
+    
+    // ========== INFORMES Y REPORTES ==========
+    {
+      accion: 'generar_reporte',
+      descripcion: 'Generar reporte ejecutivo mensual',
+      tabla: 'reporte',
+      registroId: 'rep-2026-089',
+      modulo: 'Informes',
+      cambios: {
+        despues: { tipo: 'EJECUTIVO', periodo: '2026-01', formato: 'PDF', archivo: 'reporte-ejecutivo-ene-2026.pdf' }
+      }
+    },
+    {
+      accion: 'exportar_excel',
+      descripcion: 'Exportar datos de usuarios a Excel',
+      tabla: 'reporte',
+      registroId: 'rep-2026-090',
+      modulo: 'Informes',
+      cambios: {
+        despues: { tipo: 'USUARIOS', cantidadRegistros: 1250, formato: 'XLSX', tamaño: '3.2 MB' }
+      }
+    },
+    
+    // ========== AUTENTICACIÓN Y SEGURIDAD ==========
+    {
+      accion: 'login',
+      descripcion: 'Inicio de sesión exitoso',
+      tabla: 'usuario',
+      registroId: 'usr-2026-234',
+      modulo: 'Gestión de Usuarios',
+      cambios: {
+        despues: { ultimoAcceso: '2026-01-14T08:30:00Z', ip: '192.168.1.45', navegador: 'Chrome 120' }
+      }
+    },
+    {
+      accion: 'cambiar_password',
+      descripcion: 'Cambiar contraseña de usuario',
+      tabla: 'usuario',
+      registroId: 'usr-2026-456',
+      modulo: 'Gestión de Passwords',
+      cambios: {
+        antes: { passwordHash: 'hash-anterior' },
+        despues: { passwordHash: 'hash-nuevo', fechaCambio: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'revocar_permiso',
+      descripcion: 'Revocar permiso de administración',
+      tabla: 'permiso',
+      registroId: 'perm-2026-089',
+      modulo: 'Roles y Permisos',
+      cambios: {
+        antes: { usuarioId: 'usr-2026-234', permiso: 'ADMIN_USUARIOS', estado: 'ACTIVO' },
+        despues: { usuarioId: 'usr-2026-234', permiso: 'ADMIN_USUARIOS', estado: 'REVOCADO', fechaRevocacion: '2026-01-14' }
+      }
+    }
+  ];
 
 /**
  * Detecta si estamos en localhost para hacer peticiones directas al microservicio

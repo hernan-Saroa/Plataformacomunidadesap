@@ -1,7 +1,13 @@
 /**
  * ModalSIGL - Componente Modal del Design System ESAP
  * Wrapper sobre Dialog de shadcn/ui con estilos corporativos
- * Versión mejorada con responsive optimizado
+ * 
+ * 🎯 TAMAÑOS ESTANDARIZADOS ESAP 2025:
+ * - small:  Confirmaciones, alertas simples (max-w-md = 448px)
+ * - medium: Formularios simples, notas (max-w-2xl = 672px)
+ * - large:  Formularios complejos, comunicaciones (max-w-4xl = 896px)
+ * - xlarge: Tablas, listas con columnas (max-w-5xl = 1024px)
+ * - full:   Expedientes completos, dashboards (max-w-6xl = 1152px)
  */
 
 import {
@@ -22,11 +28,11 @@ interface ModalSIGLProps {
 }
 
 const sizeClasses = {
-  small: 'w-full max-w-[90vw] sm:max-w-md',
-  medium: 'w-full max-w-[90vw] sm:max-w-lg',
-  large: 'w-full max-w-[95vw] sm:max-w-2xl',
-  xlarge: 'w-full max-w-[95vw] sm:max-w-4xl lg:max-w-5xl',
-  full: 'w-full max-w-[98vw] sm:max-w-6xl lg:max-w-7xl',
+  small: 'w-full max-w-[95vw] sm:max-w-md',           // 448px - Confirmaciones
+  medium: 'w-full max-w-[95vw] sm:max-w-2xl',         // 672px - Formularios simples
+  large: 'w-full max-w-[95vw] sm:max-w-4xl',          // 896px - Formularios complejos
+  xlarge: 'w-full max-w-[95vw] sm:max-w-5xl',         // 1024px - Tablas
+  full: 'w-full max-w-[98vw] sm:max-w-6xl',           // 1152px - Expedientes completos
 };
 
 export function ModalSIGL({
@@ -41,10 +47,12 @@ export function ModalSIGL({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent hideCloseButton className={`${sizeClasses[size]} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
-          <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
-          <DialogDescription className="text-sm">
-            {description || ' '}
-          </DialogDescription>
+          <DialogTitle className="text-base sm:text-lg font-semibold text-gray-900">{title}</DialogTitle>
+          {description && (
+            <DialogDescription className="text-sm text-gray-600">
+              {description}
+            </DialogDescription>
+          )}
         </DialogHeader>
         <div className="mt-4">{children}</div>
       </DialogContent>

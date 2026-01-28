@@ -315,7 +315,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent 
           hideCloseButton 
-          className="w-[95vw] max-w-[1100px] lg:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0"
+          className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] overflow-hidden flex flex-col p-0 gap-0"
         >
           <DialogTitle className="sr-only">
             Evidencias y Pruebas - Expediente {expediente.id}

@@ -206,7 +206,7 @@ Metodología DAFP - MECI
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-auto max-h-[70vh] flex flex-col p-0 overflow-hidden">
         <DialogTitle className="sr-only">
           Detalle del Riesgo {riesgo.codigo || riesgo.id}
         </DialogTitle>
