@@ -6,6 +6,7 @@ import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
+import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
 // import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 // import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
@@ -372,8 +373,8 @@ export default function App() {
       case 'password-demo':
         return <DemoPasswordStrength />;
       
-      // case 'procesos-coactivos-demo':
-      //   return <DemoProcesosCoactivos />;
+      case 'procesos-coactivos-demo':
+        return <DemoReprogramacionAudiencia />;
       
       // case 'edicion-foto-perfil-demo':
       //   return <DemoEdicionFotoPerfil />;

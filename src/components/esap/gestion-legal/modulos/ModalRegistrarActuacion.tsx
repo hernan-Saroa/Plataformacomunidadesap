@@ -156,7 +156,7 @@ export function ModalRegistrarActuacion({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-[300px] max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Registrar Actuación Procesal</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para registrar actuaciones procesales en el expediente {expedienteId}

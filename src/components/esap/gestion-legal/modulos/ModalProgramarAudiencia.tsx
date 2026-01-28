@@ -215,7 +215,7 @@ export function ModalProgramarAudiencia({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-[325px] max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="!max-w-[650px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           {esReasignacion ? 'Reasignar Audiencia' : 'Programar Audiencia'}
         </DialogTitle>

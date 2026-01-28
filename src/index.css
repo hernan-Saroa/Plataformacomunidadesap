@@ -1947,6 +1947,10 @@
     max-height: 70vh !important;
   }
 
+  .\!max-h-\[72vh\] {
+    max-height: 72vh !important;
+  }
+
   .\!max-h-\[82vh\] {
     max-height: 82vh !important;
   }
@@ -2347,6 +2351,14 @@
     max-width: 420px !important;
   }
 
+  .\!max-w-\[600px\] {
+    max-width: 600px !important;
+  }
+
+  .\!max-w-\[650px\] {
+    max-width: 650px !important;
+  }
+
   .\!max-w-\[680px\] {
     max-width: 680px !important;
   }
@@ -2407,16 +2419,8 @@
     max-width: 280px;
   }
 
-  .max-w-\[300px\] {
-    max-width: 300px;
-  }
-
   .max-w-\[320px\] {
     max-width: 320px;
-  }
-
-  .max-w-\[325px\] {
-    max-width: 325px;
   }
 
   .max-w-\[450px\] {
