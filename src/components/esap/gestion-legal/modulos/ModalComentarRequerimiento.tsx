@@ -142,12 +142,12 @@ export function ModalComentarRequerimiento({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 top-[15vh] -translate-x-1/2 w-full max-w-3xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[70vh] overflow-y-auto"
           >
             {/* Header */}
             <ModalHeaderClean

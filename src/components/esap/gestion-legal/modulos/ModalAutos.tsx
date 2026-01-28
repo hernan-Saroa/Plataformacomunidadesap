@@ -371,7 +371,7 @@ export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Autos Procesales - Expediente {expediente.id}
         </DialogTitle>

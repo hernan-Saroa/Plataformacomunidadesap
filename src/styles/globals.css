@@ -298,26 +298,62 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
     max-width: 100vw;
-  }
-  
-  /* Limitar ancho en pantallas ultra-anchas para prevenir parpadeos y mejorar legibilidad */
-  @media (min-width: 2560px) {
-    body {
-      max-width: 2400px;
-      margin: 0 auto;
-    }
-  }
-  
-  @media (min-width: 1920px) and (max-width: 2559px) {
-    body {
-      max-width: 1800px;
-      margin: 0 auto;
-    }
+    width: 100%;
   }
   
   body {
     position: relative;
     width: 100%;
+  }
+  
+  /* ===== OPTIMIZACIÓN ESPECÍFICA PARA 4K (3840px) ===== */
+  @media (min-width: 3840px) {
+    body {
+      /* Ligeramente más grande la fuente base para mejor legibilidad en 4K */
+      font-size: 18px;
+    }
+    
+    /* Aprovecha todo el ancho disponible */
+    .container, .max-w-7xl {
+      max-width: 100% !important;
+    }
+    
+    /* Grids expandidos para 4K */
+    .grid-cols-3 {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    .grid-cols-4 {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+    
+    /* Stats cards en 4 columnas mínimo */
+    .stats-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    /* Más espaciado en 4K */
+    .gap-6 {
+      gap: 2rem !important;
+    }
+    
+    .gap-8 {
+      gap: 2.5rem !important;
+    }
+    
+    /* Padding más generoso */
+    .p-6 {
+      padding: 2rem !important;
+    }
+    
+    .p-8 {
+      padding: 2.5rem !important;
+    }
+    
+    /* Sidebar más ancho en 4K */
+    :root {
+      --sidebar-width: 320px;
+    }
   }
   
   /* Prevenir scroll horizontal en modales */

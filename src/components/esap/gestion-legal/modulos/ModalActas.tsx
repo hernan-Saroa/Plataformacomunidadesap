@@ -370,7 +370,7 @@ export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+      <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
           Actas de Audiencias - Expediente {expediente.id}
         </DialogTitle>

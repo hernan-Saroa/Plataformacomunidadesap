@@ -28,6 +28,8 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalNotificar } from './ModalNotificar';
+import { ModalRegistrarActuacion } from './ModalRegistrarActuacion';
+import { ModalProgramarAudiencia } from './ModalProgramarAudiencia';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalCrearTarea } from './ModalCrearTarea';
 import { ModalAgregarNota } from './ModalAgregarNota';
@@ -53,6 +55,9 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
   const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
   const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
+  const [modalRegistrarActuacionAbierto, setModalRegistrarActuacionAbierto] = useState(false);
+  const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
+  const [audienciaAReasignar, setAudienciaAReasignar] = useState<any>(null);
   const [tareaEnEdicion, setTareaEnEdicion] = useState<any>(null);
 
   // Estado para tareas - ahora reactivo
@@ -207,6 +212,68 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     });
   };
 
+  // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
+  
+  const handleGuardarActuacion = (nuevaActuacion: any) => {
+    setActuaciones([nuevaActuacion, ...actuaciones]);
+    
+    toast.success('✅ Actuación registrada exitosamente', {
+      description: `${nuevaActuacion.tipo} - ${nuevaActuacion.fecha}`,
+      duration: 4000
+    });
+
+    console.log('📊 Actuación registrada:', {
+      expediente: expediente.id,
+      actuacion: nuevaActuacion,
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  const handleGuardarAudiencia = (audiencia: any) => {
+    if (audienciaAReasignar) {
+      // Reasignación: actualizar audiencia existente
+      setAudienciasProgramadas(audienciasProgramadas.map(a => 
+        a.id === audiencia.id ? audiencia : a
+      ));
+      
+      // También registrar como actuación en el historial
+      const actuacionReasignacion = {
+        id: Date.now(),
+        fecha: new Date().toLocaleDateString('es-CO'),
+        hora: new Date().toLocaleTimeString('es-CO'),
+        tipo: 'Reasignación de Audiencia',
+        descripcion: `Se reasignó ${audiencia.tipo}: de ${audiencia.fechaAnterior} ${audiencia.horaAnterior} a ${audiencia.fecha} ${audiencia.hora}. Motivo: ${audiencia.motivoReasignacion}`,
+        responsable: audiencia.abogadoResponsable,
+        estado: 'Completado'
+      };
+      setActuaciones([actuacionReasignacion, ...actuaciones]);
+      
+      setAudienciaAReasignar(null);
+    } else {
+      // Nueva audiencia
+      setAudienciasProgramadas([...audienciasProgramadas, audiencia]);
+      
+      // Registrar también como actuación en el historial
+      const actuacionAudiencia = {
+        id: Date.now() + 1,
+        fecha: new Date().toLocaleDateString('es-CO'),
+        hora: new Date().toLocaleTimeString('es-CO'),
+        tipo: 'Programación de Audiencia',
+        descripcion: `Se programó ${audiencia.tipo} para el ${audiencia.fecha} a las ${audiencia.hora}`,
+        responsable: audiencia.abogadoResponsable,
+        estado: 'Programado'
+      };
+      setActuaciones([actuacionAudiencia, ...actuaciones]);
+    }
+
+    console.log('📊 Audiencia programada:', {
+      expediente: expediente.id,
+      audiencia: audiencia,
+      esReasignacion: !!audienciaAReasignar,
+      timestamp: new Date().toISOString()
+    });
+  };
+
   const handleGenerarInforme = () => {
     toast.info('📊 Generando informe ejecutivo', {
       description: 'Compilando datos del expediente...',
@@ -247,8 +314,10 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
     { id: 7, nombre: 'Poder del Apoderado.pdf', fecha: '14/12/2024', tipo: 'Poder', tamaño: '620 KB', firmante: 'Notaría 15 de Bogotá' },
   ];
 
-  const actuaciones = [
+  // Estado reactivo para actuaciones
+  const [actuaciones, setActuaciones] = useState([
     { 
+      id: 1,
       fecha: '26/12/2024', 
       descripcion: 'Se aportaron pruebas documentales adicionales',
       responsable: expediente.abogadoAsignado || 'Oficina Jurídica',
@@ -256,6 +325,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       estado: 'Completado'
     },
     { 
+      id: 2,
       fecha: '22/12/2024', 
       descripcion: 'Se presentó contestación de la demanda', 
       responsable: expediente.abogadoAsignado || 'Oficina Jurídica',
@@ -263,6 +333,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       estado: 'Completado'
     },
     { 
+      id: 3,
       fecha: '20/12/2024', 
       descripcion: 'Se asignó abogado defensor', 
       responsable: 'Sistema',
@@ -270,6 +341,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       estado: 'Completado'
     },
     { 
+      id: 4,
       fecha: '15/12/2024', 
       descripcion: 'Se recibió notificación de demanda', 
       responsable: 'Centro Comunicaciones',
@@ -277,6 +349,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       estado: 'Completado'
     },
     { 
+      id: 5,
       fecha: '10/12/2024', 
       descripcion: 'Auto admisorio emitido por juzgado', 
       responsable: 'Juzgado Administrativo',
@@ -284,13 +357,17 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
       estado: 'Completado'
     },
     { 
+      id: 6,
       fecha: '05/12/2024', 
       descripcion: 'Demanda presentada ante el juzgado', 
       responsable: 'Apoderado Demandante',
       tipo: 'Demanda',
       estado: 'Completado'
     }
-  ];
+  ]);
+
+  // Estado reactivo para audiencias programadas
+  const [audienciasProgramadas, setAudienciasProgramadas] = useState<any[]>([]);
 
   // ==================== HANDLERS DE TAREAS ====================
   
@@ -516,7 +593,7 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
   return (
     <>
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Expediente Judicial {expediente.id} - Vista Completa
         </DialogTitle>
@@ -1165,15 +1242,104 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
 
             {/* ==================== TAB: ACTUACIONES ==================== */}
             <TabsContent value="actuaciones" className="space-y-3">
-              <Card className="p-4 bg-gray-50">
-                <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-blue-600" />
-                  Historial Cronológico de Actuaciones Procesales
-                  <Badge className="ml-auto bg-blue-600 text-white font-bold">
-                    {actuaciones.length} registros
-                  </Badge>
-                </h4>
+              <Card className="p-4 bg-gradient-to-r from-blue-50 to-white border-blue-200">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-blue-600" />
+                    Historial Cronológico de Actuaciones Procesales
+                    <Badge className="bg-blue-600 text-white font-bold">
+                      {actuaciones.length} registros
+                    </Badge>
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      size="sm" 
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                      onClick={() => setModalRegistrarActuacionAbierto(true)}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Registrar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                      onClick={() => {
+                        setAudienciaAReasignar(null);
+                        setModalProgramarAudienciaAbierto(true);
+                      }}
+                    >
+                      <Calendar className="w-3 h-3 mr-1" />
+                      Programar Audiencia
+                    </Button>
+                  </div>
+                </div>
               </Card>
+
+              {/* Audiencias Programadas */}
+              {audienciasProgramadas.length > 0 && (
+                <Card className="p-4 bg-gradient-to-r from-purple-50 to-white border-purple-200">
+                  <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-3">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                    Audiencias Programadas
+                    <Badge className="bg-purple-600 text-white font-bold">
+                      {audienciasProgramadas.length}
+                    </Badge>
+                  </h4>
+                  <div className="space-y-2">
+                    {audienciasProgramadas.map((audiencia) => (
+                      <Card key={audiencia.id} className="p-3 bg-white border-purple-200">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="text-xs font-bold bg-purple-100 text-purple-700">
+                                {audiencia.tipo}
+                              </Badge>
+                              <Badge className="text-xs font-bold bg-green-100 text-green-700">
+                                {audiencia.estado}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <p className="flex items-center gap-1.5 text-gray-700">
+                                <Calendar className="w-3 h-3" />
+                                <strong>{audiencia.fecha}</strong> a las {audiencia.hora}
+                              </p>
+                              <p className="flex items-center gap-1.5 text-gray-700">
+                                {audiencia.modalidad === 'Presencial' ? (
+                                  <>
+                                    <MapPin className="w-3 h-3" />
+                                    {audiencia.lugar}
+                                  </>
+                                ) : (
+                                  <>
+                                    💻 Audiencia Virtual
+                                  </>
+                                )}
+                              </p>
+                              {audiencia.abogadoResponsable && (
+                                <p className="flex items-center gap-1.5 text-gray-700 col-span-2">
+                                  <User className="w-3 h-3" />
+                                  {audiencia.abogadoResponsable}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAudienciaAReasignar(audiencia);
+                              setModalProgramarAudienciaAbierto(true);
+                            }}
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold"
+                          >
+                            🔄 Reasignar
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </Card>
+              )}
 
               <div className="relative">
                 {/* Línea temporal vertical */}
@@ -1511,6 +1677,22 @@ export function ModalExpediente({ isOpen, onClose, expediente }: ModalExpediente
         tituloContexto={`Documentos del Expediente ${expediente.id}`}
       />
     )}
+    <ModalRegistrarActuacion
+      isOpen={modalRegistrarActuacionAbierto}
+      onClose={() => setModalRegistrarActuacionAbierto(false)}
+      onGuardar={handleGuardarActuacion}
+      expedienteId={expediente.id}
+    />
+    <ModalProgramarAudiencia
+      isOpen={modalProgramarAudienciaAbierto}
+      onClose={() => {
+        setModalProgramarAudienciaAbierto(false);
+        setAudienciaAReasignar(null);
+      }}
+      onGuardar={handleGuardarAudiencia}
+      expedienteId={expediente.id}
+      audienciaExistente={audienciaAReasignar}
+    />
     </>
   );
 }

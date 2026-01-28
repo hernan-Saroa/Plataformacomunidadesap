@@ -132,6 +132,7 @@ export function ModuleFilters({
     const totalFilters = filters.length + 1; // +1 por búsqueda
     if (totalFilters <= 2) return 'grid-cols-1 md:grid-cols-2';
     if (totalFilters === 3) return 'grid-cols-1 md:grid-cols-3';
+    if (totalFilters === 4) return 'grid-cols-1 md:grid-cols-4'; // 4 elementos = 4 columnas
     return 'grid-cols-1 md:grid-cols-4';
   }, [filters.length]);
 
@@ -149,7 +150,7 @@ export function ModuleFilters({
         {/* Grid de filtros */}
         <div className={`grid ${gridCols} gap-3`}>
           {/* Campo de búsqueda */}
-          <div className={filters.length >= 3 ? 'md:col-span-2' : ''}>
+          <div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input

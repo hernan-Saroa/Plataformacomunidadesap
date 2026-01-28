@@ -113,7 +113,7 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[75vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Agregar Nota - Expediente {expediente.id}
         </DialogTitle>

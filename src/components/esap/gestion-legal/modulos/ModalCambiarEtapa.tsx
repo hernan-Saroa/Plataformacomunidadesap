@@ -96,12 +96,12 @@ export function ModalCambiarEtapa({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 top-[15vh] -translate-x-1/2 w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[70vh] overflow-y-auto"
           >
             {/* Header */}
             <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-gray-100 border-b flex items-center justify-between">

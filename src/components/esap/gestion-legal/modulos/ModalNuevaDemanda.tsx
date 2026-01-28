@@ -407,7 +407,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       {/* ✅ ANCHO AUMENTADO EN 30%: de max-w-2xl (672px) a max-w-4xl (896px) = ~33% más ancho */}
       <DialogContent 
         hideCloseButton 
-        className="w-[95vw] max-w-[850px] lg:max-w-3xl xl:max-w-4xl h-[90vh] flex flex-col p-0 gap-0"
+        className="w-[95vw] max-w-[850px] lg:max-w-3xl xl:max-w-4xl !max-h-[82vh] flex flex-col p-0 gap-0"
       >
         {/* Títulos ocultos para accesibilidad */}
         <DialogTitle className="sr-only">Nueva Demanda Judicial</DialogTitle>

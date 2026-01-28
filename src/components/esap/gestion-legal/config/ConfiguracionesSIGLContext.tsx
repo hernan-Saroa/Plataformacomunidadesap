@@ -41,6 +41,36 @@ export interface TipoAuto {
   activo: boolean;
 }
 
+export interface EjeEstrategico {
+  id: string;
+  nombre: string;
+  icono: string;
+  descripcion: string;
+  color: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface TipoIndicador {
+  id: string;
+  nombre: string;
+  icono: string;
+  descripcion: string;
+  color: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface TipoRequerimiento {
+  id: string;
+  nombre: string;
+  icono: string;
+  descripcion: string;
+  color: string;
+  activo: boolean;
+  orden: number;
+}
+
 export interface ConfiguracionModulo {
   id: string;
   nombre: string;
@@ -157,19 +187,137 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
   },
 ];
 
+// ============ EJES ESTRATÉGICOS INICIALES ============
+
+const ejesEstrategicosIniciales: EjeEstrategico[] = [
+  {
+    id: 'GESTION_INSTITUCIONAL',
+    nombre: 'Gestión Institucional',
+    icono: '🏛️',
+    descripcion: 'Procesos y acciones relacionadas con la administración y gestión institucional',
+    color: '#003DA5',
+    activo: true,
+    orden: 1
+  },
+  {
+    id: 'TALENTO_HUMANO',
+    nombre: 'Talento Humano',
+    icono: '👥',
+    descripcion: 'Desarrollo, bienestar y gestión del talento humano',
+    color: '#2962FF',
+    activo: true,
+    orden: 2
+  },
+  {
+    id: 'TRANSPARENCIA',
+    nombre: 'Transparencia',
+    icono: '🔍',
+    descripcion: 'Transparencia, acceso a la información y rendición de cuentas',
+    color: '#10B981',
+    activo: true,
+    orden: 3
+  },
+  {
+    id: 'TECNOLOGIA',
+    nombre: 'Tecnología',
+    icono: '💻',
+    descripcion: 'Innovación tecnológica y transformación digital',
+    color: '#7C3AED',
+    activo: true,
+    orden: 4
+  }
+];
+
+// ============ TIPOS DE INDICADORES INICIALES ============
+
+const tiposIndicadoresIniciales: TipoIndicador[] = [
+  {
+    id: 'EFICACIA',
+    nombre: 'Eficacia',
+    icono: '🎯',
+    descripcion: 'Mide el grado de cumplimiento de los objetivos planteados',
+    color: '#10B981',
+    activo: true,
+    orden: 1
+  },
+  {
+    id: 'EFICIENCIA',
+    nombre: 'Eficiencia',
+    icono: '⚡',
+    descripcion: 'Mide la relación entre los resultados obtenidos y los recursos utilizados',
+    color: '#2962FF',
+    activo: true,
+    orden: 2
+  },
+  {
+    id: 'EFECTIVIDAD',
+    nombre: 'Efectividad',
+    icono: '✅',
+    descripcion: 'Mide el impacto o efecto de las acciones sobre la población objetivo',
+    color: '#7C3AED',
+    activo: true,
+    orden: 3
+  },
+  {
+    id: 'CALIDAD',
+    nombre: 'Calidad',
+    icono: '⭐',
+    descripcion: 'Mide los atributos, propiedades o características de los servicios',
+    color: '#F59E0B',
+    activo: true,
+    orden: 4
+  }
+];
+
+// ============ TIPOS DE REQUERIMIENTOS INICIALES ============
+
+const tiposRequerimientosIniciales: TipoRequerimiento[] = [
+  {
+    id: 'DOCUMENTOS',
+    nombre: 'Documentos',
+    icono: '📄',
+    descripcion: 'Requerimientos relacionados con la entrega de documentos',
+    color: '#3B82F6',
+    activo: true,
+    orden: 1
+  },
+  {
+    id: 'INFORMES',
+    nombre: 'Informes',
+    icono: '📊',
+    descripcion: 'Requerimientos relacionados con la entrega de informes',
+    color: '#8B5CF6',
+    activo: true,
+    orden: 2
+  },
+  {
+    id: 'CERTIFICADOS',
+    nombre: 'Certificados',
+    icono: '📜',
+    descripcion: 'Requerimientos relacionados con la entrega de certificados',
+    color: '#F59E0B',
+    activo: true,
+    orden: 3
+  },
+  {
+    id: 'OTROS',
+    nombre: 'Otros',
+    icono: '📋',
+    descripcion: 'Otros tipos de requerimientos',
+    color: '#EC4899',
+    activo: true,
+    orden: 4
+  }
+];
+
 // ============ CONTEXT TYPE ============
 
 interface ConfiguracionesSIGLContextType {
   configuraciones: ConfiguracionModulo[];
+  ejesEstrategicos: EjeEstrategico[];
+  tiposIndicadores: TipoIndicador[];
+  tiposRequerimientos: TipoRequerimiento[];
   cambiosPendientes: boolean;
-  getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
-  getEstadosActivos: (moduloId: string) => EstadoKanban[];
-  getTiposProcesosActivos: (moduloId: string) => TipoProcesoJudicial[];
-  getTiposAutosActivos: (moduloId: string) => TipoAuto[];
-  actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
-  guardarConfiguraciones: () => Promise<void>;
-  restablecerDefecto: () => void;
-  setCambiosPendientes: (value: boolean) => void;
 }
 
 // ============ CONTEXT ============
@@ -180,6 +328,9 @@ const ConfiguracionesSIGLContext = createContext<ConfiguracionesSIGLContextType 
 
 export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode }) {
   const [configuraciones, setConfiguraciones] = useState<ConfiguracionModulo[]>(configuracionesIniciales);
+  const [ejesEstrategicos, setEjesEstrategicos] = useState<EjeEstrategico[]>(ejesEstrategicosIniciales);
+  const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
+  const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Cargar configuraciones desde localStorage al iniciar
@@ -192,6 +343,39 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.log('✅ Configuraciones SIGL cargadas desde localStorage');
       } catch (error) {
         console.error('❌ Error al cargar configuraciones:', error);
+      }
+    }
+
+    const ejesGuardados = localStorage.getItem('sigl-ejes-estrategicos');
+    if (ejesGuardados) {
+      try {
+        const parsed = JSON.parse(ejesGuardados);
+        setEjesEstrategicos(parsed);
+        console.log('✅ Ejes Estratégicos cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar ejes estratégicos:', error);
+      }
+    }
+
+    const indicadoresGuardados = localStorage.getItem('sigl-tipos-indicadores');
+    if (indicadoresGuardados) {
+      try {
+        const parsed = JSON.parse(indicadoresGuardados);
+        setTiposIndicadores(parsed);
+        console.log('✅ Tipos de Indicadores cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar tipos de indicadores:', error);
+      }
+    }
+
+    const requerimientosGuardados = localStorage.getItem('sigl-tipos-requerimientos');
+    if (requerimientosGuardados) {
+      try {
+        const parsed = JSON.parse(requerimientosGuardados);
+        setTiposRequerimientos(parsed);
+        console.log('✅ Tipos de Requerimientos cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar tipos de requerimientos:', error);
       }
     }
   }, []);
@@ -219,9 +403,42 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return modulo?.tiposAutos?.filter(t => t.activo) || [];
   };
 
+  // Obtener solo los ejes estratégicos activos
+  const getEjesEstrategicosActivos = (): EjeEstrategico[] => {
+    return ejesEstrategicos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
+  };
+
+  // Obtener solo los tipos de indicadores activos
+  const getTiposIndicadoresActivos = (): TipoIndicador[] => {
+    return tiposIndicadores.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
+  };
+
+  // Obtener solo los tipos de requerimientos activos
+  const getTiposRequerimientosActivos = (): TipoRequerimiento[] => {
+    return tiposRequerimientos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
+    setCambiosPendientes(true);
+  };
+
+  // Actualizar ejes estratégicos
+  const actualizarEjesEstrategicos = (nuevosEjes: EjeEstrategico[]) => {
+    setEjesEstrategicos(nuevosEjes);
+    setCambiosPendientes(true);
+  };
+
+  // Actualizar tipos de indicadores
+  const actualizarTiposIndicadores = (nuevosIndicadores: TipoIndicador[]) => {
+    setTiposIndicadores(nuevosIndicadores);
+    setCambiosPendientes(true);
+  };
+
+  // Actualizar tipos de requerimientos
+  const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
+    setTiposRequerimientos(nuevosRequerimientos);
     setCambiosPendientes(true);
   };
 
@@ -230,6 +447,9 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     try {
       // Guardar en localStorage
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
+      localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
+      localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
+      localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       
       // Aquí se enviaría al backend en producción
       // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
@@ -260,12 +480,21 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
 
   const value: ConfiguracionesSIGLContextType = {
     configuraciones,
+    ejesEstrategicos,
+    tiposIndicadores,
+    tiposRequerimientos,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
     getTiposProcesosActivos,
     getTiposAutosActivos,
+    getEjesEstrategicosActivos,
+    getTiposIndicadoresActivos,
+    getTiposRequerimientosActivos,
     actualizarConfiguraciones,
+    actualizarEjesEstrategicos,
+    actualizarTiposIndicadores,
+    actualizarTiposRequerimientos,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,
