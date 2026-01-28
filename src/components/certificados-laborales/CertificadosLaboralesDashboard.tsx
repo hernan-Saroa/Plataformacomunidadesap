@@ -93,11 +93,19 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
   };
+  const normalizarFiltro = (value?: string | null) => {
+    const base = String(value || '').toLowerCase();
+    const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    return normalizado
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [cargoFilter, setCargoFilter] = useState<string>('all');
-  const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('all');
+  const [cargoFilter, setCargoFilter] = useState<string>('');
+  const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [totalItems, setTotalItems] = useState(0);
@@ -117,6 +125,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   // Estado para certificados y loading
   const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
+  const [certificadosRaw, setCertificadosRaw] = useState<CertificadoLaboral[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -132,27 +141,59 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       setError(null);
 
       console.log('🔄 Cargando certificados desde el backend...');
-      const params: Record<string, any> = {
+      const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+      const baseParams: Record<string, any> = {
         page: currentPage,
         limit: itemsPerPage,
       };
       if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
-      }
-      if (statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      if (cargoFilter !== 'all') {
-        params.tipoVinculacion = cargoFilter;
-      }
-      if (tipoVinculacionFilter !== 'all') {
-        params.cargo = tipoVinculacionFilter;
+        baseParams.search = searchQuery.trim();
       }
 
-      const response = await certificadosService.laborales.listar(params);
-      const items = Array.isArray(response) ? response : (response.items || []);
-      const total = Array.isArray(response) ? items.length : (response.total || 0);
-      const serverStats = Array.isArray(response) ? null : response.stats;
+      let items: any[] = [];
+      let total = 0;
+      let serverStats: any = null;
+
+      if (filtrosGlobalesActivos) {
+        const limit = 200;
+        const maxPages = 50;
+        let page = 1;
+        let totalEsperado = 0;
+
+        while (page <= maxPages) {
+          const response = await certificadosService.laborales.listar({
+            ...baseParams,
+            page,
+            limit,
+          });
+          const chunk = Array.isArray(response) ? response : (response.items || []);
+
+          if (page === 1) {
+            totalEsperado = Array.isArray(response) ? chunk.length : (response.total || 0);
+            serverStats = Array.isArray(response) ? null : response.stats;
+          }
+
+          items.push(...chunk);
+
+          if (Array.isArray(response)) {
+            break;
+          }
+          if (!chunk.length) {
+            break;
+          }
+          if (totalEsperado && items.length >= totalEsperado) {
+            break;
+          }
+          page += 1;
+        }
+
+        total = items.length;
+      } else {
+        const response = await certificadosService.laborales.listar(baseParams);
+        items = Array.isArray(response) ? response : (response.items || []);
+        total = Array.isArray(response) ? items.length : (response.total || 0);
+        serverStats = Array.isArray(response) ? null : response.stats;
+      }
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
@@ -215,8 +256,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         }))
       );
 
-      setCertificados(certificadosOrdenados);
-      setTotalItems(total);
+      setCertificadosRaw(certificadosOrdenados);
+      if (!filtrosGlobalesActivos) {
+        setTotalItems(total);
+      }
       setStats({
         certificadosEmitidos: serverStats?.totalEmitidos ?? total,
         certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => cert.estado === 'activo').length,
@@ -241,24 +284,50 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
+    const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+    if (filtrosGlobalesActivos && currentPage !== 1) {
+      return;
+    }
     fetchCertificados();
-  }, [currentPage, searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
+  }, [currentPage, searchQuery, cargoFilter, tipoVinculacionFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
+  }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
+
+  useEffect(() => {
+    const cargoNeedle = normalizarFiltro(cargoFilter);
+    const tipoNeedle = normalizarFiltro(tipoVinculacionFilter);
+    const certificadosFiltrados = (cargoNeedle || tipoNeedle)
+      ? certificadosRaw.filter((cert) => {
+        const cargoTexto = normalizarFiltro(cert.empleado.cargo);
+        const tipoTexto = normalizarFiltro(cert.empleado.tipoVinculacion);
+        const cargoOk = !cargoNeedle || cargoTexto.includes(cargoNeedle);
+        const tipoOk = !tipoNeedle || tipoTexto.includes(tipoNeedle);
+        return cargoOk && tipoOk;
+      })
+      : certificadosRaw;
+
+    if (cargoNeedle || tipoNeedle) {
+      setTotalItems(certificadosFiltrados.length);
+      const start = (currentPage - 1) * itemsPerPage;
+      const end = start + itemsPerPage;
+      setCertificados(certificadosFiltrados.slice(start, end));
+    } else {
+      setCertificados(certificadosRaw);
+    }
+  }, [certificadosRaw, cargoFilter, tipoVinculacionFilter, currentPage]);
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const paginatedCertificados = certificados;
 
-  const hasActiveFilters = searchQuery || statusFilter !== 'all' || cargoFilter !== 'all' || tipoVinculacionFilter !== 'all';
+  const hasActiveFilters = Boolean(searchQuery.trim() || cargoFilter.trim() || tipoVinculacionFilter.trim());
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
 
   const clearAllFilters = () => {
     setSearchQuery('');
-    setStatusFilter('all');
-    setCargoFilter('all');
-    setTipoVinculacionFilter('all');
+    setCargoFilter('');
+    setTipoVinculacionFilter('');
   };
 
   const handleVerDetalle = (cert: CertificadoLaboral) => {
@@ -602,89 +671,114 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             )}
           </div>
 
-          {/* Filtros - Stacked en mobile, row en desktop */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Filtro Estado */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
-              style={{
-                fontSize: '14px',
-                color: '#1F2937',
-                borderColor: '#D1D5DB',
-                height: '48px',
-                outline: 'none'
-              }}
-            >
-              <option value="all">Todos los estados</option>
-              <option value="activo">Activo</option>
-              <option value="revocado">Revocado</option>
-              <option value="expirado">Expirado</option>
-            </select>
-
-            {/* Filtro Cargo */}
-            <select
+          {/* Filtro Cargo */}
+          <div className="relative" style={{ minWidth: '220px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar cargo..."
               value={cargoFilter}
               onChange={(e) => setCargoFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar cargo"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: cargoFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="all">Todos los cargos</option>
-              <option value="Docente Tiempo Completo">Docente TC</option>
-              <option value="Coordinador GIT">Coordinador GIT</option>
-              <option value="Asistente Administrativo">Asist. Admin.</option>
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {cargoFilter && (
+              <button
+                onClick={() => setCargoFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de cargo"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
 
-            {/* Filtro Tipo Vinculación */}
-            <select
+          {/* Filtro Tipo Vinculación */}
+          <div className="relative" style={{ minWidth: '240px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar tipo de vinculación..."
               value={tipoVinculacionFilter}
               onChange={(e) => setTipoVinculacionFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar tipo de vinculación"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: tipoVinculacionFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="all">Tipo vinculación</option>
-              <option value="Docente Tiempo Completo">Docente TC</option>
-              <option value="Coordinador GIT - Planta">Coordinador - Planta</option>
-              <option value="Contrato de Prestación de Servicios">Contrato Prestación</option>
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {tipoVinculacionFilter && (
+              <button
+                onClick={() => setTipoVinculacionFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de tipo de vinculación"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Active Filters */}
         {hasActiveFilters && (
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs sm:text-sm text-gray-600">Filtros activos:</span>
-            {searchQuery && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                Búsqueda: {searchQuery.substring(0, 15)}{searchQuery.length > 15 ? '...' : ''}
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-sm text-gray-600">Filtros activos:</span>
+            {searchQuery.trim() && (
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                Búsqueda: {searchQuery.trim()}
               </Badge>
             )}
-            {statusFilter !== 'all' && (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                Estado: {statusFilter}
+            {cargoFilter.trim() && (
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                Cargo: {cargoFilter.trim()}
               </Badge>
             )}
-            {cargoFilter !== 'all' && (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
-                Cargo: {cargoFilter}
-              </Badge>
-            )}
-            {tipoVinculacionFilter !== 'all' && (
-              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
-                Tipo Vinculación: {tipoVinculacionFilter}
+            {tipoVinculacionFilter.trim() && (
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                Tipo Vinculación: {tipoVinculacionFilter.trim()}
               </Badge>
             )}
             <button
