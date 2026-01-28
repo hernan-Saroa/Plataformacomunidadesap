@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Input } from '../ui/input';
@@ -79,10 +79,68 @@ interface CertificadoGenerado {
   certificado_completo?: any; // Datos completos del certificado para el visor PDF
 }
 
+const formatearTiempo = (segundos: number): string => {
+  const minutos = Math.floor(segundos / 60);
+  const segs = segundos % 60;
+  return `${minutos}:${segs.toString().padStart(2, '0')}`;
+};
+
+function StepPresence({ shouldAnimate, children }: { shouldAnimate: boolean; children: ReactNode }) {
+  return shouldAnimate ? <AnimatePresence mode="wait">{children}</AnimatePresence> : <>{children}</>;
+}
+
+function CodigoCountdown({
+  isActive,
+  durationSeconds = 300,
+  onExpire,
+}: {
+  isActive: boolean;
+  durationSeconds?: number;
+  onExpire: () => void;
+}) {
+  const [timeLeft, setTimeLeft] = useState(durationSeconds);
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!isActive) return;
+    setTimeLeft(durationSeconds);
+    expiredRef.current = false;
+
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          if (!expiredRef.current) {
+            expiredRef.current = true;
+            onExpire();
+          }
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isActive, durationSeconds, onExpire]);
+
+  if (!isActive) return null;
+
+  return (
+    <div className="mt-4 p-4 bg-gray-50 border border-gray-300 rounded-lg">
+      <div className="flex items-center gap-3">
+        <Clock className="w-5 h-5 text-gray-600" />
+        <p className="text-sm text-gray-700">
+          Código expira en: <strong>{formatearTiempo(timeLeft)}</strong>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Función para enmascarar correo (Habeas Data)
 // Muestra: 2 caracteres iniciales + asteriscos + 6 caracteres finales
 const enmascararCorreo = (correo: string): string => {
-  if (!correo || correo.length < 10) return correo;
+  if (typeof correo !== 'string' || !correo || correo.length < 10) return correo || '';
   
   const [usuario, dominio] = correo.split('@');
   
@@ -161,9 +219,9 @@ type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
   const resolverTemplateType = (data?: { position_category?: string; career_category?: string }) => {
-    const texto = (data?.career_category || '')
-      .toLowerCase()
-      .normalize('NFD')
+    const baseTexto = String(data?.career_category ?? '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    const texto = textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -266,14 +324,18 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [numeroDocumento, setNumeroDocumento] = useState('');
   const [buscandoEmpleado, setBuscandoEmpleado] = useState(false);
   const [empleadoEncontrado, setEmpleadoEncontrado] = useState<EmpleadoData | null>(null);
+  const numeroDocumentoRef = useRef('');
+  const numeroDocumentoInputRef = useRef<HTMLInputElement | null>(null);
   
   // Paso 2: Validación de código (6 dígitos individuales)
   const [digitosCodigo, setDigitosCodigo] = useState<string[]>(['', '', '', '', '', '']);
   const [codigoEnviado, setCodigoEnviado] = useState('');
   const [validandoCodigo, setValidandoCodigo] = useState(false);
   const [reenviandoCodigo, setReenviandoCodigo] = useState(false);
-  const [tiempoRestante, setTiempoRestante] = useState<number>(300); // 5 minutos = 300 segundos
   const [codigoExpirado, setCodigoExpirado] = useState(false);
+  const [countdownSeed, setCountdownSeed] = useState(0);
+  const codigoMobileRef = useRef('');
+  const codigoMobileInputRef = useRef<HTMLInputElement | null>(null);
   
   // Paso 3: Certificado generado
   const [certificadoGenerado, setCertificadoGenerado] = useState<CertificadoGenerado | null>(null);
@@ -285,6 +347,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const emailDestinoRef = useRef<string | null>(null);
   const lastEmailSentRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
+  const isTouchDevice = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const hasTouch = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+    return coarsePointer || hasTouch;
+  }, []);
+  const useNativeInputs = isTouchDevice;
 
   const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
@@ -336,34 +405,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalario, incluirPrimaTecnica));
   };
 
-  // Efecto para el contador regresivo del código
-  useEffect(() => {
-    if (pasoActual !== 'validacion-codigo') return;
-    
-    const interval = setInterval(() => {
-      setTiempoRestante((prevTiempo) => {
-        if (prevTiempo <= 1) {
-          setCodigoExpirado(true);
-          toast.error('El código ha expirado', {
-            description: 'Por favor solicita un nuevo código',
-            duration: 5000
-          });
-          clearInterval(interval);
-          return 0;
-        }
-        return prevTiempo - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [pasoActual]);
-
-  // Formatear tiempo restante (mm:ss)
-  const formatearTiempo = (segundos: number): string => {
-    const minutos = Math.floor(segundos / 60);
-    const segs = segundos % 60;
-    return `${minutos}:${segs.toString().padStart(2, '0')}`;
-  };
+  const handleCodigoExpirado = useCallback(() => {
+    setCodigoExpirado(true);
+    toast.error('El código ha expirado', {
+      description: 'Por favor solicita un nuevo código',
+      duration: 5000,
+    });
+  }, []);
 
   // Handler para cambio de dígito individual
   const handleDigitoChange = (index: number, valor: string) => {
@@ -405,21 +453,37 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   // PASO 1: Buscar empleado y enviar código
   const handleBuscarEmpleado = async () => {
     // Validaciones
-    if (!numeroDocumento) {
+    if (buscandoEmpleado) return;
+
+    const documentoIngresado = (numeroDocumentoRef.current || numeroDocumento).trim();
+
+    if (!tipoDocumento) {
+      toast.error('Por favor selecciona el tipo de documento');
+      return;
+    }
+    if (!documentoIngresado) {
       toast.error('Por favor ingresa tu número de documento');
       return;
     }
 
-    if (numeroDocumento.length < 6) {
+    if (documentoIngresado.length < 6) {
       toast.error('El número de documento debe tener al menos 6 dígitos');
       return;
     }
 
+    setNumeroDocumento(documentoIngresado);
+    numeroDocumentoRef.current = documentoIngresado;
     setBuscandoEmpleado(true);
 
     try {
       // Verificar si existe, si ya tiene certificado activo y si es docente
-      const verificacion = await certificadosService.autoservicio.verificarDocumento(numeroDocumento);
+      const verificacion = await certificadosService.autoservicio.verificarDocumento(documentoIngresado);
+      if (!verificacion || typeof verificacion !== 'object' || !('existe' in verificacion)) {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos validar tu documento en este momento. Intenta nuevamente.');
+        return;
+      }
+
       if (!verificacion.existe) {
         setBuscandoEmpleado(false);
         toast.error('No encontramos tu documento en la base de datos de ESAP');
@@ -427,7 +491,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       }
 
       // Llamar al backend para verificar documento y generar código
-      const response = await certificadosService.autoservicio.generarCodigoValidacion(numeroDocumento);
+      const response = await certificadosService.autoservicio.generarCodigoValidacion(documentoIngresado);
+      if (!response || typeof response !== 'object') {
+        setBuscandoEmpleado(false);
+        toast.error('No pudimos generar el codigo en este momento. Intenta nuevamente.');
+        return;
+      }
+
 
       const emailDestino = typeof response.email === 'string' ? response.email.trim() : '';
       if (!emailDestino || emailDestino.toLowerCase() === 'n/a') {
@@ -445,7 +515,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setCodigoEnviado(codigo);
 
       // Crear objeto empleado desde la respuesta del backend
-      const solicitud = response.solicitud || {};
+      const solicitud = response.solicitud && typeof response.solicitud === 'object' ? response.solicitud : {};
       const templateType = resolverTemplateType(solicitud);
       const cargoNormalizado = solicitud.position_category || solicitud.career_category || 'N/A';
       const vinculoNormalizado =
@@ -455,7 +525,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
       const empleado: EmpleadoData = {
         tipo_documento: tipoDocumento || 'CC',
-        numero_documento: numeroDocumento,
+        numero_documento: documentoIngresado,
         nombre_completo: solicitud.full_name || 'Empleado ESAP',
         tipo_vinculacion: vinculoNormalizado,
         cargo: cargoNormalizado,
@@ -482,6 +552,8 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       console.log('📧 Enviado a:', emailDestino);
 
       // Avanzar al siguiente paso
+      setCodigoExpirado(false);
+      setCountdownSeed((prev) => prev + 1);
       setPasoActual('validacion-codigo');
     } catch (error: any) {
       setBuscandoEmpleado(false);
@@ -492,7 +564,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
   // PASO 2: Validar código y generar certificado
   const handleValidarCodigo = async () => {
-    const codigoValidacion = digitosCodigo.join('');
+    const codigoValidacion = (isMobile ? codigoMobileRef.current : digitosCodigo.join('')).trim();
     if (codigoValidacion.length !== 6) {
       toast.error('Ingresa el código de 6 dígitos');
       return;
@@ -638,11 +710,15 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       setReenviandoCodigo(false);
 
       // Reiniciar contador y estado de expiración
-      setTiempoRestante(300); // 5 minutos nuevamente
       setCodigoExpirado(false);
+      setCountdownSeed((prev) => prev + 1);
 
       // Limpiar inputs de código
       setDigitosCodigo(['', '', '', '', '', '']);
+      codigoMobileRef.current = '';
+      if (codigoMobileInputRef.current) {
+        codigoMobileInputRef.current.value = '';
+      }
 
       toast.success('Código reenviado a tu correo', {
         description: emailDestino
@@ -698,6 +774,14 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     certificadoBaseRef.current = null;
     emailDestinoRef.current = null;
     lastEmailSentRef.current = null;
+    numeroDocumentoRef.current = '';
+    if (numeroDocumentoInputRef.current) {
+      numeroDocumentoInputRef.current.value = '';
+    }
+    codigoMobileRef.current = '';
+    if (codigoMobileInputRef.current) {
+      codigoMobileInputRef.current.value = '';
+    }
   };
 
   const enviarCertificadoPorEmail = async (certificadoId: string) => {
@@ -786,6 +870,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const pasoActivoUI: Paso =
     certificadoGenerado || certificadoExistente ? 'certificado-generado' : pasoActual;
 
+  const shouldAnimateSteps = !isMobile;
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Navbar Público Flotante */}
@@ -798,10 +883,10 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
           <motion.button
             onClick={onBack}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            whileHover={{ scale: 1.02, x: -4 }}
-            whileTap={{ scale: 0.98 }}
+            initial={shouldAnimateSteps ? { opacity: 0, x: -20 } : false}
+            animate={shouldAnimateSteps ? { opacity: 1, x: 0 } : undefined}
+            whileHover={shouldAnimateSteps ? { scale: 1.02, x: -4 } : undefined}
+            whileTap={shouldAnimateSteps ? { scale: 0.98 } : undefined}
             className="group flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-[#1e5da8] border-2 border-gray-200 hover:border-[#1e5da8] text-gray-700 hover:text-white transition-all duration-200 font-semibold shadow-sm hover:shadow-md"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
@@ -812,8 +897,8 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={shouldAnimateSteps ? { opacity: 0, y: 20 } : false}
+            animate={shouldAnimateSteps ? { opacity: 1, y: 0 } : undefined}
             className="text-center mb-12"
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-full mb-6 font-semibold text-sm">
@@ -889,13 +974,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           </div>
 
           {/* PASO 1: Ingreso de Documento */}
-          <AnimatePresence mode="wait">
+          <StepPresence shouldAnimate={shouldAnimateSteps}>
             {pasoActual === 'ingreso-documento' && (
               <motion.div
                 key="paso1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                initial={shouldAnimateSteps ? { opacity: 0, x: 20 } : false}
+                animate={shouldAnimateSteps ? { opacity: 1, x: 0 } : undefined}
+                exit={shouldAnimateSteps ? { opacity: 0, x: -20 } : undefined}
               >
                 <Card className="border-2 border-gray-200 shadow-xl">
                   <CardContent className="p-6 sm:p-8">
@@ -915,7 +1000,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <Label htmlFor="tipo-documento" className="text-sm font-semibold text-gray-700 mb-2 block">
                           Tipo de Documento *
                         </Label>
-                        {isMobile ? (
+                        {useNativeInputs ? (
                           <select
                             id="tipo-documento"
                             name="tipo-documento"
@@ -954,12 +1039,20 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                         <div className="relative">
                           <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                           <Input
+                            ref={numeroDocumentoInputRef}
                             id="numero-documento"
                             type="text"
                             inputMode="numeric"
                             placeholder="Ej: 1234567890"
-                            value={numeroDocumento}
-                            onChange={(e) => setNumeroDocumento(e.target.value.replace(/\D/g, ''))}
+                            defaultValue={numeroDocumento}
+                            onInput={(e) => {
+                              const target = e.currentTarget;
+                              const limpio = target.value.replace(/\D/g, '');
+                              if (target.value !== limpio) {
+                                target.value = limpio;
+                              }
+                              numeroDocumentoRef.current = limpio;
+                            }}
                             className="h-12 pl-10 border-2"
                             maxLength={15}
                             onKeyDown={(e) => {
@@ -1036,9 +1129,9 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
             {pasoActual === 'validacion-codigo' && empleadoEncontrado && (
               <motion.div
                 key="paso2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
+                initial={shouldAnimateSteps ? { opacity: 0, x: 20 } : false}
+                animate={shouldAnimateSteps ? { opacity: 1, x: 0 } : undefined}
+                exit={shouldAnimateSteps ? { opacity: 0, x: -20 } : undefined}
               >
                 <Card className="border-2 border-gray-200 shadow-xl">
                   <CardContent className="p-6 sm:p-8">
@@ -1069,16 +1162,16 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     </div>
 
                     {/* Info de código enviado */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                      <div className="flex items-start gap-3">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-5 mb-6">
+                      <div className="flex flex-col sm:flex-row items-start gap-3">
                         <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm">
+                        <div className="text-sm w-full">
                           <p className="font-semibold text-blue-900 mb-1">
                             Código enviado a tu correo
                           </p>
-                          <div className="bg-white border border-blue-300 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+                          <div className="bg-white border border-blue-300 rounded-lg px-3 py-2 inline-flex items-center gap-2 w-full sm:w-auto max-w-full">
                             <Shield className="w-4 h-4 text-blue-600" />
-                            <span className="font-mono text-blue-900 font-bold">
+                            <span className="font-mono text-blue-900 font-bold break-all">
                               {enmascararCorreo(empleadoEncontrado.correo_institucional)}
                             </span>
                           </div>
@@ -1097,21 +1190,28 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       <Label className="text-sm font-semibold text-gray-700 mb-3 block">
                         Código de Validación *
                       </Label>
-                      {isMobile ? (
-                        <div className="flex justify-center">
-                          <Input
-                            id="codigo-validacion"
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            placeholder="Ingresa el código"
-                            value={digitosCodigo.join('')}
-                            onChange={(e) => handleCodigoCompletoChange(e.target.value)}
-                            className="h-14 w-full max-w-[240px] border-2 text-center text-2xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-                            maxLength={6}
-                          />
-                        </div>
-                      ) : (
+                        {useNativeInputs ? (
+                          <div className="flex justify-center">
+                            <Input
+                              ref={codigoMobileInputRef}
+                              id="codigo-validacion"
+                              type="tel"
+                              inputMode="numeric"
+                              autoComplete="one-time-code"
+                              placeholder="Ingresa el código"
+                              onInput={(e) => {
+                                const target = e.currentTarget;
+                                const limpio = target.value.replace(/\D/g, '').slice(0, 6);
+                                if (target.value !== limpio) {
+                                  target.value = limpio;
+                                }
+                                codigoMobileRef.current = limpio;
+                              }}
+                              className="h-14 w-full max-w-[240px] border-2 text-center text-2xl font-bold focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
+                              maxLength={6}
+                            />
+                          </div>
+                        ) : (
                         <div className="flex gap-2 sm:gap-3 justify-center">
                           {digitosCodigo.map((digito, index) => (
                             <Input
@@ -1139,7 +1239,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     <div className="space-y-3">
                       <Button
                         onClick={handleValidarCodigo}
-                        disabled={validandoCodigo || digitosCodigo.some(digito => digito === '') || codigoExpirado}
+                        disabled={validandoCodigo || (!useNativeInputs && digitosCodigo.some(digito => digito === '')) || codigoExpirado}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {validandoCodigo ? (
@@ -1191,14 +1291,11 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
                     {/* Contador regresivo */}
                     {!codigoExpirado && (
-                      <div className="mt-4 p-4 bg-gray-50 border border-gray-300 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Clock className="w-5 h-5 text-gray-600" />
-                          <p className="text-sm text-gray-700">
-                            Código expira en: <strong>{formatearTiempo(tiempoRestante)}</strong>
-                          </p>
-                        </div>
-                      </div>
+                      <CodigoCountdown
+                        key={countdownSeed}
+                        isActive={pasoActual === 'validacion-codigo'}
+                        onExpire={handleCodigoExpirado}
+                      />
                     )}
                   </CardContent>
                 </Card>
@@ -1209,9 +1306,9 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
             {pasoActual === 'certificado-generado' && certificadoGenerado && empleadoEncontrado && (
               <motion.div
                 key="paso3"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
+                initial={shouldAnimateSteps ? { opacity: 0, scale: 0.95 } : false}
+                animate={shouldAnimateSteps ? { opacity: 1, scale: 1 } : undefined}
+                exit={shouldAnimateSteps ? { opacity: 0, scale: 0.95 } : undefined}
                 className="space-y-6"
               >
                 {/* Mensaje de éxito */}
@@ -1444,7 +1541,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                 </Card>
               </motion.div>
             )}
-          </AnimatePresence>
+          </StepPresence>
         </div>
       </div>
 
