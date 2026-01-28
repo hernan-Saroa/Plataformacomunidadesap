@@ -2110,35 +2110,30 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-                  );
-
-                  // Return array with main row and conditionally expanded row
-                  if (isExpanded) {
-                    const expandedRow = (
-                      <motion.tr
-                        key={`user-expanded-${user.id}`}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                      >
-                        <td colSpan={8} className="p-0">
-                          <UserExpandedView
-                            user={user}
-                            getStatusBadge={getStatusBadge}
-                            getRoleBadge={getRoleBadge}
-                            onOpenDigitalFolder={() => {
-                              setSelectedUser(user);
-                              setViewMode("digital-folder");
-                            }}
-                          />
-                        </td>
-                      </motion.tr>
-                    );
-                    return [mainRow, expandedRow];
-                  }
-                  
-                  return [mainRow];
-                })}
+                      {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
+                      {expandedUserId === user.id && (
+                        <motion.tr
+                          key={`${user.id}-expanded`}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <td colSpan={8} className="p-0">
+                            <UserExpandedView
+                              user={user}
+                              getStatusBadge={getStatusBadge}
+                              getRoleBadge={getRoleBadge}
+                              onOpenDigitalFolder={() => {
+                                setSelectedUser(user);
+                                setViewMode("digital-folder");
+                              }}
+                            />
+                          </td>
+                        </motion.tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </AnimatePresence>
               </tbody>
             </table>
           </div>

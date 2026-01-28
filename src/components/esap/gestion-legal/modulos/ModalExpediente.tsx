@@ -714,15 +714,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // Mocks de Actuaciones eliminados - ahora usa actuacionesList desde loadActuaciones()
 
   // Tareas now loaded from API via loadTareas()
-  const documentos = expediente.documentos || [
-    { id: 1, nombre: 'Demanda Principal.pdf', fecha: '15/12/2024', tipo: 'Demanda', tamaño: '2.4 MB', firmante: 'Apoderado Demandante' },
-    { id: 2, nombre: 'Contestación ESAP.pdf', fecha: '20/12/2024', tipo: 'Contestación', tamaño: '1.8 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
-    { id: 3, nombre: 'Auto Admisorio.pdf', fecha: '10/12/2024', tipo: 'Auto', tamaño: '980 KB', firmante: 'Juzgado 1° Administrativo' },
-    { id: 4, nombre: 'Pruebas Documentales.pdf', fecha: '22/12/2024', tipo: 'Pruebas', tamaño: '5.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
-    { id: 5, nombre: 'Memorial de Parte.pdf', fecha: '18/12/2024', tipo: 'Memorial', tamaño: '1.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
-    { id: 6, nombre: 'Certificaciones Laborales.pdf', fecha: '16/12/2024', tipo: 'Pruebas', tamaño: '3.8 MB', firmante: 'Gestión Humana ESAP' },
-    { id: 7, nombre: 'Poder del Apoderado.pdf', fecha: '14/12/2024', tipo: 'Poder', tamaño: '620 KB', firmante: 'Notaría 15 de Bogotá' },
-  ];
+  // const documentos = expediente.documentos || [
+  //   { id: 1, nombre: 'Demanda Principal.pdf', fecha: '15/12/2024', tipo: 'Demanda', tamaño: '2.4 MB', firmante: 'Apoderado Demandante' },
+  //   { id: 2, nombre: 'Contestación ESAP.pdf', fecha: '20/12/2024', tipo: 'Contestación', tamaño: '1.8 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
+  //   { id: 3, nombre: 'Auto Admisorio.pdf', fecha: '10/12/2024', tipo: 'Auto', tamaño: '980 KB', firmante: 'Juzgado 1° Administrativo' },
+  //   { id: 4, nombre: 'Pruebas Documentales.pdf', fecha: '22/12/2024', tipo: 'Pruebas', tamaño: '5.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
+  //   { id: 5, nombre: 'Memorial de Parte.pdf', fecha: '18/12/2024', tipo: 'Memorial', tamaño: '1.2 MB', firmante: expediente.abogadoAsignado || 'Oficina Jurídica' },
+  //   { id: 6, nombre: 'Certificaciones Laborales.pdf', fecha: '16/12/2024', tipo: 'Pruebas', tamaño: '3.8 MB', firmante: 'Gestión Humana ESAP' },
+  //   { id: 7, nombre: 'Poder del Apoderado.pdf', fecha: '14/12/2024', tipo: 'Poder', tamaño: '620 KB', firmante: 'Notaría 15 de Bogotá' },
+  // ];
 
   // Estado reactivo para actuaciones
   const [actuaciones, setActuaciones] = useState([
@@ -980,6 +980,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   // Pretensiones del expediente (de la BD o fallback)
   const pretensionesTexto = expediente.pretensiones || 'No se han registrado pretensiones en el sistema';
   const pretensionesArray = pretensionesTexto.split('\n').filter((p: string) => p.trim() !== '');
+
+  const pretensiones = [
+    'Nulidad del acto administrativo de retiro del servicio',
+    'Reintegro al cargo de Profesional Especializado Grado 12',
+    'Pago de salarios y prestaciones dejados de percibir',
+    'Reconocimiento de aportes a seguridad social',
+    'Indexación de las sumas reconocidas',
+    'Condena en costas y agencias en derecho'
+  ];
 
   const riesgosIdentificados = [
     {
@@ -1409,7 +1418,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   );
                 })}
               </TabsContent>
-
+            </Tabs>
 
             {/* ==================== CONTENIDO CON TABS ==================== */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -1472,11 +1481,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                       <div>
                         <p className="text-xs text-gray-500 mb-1">📅 Fecha Notificación</p>
                         <p className="text-sm font-bold text-gray-900">
-                          {expediente.fechaNotificacion?.toLocaleDateString('es-CO', {
+                          {expediente.fechaNotificacion}
+                          {/* {expediente.fechaNotificacion?.toLocaleDateString('es-CO', {
                             day: '2-digit',
                             month: '2-digit',
                             year: 'numeric'
-                          }) || 'No registrada'}
+                          }) || 'No registrada'} */}
                         </p>
                       </div>
                     </div>

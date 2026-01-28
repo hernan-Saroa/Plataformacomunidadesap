@@ -29,21 +29,7 @@ export interface NuevaDemandaData {
   numeroRadicado: string;
   medioControl: string;
   tipoProceso: string;
-  demandante: string;
-  tipoPersona: 'natural' | 'juridica';
-  identificacionDemandante: string;
-  // Campos de contacto del demandante
-  demandanteDireccion?: string;
-  demandanteTelefono?: string;
-  demandanteEmail?: string;
-  demandanteApoderado?: string;
-  // Datos del demandado
-  demandado?: string;
-  tipoIdDemandado?: string;
-  numeroIdDemandado?: string;
-  demandadoDireccion?: string;
-  demandadoTelefono?: string;
-  demandadoEmail?: string;
+  
   demandantes: Array<{
     id: string;
     nombre: string;
@@ -107,59 +93,59 @@ const DEPARTAMENTOS = [
   'Otro'
 ];
 
-const INITIAL_FORM_DATA: NuevaDemandaData = {
-  numeroRadicado: '',
-  medioControl: '',
-  demandante: '',
-  tipoProceso: '',
-  tipoPersona: 'natural',
-  identificacionDemandante: '',
-  // Campos de contacto del demandante
-  demandanteDireccion: '',
-  demandanteTelefono: '',
-  demandanteEmail: '',
-  demandanteApoderado: '',
-  // Datos del demandado (ESAP por defecto)
-  demandado: 'ESAP - Escuela Superior de Administración Pública',
-  tipoIdDemandado: 'NIT',
-  numeroIdDemandado: '899.999.061-4',
-  demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
-  demandadoTelefono: '+57 601 220 2790',
-  demandadoEmail: 'juridica@esap.edu.co',
-  cuantia: '',
-  juzgado: '',
-  ciudad: '',
-  departamento: '',
-  fechaNotificacion: '',
-  fechaVencimiento: '',
-  abogadoAsignado: '',
-  etapa: 'NOTIFICADA',
-  pretensiones: '',
-  hechos: '',
-  observaciones: ''
-};
+// const INITIAL_FORM_DATA: NuevaDemandaData = {
+//   numeroRadicado: '',
+//   medioControl: '',
+//   demandante: '',
+//   tipoProceso: '',
+//   tipoPersona: 'natural',
+//   identificacionDemandante: '',
+//   // Campos de contacto del demandante
+//   demandanteDireccion: '',
+//   demandanteTelefono: '',
+//   demandanteEmail: '',
+//   demandanteApoderado: '',
+//   // Datos del demandado (ESAP por defecto)
+//   demandado: 'ESAP - Escuela Superior de Administración Pública',
+//   tipoIdDemandado: 'NIT',
+//   numeroIdDemandado: '899.999.061-4',
+//   demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
+//   demandadoTelefono: '+57 601 220 2790',
+//   demandadoEmail: 'juridica@esap.edu.co',
+//   cuantia: '',
+//   juzgado: '',
+//   ciudad: '',
+//   departamento: '',
+//   fechaNotificacion: '',
+//   fechaVencimiento: '',
+//   abogadoAsignado: '',
+//   etapa: 'NOTIFICADA',
+//   pretensiones: '',
+//   hechos: '',
+//   observaciones: ''
+// };
 
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
-  const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
-  // const [formData, setFormData] = useState<NuevaDemandaData>({
-  //   numeroRadicado: '',
-  //   medioControl: '',
-  //   tipoProceso: '',
-  //   demandantes: [],
-  //   demandados: [],
-  //   otrosActores: [],
-  //   cuantia: '',
-  //   juzgado: '',
-  //   ciudad: '',
-  //   departamento: '',
-  //   fechaNotificacion: '',
-  //   fechaVencimiento: '',
-  //   abogadoAsignado: '',
-  //   etapa: 'NOTIFICADA',
-  //   pretensiones: '',
-  //   hechos: '',
-  //   observaciones: ''
-  // });
+  // const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
+  const [formData, setFormData] = useState<NuevaDemandaData>({
+    numeroRadicado: '',
+    medioControl: '',
+    tipoProceso: '',
+    demandantes: [],
+    demandados: [],
+    otrosActores: [],
+    cuantia: '',
+    juzgado: '',
+    ciudad: '',
+    departamento: '',
+    fechaNotificacion: '',
+    fechaVencimiento: '',
+    abogadoAsignado: '',
+    etapa: 'NOTIFICADA',
+    pretensiones: '',
+    hechos: '',
+    observaciones: ''
+  });
 
   // Estado para el demandante temporal que se está agregando
   const [nuevoDemandante, setNuevoDemandante] = useState({

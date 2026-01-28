@@ -48,6 +48,14 @@ interface EstadoKanban {
   activo: boolean;
 }
 
+// Tipo para etapa dinámica
+interface Etapa {
+  id: string;
+  nombre: string;
+  dias: number;
+  orden: number;
+}
+
 interface Cargo {
   id: string;
   nombre: string;
@@ -453,12 +461,12 @@ export function ModuloConfiguracion() {
   };
 
   /* MODIFIED: Persist new role immediately */
-  const handleAgregarCargo = async () => {
+  // const handleAgregarCargo = async () => {
   // Estados
   const [estadosKanban, setEstadosKanban] = useState<EstadoKanban[]>(ESTADOS_KANBAN_DEFECTO);
-  const [cargos, setCargos] = useState<Cargo[]>(CARGOS_DEFECTO);
-  const [notificaciones, setNotificaciones] = useState<ConfiguracionNotificaciones>(NOTIFICACIONES_DEFECTO);
-  const [alertas, setAlertas] = useState<ConfiguracionAlertas>(ALERTAS_DEFECTO);
+  // const [cargos, setCargos] = useState<Cargo[]>(CARGOS_DEFECTO);
+  // const [notificaciones, setNotificaciones] = useState<ConfiguracionNotificaciones>(NOTIFICACIONES_DEFECTO);
+  // const [alertas, setAlertas] = useState<ConfiguracionAlertas>(ALERTAS_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Estados para modales
@@ -590,9 +598,7 @@ export function ModuloConfiguracion() {
         console.error('Error deleting role:', error);
         toast.error('Error al eliminar el cargo');
       }
-    setCargos([...cargos, nuevoCargo]);
-    setCambiosPendientes(true);
-    toast.success('Cargo agregado correctamente');
+    }
   };
 
   const eliminarCargo = (cargoId: string) => {
@@ -640,7 +646,7 @@ export function ModuloConfiguracion() {
       setCargos(CARGOS_DEFECTO);
       setNotificaciones(NOTIFICACIONES_DEFECTO);
       setAlertas(ALERTAS_DEFECTO);
-      setAlertasProgramadas(ALERTAS_PROGRAMADAS_DEFECTO);
+      // setAlertasProgramadas(ALERTAS_PROGRAMADAS_DEFECTO);
       setCambiosPendientes(true);
       
       toast.success('Configuraciones restablecidas', {
@@ -650,6 +656,14 @@ export function ModuloConfiguracion() {
     }
   };
 
+  const handleEditarCargo = (id: string) => {
+    const cargo = cargos.find(cargo => cargo.id === id);
+    if (cargo) {
+      setEditandoCargo(id);
+      setNombreCargoEditando(cargo.nombre);
+    }
+  };
+  
   // ============ DRAG AND DROP ============
 
   /* MODIFIED: Persist edit immediately */
@@ -678,6 +692,7 @@ export function ModuloConfiguracion() {
       toast.error('Error al actualizar el cargo');
     }
   };
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -1620,9 +1635,6 @@ export function ModuloConfiguracion() {
       )}
     </div>
   );
-}
-
-}
 }
 
 // ============ COMPONENTE ESTADO SORTABLE ============

@@ -8,7 +8,7 @@ import { TopBar } from './TopBar';
 import { NotificationsProvider } from './NotificationsContext';
 // import { ExecutiveDashboard } from './ExecutiveDashboard';
 import { UsersPersonsModulePremium } from './UsersPersonsModulePremium';
-import { CarpetaDigitalModule } from './CarpetaDigitalModule';
+// import { CarpetaDigitalModule } from './CarpetaDigitalModule';
 import { ReportsModuleV2 } from './ReportsModuleV2';
 import { AuditModulePremium } from './AuditModulePremium';
 import { GraduatesManagementModule } from './GraduatesManagementModule';
@@ -52,9 +52,7 @@ import { ProgramasAcademicosModule } from './ProgramasAcademicosModule';
 import { ProfileModal } from './ProfileModal';
 
 // Importar módulo de Arquitectura Empresarial
-import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
-// Importar Provider de Notificaciones
-import { NotificationsProvider } from './NotificationsContext';
+// import { ArquitecturaEmpresarialModule } from '../arquitectura-empresarial/ArquitecturaEmpresarialModule';
 
 // ✅ NUEVO: Provider de Tour Guiado
 import { TourProvider } from './gestion-legal/design-system/TourContext';

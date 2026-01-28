@@ -22,7 +22,7 @@ import {
   X, Save, Users, Mail, Phone, Award, Target, TrendingUp, Clock,
   AlertTriangle, CheckCircle, FolderOpen, User, Briefcase, MapPin, Upload, FileText, Shield,
   ArrowRightLeft, PieChart, BarChart3, RefreshCw, AlertCircle,
-  Calendar, ChevronDown
+  Calendar, ChevronDown, Building, CheckCircle2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -171,6 +171,33 @@ const PROFESIONALES_DATA: Profesional[] = [
     estado: 'activo',
     tipoContrato: 'Contratista',
     territorial: 'Territorial Valle'
+  }
+];
+
+const PROCESOS_SIN_ASIGNAR: ProcesoParaAsignar[] = [
+  {
+    id: 'p1',
+    numero: 'PD-2025-0156',
+    disciplinable: 'Carlos López Martínez',
+    etapa: 'Valoración',
+    diasRestantes: 15,
+    prioridad: 'media'
+  },
+  {
+    id: 'p2',
+    numero: 'PD-2025-0157',
+    disciplinable: 'Laura Gómez Silva',
+    etapa: 'Indagación',
+    diasRestantes: 3,
+    prioridad: 'alta'
+  },
+  {
+    id: 'p3',
+    numero: 'PD-2025-0158',
+    disciplinable: 'Diego Ramírez Castro',
+    etapa: 'Valoración',
+    diasRestantes: 25,
+    prioridad: 'baja'
   }
 ];
 
@@ -912,12 +939,16 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
 export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profesional: Profesional) => void }) {
   // const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterEstado, setFilterEstado] = useState<string>('all');
+  const [filterTerritorial, setFilterTerritorial] = useState<string>('all');
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [profesionalEditar, setProfesionalEditar] = useState<Profesional | undefined>();
   const [loading, setLoading] = useState(true);
+  const [showModalDetalle, setShowModalDetalle] = useState(false);
+  const [showModalAsignacion, setShowModalAsignacion] = useState(false);
+  const [showModalRedistribucion, setShowModalRedistribucion] = useState(false);
 
   // Cargar profesionales del backend
   const fetchProfesionales = async () => {
@@ -956,13 +987,17 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
   }, []);
 
   const profesionalesFiltrados = profesionales.filter(p => {
-    const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.cargo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchEstado = filtroEstado === 'todos' || p.estado === filtroEstado;
+    const matchSearch = p.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.cargo.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesEstado = filterEstado === 'all' || p.estado === filterEstado;
+    const matchesTerritorial = filterTerritorial === 'all' || p.territorial === filterTerritorial;
 
-    return matchSearch && matchEstado;
+    return matchSearch && matchesEstado && matchesTerritorial;
   });
+
+  // Territoriales únicos
+  const territoriales = [...new Set(profesionales.map(p => p.territorial))];
 
   const handleDesasignar = async (id: string) => {
     const profesional = profesionales.find(p => p.id === id);
@@ -989,6 +1024,20 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
     activos: profesionales.filter(p => p.estado === 'activo').length,
     capacidadTotal: profesionales.reduce((sum, p) => sum + p.capacidadMaxima, 0),
     procesosAsignados: profesionales.reduce((sum, p) => sum + p.procesosAsignados, 0)
+  };
+
+  const handleAsignarProceso = (profesionalId: string, procesoId: string) => {
+    toast.success('Proceso asignado exitosamente', {
+      description: 'El proceso ha sido asignado al profesional seleccionado'
+    });
+    setShowModalAsignacion(false);
+  };
+
+  const handleRedistribuir = () => {
+    toast.success('Redistribución completada', {
+      description: 'Los procesos han sido redistribuidos equitativamente'
+    });
+    setShowModalRedistribucion(false);
   };
 
   return (

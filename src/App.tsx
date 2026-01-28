@@ -307,6 +307,7 @@ export default function App() {
 
     const authToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
     const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    const sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (authToken && storedAuthUser) {
       try {
         applySessionFromUser(JSON.parse(storedAuthUser));
@@ -314,9 +315,16 @@ export default function App() {
       } catch (error) {
         console.error('Error al restaurar sesión de auth:', error);
       }
+    } else {
+      if(sesionGuardada) {
+        toast.error('Sesión ha expirado', {
+          description: 'Por seguridad la sesión se ha cerrado',
+          duration: 5000,
+        });
+        localStorage.clear();
+      }
     }
 
-    const sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (sesionGuardada) {
       try {
         const sesionParsed = JSON.parse(sesionGuardada);
@@ -390,10 +398,10 @@ export default function App() {
     // Timer para mostrar alerta (14 minutos)
     timerAlertaRef.current = setTimeout(() => {
       setMostrarAlertaInactividad(true);
-      toast.warning('⚠️ Inactividad detectada', {
-        description: 'Tu sesión se cerrará en 1 minuto por seguridad',
-        duration: 10000,
-      });
+      // toast.warning('⚠️ Inactividad detectada', {
+      //   description: 'Tu sesión se cerrará en 1 minuto por seguridad',
+      //   duration: 10000,
+      // });
     }, TIMEOUT_INACTIVIDAD - TIEMPO_ALERTA);
 
     // Timer para cerrar sesión automáticamente (15 minutos)
@@ -430,6 +438,7 @@ export default function App() {
   }, [usuarioActual, resetearTimerInactividad]);
 
   const handleLogoutPorInactividad = () => {
+    setMostrarAlertaInactividad(false);
     toast.error('Sesión cerrada por inactividad', {
       description: 'Has estado inactivo durante 15 minutos',
       duration: 5000,
@@ -437,9 +446,7 @@ export default function App() {
 
     setUsuarioActual(null);
     setVistaActual('landing');
-    handleLogout();
-    setMostrarAlertaInactividad(false);
-
+    handleLogout(false);
     console.log('⏰ Sesión cerrada por inactividad');
   };
 
@@ -671,19 +678,19 @@ export default function App() {
   };
 
   // Handler para logout (desde cualquier ambiente)
-  const handleLogout = () => {
-    toast.success('Sesión cerrada exitosamente', {
-      description: 'Has cerrado sesión de forma segura',
-    });
+  const handleLogout = (viewToast = true) => {
+    localStorage.clear();
+    if(viewToast) {
+      toast.success('Sesión cerrada exitosamente', {
+        description: 'Has cerrado sesión de forma segura',
+      });
+    }
     setIsAuthenticated(false);
     setUserType('portal');
     setUserRoles([]);
     setUserData(null);
     setCurrentView('landing');
     setVistaActual('landing');
-    localStorage.removeItem('esap-sesion-activa');
-    localStorage.removeItem('esap-remember-session');
-    localStorage.clear();
     // Limpiar timers
     if (timerInactividadRef.current) {
       clearTimeout(timerInactividadRef.current);
