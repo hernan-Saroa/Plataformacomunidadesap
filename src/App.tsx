@@ -307,7 +307,7 @@ export default function App() {
 
     const authToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
     const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    const sesionGuardada = localStorage.getItem('esap-sesion-activa');
+    let sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (authToken && storedAuthUser) {
       try {
         applySessionFromUser(JSON.parse(storedAuthUser));
@@ -322,6 +322,7 @@ export default function App() {
           duration: 5000,
         });
         localStorage.clear();
+        sesionGuardada = null;
       }
     }
 
