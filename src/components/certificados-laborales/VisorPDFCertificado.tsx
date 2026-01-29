@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -65,6 +66,9 @@ interface VisorPDFCertificadoProps {
   };
 }
 
+const CERTIFICATE_WIDTH = 816;
+const CERTIFICATE_HEIGHT = 1056;
+
 export function VisorPDFCertificado({
   isOpen,
   onClose,
@@ -76,19 +80,26 @@ export function VisorPDFCertificado({
   onEmailError,
 }: VisorPDFCertificadoProps) {
   const certificadoRef = useRef<HTMLDivElement>(null);
+  const previewWrapRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [plantillaConfig, setPlantillaConfig] = useState<any>(null);
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
+  const [previewScale, setPreviewScale] = useState(() => {
+    if (typeof window === 'undefined') return 1;
+    const baseWidth = window.innerWidth || CERTIFICATE_WIDTH;
+    return Math.min(1, Math.max(0.25, (baseWidth - 24) / CERTIFICATE_WIDTH));
+  });
 
-  const normalizarTexto = (value: string) =>
-    (value || '')
-      .toLowerCase()
-      .normalize('NFD')
+  const normalizarTexto = (value: string) => {
+    const baseTexto = String(value || '').toLowerCase();
+    const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
+    return textoNormalizado
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  };
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
@@ -346,7 +357,14 @@ export function VisorPDFCertificado({
   };
 
   const handleDescargar = async () => {
-    if (!certificadoRef.current) return;
+    if (!certificadoRef.current) {
+      if (autoAction === 'email') {
+        onEmailError?.();
+      } else if (autoAction === 'download') {
+        onAutoActionComplete?.('download', false);
+      }
+      return;
+    }
 
     try {
       setIsGenerating(true);
@@ -364,8 +382,8 @@ export function VisorPDFCertificado({
         allowTaint: true,
         logging: false,
         backgroundColor: '#ffffff',
-        windowWidth: 816,
-        windowHeight: 1056,
+        windowWidth: CERTIFICATE_WIDTH,
+        windowHeight: CERTIFICATE_HEIGHT,
         imageTimeout: 0,
         ignoreElements: (element) => {
           // Ignorar elementos que no son parte del certificado
@@ -406,7 +424,7 @@ export function VisorPDFCertificado({
       // Dimensiones del PDF en formato Letter (8.5 x 11 pulgadas = 816 x 1056 px)
       const pdf = new jsPDF({
         unit: 'px',
-        format: [816, 1056],
+        format: [CERTIFICATE_WIDTH, CERTIFICATE_HEIGHT],
         orientation: 'portrait',
         compress: true
       });
@@ -415,7 +433,7 @@ export function VisorPDFCertificado({
       const imgData = canvas.toDataURL('image/png', 1.0);
 
       // Añadir la imagen al PDF (tamaño completo de la página)
-      pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
+      pdf.addImage(imgData, 'PNG', 0, 0, CERTIFICATE_WIDTH, CERTIFICATE_HEIGHT, '', 'FAST');
 
       // Nombre del archivo dinámico según el certificado
       const fileName = `Certificado_Laboral_${certificado.empleado.nombre.replace(/\s+/g, '_')}_${certificado.consecutivo}.pdf`;
@@ -457,7 +475,13 @@ export function VisorPDFCertificado({
   };
 
   const handleImprimir = () => {
-    if (!certificadoRef.current) return;
+    if (!certificadoRef.current) {
+      if (autoAction === 'print') {
+        onAutoActionComplete?.('print', false);
+      }
+      toast.error('No se pudo preparar la vista de impresiÃ³n.');
+      return;
+    }
 
     // Clonar el certificado y fijar medidas para evitar recortes en la impresión
     const contenido = certificadoRef.current.cloneNode(true) as HTMLElement;
@@ -467,7 +491,13 @@ export function VisorPDFCertificado({
     contenido.style.backgroundColor = '#ffffff';
 
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
-    if (!printWindow) return;
+    if (!printWindow) {
+      if (autoAction === 'print') {
+        onAutoActionComplete?.('print', false);
+      }
+      toast.error('No se pudo abrir la ventana de impresiÃ³n.');
+      return;
+    }
 
     const printStyles = `
       @page { size: letter; margin: 0; }
@@ -485,15 +515,15 @@ export function VisorPDFCertificado({
         justify-content: center;
       }
       .print-wrapper {
-        width: 816px;
-        min-height: 1056px;
+        width: ${CERTIFICATE_WIDTH}px;
+        min-height: ${CERTIFICATE_HEIGHT}px;
         padding: 0;
         display: flex;
         justify-content: center;
       }
       #certificado-print {
-        width: 816px !important;
-        min-height: 1056px !important;
+        width: ${CERTIFICATE_WIDTH}px !important;
+        min-height: ${CERTIFICATE_HEIGHT}px !important;
         padding: 72px !important;
         margin: 0 auto !important;
         background: #ffffff !important;
@@ -545,6 +575,53 @@ export function VisorPDFCertificado({
       setAutoActionHandled(false);
     }
   }, [isOpen, autoAction]);
+
+  useEffect(() => {
+    if (!isOpen || hiddenMode) return;
+    const container = previewWrapRef.current;
+    if (!container) return;
+    let frame = 0;
+
+    const updateScale = () => {
+      if (!container) return;
+      const width = container.clientWidth;
+      const viewportWidth = typeof window !== 'undefined'
+        ? (window.visualViewport?.width || window.innerWidth)
+        : width;
+      const baseWidth = Math.min(width || viewportWidth || CERTIFICATE_WIDTH, viewportWidth || CERTIFICATE_WIDTH);
+      if (!baseWidth) return;
+      const next = Math.min(1, Math.max(0.25, (baseWidth - 24) / CERTIFICATE_WIDTH));
+      setPreviewScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
+    };
+
+    const schedule = () => {
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+      frame = requestAnimationFrame(updateScale);
+    };
+
+    schedule();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', schedule);
+      return () => {
+        window.removeEventListener('resize', schedule);
+        if (frame) {
+          cancelAnimationFrame(frame);
+        }
+      };
+    }
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [isOpen, hiddenMode, plantillaConfig]);
 
   const parseDateOnly = (fechaStr: string) => {
     if (!fechaStr || fechaStr === 'N/A') {
@@ -646,6 +723,234 @@ export function VisorPDFCertificado({
     }
   })();
 
+  const renderCertificate = (ref?: React.Ref<HTMLDivElement>, extraStyle?: React.CSSProperties) => (
+    <div
+      ref={ref}
+      className="bg-white shadow-2xl relative"
+      style={{
+        width: `${CERTIFICATE_WIDTH}px`,
+        minHeight: `${CERTIFICATE_HEIGHT}px`,
+        fontFamily: 'Arial Narrow, Arial, sans-serif',
+        fontSize: '12pt',
+        padding: '72px 72px 72px 72px',
+        position: 'relative',
+        ...extraStyle
+      }}
+      data-template-type={templateType}
+    >
+      {/* Header - Logo ESAP (desde plantilla o por defecto) */}
+      {plantillaConfig.logo?.url ? (
+        <img
+          src={buildServiceAssetUrl('certificados', plantillaConfig.logo.url || '')}
+          alt="Logo ESAP"
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '0px',
+            width: 'auto',
+            height: 'auto',
+            maxWidth: '300px',
+            maxHeight: '100px',
+            objectFit: 'contain'
+          }}
+          crossOrigin="anonymous"
+        />
+      ) : (
+        <img
+          src="/certificados/header-esap.png"
+          alt="Header ESAP"
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '0px',
+            width: 'auto',
+            height: 'auto',
+            maxWidth: '300px',
+            maxHeight: '100px',
+            objectFit: 'contain'
+          }}
+          crossOrigin="anonymous"
+        />
+      )}
+
+      {/* Consecutivo - Alineado a la izquierda (más arriba) */}
+      <div style={{
+        textAlign: 'left',
+        fontSize: '12pt',
+        marginBottom: '12pt',
+        marginTop: '50pt',
+        lineHeight: '1.15'
+      }}>
+        {certificado.consecutivo}
+      </div>
+
+      {/* Espacios en blanco */}
+      <div style={{ height: '24pt' }}></div>
+      <div style={{ height: '12pt' }}></div>
+
+      {/* Título del cargo - Centrado (desde plantilla) */}
+      <div style={{ textAlign: 'center', marginBottom: '0pt', lineHeight: '1.15' }}>
+        {plantillaConfig.cargoTitle ? (
+          <div
+            dangerouslySetInnerHTML={{ __html: plantillaConfig.cargoTitle.replace(/\n/g, '<br/>') }}
+            style={{ fontSize: '12pt', fontWeight: 'bold' }}
+          />
+        ) : (
+          <>
+            <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>
+              {certificado.firmante?.cargo?.toUpperCase() || certificado.signer_position?.toUpperCase() || 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO'} DE LA
+            </p>
+            <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>
+              ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Espacios */}
+      <div style={{ height: '24pt' }}></div>
+      <div style={{ height: '24pt' }}></div>
+
+      {/* HACE CONSTAR - Centrado */}
+      <div style={{ textAlign: 'center', marginBottom: '0pt', lineHeight: '1.15' }}>
+        <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>HACE CONSTAR</p>
+      </div>
+
+      {/* Espacio */}
+      <div style={{ height: '12pt' }}></div>
+
+      {/* Contenido del certificado (desde plantilla o por defecto) */}
+      {plantillaConfig.certificateContentHtml ? (
+        <div
+          className="certificate-content-block"
+          dangerouslySetInnerHTML={{
+            __html: contenidoFinal
+          }}
+          style={{
+            textAlign: 'justify',
+            textAlignLast: 'left',
+            lineHeight: '1.5',
+            fontSize: '12pt',
+            whiteSpace: 'normal',
+            wordBreak: 'normal',
+            textIndent: '0',
+            letterSpacing: 'normal'
+          }}
+        />
+      ) : (
+        <>
+          {/* Contenido por defecto si no hay plantilla */}
+          <p style={{
+            textAlign: 'justify',
+            lineHeight: '1.5',
+            fontSize: '12pt',
+            margin: '0 0 12pt 0'
+          }}>
+            Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || ''}.
+          </p>
+
+          {incluirSalario && (
+            <p style={{
+              textAlign: 'justify',
+              lineHeight: '1.5',
+              fontSize: '12pt',
+              margin: '0 0 12pt 0'
+            }}>
+              Que {certificado.empleado.nombre} percibe mensualmente una asignación salarial de <strong>
+                {salarioParaMostrar
+                  ? `($${salarioParaMostrar.toLocaleString('es-CO')})`
+                  : '(salario no disponible)'}
+              </strong> {salarioParaMostrar ? `${salarioEnLetrasParaMostrar} pesos m/cte` : 'pesos m/cte'}.
+            </p>
+          )}
+
+          <div style={{ height: '12pt' }}></div>
+
+          <p style={{
+            textAlign: 'justify',
+            lineHeight: '1.5',
+            fontSize: '12pt',
+            margin: '0 0 12pt 0'
+          }}>
+            Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los {formatearFecha(certificado.fechaSolicitud)}.
+          </p>
+        </>
+      )}
+
+      {/* Espacios antes de firma */}
+      <div style={{ height: '48pt' }}></div>
+
+      {/* Sección de firma completa */}
+      <div style={{ textAlign: 'center' }}>
+        {/* Firma digital (imagen de la firma) - SIEMPRE mostrar si existe */}
+        {plantillaConfig.firmante?.firmaDigitalUrl || plantillaConfig.firmante?.firmaUrl ? (
+          <div style={{ marginBottom: '12pt' }}>
+            <img
+              src={buildServiceAssetUrl('certificados', plantillaConfig.firmante.firmaDigitalUrl || plantillaConfig.firmante.firmaUrl || '')}
+              alt="Firma digital"
+              style={{
+                width: 'auto',
+                height: '60px',
+                maxWidth: '250px',
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto'
+              }}
+              crossOrigin="anonymous"
+            />
+          </div>
+        ) : (
+          <div style={{ height: '60pt' }}></div>
+        )}
+
+        {/* Nombre del firmante - Debajo de la firma */}
+        <p style={{
+          margin: 0,
+          fontSize: '12pt',
+          fontWeight: 'bold',
+          lineHeight: '1.15'
+        }}>
+          {plantillaConfig.firmante?.nombreCompleto || plantillaConfig.firmante?.nombre || certificado.firmante?.nombre || certificado.signer_name || 'ALBA LUCÍA MARÍN ZULUAGA'}
+        </p>
+      </div>
+
+      {/* Footer - Cuadro de texto con información de contacto */}
+      <div style={{
+        position: 'absolute',
+        bottom: '40px',
+        left: '72px',
+        width: '250px',
+        fontSize: '7pt',
+        lineHeight: '1.3',
+        fontFamily: 'Arial, sans-serif',
+        color: '#000000'
+      }}>
+        <p style={{ margin: '0 0 2px 0' }}>Sede principal</p>
+        <p style={{ margin: '0 0 2px 0' }}>Calle 44 # 53 - 37, CAN, Bogotá D.C.</p>
+        <p style={{ margin: '0 0 2px 0' }}>Código postal: 111321</p>
+        <p style={{ margin: '0 0 2px 0' }}>Línea conmutador PBX: 018000 423713</p>
+        <p style={{ margin: 0 }}>Línea nacional gratuita PBX: 018000 423713</p>
+      </div>
+
+      {/* Footer - Logo ESAP y URL a la DERECHA */}
+      <div style={{
+        position: 'absolute',
+        bottom: '40px',
+        right: '72px',
+        textAlign: 'right'
+      }}>
+        <p style={{
+          margin: 0,
+          fontSize: '12pt',
+          color: '#0066cc',
+          fontFamily: 'Arial, sans-serif'
+        }}>
+          www.esap.edu.co
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <AnimatePresence>
       <div className={hiddenMode ? 'fixed inset-0 z-[9999] opacity-0 pointer-events-none' : 'fixed inset-0 z-[9999] overflow-hidden'}>
@@ -718,7 +1023,7 @@ export function VisorPDFCertificado({
             </div>
 
             {/* PDF Preview */}
-            <div className="overflow-y-auto flex-1 bg-gray-100 p-4 sm:p-6 md:p-8">
+            <div className="relative overflow-y-auto overflow-x-hidden flex-1 bg-gray-100 p-3 sm:p-6 md:p-8">
               <style>
                 {`
                   .certificate-content-block p {
@@ -735,231 +1040,45 @@ export function VisorPDFCertificado({
                   }
                 `}
               </style>
-              <div
-                ref={certificadoRef}
-                className="bg-white shadow-2xl mx-auto relative"
-                style={{
-                  width: '816px',
-                  minHeight: '1056px',
-                  fontFamily: 'Arial Narrow, Arial, sans-serif',
-                  fontSize: '12pt',
-                  padding: '72px 72px 72px 72px',
-                  position: 'relative'
-                }}
-                data-template-type={templateType}
-              >
-                {/* Header - Logo ESAP (desde plantilla o por defecto) */}
-                {plantillaConfig.logo?.url ? (
-                          <img
-                            src={buildServiceAssetUrl('certificados', plantillaConfig.logo.url || '')}
-                    alt="Logo ESAP"
-                    style={{
-                      position: 'absolute',
-                      top: '20px',
-                      left: '0px',
-                      width: 'auto',
-                      height: 'auto',
-                      maxWidth: '300px',
-                      maxHeight: '100px',
-                      objectFit: 'contain'
-                    }}
-                    crossOrigin="anonymous"
-                  />
-                ) : (
-                  <img
-                    src="/certificados/header-esap.png"
-                    alt="Header ESAP"
-                    style={{
-                      position: 'absolute',
-                      top: '20px',
-                      left: '0px',
-                      width: 'auto',
-                      height: 'auto',
-                      maxWidth: '300px',
-                      maxHeight: '100px',
-                      objectFit: 'contain'
-                    }}
-                    crossOrigin="anonymous"
-                  />
-                )}
-
-                {/* Consecutivo - Alineado a la izquierda (más arriba) */}
-                <div style={{
-                  textAlign: 'left',
-                  fontSize: '12pt',
-                  marginBottom: '12pt',
-                  marginTop: '50pt',
-                  lineHeight: '1.15'
-                }}>
-                  {certificado.consecutivo}
-                </div>
-
-                {/* Espacios en blanco */}
-                <div style={{ height: '24pt' }}></div>
-                <div style={{ height: '12pt' }}></div>
-
-                {/* Título del cargo - Centrado (desde plantilla) */}
-                <div style={{ textAlign: 'center', marginBottom: '0pt', lineHeight: '1.15' }}>
-                  {plantillaConfig.cargoTitle ? (
-                    <div
-                      dangerouslySetInnerHTML={{ __html: plantillaConfig.cargoTitle.replace(/\n/g, '<br/>') }}
-                      style={{ fontSize: '12pt', fontWeight: 'bold' }}
-                    />
-                  ) : (
-                    <>
-                      <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>
-                        {certificado.firmante?.cargo?.toUpperCase() || certificado.signer_position?.toUpperCase() || 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO'} DE LA
-                      </p>
-                      <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>
-                        ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                {/* Espacios */}
-                <div style={{ height: '24pt' }}></div>
-                <div style={{ height: '24pt' }}></div>
-
-                {/* HACE CONSTAR - Centrado */}
-                <div style={{ textAlign: 'center', marginBottom: '0pt', lineHeight: '1.15' }}>
-                  <p style={{ margin: 0, fontSize: '12pt', fontWeight: 'bold' }}>HACE CONSTAR</p>
-                </div>
-
-                {/* Espacio */}
-                <div style={{ height: '12pt' }}></div>
-
-                {/* Contenido del certificado (desde plantilla o por defecto) */}
-                {plantillaConfig.certificateContentHtml ? (
+              {!hiddenMode && (
+                <div ref={previewWrapRef} className="w-full flex justify-center">
                   <div
-                    className="certificate-content-block"
-                    dangerouslySetInnerHTML={{
-                      __html: contenidoFinal
-                    }}
+                    className="relative"
                     style={{
-                      textAlign: 'justify',
-                      textAlignLast: 'left',
-                      lineHeight: '1.5',
-                      fontSize: '12pt',
-                      whiteSpace: 'normal',
-                      wordBreak: 'normal',
-                      textIndent: '0',
-                      letterSpacing: 'normal'
+                      width: `${Math.round(CERTIFICATE_WIDTH * previewScale)}px`,
+                      height: `${Math.round(CERTIFICATE_HEIGHT * previewScale)}px`
                     }}
-                  />
-                ) : (
-                  <>
-                    {/* Contenido por defecto si no hay plantilla */}
-                    <p style={{
-                      textAlign: 'justify',
-                      lineHeight: '1.5',
-                      fontSize: '12pt',
-                      margin: '0 0 12pt 0'
-                    }}>
-                      Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || ''}.
-                    </p>
-
-                    {incluirSalario && (
-                      <p style={{
-                        textAlign: 'justify',
-                        lineHeight: '1.5',
-                        fontSize: '12pt',
-                        margin: '0 0 12pt 0'
-                      }}>
-                        Que {certificado.empleado.nombre} percibe mensualmente una asignación salarial de <strong>
-                          {salarioParaMostrar
-                            ? `($${salarioParaMostrar.toLocaleString('es-CO')})`
-                            : '(salario no disponible)'}
-                        </strong> {salarioParaMostrar ? `${salarioEnLetrasParaMostrar} pesos m/cte` : 'pesos m/cte'}.
-                      </p>
-                    )}
-
-                    <div style={{ height: '12pt' }}></div>
-
-                    <p style={{
-                      textAlign: 'justify',
-                      lineHeight: '1.5',
-                      fontSize: '12pt',
-                      margin: '0 0 12pt 0'
-                    }}>
-                      Se expide en la ciudad de Bogotá D.C., a solicitud del interesado(a) a los {formatearFecha(certificado.fechaSolicitud)}.
-                    </p>
-                  </>
-                )}
-
-                {/* Espacios antes de firma */}
-                <div style={{ height: '48pt' }}></div>
-
-                {/* Sección de firma completa */}
-                <div style={{ textAlign: 'center' }}>
-                  {/* Firma digital (imagen de la firma) - SIEMPRE mostrar si existe */}
-                  {plantillaConfig.firmante?.firmaDigitalUrl || plantillaConfig.firmante?.firmaUrl ? (
-                    <div style={{ marginBottom: '12pt' }}>
-                    <img
-                      src={buildServiceAssetUrl('certificados', plantillaConfig.firmante.firmaDigitalUrl || plantillaConfig.firmante.firmaUrl || '')}
-                        alt="Firma digital"
-                        style={{
-                          width: 'auto',
-                          height: '60px',
-                          maxWidth: '250px',
-                          objectFit: 'contain',
-                          display: 'block',
-                          margin: '0 auto'
-                        }}
-                        crossOrigin="anonymous"
-                      />
+                  >
+                    <div
+                      className="absolute left-0 top-0"
+                      style={{
+                        transform: `scale(${previewScale})`,
+                        transformOrigin: 'top left'
+                      }}
+                    >
+                      {renderCertificate()}
                     </div>
-                  ) : (
-                    <div style={{ height: '60pt' }}></div>
-                  )}
-
-                  {/* Nombre del firmante - Debajo de la firma */}
-                  <p style={{
-                    margin: 0,
-                    fontSize: '12pt',
-                    fontWeight: 'bold',
-                    lineHeight: '1.15'
-                  }}>
-                    {plantillaConfig.firmante?.nombreCompleto || plantillaConfig.firmante?.nombre || certificado.firmante?.nombre || certificado.signer_name || 'ALBA LUCÍA MARÍN ZULUAGA'}
-                  </p>
+                  </div>
                 </div>
-
-                {/* Footer - Cuadro de texto con información de contacto */}
-                <div style={{
-                  position: 'absolute',
-                  bottom: '40px',
-                  left: '72px',
-                  width: '250px',
-                  fontSize: '7pt',
-                  lineHeight: '1.3',
-                  fontFamily: 'Arial, sans-serif',
-                  color: '#000000'
-                }}>
-                  <p style={{ margin: '0 0 2px 0' }}>Sede principal</p>
-                  <p style={{ margin: '0 0 2px 0' }}>Calle 44 # 53 - 37, CAN, Bogotá D.C.</p>
-                  <p style={{ margin: '0 0 2px 0' }}>Código postal: 111321</p>
-                  <p style={{ margin: '0 0 2px 0' }}>Línea conmutador PBX: 018000 423713</p>
-                  <p style={{ margin: 0 }}>Línea nacional gratuita PBX: 018000 423713</p>
-                </div>
-
-                {/* Footer - Logo ESAP y URL a la DERECHA */}
-                <div style={{
-                  position: 'absolute',
-                  bottom: '40px',
-                  right: '72px',
-                  textAlign: 'right'
-                }}>
-                  <p style={{
-                    margin: 0,
-                    fontSize: '12pt',
-                    color: '#0066cc',
-                    fontFamily: 'Arial, sans-serif'
-                  }}>
-                    www.esap.edu.co
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
+
+            {typeof document !== 'undefined' && createPortal(
+              <div
+                aria-hidden="true"
+                style={{
+                  position: 'fixed',
+                  left: '-10000px',
+                  top: 0,
+                  width: `${CERTIFICATE_WIDTH}px`,
+                  height: `${CERTIFICATE_HEIGHT}px`,
+                  pointerEvents: 'none'
+                }}
+              >
+                {renderCertificate(certificadoRef)}
+              </div>,
+              document.body
+            )}
 
             {/* Footer Info */}
             <div className="border-t border-gray-200 px-4 sm:px-6 py-3 bg-gray-50">

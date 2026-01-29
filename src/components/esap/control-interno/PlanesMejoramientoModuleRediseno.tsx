@@ -52,6 +52,8 @@ import type { EtapaKanban } from '../../../services/tableros-kanban.service';
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -378,10 +380,44 @@ function mapearPlanDesdeBD(planBD: PlanMejoramientoBD): PlanMejoramiento {
 
   const estadoMapeado = mapearEstadoBD(planBD.estado, fechaFinISO, porcentajeAvance);
   
+  // Obtener código de auditoría desde múltiples fuentes
+  let codigoAuditoria = (planBD.auditoria as any)?.codigo || planBD.auditoriaCodigo;
+  
+  // Si no hay código en el plan, intentar obtenerlo desde el hallazgo
+  if (!codigoAuditoria && (planBD as any).hallazgo?.auditoria) {
+    codigoAuditoria = (planBD as any).hallazgo.auditoria;
+  }
+  
+  // Si aún no hay código, intentar desde hallazgosIds
+  if (!codigoAuditoria && Array.isArray((planBD as any).hallazgos) && (planBD as any).hallazgos.length > 0) {
+    const primerHallazgo = (planBD as any).hallazgos[0];
+    if (primerHallazgo?.auditoria) {
+      codigoAuditoria = primerHallazgo.auditoria;
+    }
+  }
+  
+  // Obtener título de la auditoría
+  let tituloAuditoria = (planBD.auditoria as any)?.nombre || (planBD.auditoria as any)?.titulo;
+  
+  // Si no hay título en el plan, intentar obtenerlo desde el hallazgo
+  if (!tituloAuditoria && (planBD as any).hallazgo?.auditoriaEntity) {
+    tituloAuditoria = (planBD as any).hallazgo.auditoriaEntity.nombre || (planBD as any).hallazgo.auditoriaEntity.titulo;
+  }
+  
+  // Construir texto de auditoría: "CÓDIGO - Título" o solo código o solo título
+  let textoAuditoria = 'Auditoría sin código';
+  if (codigoAuditoria && tituloAuditoria) {
+    textoAuditoria = `${codigoAuditoria} - ${tituloAuditoria}`;
+  } else if (codigoAuditoria) {
+    textoAuditoria = codigoAuditoria;
+  } else if (tituloAuditoria) {
+    textoAuditoria = tituloAuditoria;
+  }
+  
   return {
     id: planBD.id,
     codigo: planBD.codigo,
-    auditoria: planBD.auditoriaCodigo || planBD.nombre || 'Auditoría sin código',
+    auditoria: textoAuditoria,
     area: areaResponsable,
     responsable: responsableArea,
     cargoResponsable: cargoResponsable,
@@ -1334,6 +1370,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
           
           <div className="flex items-center gap-3">
             {/* Botón Crear Plan */}
+            {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE) && (
             <button
               onClick={onAbrirCrearPlan}
               className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
@@ -1346,7 +1383,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
                 </span>
               )}
             </button>
-
+            )}
             {/* Toggle Vista */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
               <button

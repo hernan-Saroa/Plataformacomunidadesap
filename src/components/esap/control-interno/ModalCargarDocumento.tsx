@@ -56,10 +56,10 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validarArchivo = (file: File): boolean => {
-      // Validar tamaño (máx 10 MB)
-      if (file.size > 10 * 1024 * 1024) {
+      // Validar tamaño (máx 50 MB)
+      if (file.size > 50 * 1024 * 1024) {
         toast.error('Archivo demasiado grande', {
-          description: 'El tamaño máximo permitido es 10 MB',
+          description: 'El tamaño máximo permitido es 50 MB',
         });
       return false;
     }
@@ -396,7 +396,7 @@ export function ModalCargarDocumento({ onClose, onGuardar, auditoriaId, codigoAu
                       : 'Haz clic para seleccionar o arrastra el archivo aquí'}
                   </p>
                   <p className="text-xs text-gray-500">
-                    PDF, Word, Excel, Imágenes (Máx. 10 MB)
+                    PDF, Word, Excel, Imágenes (Máx. 50 MB)
                   </p>
                 </div>
               )}

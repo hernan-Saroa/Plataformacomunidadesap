@@ -197,9 +197,10 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
   const handleDownload = async () => {
     setIsDownloading(true);
-    toast.loading('Generando certificado PDF...', { id: 'pdf-generation' });
+    toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
+      // Registrar la descarga
       if (certificate?.id) {
         try {
           await graduadosService.descargas.registrar(certificate.id);
@@ -208,12 +209,22 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         }
       }
 
-      const { pdf, fileName } = await generatePdfFromTemplate();
-      pdf.save(fileName);
+      // Descargar el PDF desde el backend (el mismo que se envía por correo)
+      const pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id);
+
+      // Crear URL temporal para descargar
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       toast.success('Certificado descargado exitosamente!', {
         id: 'pdf-generation',
-        description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
+        description: `Archivo: Certificado_ESAP_${certificate.certificateNumber}.pdf`
       });
     } catch (error: any) {
       console.error('Error al descargar certificado:', error);
@@ -261,22 +272,10 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
-  useEffect(() => {
-    if (!certificate?.certificateNumber) {
-      return;
-    }
-    if (isSendingEmail) {
-      return;
-    }
-    if (!certificate.requester?.email) {
-      return;
-    }
-    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
-      return;
-    }
-
-    void enviarCertificadoPorEmail();
-  }, [certificate?.certificateNumber, certificate?.requester?.email, isSendingEmail]);
+  // NOTA: El backend ya envia el correo automaticamente al crear el certificado
+  // en solicitarCertificadoLanding -> notifyCertificateDelivery
+  // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
+  // para evitar enviar correos duplicados.
 
   const handleShare = async () => {
     /**
@@ -482,13 +481,22 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             </tbody>
           </table>
 
-          <div style={{ textAlign: 'justify', marginBottom: '16px', padding: '0 15px' }}>
-            <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
-          </div>
-
-          <div style={{ marginTop: '22px', textAlign: 'left', paddingLeft: '15px' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '10.5pt' }}>
-              Dirección Técnica Registro y Control
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: '16px', padding: '0 15px' }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
+              <div style={{ marginTop: '22px', fontWeight: 'bold', fontSize: '10.5pt' }}>
+                Dirección Técnica Registro y Control
+              </div>
+            </div>
+            {/* Código QR de validación */}
+            <div style={{ textAlign: 'center', marginLeft: '20px' }}>
+              <QRCodeSVG
+                value={verificationUrl}
+                size={100}
+                level="H"
+                includeMargin={false}
+                fgColor="#000000"
+              />
             </div>
           </div>
 

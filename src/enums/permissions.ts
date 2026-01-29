@@ -177,6 +177,48 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT = 'control-disciplinario.configuraciones.cargo.edit',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE = 'control-disciplinario.configuraciones.cargo.delete',
   CONTROL_DISCIPLINARIO_CONFIGURACIONES_FIRMA_UPLOAD = 'control-disciplinario.configuraciones.firma.upload',
-  
+
+  // Auditoría OCIG
+  CONTROL_INTERNO_AUDITORIA_MANAGE = 'control-interno.auditoria.manage',
+  CONTROL_INTERNO_AUDITORIA_EDIT = 'control-interno.auditoria.edit',
+  CONTROL_INTERNO_AUDITORIA_ADD_AMPLIACION = 'control-interno.auditoria.add.ampliacion',
+  CONTROL_INTERNO_AUDITORIA_STATE_CHANGE = 'control-interno.auditoria.state.change',
+  CONTROL_INTERNO_AUDITORIA_AUDIT = 'control-interno.auditoria.audit',
+  CONTROL_INTERNO_AUDITORIA_APPROVE = 'control-interno.auditoria.approve',
+  CONTROL_INTERNO_AUDITORIA_EXPORT = 'control-interno.auditoria.export',
+  CONTROL_INTERNO_AUDITORIA_ARCHIVE = 'control-interno.auditoria.archive',
+  CONTROL_INTERNO_AUDITORIA_DELETE = 'control-interno.auditoria.delete',
+  CONTROL_INTERNO_AUDITORIA_NOTAS_CREATE = 'control-interno.auditoria.notas.create',
+
+  // Planeación OCIG
+  CONTROL_INTERNO_PLANEACION_MANAGE = 'control-interno.planeacion.manage',
+  CONTROL_INTERNO_PLANEACION_CREATE = 'control-interno.planeacion.create',
+  CONTROL_INTERNO_PLANEACION_AREA_CREATE = 'control-interno.planeacion.area.create',
+  CONTROL_INTERNO_PLANEACION_AREA_STATE_CHANGE = 'control-interno.planeacion.area.state.change',
+  CONTROL_INTERNO_PLANEACION_AREA_EDIT = 'control-interno.planeacion.area.edit',
+  CONTROL_INTERNO_PLANEACION_PLAN_CREATE = 'control-interno.planeacion.plan.create',
+  CONTROL_INTERNO_PLANEACION_PLAN_EDIT = 'control-interno.planeacion.plan.edit',
+
+  // Planes de Mejoramiento
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_MANAGE = 'control-interno.planes-mejoramiento.manage',
+  CONTROL_INTERNO_PLANES_MEJORAMIENTO_CREATE = 'control-interno.planes-mejoramiento.create',
+
+  // Informes de Ley
+  CONTROL_INTERNO_INFORMES_DE_LEY_MANAGE = 'control-interno.informes-de-ley.manage',
+  CONTROL_INTERNO_INFORMES_DE_LEY_GENERATE = 'control-interno.informes-de-ley.generate',
+
+  // Expidientes
+  CONTROL_INTERNO_EXPEDIENTES_MANAGE = 'control-interno.expedientes.manage',
+  CONTROL_INTERNO_EXPEDIENTES_UPLOAD = 'control-interno.expedientes.upload',
+
+  // Configuraciones
+  CONTROL_INTERNO_CONFIGURACIONES_MANAGE = 'control-interno.configuraciones.manage',
+  CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_TIPO_CREATE = 'control-interno.configuraciones.config-audit.tipo.create',
+  CONTROL_INTERNO_CONFIGURACIONES_CONFIG_AUDIT_LISTA_CREATE = 'control-interno.configuraciones.config-audit.lista.create',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_CREATE = 'control-interno.configuraciones.kanban.create',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_EDIT = 'control-interno.configuraciones.kanban.audit.edit',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_AUDIT_DELETE = 'control-interno.configuraciones.kanban.audit.delete',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_EDIT = 'control-interno.configuraciones.kanban.plan.edit',
+  CONTROL_INTERNO_CONFIGURACIONES_KANBAN_PLAN_DELETE = 'control-interno.configuraciones.kanban.plan.delete',
 
 }

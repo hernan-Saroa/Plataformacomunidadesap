@@ -30,6 +30,7 @@ if ! docker compose version &> /dev/null; then
     exit 1
 fi
 
+
 # Cargar variables de entorno
 if [ -f .env.dev ]; then
     echo -e "${YELLOW}Cargando variables de entorno desde .env.dev...${NC}"

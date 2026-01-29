@@ -26,6 +26,7 @@ interface Auditoria {
   estado: EstadoAuditoria;
   territorial: string;
   progreso: number;
+  aprobada?: boolean; // ✅ Agregar campo aprobada
 }
 
 interface ModalCambiarEstadoAuditoriaProps {
@@ -171,6 +172,21 @@ export function ModalCambiarEstadoAuditoria({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-250px)]">
+          {/* Aviso de auditoría aprobada */}
+          {auditoria.aprobada && auditoria.estado !== 'Finalizada' && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-green-900 mb-1">
+                  Auditoría Aprobada
+                </p>
+                <p className="text-sm text-green-700">
+                  Esta auditoría fue aprobada. Solo puede moverse al estado <strong>"Finalizada"</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Flujo de Estados */}
           <div className="mb-6">
             <h3 className="font-bold text-gray-900 mb-4">Seleccione el nuevo estado</h3>
@@ -179,7 +195,11 @@ export function ModalCambiarEstadoAuditoria({
               {ESTADOS_FLUJO.map((estadoFlujo, index) => {
                 const esEstadoActual = estadoFlujo.estado === auditoria.estado;
                 const esEstadoSeleccionado = estadoFlujo.estado === estadoSeleccionado;
-                const estaDeshabilitado = esEstadoActual;
+                
+                // ✅ Si está aprobada, solo puede moverse a Finalizada
+                const estaDeshabilitado = esEstadoActual || 
+                  (auditoria.aprobada && estadoFlujo.estado !== 'Finalizada');
+                
                 const IconoEstado = estadoFlujo.icon;
 
                 return (

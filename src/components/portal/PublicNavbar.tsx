@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useState } from 'react';
+import { useIsMobile } from '../ui/use-mobile';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 
 interface PublicNavbarProps {
@@ -16,6 +17,8 @@ interface PublicNavbarProps {
 
 export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const shouldAnimate = !isMobile;
 
   const handleNavigateToSection = (sectionId: string) => {
     // Primero volver al home
@@ -34,9 +37,9 @@ export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarPro
     <>
       {/* Navbar Superior Flotante - Diseño Moderno con Azul Medio */}
       <motion.nav 
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
+        initial={shouldAnimate ? { y: -100, opacity: 0 } : false}
+        animate={shouldAnimate ? { y: 0, opacity: 1 } : undefined}
+        transition={shouldAnimate ? { duration: 0.6, delay: 0.2 } : undefined}
         className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-6xl"
       >
         <div className="bg-[#1e5da8] rounded-2xl shadow-2xl px-4 sm:px-6 py-3 border border-blue-400/30">
@@ -115,9 +118,9 @@ export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarPro
         {/* Mobile Menu Dropdown */}
         {isMobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            initial={shouldAnimate ? { opacity: 0, y: -10 } : false}
+            animate={shouldAnimate ? { opacity: 1, y: 0 } : undefined}
+            exit={shouldAnimate ? { opacity: 0, y: -10 } : undefined}
             className="mt-2 bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200"
           >
             <div className="p-4 space-y-2">
