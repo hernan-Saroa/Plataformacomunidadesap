@@ -347,6 +347,12 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/documentos/${id}`);
     }
 
+    getDocumentosDownloadZipUrl(expedienteId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/documentos/expediente/${expedienteId}/download-zip`;
+    }
+
     // ==================== EVIDENCIAS ====================
     async getEvidencias(expedienteId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/evidencias/expediente/${expedienteId}`);

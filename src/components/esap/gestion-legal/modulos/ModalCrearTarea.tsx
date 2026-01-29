@@ -14,8 +14,8 @@ import { Textarea } from '../../../ui/textarea';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { 
-  X, Target, Calendar, User, Flag, 
+import {
+  X, Target, Calendar, User, Flag,
   AlertCircle, CheckCircle, Clock, Plus
 } from 'lucide-react';
 import { useState } from 'react';
@@ -32,13 +32,13 @@ interface ModalCrearTareaProps {
   modoEdicion?: boolean;
 }
 
-export function ModalCrearTarea({ 
-  isOpen, 
-  onClose, 
-  expediente, 
-  tareaInicial, 
+export function ModalCrearTarea({
+  isOpen,
+  onClose,
+  expediente,
+  tareaInicial,
   onGuardar,
-  modoEdicion = false 
+  modoEdicion = false
 }: ModalCrearTareaProps) {
   const [titulo, setTitulo] = useState(tareaInicial?.titulo || '');
   const [descripcion, setDescripcion] = useState(tareaInicial?.descripcion || '');
@@ -50,30 +50,30 @@ export function ModalCrearTarea({
 
   // Usuarios disponibles para asignar
   const usuariosDisponibles = [
-    { 
-      id: '1', 
-      nombre: expediente.abogadoAsignado, 
+    {
+      id: '1',
+      nombre: expediente.abogadoAsignado,
       cargo: 'Abogado Defensor',
       avatar: expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2),
       email: `${expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co`
     },
-    { 
-      id: '2', 
-      nombre: 'María Fernanda Rodríguez', 
+    {
+      id: '2',
+      nombre: 'María Fernanda Rodríguez',
       cargo: 'Auxiliar Jurídico',
       avatar: 'MR',
       email: 'maria.rodriguez@esap.edu.co'
     },
-    { 
-      id: '3', 
-      nombre: 'Carlos Eduardo Méndez', 
+    {
+      id: '3',
+      nombre: 'Carlos Eduardo Méndez',
       cargo: 'Coordinador Jurídico',
       avatar: 'CM',
       email: 'carlos.mendez@esap.edu.co'
     },
-    { 
-      id: '4', 
-      nombre: 'Ana Patricia López', 
+    {
+      id: '4',
+      nombre: 'Ana Patricia López',
       cargo: 'Abogada Defensa',
       avatar: 'AL',
       email: 'ana.lopez@esap.edu.co'
@@ -114,11 +114,11 @@ export function ModalCrearTarea({
     setEnviandoTarea(true);
 
     setTimeout(() => {
-      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado) || 
-                         usuariosDisponibles.find(u => u.nombre === responsableSeleccionado);
-      
+      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado) ||
+        usuariosDisponibles.find(u => u.nombre === responsableSeleccionado);
+
       const diasCalc = calcularDiasRestantes(fechaVencimiento);
-      
+
       const tareaData = {
         id: tareaInicial?.id || Date.now(),
         titulo: titulo.trim(),
@@ -148,7 +148,7 @@ export function ModalCrearTarea({
         setResponsableSeleccionado('');
         setEstado('Pendiente');
         setEnviandoTarea(false);
-        
+
         onClose();
       }
 
@@ -178,7 +178,7 @@ export function ModalCrearTarea({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[90vh] flex flex-col p-0 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
         <DialogTitle className="sr-only">
           {modoEdicion ? 'Editar Tarea' : 'Crear Nueva Tarea'} - Expediente {expediente.id}
         </DialogTitle>
@@ -277,10 +277,10 @@ export function ModalCrearTarea({
               />
               {semaforo && diasRestantes !== null && (
                 <div className="mt-2 flex items-center gap-2">
-                  <Badge 
+                  <Badge
                     className="text-xs font-bold"
-                    style={{ 
-                      background: semaforo.bg, 
+                    style={{
+                      background: semaforo.bg,
                       color: semaforo.color,
                       border: `1px solid ${semaforo.color}`
                     }}
@@ -311,13 +311,13 @@ export function ModalCrearTarea({
                     style={
                       prioridad === nivel
                         ? {
-                            background: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
-                            color: '#FFFFFF'
-                          }
+                          background: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
+                          color: '#FFFFFF'
+                        }
                         : {
-                            borderColor: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
-                            color: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981'
-                          }
+                          borderColor: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981',
+                          color: nivel === 'Alta' ? '#DC2626' : nivel === 'Media' ? '#F59E0B' : '#10B981'
+                        }
                     }
                   >
                     <Flag className="w-3 h-3 mr-1" />
@@ -346,13 +346,13 @@ export function ModalCrearTarea({
                     style={
                       estado === estadoOpcion
                         ? {
-                            background: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
-                            color: '#FFFFFF'
-                          }
+                          background: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          color: '#FFFFFF'
+                        }
                         : {
-                            borderColor: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
-                            color: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
-                          }
+                          borderColor: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          color: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
+                        }
                     }
                   >
                     <CheckCircle className="w-3 h-3 mr-1" />
@@ -369,7 +369,7 @@ export function ModalCrearTarea({
               ⚡ Estado inicial
             </Label>
             <div className="flex gap-2">
-              {(['Pendiente', 'En proceso', 'Completada'] as const).map((estadoOpt) => (
+              {(['Pendiente', 'En proceso', 'Completado'] as const).map((estadoOpt) => (
                 <Button
                   key={estadoOpt}
                   type="button"
@@ -400,9 +400,8 @@ export function ModalCrearTarea({
                 return (
                   <Card
                     key={usuario.id}
-                    className={`p-3 cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
-                    }`}
+                    className={`p-3 cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
+                      }`}
                     style={isSelected ? { borderColor: '#2962FF' } : {}}
                     onClick={() => setResponsableSeleccionado(usuario.id)}
                   >
@@ -444,9 +443,9 @@ export function ModalCrearTarea({
         </div>
 
         {/* ==================== FOOTER STICKY CON BOTONES ==================== */}
-        <div 
+        <div
           className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
+          style={{
             borderTopColor: '#2962FF',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
           }}

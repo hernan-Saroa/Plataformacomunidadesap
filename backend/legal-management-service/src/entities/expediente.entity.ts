@@ -4,11 +4,15 @@ import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 import { Evidencia } from './evidencia.entity';
 import { Documento } from './documento.entity';
+import { Actor } from './actor.entity';
 
 @Entity('expedientes', { schema: 'legal_management' })
 export class Expediente {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+
+    @OneToMany(() => Actor, (actor) => actor.expediente, { cascade: true })
+    actors: Actor[];
 
     @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
     actuaciones: Actuacion[];

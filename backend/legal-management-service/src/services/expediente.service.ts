@@ -109,6 +109,7 @@ export class ExpedienteService {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones');
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
+        queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
 
         queryBuilder.addSelect((subQuery) => {
             return subQuery
@@ -234,5 +235,12 @@ export class ExpedienteService {
         excepcion.fechaResolucion = new Date().toISOString().split('T')[0];
 
         return this.excepcionRepository.save(excepcion);
+    }
+
+    async deleteExpediente(id: string): Promise<void> {
+        const result = await this.expedienteRepository.delete(id);
+        if (result.affected === 0) {
+            throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
+        }
     }
 }

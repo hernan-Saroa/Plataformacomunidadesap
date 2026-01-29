@@ -65,16 +65,19 @@ export interface ExpedienteJudicial {
   uuid?: string; // ID real de la base de datos (UUID)
   id: string; // "PJ-2025-001" - para mostrar (puede ser radicado)
   tipo: string; // "Nulidad y Restablecimiento del Derecho"
-  medioControl: MedioControl;
-  jurisdiccion: Jurisdiccion;
-  etapa: EtapaDefensaJudicial;
-  
+  tipoProceso?: string; // Add optional for compatibility
+  tipoAccion?: string; // Add optional for compatibility
+  medioControl: MedioControl | string; // Allow string for flexibility
+  jurisdiccion: Jurisdiccion | string;
+  etapa: EtapaDefensaJudicial | string;
+
   // Partes procesales - MIGRADAS A ARRAYS
   demandante: string; // DEPRECADO: mantener para compatibilidad con vistas existentes
+  demandado?: string; // DEPRECADO: Legacy compatibility
   demandantes?: ParteProcesal[]; // NUEVO: soporte para múltiples demandantes
   demandados?: ParteProcesal[]; // NUEVO: soporte para múltiples demandados
   otrosActores?: ParteProcesal[]; // NUEVO: otros actores del proceso (terceros, ministerio público, etc.)
-  
+
   apoderado: string;
   juzgado: string;
   radicado: string;
@@ -95,15 +98,18 @@ export interface ExpedienteJudicial {
   demandadoEmail?: string;
 
   // Financiero
-  cuantia: number;
+  cuantia: number | string; // Allow string for mocks
 
   // Términos
-  fechaNotificacion: Date;
+  fechaNotificacion: Date | string; // Allow string for mocks
+  fechaVencimiento?: Date | string; // Add optional
   diasTotales: number;
   diasRestantes: number;
 
   // Responsable
   abogadoAsignado: string;
+  abogadoResponsable?: string; // Add optional for compatibility
+  prioridad?: string; // Add optional
 
   // Información adicional
   hechos: string;
@@ -127,6 +133,16 @@ export interface ExpedienteJudicial {
     responsable: string;
     estado: string;
   };
+
+  // Nuevos campos
+  juzgadoConocimiento?: string;
+  ubicacionFisica?: string;
+  pretensionDemandante?: string;
+
+  // Campos de fechas
+  fechaAdmision?: Date;
+  fechaVencimientoTerminos?: Date;
+  fechaUltimaActuacion?: Date;
 }
 
 // ============================================================================
@@ -426,6 +442,16 @@ export interface SolicitudInforme {
   radicadoExterno: string;
   asunto: string;
   descripcion?: string;
+  // Nuevos campos
+  juzgadoConocimiento?: string;
+  ubicacionFisica?: string;
+  pretensionDemandante?: string;
+  fechaNotificacion?: string;
+
+  // Campos de fechas
+  fechaAdmision?: Date;
+  fechaVencimientoTerminos?: Date;
+  fechaUltimaActuacion?: Date;
   responsable: string;
   fechaSolicitud: Date;
   fechaVencimiento: Date;
