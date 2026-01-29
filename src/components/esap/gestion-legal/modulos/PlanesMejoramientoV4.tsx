@@ -654,11 +654,7 @@ export function ModuloPlanesMejoramientoV4() {
 
           <div className="px-6 pb-6 overflow-y-auto flex-1">
             <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                toast.success('Plan de Mejoramiento creado exitosamente');
-                setModalNuevoPlanAbierto(false);
-              }}
+              onSubmit={handleCreatePlan}
               className="space-y-5"
             >
               {/* Sección 1: Información Básica */}

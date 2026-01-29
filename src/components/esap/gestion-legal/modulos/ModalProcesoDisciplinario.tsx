@@ -539,15 +539,48 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
           <div className="px-6 pt-4 border-b bg-gray-50">
             <TabsList className="bg-transparent border-0 p-0 h-auto gap-1">
-              {['general', 'hechos', 'pruebas', 'actuaciones', 'decisiones', 'documentos'].map(tab => (
-                <TabsTrigger
-                  key={tab}
-                  value={tab}
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold capitalize"
-                >
-                  {tab}
-                </TabsTrigger>
-              ))}
+              <TabsTrigger 
+                value="general"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                General
+              </TabsTrigger>
+              <TabsTrigger 
+                value="hechos"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Hechos
+              </TabsTrigger>
+              <TabsTrigger 
+                value="pruebas"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                Pruebas
+              </TabsTrigger>
+              <TabsTrigger 
+                value="actuaciones"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                Actuaciones
+              </TabsTrigger>
+              <TabsTrigger 
+                value="decisiones"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Decisiones
+              </TabsTrigger>
+              <TabsTrigger 
+                value="documentos"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Documentos
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -639,7 +672,48 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <p className="font-bold text-gray-900">{actuacionesTotales[0]?.descripcion || 'Inicio del proceso'}</p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                   <span>📅 {actuacionesTotales[0]?.fechaActuacion ? new Date(actuacionesTotales[0].fechaActuacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO')}</span>
+                  {actuacionesTotales[0]?.fechaActuacion && (
+                    <span>⏰ {new Date(actuacionesTotales[0]?.fechaActuacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                  )}
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {/* <Button 
+                  onClick={() => setMostrarModalNotificar(true)}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Bell className="w-4 h-4 mr-1.5" />
+                  Notificar
+                </Button> */}
+                {/* <Button 
+                  onClick={handleCompartir}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Share2 className="w-4 h-4 mr-1.5" />
+                  Compartir
+                </Button> */}
+                <Button 
+                  // onClick={handleDescargarPDF}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  Descargar PDF
+                </Button>
+                {/* <Button 
+                  onClick={handleAbrirEnPortales}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#1e5da8', color: '#FFFFFF' }}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Abrir en Portales
+                </Button> */}
               </div>
             </Card>
           </TabsContent>
@@ -1095,7 +1169,67 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
       {mostrarModalCompartir && (
         <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
-          <DialogContent><DialogTitle>Enlace Generado</DialogTitle><p>{enlaceCompartir}</p></DialogContent>
+          <DialogContent hideCloseButton className="max-w-2xl">
+            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
+              <Share2 className="w-6 h-6" />
+              Enlace de Compartir Generado
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Enlace seguro para compartir la última actuación procesal
+            </DialogDescription>
+
+            <div className="space-y-4 mt-4">
+              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Enlace Seguro</p>
+                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
+                  {enlaceCompartir}
+                </p>
+              </div>
+
+              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+                <p className="text-sm font-bold text-green-900 mb-2">✅ Enlace Copiado al Portapapeles</p>
+                <p className="text-sm text-green-700">
+                  El enlace ha sido copiado automáticamente. Puedes pegarlo en un correo, mensaje o documento.
+                </p>
+              </div>
+
+              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
+                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
+                  <li>Este enlace permite consultar la última actuación procesal</li>
+                  <li>Es válido por 30 días desde su generación</li>
+                  <li>Requiere autenticación para acceder al contenido</li>
+                </ul>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    const copiado = await copyToClipboard(enlaceCompartir);
+                    if (copiado) {
+                      toast.success('✅ Enlace copiado nuevamente');
+                    } else {
+                      toast.info('📋 No se pudo copiar', {
+                        description: enlaceCompartir
+                      });
+                    }
+                  }}
+                  className="font-semibold"
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Copiar Nuevamente
+                </Button>
+                <Button
+                  onClick={() => setMostrarModalCompartir(false)}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="font-semibold"
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
         </Dialog>
       )}
 
