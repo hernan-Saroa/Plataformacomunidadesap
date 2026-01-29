@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
+import { ConsultaJuridica } from '../core/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner';
@@ -354,8 +355,8 @@ export function ModuloAsesoriaJuridicaV3() {
         label: 'Nueva Consulta',
         labelMobile: 'Nueva',
         icon: <Plus className="w-4 h-4" />,
-        onClick: () => setIsCreateOpen(true),
-        // onClick: () => setModalNuevaConsultaOpen(true),
+        // onClick: () => setIsCreateOpen(true),
+        onClick: () => setModalNuevaConsultaOpen(true),
         variant: 'primary'
       }]
     }
