@@ -500,8 +500,8 @@ export function ModuloDefensaJudicialV3() {
         radicado: demandaData.numeroRadicado,
         tipoProceso: demandaData.tipoProceso, // ✅ Usar el campo correcto del formulario
         jurisdiccion: 'Contencioso Administrativo',
-        demandante: demandaData.demandante,
-        demandado: demandaData.demandado || 'ESAP',
+        demandante: demandaData.demandantes[0].nombre,
+        demandado: demandaData.demandados[0].nombre,
         estado: 'ACTIVO',
         fechaRadicacion: new Date().toISOString(),
         cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
@@ -515,18 +515,18 @@ export function ModuloDefensaJudicialV3() {
         etapaProcesal: demandaData.etapa,
         ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
         // Datos del Demandante
-        tipoIdDemandante: demandaData.tipoPersona === 'natural' ? 'CC' : 'NIT',
-        numeroIdDemandante: demandaData.identificacionDemandante,
-        demandanteDireccion: demandaData.demandanteDireccion,
-        demandanteTelefono: demandaData.demandanteTelefono,
-        demandanteEmail: demandaData.demandanteEmail,
-        demandanteApoderado: demandaData.demandanteApoderado,
+        tipoIdDemandante: demandaData.demandantes[0].tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandante: demandaData.demandantes[0].identificacion,
+        demandanteDireccion: '',
+        demandanteTelefono: '',
+        demandanteEmail: '',
+        demandanteApoderado: '',
         // Datos del Demandado
-        tipoIdDemandado: demandaData.tipoIdDemandado,
-        numeroIdDemandado: demandaData.numeroIdDemandado,
-        demandadoDireccion: demandaData.demandadoDireccion,
-        demandadoTelefono: demandaData.demandadoTelefono,
-        demandadoEmail: demandaData.demandadoEmail,
+        tipoIdDemandado: demandaData.demandados[0].tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandado: demandaData.demandados[0].identificacion,
+        demandadoDireccion: '',
+        demandadoTelefono: '',
+        demandadoEmail: '',
       };
 
       await legalService.crearExpediente(expedienteData);

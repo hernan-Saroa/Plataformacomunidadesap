@@ -68,6 +68,15 @@ interface Abogado {
   nombreCompleto: string;
 }
 
+const ABOGADOS_DISPONIBLES = [
+  'Dr. Juan Pérez López',
+  'Dra. María González',
+  'Dr. Carlos Ramírez',
+  'Dra. Ana López García',
+  'Dr. Pedro Martínez',
+  'Dra. Laura Fernández'
+];
+
 const MEDIOS_CONTROL = [
   'REPARACIÓN DIRECTA',
   'NULIDAD Y RESTABLECIMIENTO',
@@ -79,7 +88,16 @@ const MEDIOS_CONTROL = [
 ];
 
 // Tipos de Procesos Judiciales ahora vienen de ConfiguracionesSIGLContext
-// (se obtienen con useConfiguracionModulo en el componente)
+const TIPOS_PROCESOS_JUDICIALES = [
+  { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
+  { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
+  { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción interpuesta por un grupo de personas' },
+  { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para la protección de derechos colectivos' },
+  { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales' },
+  { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales' },
+  { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para cobro de obligaciones' },
+  { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
+];
 
 const DEPARTAMENTOS = [
   'Cundinamarca',
@@ -198,7 +216,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   useEffect(() => {
     if (isOpen) {
       loadAbogados();
-      setFormData(INITIAL_FORM_DATA);
+      // setFormData(INITIAL_FORM_DATA);
       setErrors({});
     }
   }, [isOpen]);
@@ -226,71 +244,79 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const phoneFormat = (value: string): string => value.replace(/[^0-9+\s-]/g, '');
   const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-  const handleInputChange = (field: keyof NuevaDemandaData, value: string) => {
-    let filteredValue = value;
+  // const handleInputChange = (field: keyof NuevaDemandaData, value: string) => {
+  //   let filteredValue = value;
 
-    // Aplicar filtros según el campo
-    switch (field) {
-      case 'cuantia':
-        // Solo números para cuantía, máximo 9 dígitos
-        filteredValue = onlyNumbers(value);
-        // Si el valor actual es "0", no permitir más dígitos
-        if (formData.cuantia === '0' && filteredValue.length > 1) {
-          filteredValue = '0';
-        }
-        // Si empieza con 0 y tiene más de 1 dígito, mantener solo el primer dígito no-cero
-        if (filteredValue.startsWith('0') && filteredValue.length > 1) {
-          filteredValue = '0';
-        }
-        // Limitar a 9 dígitos
-        if (filteredValue.length > 9) {
-          filteredValue = filteredValue.slice(0, 9);
-        }
-        break;
-      case 'identificacionDemandante':
-        // Solo números si es persona natural
-        if (formData.tipoPersona === 'natural') {
-          filteredValue = onlyNumbers(value);
-        }
-        break;
-      case 'demandante':
-      case 'demandanteApoderado':
-        // Solo letras y espacios para nombres
-        filteredValue = onlyLetters(value);
-        break;
-      case 'demandanteTelefono':
-      case 'demandadoTelefono':
-        // Formato teléfono internacional
-        filteredValue = phoneFormat(value);
-        break;
-      case 'demandado':
-        // Solo letras y espacios para nombre del demandado
-        filteredValue = onlyLetters(value);
-        break;
-      case 'numeroIdDemandado':
-        // Validación según tipo de identificación
-        if (formData.tipoIdDemandado === 'CC') {
-          // Cédula de Ciudadanía: solo números
-          filteredValue = value.replace(/[^0-9]/g, '');
-        } else if (formData.tipoIdDemandado === 'NIT') {
-          // NIT: números, puntos y guiones (ej: 899.999.061-4)
-          filteredValue = value.replace(/[^0-9.\-]/g, '');
-        } else if (formData.tipoIdDemandado === 'CE') {
-          // Cédula Extranjería: números y letras (ej: E-123456 o 123456)
-          filteredValue = value.replace(/[^0-9a-zA-Z\-]/g, '');
-        }
-        break;
-      case 'numeroRadicado':
-        // Máximo 23 caracteres para el radicado
-        if (value.length > 23) {
-          filteredValue = value.slice(0, 23);
-        }
-        break;
-      default:
-        filteredValue = value;
-    }
+  //   // Aplicar filtros según el campo
+  //   switch (field) {
+  //     case 'cuantia':
+  //       // Solo números para cuantía, máximo 9 dígitos
+  //       filteredValue = onlyNumbers(value);
+  //       // Si el valor actual es "0", no permitir más dígitos
+  //       if (formData.cuantia === '0' && filteredValue.length > 1) {
+  //         filteredValue = '0';
+  //       }
+  //       // Si empieza con 0 y tiene más de 1 dígito, mantener solo el primer dígito no-cero
+  //       if (filteredValue.startsWith('0') && filteredValue.length > 1) {
+  //         filteredValue = '0';
+  //       }
+  //       // Limitar a 9 dígitos
+  //       if (filteredValue.length > 9) {
+  //         filteredValue = filteredValue.slice(0, 9);
+  //       }
+  //       break;
+  //     case 'identificacionDemandante':
+  //       // Solo números si es persona natural
+  //       if (formData.tipoPersona === 'natural') {
+  //         filteredValue = onlyNumbers(value);
+  //       }
+  //       break;
+  //     case 'demandante':
+  //     case 'demandanteApoderado':
+  //       // Solo letras y espacios para nombres
+  //       filteredValue = onlyLetters(value);
+  //       break;
+  //     case 'demandanteTelefono':
+  //     case 'demandadoTelefono':
+  //       // Formato teléfono internacional
+  //       filteredValue = phoneFormat(value);
+  //       break;
+  //     case 'demandado':
+  //       // Solo letras y espacios para nombre del demandado
+  //       filteredValue = onlyLetters(value);
+  //       break;
+  //     case 'numeroIdDemandado':
+  //       // Validación según tipo de identificación
+  //       if (formData.tipoIdDemandado === 'CC') {
+  //         // Cédula de Ciudadanía: solo números
+  //         filteredValue = value.replace(/[^0-9]/g, '');
+  //       } else if (formData.tipoIdDemandado === 'NIT') {
+  //         // NIT: números, puntos y guiones (ej: 899.999.061-4)
+  //         filteredValue = value.replace(/[^0-9.\-]/g, '');
+  //       } else if (formData.tipoIdDemandado === 'CE') {
+  //         // Cédula Extranjería: números y letras (ej: E-123456 o 123456)
+  //         filteredValue = value.replace(/[^0-9a-zA-Z\-]/g, '');
+  //       }
+  //       break;
+  //     case 'numeroRadicado':
+  //       // Máximo 23 caracteres para el radicado
+  //       if (value.length > 23) {
+  //         filteredValue = value.slice(0, 23);
+  //       }
+  //       break;
+  //     default:
+  //       filteredValue = value;
+  //   }
 
-    setFormData(prev => ({ ...prev, [field]: filteredValue }));
+  //   setFormData(prev => ({ ...prev, [field]: filteredValue }));
+  //   // Limpiar error del campo
+  //   if (errors[field]) {
+  //     setErrors(prev => ({ ...prev, [field]: '' }));
+  //   }
+  // };
+
+  const handleInputChange = (field: keyof NuevaDemandaData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
     // Limpiar error del campo
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -463,15 +489,6 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     if (!formData.medioControl) {
       newErrors.medioControl = 'Seleccione el medio de control';
     }
-    if (!formData.tipoProceso) {
-      newErrors.tipoProceso = 'Seleccione el tipo de proceso';
-    }
-    if (!formData.demandante.trim()) {
-      newErrors.demandante = 'El nombre del demandante es obligatorio';
-    }
-    if (!formData.identificacionDemandante.trim()) {
-      newErrors.identificacionDemandante = 'La identificación es obligatoria';
-    }
     if (formData.demandantes.length === 0) {
       newErrors.demandantes = 'Debe agregar al menos un demandante';
     }
@@ -489,14 +506,6 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     }
     if (!formData.pretensiones.trim()) {
       newErrors.pretensiones = 'Las pretensiones son obligatorias';
-    }
-
-    // ✅ Validación de formato de correo electrónico
-    if (formData.demandanteEmail && !isValidEmail(formData.demandanteEmail)) {
-      newErrors.demandanteEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
-    }
-    if (formData.demandadoEmail && !isValidEmail(formData.demandadoEmail)) {
-      newErrors.demandadoEmail = 'El correo debe tener formato válido (ej: usuario@dominio.com)';
     }
 
     setErrors(newErrors);
@@ -525,19 +534,6 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       numeroRadicado: '',
       medioControl: '',
       tipoProceso: '',
-      demandante: '',
-      tipoPersona: 'natural',
-      identificacionDemandante: '',
-      demandanteDireccion: '',
-      demandanteTelefono: '',
-      demandanteEmail: '',
-      demandanteApoderado: '',
-      demandado: 'ESAP - Escuela Superior de Administración Pública',
-      tipoIdDemandado: 'NIT',
-      numeroIdDemandado: '899.999.061-4',
-      demandadoDireccion: 'Calle 44 #53-37, Bogotá D.C.',
-      demandadoTelefono: '+57 601 220 2790',
-      demandadoEmail: 'juridica@esap.edu.co',
       demandantes: [],
       demandados: [],
       otrosActores: [],
@@ -588,36 +584,50 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
           Formulario de registro de nueva demanda judicial contra ESAP
         </DialogDescription>
 
+        {/* Header - flex-shrink-0 (siempre visible) */}
+        <ModalHeaderClean
+          icono={Scale}
+          colorIcono="blue"
+          titulo="Nueva Demanda Judicial"
+          subtitulo="Registro de demanda contra ESAP"
+          badgePrincipal="Formulario de Registro"
+          onClose={onClose}
+        />
+
+        {/* Contenido - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+        <form onSubmit={handleSubmit} className="space-y-6">
         {/* Sección 1: Datos del Proceso */}
         <div className="bg-gradient-to-br from-blue-50 to-white p-4 rounded-lg border-l-4 border-l-blue-600">
-          <h3 className="text-sm font-black text-blue-900 mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-bold text-blue-900 mb-4 flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" />
             DATOS DEL PROCESO JUDICIAL
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Número de Radicado */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                Número de Radicado <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.numeroRadicado}
-                onChange={(e) => handleInputChange('numeroRadicado', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.numeroRadicado
-                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
-                  : 'border-gray-300 focus:ring-blue-500'
+            <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Número de Radicado <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.numeroRadicado}
+                  onChange={(e) => handleInputChange('numeroRadicado', e.target.value)}
+                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                    errors.numeroRadicado 
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                      : 'border-gray-300 focus:ring-blue-500'
                   }`}
-                placeholder="Ej: 11001333300120240001 (23 dígitos)"
-              />
-              {errors.numeroRadicado && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
-                  <AlertCircle className="w-3 h-3" />
-                  {errors.numeroRadicado}
-                </p>
-              )}
-            </div>
+                  placeholder="Ej: 25000-23-33-001-2024-00001-00"
+                />
+                {errors.numeroRadicado && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {errors.numeroRadicado}
+                  </p>
+                )}
+              </div>
 
             {/* Medio de Control */}
             <div>
@@ -627,10 +637,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               <select
                 value={formData.medioControl}
                 onChange={(e) => handleInputChange('medioControl', e.target.value)}
-                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 font-semibold ${errors.medioControl
-                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
-                  : 'border-gray-300 focus:ring-blue-500'
-                  }`}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.medioControl 
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
               >
                 <option value="">Seleccione...</option>
                 {MEDIOS_CONTROL.map(medio => (
@@ -638,420 +649,35 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 ))}
               </select>
               {errors.medioControl && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
                   {errors.medioControl}
                 </p>
               )}
             </div>
 
-            {/* Sección 2.5: Datos de Demandados - ✅ SECCIÓN AGREGADA PARA ESAP */}
-            <div className="bg-gradient-to-br from-red-50 to-white p-4 rounded-lg border-l-4 border-l-red-500">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-red-900 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-red-600" />
-                  DATOS DEL DEMANDADO(S)
-                </h3>
-                <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
-                  {formData.demandados.length} agregado(s)
-                </span>
-              </div>
-
-              {/* ✅ FORMULARIO PARA AGREGAR DEMANDADO */}
-              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-red-300 mb-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <UserPlus className="w-4 h-4 text-red-600" />
-                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandado</h4>
-                </div>
-
-                <div className="space-y-3">
-                  {/* Primera fila: Tipo de Persona */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Tipo de Persona
-                    </label>
-                    <div className="flex gap-6">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nuevoTipoPersonaDemandado"
-                          value="natural"
-                          checked={nuevoDemandado.tipoPersona === 'natural'}
-                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'natural' }))}
-                          className="w-3 h-3"
-                          style={{ accentColor: '#DC2626' }}
-                        />
-                        <span className="text-xs text-gray-700">Natural</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nuevoTipoPersonaDemandado"
-                          value="juridica"
-                          checked={nuevoDemandado.tipoPersona === 'juridica'}
-                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'juridica' }))}
-                          className="w-3 h-3"
-                          style={{ accentColor: '#DC2626' }}
-                        />
-                        <span className="text-xs text-gray-700">Jurídica</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Segunda fila: Identificación, Nombre, Cargo y Botón */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    {/* Identificación */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        {nuevoDemandado.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoDemandado.identificacion}
-                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, identificacion: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        placeholder={nuevoDemandado.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
-                      />
-                    </div>
-
-                    {/* Nombre Completo */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Nombre Completo / Razón Social
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoDemandado.nombre}
-                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, nombre: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        placeholder="Nombre completo del demandado"
-                      />
-                    </div>
-
-                    {/* Cargo (Opcional) */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Cargo / Función (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoDemandado.cargo}
-                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, cargo: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                        placeholder="Ej: Rector, Director, etc."
-                      />
-                    </div>
-
-                    {/* Botón Agregar */}
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAgregarDemandado}
-                        className="w-full text-white text-xs font-bold"
-                        style={{ background: '#DC2626' }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Agregar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ✅ LISTA DE DEMANDADOS AGREGADOS */}
-              {formData.demandados.length > 0 ? (
-                <div className="space-y-2">
-                  {formData.demandados.map((demandado, index) => (
-                    <div 
-                      key={demandado.id} 
-                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-                          <span className="text-xs font-bold text-red-700">#{index + 1}</span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-900">{demandado.nombre}</span>
-                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
-                              {demandado.tipoPersona}
-                            </span>
-                            {demandado.cargo && (
-                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
-                                {demandado.cargo}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            {demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandado.identificacion}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarDemandado(demandado.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 font-medium">
-                    No hay demandados agregados. Use el formulario arriba para agregar.
-                  </p>
-                </div>
+            {/* Tipo de Proceso Judicial */}
+            <div className="lg:col-span-2">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Tipo de Proceso Judicial
+              </label>
+              <select
+                value={formData.tipoProceso}
+                onChange={(e) => handleInputChange('tipoProceso', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Seleccione un tipo de proceso...</option>
+                {TIPOS_PROCESOS_JUDICIALES.map(tipo => (
+                  <option key={tipo.id} value={tipo.nombre}>
+                    {tipo.nombre}
+                  </option>
+                ))}
+              </select>
+              {formData.tipoProceso && (
+                <p className="text-xs text-gray-600 mt-1.5 italic bg-blue-50 px-2 py-1.5 rounded">
+                  ℹ️ {TIPOS_PROCESOS_JUDICIALES.find(t => t.nombre === formData.tipoProceso)?.descripcion}
+                </p>
               )}
-            </div>
-
-            {/* Sección 2.6: Datos de Otros Actores - ✅ SECCIÓN AGREGADA PARA ESAP */}
-            <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-gray-600" />
-                  DATOS DE OTROS ACTORES
-                </h3>
-                <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-bold rounded-full">
-                  {formData.otrosActores.length} agregado(s)
-                </span>
-              </div>
-
-              {/* ✅ FORMULARIO PARA AGREGAR OTRO ACTOR */}
-              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-gray-300 mb-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <UserPlus className="w-4 h-4 text-gray-600" />
-                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Otro Actor</h4>
-                </div>
-
-                <div className="space-y-3">
-                  {/* Primera fila: Tipo de Persona */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Tipo de Persona
-                    </label>
-                    <div className="flex gap-6">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nuevoTipoPersonaOtroActor"
-                          value="natural"
-                          checked={nuevoOtroActor.tipoPersona === 'natural'}
-                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'natural' }))}
-                          className="w-3 h-3"
-                          style={{ accentColor: '#2962FF' }}
-                        />
-                        <span className="text-xs text-gray-700">Natural</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nuevoTipoPersonaOtroActor"
-                          value="juridica"
-                          checked={nuevoOtroActor.tipoPersona === 'juridica'}
-                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'juridica' }))}
-                          className="w-3 h-3"
-                          style={{ accentColor: '#2962FF' }}
-                        />
-                        <span className="text-xs text-gray-700">Jurídica</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Segunda fila: Identificación, Nombre, Rol y Botón */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    {/* Identificación */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        {nuevoOtroActor.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoOtroActor.identificacion}
-                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, identificacion: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                        placeholder={nuevoOtroActor.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
-                      />
-                    </div>
-
-                    {/* Nombre Completo */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Nombre Completo / Razón Social
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoOtroActor.nombre}
-                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, nombre: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                        placeholder="Nombre completo del otro actor"
-                      />
-                    </div>
-
-                    {/* Rol */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                        Rol
-                      </label>
-                      <input
-                        type="text"
-                        value={nuevoOtroActor.rol}
-                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, rol: e.target.value }))}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                        placeholder="Ej: Tercero, Ministerio Público, etc."
-                      />
-                    </div>
-
-                    {/* Botón Agregar */}
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAgregarOtroActor}
-                        className="w-full text-white text-xs font-bold"
-                        style={{ background: '#2962FF' }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Agregar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ✅ LISTA DE OTROS ACTORES AGREGADOS */}
-              {formData.otrosActores.length > 0 ? (
-                <div className="space-y-2">
-                  {formData.otrosActores.map((otroActor, index) => (
-                    <div 
-                      key={otroActor.id} 
-                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                          <span className="text-xs font-bold text-gray-700">#{index + 1}</span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-900">{otroActor.nombre}</span>
-                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
-                              {otroActor.tipoPersona}
-                            </span>
-                            {otroActor.rol && (
-                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
-                                {otroActor.rol}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            {otroActor.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {otroActor.identificacion}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarOtroActor(otroActor.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
-                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-xs text-gray-500 font-medium">
-                    No hay otros actores agregados. Use el formulario arriba para agregar.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Sección 3: Juzgado y Ubicación */}
-            <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-lg border-l-4 border-l-purple-600">
-              <h3 className="text-sm font-bold text-purple-900 mb-4 flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-purple-600" />
-                JUZGADO Y UBICACIÓN
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Juzgado */}
-                <div className="lg:col-span-3">
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Juzgado / Tribunal <span className="text-red-600">*</span>
-                  </label>
-                  <div className="relative">
-                    <Gavel className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={formData.juzgado}
-                      onChange={(e) => handleInputChange('juzgado', e.target.value)}
-                      className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                        errors.juzgado 
-                          ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                          : 'border-gray-300 focus:ring-blue-500'
-                      }`}
-                      placeholder="Ej: Juzgado 10 Administrativo del Circuito de Bogotá"
-                    />
-                  </div>
-                  {errors.juzgado && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errors.juzgado}
-                    </p>
-                  )}
-                </div>
-
-                {/* Departamento */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Departamento
-                  </label>
-                  <select
-                    value={formData.departamento}
-                    onChange={(e) => handleInputChange('departamento', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Seleccione...</option>
-                    {DEPARTAMENTOS.map(dept => (
-                      <option key={dept} value={dept}>{dept}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Ciudad */}
-                <div className="lg:col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Ciudad <span className="text-red-600">*</span>
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={formData.ciudad}
-                      onChange={(e) => handleInputChange('ciudad', e.target.value)}
-                      className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
-                        errors.ciudad 
-                          ? 'border-red-500 focus:ring-red-500 bg-red-50' 
-                          : 'border-gray-300 focus:ring-blue-500'
-                      }`}
-                      placeholder="Ej: Bogotá D.C."
-                    />
-                  </div>
-                  {errors.ciudad && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {errors.ciudad}
-                    </p>
-                  )}
-                </div>
-              </div>
             </div>
 
             {/* Etapa */}
@@ -1062,7 +688,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               <select
                 value={formData.etapa}
                 onChange={(e) => handleInputChange('etapa', e.target.value as any)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="NOTIFICADA">Notificada</option>
                 <option value="CONTESTACIÓN">Contestación</option>
@@ -1072,7 +698,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
             </div>
 
             {/* Cuantía */}
-            <div>
+            <div className="lg:col-span-3">
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
                 Cuantía (COP)
               </label>
@@ -1090,264 +716,486 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
           </div>
         </div>
 
-        {/* Sección 2: Datos del Demandante */}
+        {/* Sección 2: Datos de Demandantes - ✅ NUEVO DISEÑO MEJORADO */}
         <div className="bg-gradient-to-br from-orange-50 to-white p-4 rounded-lg border-l-4 border-l-orange-500">
-          <h3 className="text-sm font-black text-orange-900 mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-orange-600" />
-            DATOS DEL DEMANDANTE
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-orange-900 flex items-center gap-2">
+              <User className="w-5 h-5 text-orange-600" />
+              DATOS DEL DEMANDANTE(S)
+            </h3>
+            <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-bold rounded-full">
+              {formData.demandantes.length} agregado(s)
+            </span>
+          </div>
+          {/* ✅ FORMULARIO PARA AGREGAR DEMANDANTE */}
+          <div className="bg-white p-4 rounded-lg border-2 border-dashed border-orange-300 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <UserPlus className="w-4 h-4 text-orange-600" />
+              <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandante</h4>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Tipo de Persona */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-gray-700 mb-2">
-                Tipo de Persona
-              </label>
-              <div className="flex gap-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="tipoPersona"
-                    value="natural"
-                    checked={formData.tipoPersona === 'natural'}
-                    onChange={(e) => handleInputChange('tipoPersona', e.target.value)}
-                    className="w-4 h-4"
-                    style={{ accentColor: '#003DA5' }}
-                  />
-                  <span className="text-sm font-semibold text-gray-700">Natural</span>
+            <div className="space-y-3">
+              {/* Primera fila: Tipo de Persona */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Tipo de Persona
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersona"
+                      value="natural"
+                      checked={nuevoDemandante.tipoPersona === 'natural'}
+                      onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#2962FF' }}
+                    />
+                    <span className="text-xs text-gray-700">Natural</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersona"
+                      value="juridica"
+                      checked={nuevoDemandante.tipoPersona === 'juridica'}
+                      onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#2962FF' }}
+                    />
+                    <span className="text-xs text-gray-700">Jurídica</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Segunda fila: Identificación, Nombre y Botón - ALINEADOS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Identificación */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    {nuevoDemandante.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                  </label>
                   <input
-                    type="radio"
-                    name="tipoPersona"
-                    value="juridica"
-                    checked={formData.tipoPersona === 'juridica'}
-                    onChange={(e) => handleInputChange('tipoPersona', e.target.value)}
-                    className="w-4 h-4"
-                    style={{ accentColor: '#003DA5' }}
+                    type="text"
+                    value={nuevoDemandante.identificacion}
+                    onChange={(e) => setNuevoDemandante(prev => ({ ...prev, identificacion: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder={nuevoDemandante.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
                   />
-                  <span className="text-sm font-semibold text-gray-700">Jurídica</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.identificacionDemandante}
-                  onChange={(e) => handleInputChange('identificacionDemandante', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.identificacionDemandante
-                    ? 'border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                  placeholder={formData.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
-                />
-                {errors.identificacionDemandante && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.identificacionDemandante}
-                  </p>
-                )}
+                </div>
+
+                {/* Nombre Completo */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Nombre Completo / Razón Social
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoDemandante.nombre}
+                    onChange={(e) => setNuevoDemandante(prev => ({ ...prev, nombre: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Nombre completo del demandante"
+                  />
+                </div>
+
+                {/* Botón Agregar */}
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    onClick={handleAgregarDemandante}
+                    className="w-full text-white text-xs font-bold"
+                    style={{ background: '#F57C00' }}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
               </div>
             </div>
-
-            {/* Nombre Completo */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Nombre Completo / Razón Social <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.demandante}
-                onChange={(e) => handleInputChange('demandante', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandante
-                  ? 'border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:ring-blue-500'
-                  }`}
-                placeholder="Nombre completo del demandante"
-              />
-              {errors.demandante && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  {errors.demandante}
-                </p>
-              )}
-            </div>
-
-            {/* Dirección */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Dirección de Notificación
-              </label>
-              <input
-                type="text"
-                value={formData.demandanteDireccion || ''}
-                onChange={(e) => handleInputChange('demandanteDireccion', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: Calle 100 #15-20, Bogotá D.C."
-              />
-            </div>
-
-            {/* Teléfono */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Teléfono
-              </label>
-              <input
-                type="text"
-                value={formData.demandanteTelefono || ''}
-                onChange={(e) => handleInputChange('demandanteTelefono', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: +57 310 123 4567"
-              />
-            </div>
-
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Correo Electrónico
-              </label>
-              <input
-                type="email"
-                value={formData.demandanteEmail || ''}
-                onChange={(e) => handleInputChange('demandanteEmail', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandanteEmail
-                  ? 'border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:ring-blue-500'
-                  }`}
-                placeholder="Ej: demandante@email.com"
-              />
-              {errors.demandanteEmail && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  {errors.demandanteEmail}
-                </p>
-              )}
-            </div>
-
-            {/* Apoderado del demandante */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Apoderado del Demandante
-              </label>
-              <input
-                type="text"
-                value={formData.demandanteApoderado || ''}
-                onChange={(e) => handleInputChange('demandanteApoderado', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Nombre del abogado representante del demandante"
-              />
-            </div>
           </div>
+
+          {/* ✅ LISTA DE DEMANDANTES AGREGADOS */}
+          {errors.demandantes && (
+            <p className="text-xs text-red-600 mb-2 flex items-center gap-1 bg-red-50 px-3 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4" />
+              {errors.demandantes}
+            </p>
+          )}
+
+          {formData.demandantes.length > 0 ? (
+            <div className="space-y-2">
+              {formData.demandantes.map((demandante, index) => (
+                <div 
+                  key={demandante.id} 
+                  className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                      <span className="text-xs font-bold text-orange-700">#{index + 1}</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900">{demandante.nombre}</span>
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                          {demandante.tipoPersona}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        {demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandante.identificacion}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEliminarDemandante(demandante.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+              <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 font-medium">
+                No hay demandantes agregados. Use el formulario arriba para agregar.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Sección 3: Datos del Demandado */}
-        <div className="bg-gradient-to-br from-yellow-50 to-white p-4 rounded-lg border-l-4 border-l-yellow-600">
-          <h3 className="text-sm font-black text-yellow-900 mb-4 flex items-center gap-2">
-            <User className="w-5 h-5 text-yellow-600" />
-            DATOS DEL DEMANDADO
-            <Badge className="ml-2 text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Pre-llenado</Badge>
-          </h3>
+        {/* Sección 3: Datos de Demandados - ✅ SECCIÓN AGREGADA PARA ESAP */}
+        <div className="bg-gradient-to-br from-red-50 to-white p-4 rounded-lg border-l-4 border-l-red-500">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-red-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-red-600" />
+              DATOS DEL DEMANDADO(S)
+            </h3>
+            <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+              {formData.demandados.length} agregado(s)
+            </span>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Nombre del demandado */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Nombre / Razón Social
-              </label>
-              <input
-                type="text"
-                value={formData.demandado}
-                onChange={(e) => handleInputChange('demandado', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="ESAP - Escuela Superior de Administración Pública"
-              />
+          {/* ✅ FORMULARIO PARA AGREGAR DEMANDADO */}
+          <div className="bg-white p-4 rounded-lg border-2 border-dashed border-red-300 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <UserPlus className="w-4 h-4 text-red-600" />
+              <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandado</h4>
             </div>
 
-            {/* Tipo ID */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Tipo de Identificación
-              </label>
-              <select
-                value={formData.tipoIdDemandado}
-                onChange={(e) => handleInputChange('tipoIdDemandado', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="NIT">NIT</option>
-                <option value="CC">Cédula de Ciudadanía</option>
-                <option value="CE">Cédula Extranjería</option>
-              </select>
-            </div>
+            <div className="space-y-3">
+              {/* Primera fila: Tipo de Persona */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Tipo de Persona
+                </label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersonaDemandado"
+                      value="natural"
+                      checked={nuevoDemandado.tipoPersona === 'natural'}
+                      onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#DC2626' }}
+                    />
+                    <span className="text-xs text-gray-700">Natural</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersonaDemandado"
+                      value="juridica"
+                      checked={nuevoDemandado.tipoPersona === 'juridica'}
+                      onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#DC2626' }}
+                    />
+                    <span className="text-xs text-gray-700">Jurídica</span>
+                  </label>
+                </div>
+              </div>
 
-            {/* Número ID */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Número de Identificación
-              </label>
-              <input
-                type="text"
-                value={formData.numeroIdDemandado}
-                onChange={(e) => handleInputChange('numeroIdDemandado', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="899.999.061-4"
-              />
-            </div>
+              {/* Segunda fila: Identificación, Nombre, Cargo y Botón */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {/* Identificación */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    {nuevoDemandado.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoDemandado.identificacion}
+                    onChange={(e) => setNuevoDemandado(prev => ({ ...prev, identificacion: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder={nuevoDemandado.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                  />
+                </div>
 
-            {/* Dirección */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Dirección
-              </label>
-              <input
-                type="text"
-                value={formData.demandadoDireccion}
-                onChange={(e) => handleInputChange('demandadoDireccion', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Calle 44 #53-37, Bogotá D.C."
-              />
-            </div>
+                {/* Nombre Completo */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Nombre Completo / Razón Social
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoDemandado.nombre}
+                    onChange={(e) => setNuevoDemandado(prev => ({ ...prev, nombre: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder="Nombre completo del demandado"
+                  />
+                </div>
 
-            {/* Teléfono */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Teléfono
-              </label>
-              <input
-                type="text"
-                value={formData.demandadoTelefono}
-                onChange={(e) => handleInputChange('demandadoTelefono', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+57 601 220 2790"
-              />
-            </div>
+                {/* Cargo (Opcional) */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Cargo / Función (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoDemandado.cargo}
+                    onChange={(e) => setNuevoDemandado(prev => ({ ...prev, cargo: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    placeholder="Ej: Rector, Director, etc."
+                  />
+                </div>
 
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Correo Electrónico
-              </label>
-              <input
-                type="email"
-                value={formData.demandadoEmail}
-                onChange={(e) => handleInputChange('demandadoEmail', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.demandadoEmail
-                  ? 'border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 focus:ring-blue-500'
-                  }`}
-                placeholder="juridica@esap.edu.co"
-              />
-              {errors.demandadoEmail && (
-                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  {errors.demandadoEmail}
-                </p>
-              )}
+                {/* Botón Agregar */}
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    onClick={handleAgregarDemandado}
+                    className="w-full text-white text-xs font-bold"
+                    style={{ background: '#DC2626' }}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
-
-
-
+          {/* ✅ LISTA DE DEMANDADOS AGREGADOS */}
+          {formData.demandados.length > 0 ? (
+            <div className="space-y-2">
+              {formData.demandados.map((demandado, index) => (
+                <div 
+                  key={demandado.id} 
+                  className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                      <span className="text-xs font-bold text-red-700">#{index + 1}</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900">{demandado.nombre}</span>
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                          {demandado.tipoPersona}
+                        </span>
+                        {demandado.cargo && (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                            {demandado.cargo}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        {demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandado.identificacion}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEliminarDemandado(demandado.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+              <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 font-medium">
+                No hay demandados agregados. Use el formulario arriba para agregar.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Sección 3: Juzgado y Ubicación */}
+        {/* Sección 4: Datos de Otros Actores - ✅ SECCIÓN AGREGADA PARA ESAP */}
+        <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <Users className="w-5 h-5 text-gray-600" />
+              DATOS DE OTROS ACTORES
+            </h3>
+            <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-bold rounded-full">
+              {formData.otrosActores.length} agregado(s)
+            </span>
+          </div>
+
+          {/* ✅ FORMULARIO PARA AGREGAR OTRO ACTOR */}
+          <div className="bg-white p-4 rounded-lg border-2 border-dashed border-gray-300 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <UserPlus className="w-4 h-4 text-gray-600" />
+              <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Otro Actor</h4>
+            </div>
+
+            <div className="space-y-3">
+              {/* Primera fila: Tipo de Persona */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Tipo de Persona
+                </label>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersonaOtroActor"
+                      value="natural"
+                      checked={nuevoOtroActor.tipoPersona === 'natural'}
+                      onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#2962FF' }}
+                    />
+                    <span className="text-xs text-gray-700">Natural</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="nuevoTipoPersonaOtroActor"
+                      value="juridica"
+                      checked={nuevoOtroActor.tipoPersona === 'juridica'}
+                      onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                      className="w-3 h-3"
+                      style={{ accentColor: '#2962FF' }}
+                    />
+                    <span className="text-xs text-gray-700">Jurídica</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Segunda fila: Identificación, Nombre, Rol y Botón */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {/* Identificación */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    {nuevoOtroActor.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoOtroActor.identificacion}
+                    onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, identificacion: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    placeholder={nuevoOtroActor.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                  />
+                </div>
+
+                {/* Nombre Completo */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Nombre Completo / Razón Social
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoOtroActor.nombre}
+                    onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, nombre: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    placeholder="Nombre completo del otro actor"
+                  />
+                </div>
+
+                {/* Rol */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Rol
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoOtroActor.rol}
+                    onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, rol: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    placeholder="Ej: Tercero, Ministerio Público, etc."
+                  />
+                </div>
+
+                {/* Botón Agregar */}
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    onClick={handleAgregarOtroActor}
+                    className="w-full text-white text-xs font-bold"
+                    style={{ background: '#2962FF' }}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ LISTA DE OTROS ACTORES AGREGADOS */}
+          {formData.otrosActores.length > 0 ? (
+            <div className="space-y-2">
+              {formData.otrosActores.map((otroActor, index) => (
+                <div 
+                  key={otroActor.id} 
+                  className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                      <span className="text-xs font-bold text-gray-700">#{index + 1}</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-gray-900">{otroActor.nombre}</span>
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                          {otroActor.tipoPersona}
+                        </span>
+                        {otroActor.rol && (
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                            {otroActor.rol}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        {otroActor.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {otroActor.identificacion}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEliminarOtroActor(otroActor.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+              <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 font-medium">
+                No hay otros actores agregados. Use el formulario arriba para agregar.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Sección 5: Juzgado y Ubicación */}
         <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-lg border-l-4 border-l-purple-600">
           <h3 className="text-sm font-black text-purple-900 mb-4 flex items-center gap-2">
             <Building2 className="w-5 h-5 text-purple-600" />
@@ -1426,24 +1274,28 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
           </div>
         </div>
 
-        {/* Sección 4: Fechas y Asignación */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-          <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <Calendar className="w-5 h-5" style={{ color: '#003DA5' }} />
-            Fechas y Asignación
+        {/* Sección 6: Fechas y Asignación */}
+        <div className="bg-gradient-to-br from-green-50 to-white p-4 rounded-lg border-l-4 border-l-green-600">
+          <h3 className="text-sm font-bold text-green-900 mb-4 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-green-600" />
+            FECHAS Y ASIGNACIÓN
           </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Fecha Notificación */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
                 Fecha de Notificación <span className="text-red-600">*</span>
               </label>
               <input
                 type="date"
                 value={formData.fechaNotificacion}
                 onChange={(e) => handleInputChange('fechaNotificacion', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.fechaNotificacion ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                  }`}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.fechaNotificacion 
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
               />
               {errors.fechaNotificacion && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -1453,44 +1305,36 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
               )}
             </div>
 
-            {/* Fecha de Vencimiento - Auto-calculada */}
+            {/* Fecha Vencimiento */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
                 Fecha de Vencimiento
-                <span className="ml-2 text-xs font-normal text-gray-500">(auto-calculada)</span>
               </label>
-              <div className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 font-semibold">
-                {formData.fechaVencimiento ? (
-                  <>
-                    📅 {new Date(formData.fechaVencimiento + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
-                    {formData.tipoProceso && (
-                      <span className="text-xs text-gray-500 ml-2">
-                        ({tiposProcesosActivos.find(t => t.id === formData.tipoProceso)?.plazo} días desde notificación)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-gray-400 italic">Seleccione tipo de proceso y fecha de notificación</span>
-                )}
-              </div>
+              <input
+                type="date"
+                value={formData.fechaVencimiento}
+                onChange={(e) => handleInputChange('fechaVencimiento', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
+            {/* Abogado Asignado */}
+            <div className="lg:col-span-1">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
                 Abogado Responsable <span className="text-red-600">*</span>
               </label>
               <select
                 value={formData.abogadoAsignado}
                 onChange={(e) => handleInputChange('abogadoAsignado', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.abogadoAsignado ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                  }`}
-                disabled={loadingAbogados}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  errors.abogadoAsignado 
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                    : 'border-gray-300 focus:ring-blue-500'
+                }`}
               >
-                <option value="">{loadingAbogados ? 'Cargando abogados...' : 'Seleccione un abogado...'}</option>
-                {abogados.map((abogado) => (
-                  <option key={abogado.id} value={abogado.nombreCompleto}>
-                    {abogado.nombreCompleto}
-                  </option>
+                <option value="">Seleccione un abogado...</option>
+                {ABOGADOS_DISPONIBLES.map(abogado => (
+                  <option key={abogado} value={abogado}>{abogado}</option>
                 ))}
               </select>
               {errors.abogadoAsignado && (
@@ -1503,7 +1347,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
           </div>
         </div>
 
-        {/* Sección 5: Detalles del Proceso */}
+        {/* Sección 7: Detalles del Proceso */}
         <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
           <h3 className="text-sm font-black text-gray-900 mb-4 flex items-center gap-2">
             <FileText className="w-5 h-5 text-gray-600" />
@@ -1554,6 +1398,35 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
             </div>
           </div>
         </div>
+
+        </form>
+        </div>
+
+        {/* Footer - flex-shrink-0 (siempre visible) */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-600">
+            Los campos marcados con <span className="text-red-600 font-bold">*</span> son obligatorios
+          </p>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              className="text-white"
+              style={{ background: '#2962FF' }}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Registrar Demanda
+            </Button>
+          </div>
+        </div>
+
       </DialogContent>
     </Dialog>
   );
