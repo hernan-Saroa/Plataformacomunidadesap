@@ -47,7 +47,8 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
       {/* ✅ Modal de Certificado de Grado */}
       <ValidarCertificadoGrado 
         isOpen={tipoSeleccionado === 'grado'} 
-        onClose={() => setTipoSeleccionado('selector')} 
+        onClose={() => setTipoSeleccionado('selector')}
+        onBack={() => setTipoSeleccionado('selector')}
       />
 
       {/* Si el usuario seleccionó Certificado Laboral - Vista completa */}
