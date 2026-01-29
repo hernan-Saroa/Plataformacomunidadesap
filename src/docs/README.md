@@ -13,6 +13,18 @@
 
 ---
 
+### 📊 Procesos de Negocio
+
+**[📊 PROCESOS_NEGOCIO_BPMN.md](./PROCESOS_NEGOCIO_BPMN.md)** ⭐ **NUEVO**
+- Documentacion completa de procesos de negocio
+- Diagramas en notacion BPMN 2.0
+- 9 procesos principales documentados
+- Matriz de roles y responsabilidades (RACI)
+- Mapa de integraciones entre modulos
+- **DOCUMENTO ESENCIAL PARA ENTENDER EL NEGOCIO**
+
+---
+
 ### 🏗️ Para Arquitectos y Líderes Técnicos
 
 **[🏗️ ARQUITECTURA_MICRO_FRONTENDS.md](./ARQUITECTURA_MICRO_FRONTENDS.md)**
