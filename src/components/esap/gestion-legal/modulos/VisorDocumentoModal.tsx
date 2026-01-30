@@ -13,7 +13,7 @@ import {
   X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface VisorDocumentoModalProps {
   isOpen: boolean;
@@ -38,7 +38,13 @@ export function VisorDocumentoModal({
   // Reset loading state when archivo changes
   useEffect(() => {
     if (archivo) {
-      const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+      // Consideramos que es un archivo real si empieza por http, blob, data, o si contiene extensiones comunes de archivos
+      // y NO es un texto corto o un ID simple.
+      const hasExtension = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx)$/i.test(archivo);
+      const isPath = archivo.includes('/') || archivo.includes('\\');
+
+      const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:') && !hasExtension && !isPath;
+
       // Si es un archivo mock, no necesitamos esperar 'load' event del iframe/img
       setIsLoading(!isMock);
       setHasError(false);
@@ -176,7 +182,9 @@ export function VisorDocumentoModal({
 
               // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
               // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")
-              const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+              const hasExtension = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx)$/i.test(archivo);
+              const isPath = archivo.includes('/') || archivo.includes('\\');
+              const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:') && !hasExtension && !isPath;
 
               if (isMockFile && isPdf) {
                 return (

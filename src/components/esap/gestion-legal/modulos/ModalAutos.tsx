@@ -63,7 +63,7 @@ interface Auto {
 }
 
 export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosProps) {
-  
+
   const [autos, setAutos] = useState<Auto[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -324,7 +324,7 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       default:
         return authService.isSuperAdmin()
     }
-    };
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -549,15 +549,15 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
                           {/* Botón Eliminar */}
                           {hasPermission('delete') && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEliminarAuto(auto.id, auto.numero)}
-                            title="Eliminar auto"
-                            className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEliminarAuto(auto.id, auto.numero)}
+                              title="Eliminar auto"
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -598,25 +598,25 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
                 Descargar Todos (ZIP)
               </Button>
               {hasPermission('create') && (
-              <Button
-                onClick={() => {
-                  // Limpiar todos los valores antes de abrir
-                  setNewAutoData({
-                    tipo: '',
-                    numero: `AUTO-${new Date().getFullYear()}-${String(autos.length + 1).padStart(3, '0')}`,
-                    fechaAuto: new Date().toISOString().split('T')[0],
-                    juzgado: 'Juzgado 1° Administrativo',
-                    resumen: ''
-                  });
-                  setSelectedFile(null);
-                  setIsCreateOpen(true);
-                }}
-                className="font-bold text-white"
-                style={{ background: '#F57C00' }}
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Cargar Auto Nuevo
-              </Button>
+                <Button
+                  onClick={() => {
+                    // Limpiar todos los valores antes de abrir
+                    setNewAutoData({
+                      tipo: '',
+                      numero: `AUTO-${new Date().getFullYear()}-${String(autos.length + 1).padStart(3, '0')}`,
+                      fechaAuto: new Date().toISOString().split('T')[0],
+                      juzgado: 'Juzgado 1° Administrativo',
+                      resumen: ''
+                    });
+                    setSelectedFile(null);
+                    setIsCreateOpen(true);
+                  }}
+                  className="font-bold text-white"
+                  style={{ background: '#F57C00' }}
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Cargar Auto Nuevo
+                </Button>
               )}
             </div>
           </div>
@@ -662,7 +662,7 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
               <div className="grid gap-2">
                 <Label>Archivo del Auto (PDF)</Label>
-                <Input type="file" accept=".pdf,.doc,.docx" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
+                <Input type="file" accept=".pdf,.doc,.docx,.zip" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
               </div>
             </div>
             <div className="flex justify-end gap-2">
