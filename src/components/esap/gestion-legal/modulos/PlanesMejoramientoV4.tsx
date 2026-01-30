@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -220,6 +221,7 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
+  const { entesControl } = useConfiguracionesSIGL();
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEnte, setFiltroEnte] = useState<string>('TODOS');
@@ -584,10 +586,10 @@ export function ModuloPlanesMejoramientoV4() {
             onChange: setFiltroEnte,
             options: [
               { label: 'Todos', value: 'TODOS' },
-              { label: '🏛️ Contraloría', value: 'CONTRALORIA' },
-              { label: '⚖️ Procuraduría', value: 'PROCURADURIA' },
-              { label: '🔍 OCI', value: 'OCI' },
-              { label: '📊 Auditoría Externa', value: 'AUDITORIA_EXTERNA' }
+              ...entesControl.filter(e => e.activo).map(ente => ({
+                label: ente.nombre,
+                value: ente.id
+              }))
             ]
           },
           {
@@ -637,7 +639,7 @@ export function ModuloPlanesMejoramientoV4() {
 
       {/* Modal Nuevo Plan */}
       <Dialog open={modalNuevoPlanAbierto} onOpenChange={setModalNuevoPlanAbierto}>
-        <DialogContent hideCloseButton className="!max-w-[420px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[600px] sm:max-w-[700px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
           {/* Componentes de accesibilidad requeridos */}
           <DialogTitle className="sr-only">Crear Nuevo Plan de Mejoramiento</DialogTitle>
           <DialogDescription className="sr-only">
@@ -653,7 +655,7 @@ export function ModuloPlanesMejoramientoV4() {
           />
 
           <div className="px-6 pb-6 overflow-y-auto flex-1">
-            <form 
+            <form
               onSubmit={handleCreatePlan}
               className="space-y-5"
             >
@@ -686,10 +688,14 @@ export function ModuloPlanesMejoramientoV4() {
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
                       <SelectContent className="z-[9999]" align="start">
-                        <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
-                        <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
-                        <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
-                        <SelectItem value="AUDITORIA_EXTERNA">📊 Auditoría Externa</SelectItem>
+                        {entesControl.filter(e => e.activo).map((ente) => (
+                          <SelectItem key={ente.id} value={ente.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }} />
+                              {ente.nombre}
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -976,24 +982,32 @@ export function ModuloPlanesMejoramientoV4() {
 
 // ==================== VISTA: DASHBOARD ====================
 function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
+  const { entesControl } = useConfiguracionesSIGL();
+
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
-    const grupos = {
-      // Inicializar
-      CONTRALORIA: [],
-      PROCURADURIA: [],
-      OCI: [],
-      AUDITORIA_EXTERNA: []
-    } as any;
+    const grupos: Record<string, PlanMejoramiento[]> = {};
+
+    // Inicializar grupos con entes activos
+    entesControl.forEach(ente => {
+      grupos[ente.id] = [];
+    });
+
+    // Inicializar OTRO y RIESGO
+    if (!grupos['OTRO']) grupos['OTRO'] = [];
+    if (!grupos['RIESGO']) grupos['RIESGO'] = [];
 
     planes.forEach(p => {
       const key = p.enteControl;
-      if (!grupos[key]) grupos[key] = [];
-      grupos[key].push(p);
+      if (grupos[key]) {
+        grupos[key].push(p);
+      } else {
+        grupos['OTRO'].push(p);
+      }
     });
 
     return grupos;
-  }, [planes]);
+  }, [planes, entesControl]);
 
   // Estadísticas de severidad
   const estadisticasSeveridad = useMemo(() => {
@@ -1025,23 +1039,22 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
       <Card className="p-6">
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
-          {Object.entries(planesPorEnte).map(([ente, planesEnte]: any) => {
-            // Only show those with config
-            if (!['CONTRALORIA', 'PROCURADURIA', 'OCI', 'AUDITORIA_EXTERNA'].includes(ente) && planesEnte.length === 0) return null;
+          {entesControl.filter(e => e.activo).map((ente) => {
+            const planesEnte = planesPorEnte[ente.id] || [];
 
-            const config = getEnteConfig(ente as EnteControl);
             const avancePromedio = planesEnte.length > 0
               ? Math.round(planesEnte.reduce((sum: number, p: any) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
 
             return (
-              <div key={ente} className="border rounded-lg p-4">
+              <div key={ente.id} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{config.icon}</span>
-                    <span className="text-sm font-semibold text-gray-700">{config.nombre}</span>
+                    {/* Icon removed, using name only */}
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }}></div>
+                    <span className="text-sm font-semibold text-gray-700">{ente.nombre}</span>
                   </div>
-                  <Badge style={{ background: config.bgColor, color: config.color }}>
+                  <Badge className="text-white" style={{ backgroundColor: ente.color || '#3B82F6' }}>
                     {planesEnte.length} planes
                   </Badge>
                 </div>

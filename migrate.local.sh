@@ -14,7 +14,9 @@ ENV_FILE="backend/auth-service/.env"
 
 if [ -f "$ENV_FILE" ]; then
   # Cargar variables del .env (ignorar comentarios y lineas vacias)
-  export $(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | sed 's/\r$//' | xargs)
+  set -a
+  source <(sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$ENV_FILE")
+  set +a
 else
   echo "Error: No se encontro $ENV_FILE"
   exit 1
