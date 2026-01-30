@@ -142,6 +142,7 @@ export class CertificatesController {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       templateType?: 'docente' | 'administrador';
+      publicBaseUrl?: string;
       to?: string;
     },
   ) {

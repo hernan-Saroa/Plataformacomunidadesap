@@ -73,6 +73,15 @@ export class Certificate {
   @Column({ length: 255, nullable: true })
   pdf_url: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  template_snapshot: any | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  template_type: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  template_version: string | null;
+
   @Column({ length: 50, default: 'VALID' })
   status: string;
 

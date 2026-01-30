@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as QRCode from 'qrcode';
 import puppeteer from 'puppeteer';
 import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
@@ -11,6 +12,7 @@ type PdfOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: TemplateType;
+  publicBaseUrl?: string;
 };
 
 @Injectable()
@@ -21,15 +23,25 @@ export class LaborCertificatePdfService {
     certificate: Certificate,
     options: PdfOptions = {},
   ): Promise<{ filename: string; buffer: Buffer }> {
-    const templateType = options.templateType || this.resolveTemplateType(certificate);
+    const certificateWithTemplate = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+    };
+    const snapshot = certificateWithTemplate.template_snapshot;
+    const templateType =
+      snapshot?.templateType ||
+      snapshot?.template_type ||
+      (certificateWithTemplate.template_type as TemplateType) ||
+      options.templateType ||
+      this.resolveTemplateType(certificate);
     const includeSalary = options.includeSalary !== false;
     const includeTechnicalBonus = options.includeTechnicalBonus === true;
 
-    const config = await this.templateConfigService.getActiveConfig(templateType);
+    const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
 
     const logoDataUrl = await this.resolveAssetDataUrl(config?.logo?.url);
     const signatureDataUrl = await this.resolveAssetDataUrl(
-      config?.firmante?.firmaDigitalUrl,
+      config?.firmante?.firmaDigitalUrl || config?.firmante?.firmaUrl,
     );
 
     const contentHtml = this.buildCertificateContent({
@@ -40,14 +52,28 @@ export class LaborCertificatePdfService {
       templateHtml: config?.certificateContentHtml || '',
     });
 
+    const verificationCode =
+      (certificate as Certificate & { verification_code?: string }).verification_code ||
+      certificate.certificate_number ||
+      '';
+    const frontendBaseUrl = options.publicBaseUrl || this.resolveFrontendBaseUrl();
+    const verificationUrl = verificationCode
+      ? `${frontendBaseUrl}/verificar-certificado/${encodeURIComponent(verificationCode)}`
+      : frontendBaseUrl;
+    const qrCodeDataUrl = await this.generateQrCodeDataUrl(verificationUrl);
+
     const html = this.buildHtml({
       certificate,
       contentHtml,
       cargoTitle: config?.cargoTitle || '',
       logoDataUrl,
       signatureDataUrl,
+      qrCodeDataUrl,
       signerName:
-        config?.firmante?.nombreCompleto || certificate.signer_name || '',
+        config?.firmante?.nombreCompleto ||
+        config?.firmante?.nombre ||
+        certificate.signer_name ||
+        '',
     });
 
     const buffer = await this.renderPdf(html);
@@ -74,6 +100,31 @@ export class LaborCertificatePdfService {
     }
     const isDocente = /\bdocen\w*\b|\bdoc\b/.test(text);
     return isDocente ? 'docente' : 'administrador';
+  }
+
+  private resolveFrontendBaseUrl(): string {
+    return (
+      process.env.PUBLIC_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.FRONTEND_BASE_URL ||
+      'https://esap.edu.co'
+    );
+  }
+
+  private async generateQrCodeDataUrl(value: string): Promise<string | null> {
+    if (!value) return null;
+    try {
+      return await QRCode.toDataURL(value, {
+        width: 198,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+    } catch (error) {
+      return null;
+    }
   }
 
   private async resolveAssetDataUrl(assetUrl?: string | null): Promise<string | null> {
@@ -354,9 +405,10 @@ export class LaborCertificatePdfService {
     cargoTitle: string;
     logoDataUrl?: string | null;
     signatureDataUrl?: string | null;
+    qrCodeDataUrl?: string | null;
     signerName: string;
   }): string {
-    const { certificate, contentHtml, cargoTitle, logoDataUrl, signatureDataUrl, signerName } = params;
+    const { certificate, contentHtml, cargoTitle, logoDataUrl, signatureDataUrl, qrCodeDataUrl, signerName } = params;
     const cargoTitleHtml = (cargoTitle || '').replace(/\n/g, '<br/>');
     const logoTag = logoDataUrl
       ? `<img src="${logoDataUrl}" alt="Logo ESAP" class="logo" />`
@@ -364,6 +416,9 @@ export class LaborCertificatePdfService {
     const signatureTag = signatureDataUrl
       ? `<img src="${signatureDataUrl}" alt="Firma digital" class="signature" />`
       : '<div style="height:60pt;"></div>';
+    const qrTag = qrCodeDataUrl
+      ? `<img src="${qrCodeDataUrl}" alt="Codigo QR" class="qr-code" />`
+      : '';
 
     return `
       <!DOCTYPE html>
@@ -457,9 +512,21 @@ export class LaborCertificatePdfService {
               bottom: 40px;
               right: 72px;
               text-align: right;
+              display: flex;
+              flex-direction: column;
+              align-items: flex-end;
+              gap: 6px;
               font-size: 12pt;
               color: #0066cc;
               font-family: Arial, sans-serif;
+            }
+            .qr-code {
+              width: 99px;
+              height: 99px;
+              border: 1px solid #e5e7eb;
+              padding: 4px;
+              background: #ffffff;
+              object-fit: contain;
             }
           </style>
         </head>
@@ -489,7 +556,10 @@ export class LaborCertificatePdfService {
               <p style="margin:0 0 2px 0;">Linea conmutador PBX: 018000 423713</p>
               <p style="margin:0;">Linea nacional gratuita PBX: 018000 423713</p>
             </div>
-            <div class="footer-right">www.esap.edu.co</div>
+            <div class="footer-right">
+              ${qrTag}
+              <div>www.esap.edu.co</div>
+            </div>
           </div>
         </body>
       </html>

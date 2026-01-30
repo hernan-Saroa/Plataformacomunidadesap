@@ -8,11 +8,15 @@ import { CertificateTemplate } from './certificate-template.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+import { TemplateConfigService } from './template-config.service';
+
+type TemplateType = 'docente' | 'administrador';
 
 type SendLaborCertificateOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: 'docente' | 'administrador';
+  publicBaseUrl?: string;
   to?: string;
 };
 
@@ -31,6 +35,100 @@ export class CertificatesService {
     return 'http://notifications-service:3009';
   }
 
+  private normalizeTemplateText(value: string): string {
+    const base = String(value || '').toLowerCase();
+    const normalized = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    return normalized
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private resolveTemplateTypeFromText(value: string): TemplateType {
+    const text = this.normalizeTemplateText(value);
+    if (!text) {
+      return 'administrador';
+    }
+    return /\bdocen\w*\b|\bdoc\b/.test(text) ? 'docente' : 'administrador';
+  }
+
+  private resolveTemplateTypeFromRequest(request: CertificateRequest): TemplateType {
+    const raw = `${request?.position_category || ''} ${request?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private resolveTemplateTypeFromCertificate(certificate: Certificate): TemplateType {
+    const raw = `${certificate?.position_category || ''} ${certificate?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
+    const cert = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+      template_version?: string;
+    };
+
+    if (cert.template_snapshot) {
+      return certificate;
+    }
+
+    const templateType = (cert.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(certificate);
+    const config = await this.templateConfigService.getActiveConfig(templateType);
+    if (!config) {
+      return certificate;
+    }
+
+    const patch = {
+      template_snapshot: config,
+      template_type: templateType,
+      template_version: config.version || null,
+    };
+
+    await this.certificateRepo.update(certificate.id, patch);
+    Object.assign(certificate, patch);
+    return certificate;
+  }
+
+  private async ensureTemplateSnapshots(certificates: Certificate[]): Promise<void> {
+    const missing = certificates.filter((cert) => !(cert as any)?.template_snapshot);
+    if (!missing.length) {
+      return;
+    }
+
+    const typesNeeded = new Set<TemplateType>();
+    for (const cert of missing) {
+      const templateType =
+        ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+      typesNeeded.add(templateType);
+    }
+
+    const configByType = new Map<TemplateType, any>();
+    for (const type of typesNeeded) {
+      const config = await this.templateConfigService.getActiveConfig(type);
+      if (config) {
+        configByType.set(type, config);
+      }
+    }
+
+    await Promise.all(
+      missing.map(async (cert) => {
+        const templateType =
+          ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+        const config = configByType.get(templateType);
+        if (!config) return;
+        const patch = {
+          template_snapshot: config,
+          template_type: templateType,
+          template_version: config.version || null,
+        };
+        await this.certificateRepo.update(cert.id, patch);
+        Object.assign(cert, patch);
+      }),
+    );
+  }
+
   constructor(
     @InjectRepository(CertificateRequest)
     private requestRepo: Repository<CertificateRequest>,
@@ -44,6 +142,7 @@ export class CertificatesService {
     private validationRepo: Repository<CertificateValidation>,
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
+    private templateConfigService: TemplateConfigService,
   ) {}
 
   // ============================================
@@ -131,6 +230,7 @@ export class CertificatesService {
       includeSalary: options.includeSalary,
       includeTechnicalBonus: options.includeTechnicalBonus,
       templateType: options.templateType,
+      publicBaseUrl: options.publicBaseUrl,
     });
 
     const baseUrl = this.resolveNotificationsBaseUrl();
@@ -176,6 +276,8 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
 
+    await this.ensureTemplateSnapshotForCertificate(certificate);
+
     const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
 
     return {
@@ -220,6 +322,8 @@ export class CertificatesService {
       relations: ['request'],
       order: { issue_date: 'DESC' },
     });
+
+    await this.ensureTemplateSnapshots(certificates);
 
     // Agregar el conteo de validaciones para cada certificado
     const certificatesWithCount = await Promise.all(
@@ -289,6 +393,8 @@ export class CertificatesService {
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
 
+    await this.ensureTemplateSnapshots(certificates);
+
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
         const validationCount = await this.validationRepo.count({
@@ -332,6 +438,7 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
+    await this.ensureTemplateSnapshotForCertificate(certificate);
     return certificate;
   }
 
@@ -371,6 +478,19 @@ export class CertificatesService {
     const count = await this.certificateRepo.count();
     const certificate_number = `12_620_700_20_CD ${String(count + 1).padStart(3, '0')}`;
 
+    const templateType = this.resolveTemplateTypeFromRequest(request);
+    let templateSnapshot: any = null;
+    let templateVersion: string | null = null;
+    try {
+      const config = await this.templateConfigService.getActiveConfig(templateType);
+      if (config) {
+        templateSnapshot = config;
+        templateVersion = config.version || null;
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
+    }
+
     const certificate = this.certificateRepo.create({
       verification_code,
       certificate_number,
@@ -393,6 +513,9 @@ export class CertificatesService {
       signer_name: signer.full_name,
       signer_position: signer.position,
       signer_department: signer.department,
+      template_snapshot: templateSnapshot,
+      template_type: templateType,
+      template_version: templateVersion,
       status: 'VALID',
     });
 
@@ -752,6 +875,7 @@ export class CertificatesService {
     });
 
     if (certificadoExistente) {
+      await this.ensureTemplateSnapshotForCertificate(certificadoExistente);
       return {
         existe: true,
         tieneCertificado: true,

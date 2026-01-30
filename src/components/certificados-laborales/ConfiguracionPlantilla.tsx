@@ -139,6 +139,8 @@ import {
 
 
 
+import { QRCodeCanvas } from 'qrcode.react';
+
 import { toast } from 'sonner';
 
 
@@ -6370,14 +6372,17 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  <div className="text-right flex items-end justify-end">
-
-
-
+                  <div className="text-right flex flex-col items-end justify-end gap-1">
+                    <div className="bg-white border border-gray-300 rounded p-1 shadow-sm">
+                      <QRCodeCanvas
+                        value="https://esap.edu.co/verificar-certificado/QR-DEMO"
+                        size={64}
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                        includeMargin={false}
+                      />
+                    </div>
                     <p className="text-[#003DA5] font-semibold text-[10px]">www.esap.edu.co</p>
-
-
-
                   </div>
 
 

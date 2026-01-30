@@ -50,6 +50,8 @@ interface CertificadoDetallePanelProps {
     fechaGeneracion: string;
     position_location?: string;
     campus?: string;
+    templateSnapshot?: any;
+    templateType?: 'docente' | 'administrador';
     solicitante?: {
       nombre: string;
       tipo: 'autoservicio' | 'manual';
@@ -401,7 +403,9 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
 
     try {
-      const response = await certificadosService.laborales.reenviar(certificado.id);
+      const response = await certificadosService.laborales.reenviar(certificado.id, {
+        publicBaseUrl: getPublicBaseUrl(),
+      });
       toast.success('Correo reenviado', {
         id: 'send-certificate-email',
         description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
@@ -698,7 +702,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
                             <QRCodeCanvas
                               value={verificationUrl}
-                              size={72}
+                              size={79}
                               level="H"
                               includeMargin
                               className="block"

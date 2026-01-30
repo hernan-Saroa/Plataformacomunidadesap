@@ -260,11 +260,11 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
               <div ref={qrRef} className="flex justify-center mb-4 sm:mb-6">
                 <div className="relative">
                   <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 sm:border-4 border-[#003DA5] shadow-xl">
-                    <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
-                      <div className="w-48 h-48 sm:w-64 sm:h-64 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
+                      <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
+                      <div className="w-52 h-52 sm:w-72 sm:h-72 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
                         <QRCodeCanvas
                           value={urlVerificacion}
-                          size={230}
+                          size={253}
                           level="H"
                           includeMargin
                           className="w-full h-full p-2"

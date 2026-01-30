@@ -38,6 +38,8 @@ interface CertificadoLaboralListado {
   department?: string;
   department_parent?: string;
   campus?: string;
+  templateSnapshot?: any;
+  templateType?: 'docente' | 'administrador';
   empleado: {
     nombre: string;
     documento: string;
@@ -177,6 +179,13 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           department: cert.department,
           department_parent: dependenciaPadreRaw,
           campus: cert.campus,
+          templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
+          templateType:
+            cert.template_type ||
+            cert.templateType ||
+            cert.template_snapshot?.templateType ||
+            cert.template_snapshot?.template_type ||
+            undefined,
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
