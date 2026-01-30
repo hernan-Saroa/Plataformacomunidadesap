@@ -1698,6 +1698,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     try {
       // NEW SERVICE CALL
       const lista = await disciplinaryService.getEvidencias(procId);
+      console.log('evidencias', evidencias)
       setEvidencias(lista);
     } catch (error) {
       console.error('Error cargando evidencias', error);
@@ -1870,13 +1871,31 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                   Gestión de Evidencias
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  {proceso.numeroProceso} - Material Probatorio
+                  {proceso.numeroProceso} - Material Probatorioas
                 </p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-white/50 rounded-lg">
               <X className="w-6 h-6 text-gray-600" />
             </button>
+          </div>
+        </div>
+
+        {/* Filtros */}
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex gap-2 flex-wrap">
+            <Badge variant="outline" className="cursor-pointer hover:bg-gray-100">
+              Todas ({evidencias.length})
+            </Badge>
+            {tiposEvidencia.map((cat) => (
+              <Badge
+                key={cat.id}
+                variant="outline"
+                className="cursor-pointer hover:bg-gray-100"
+              >
+                {cat.nombre}
+              </Badge>
+            ))}
           </div>
         </div>
 
@@ -1905,48 +1924,28 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       <Archive className="w-5 h-5" style={{ color: '#F59E0B' }} />
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-gray-900">{evidencia.archivoNombre}</h3>
-                        <Badge className={evidencia.estado === 'Admitida' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}>
-                          {evidencia.estado}
-                        </Badge>
-                        <Badge variant="outline">{evidencia.prioridad}</Badge>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2">
+                      <h3 className="font-bold text-gray-900 mb-1">{evidencia.archivoNombre}</h3>
+                      <div className="grid grid-cols-4 gap-3 text-sm">
                         <div>
-                          <p className="text-gray-600 text-xs">Tipo:</p>
-                          <p className="font-semibold text-gray-900">{evidencia.tipo}</p>
+                          <p className="text-gray-600">Tipo:</p>
+                          <p className="font-bold text-gray-900">{evidencia.tipo}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600 text-xs">Aportado por:</p>
-                          <p className="font-semibold text-gray-900">{evidencia.aportadoPor || 'N/A'}</p>
+                          <p className="text-gray-600">Categoría:</p>
+                          <p className="font-bold text-gray-900">{evidencia.categoria ?? '--'}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600 text-xs">Fecha:</p>
-                          <p className="font-semibold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
+                          <p className="text-gray-600">Fecha:</p>
+                          <p className="font-bold text-gray-900">{evidencia.fechaPresentacion ? new Date(evidencia.fechaPresentacion).toLocaleDateString() : ''}</p>
                         </div>
                         <div>
-                          <p className="text-gray-600 text-xs">Tamaño:</p>
-                          <p className="font-semibold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
+                          <p className="text-gray-600">Tamaño:</p>
+                          <p className="font-bold text-gray-900">{formatFileSize(evidencia.archivoTamano)}</p>
                         </div>
                       </div>
-                      {evidencia.descripcion && (
-                        <p className="text-sm text-gray-600 mt-2 italic">{evidencia.descripcion}</p>
-                      )}
                     </div>
                   </div>
-                  <div className="flex gap-1 flex-col sm:flex-row">
-                    {evidencia.estado === 'En Revisión' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_ADMITIR) && (
-                      <Button
-                        size="sm"
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => handleAdmitirEvidencia(evidencia)}
-                        title="Admitir Evidencia"
-                      >
-                        Admitir
-                      </Button>
-                    )}
-
+                  <div className="flex gap-1">
                     <Button
                       type="button"
                       size="sm"
@@ -1964,161 +1963,93 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_DELETE) && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
                         onClick={(e) => {
-                          e.stopPropagation();
-                          setEvidenciaParaEliminar(evidencia);
-                        }}
-                        title="Eliminar evidencia"
-                        style={{ borderColor: '#DC2626', color: '#DC2626' }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
+                        e.stopPropagation();
+
+                        // Función REAL de descarga
+                        try {
+                          const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
+                          const url = window.URL.createObjectURL(blob);
+
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = evidencia.nombre;
+                          link.style.display = 'none';
+
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+
+                          window.URL.revokeObjectURL(url);
+
+                          toast.success('Descarga iniciada', {
+                            description: `${evidencia.nombre} - ${evidencia.tamaño}`,
+                            duration: 3000
+                          });
+                        } catch (error) {
+                          toast.error('Error en descarga', {
+                            description: 'No se pudo descargar el archivo'
+                          });
+                        }
+                      }}
+                      title="Descargar archivo"
+                      style={{ borderColor: '#003DA5', color: '#003DA5' }}
+                      className="hover:bg-blue-50"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setVisorDocumento({ show: true, documento: evidencia });
-                    }}
-                    title="Ver documento"
-                    style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                    className="hover:bg-blue-50"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                      onClick={(e) => {
-                      e.stopPropagation();
-
-                      // Función REAL de descarga
-                      try {
-                        const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
-                        const url = window.URL.createObjectURL(blob);
-
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = evidencia.nombre;
-                        link.style.display = 'none';
-
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-
-                        window.URL.revokeObjectURL(url);
-
-                        toast.success('Descarga iniciada', {
-                          description: `${evidencia.nombre} - ${evidencia.tamaño}`,
-                          duration: 3000
-                        });
-                      } catch (error) {
-                        toast.error('Error en descarga', {
-                          description: 'No se pudo descargar el archivo'
-                        });
-                      }
-                    }}
-                    title="Descargar archivo"
-                    style={{ borderColor: '#003DA5', color: '#003DA5' }}
-                    className="hover:bg-blue-50"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </Button>
                 </div>
               </Card>
             ))}
           </div>
-
-          <div className="mt-6 rounded-xl border bg-orange-50/40 p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3">Nueva evidencia</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Tipo de Evidencia</label>
-                <select
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                >
-                  <option value="">Seleccionar tipo</option>
-                  {tiposEvidencia.map((cat) => (
-                    <option key={cat.id} value={cat.nombre}>{cat.nombre}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Prioridad</label>
-                <select
-                  value={prioridad}
-                  onChange={(e) => setPrioridad(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                >
-                  {prioridades.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Aportado por</label>
-                <input
-                  type="text"
-                  value={aportadoPor}
-                  onChange={(e) => setAportadoPor(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="Nombre del aportante"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Descripción (opcional)</label>
-                <input
-                  type="text"
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                  placeholder="Descripción breve"
-                />
-              </div>
+          {/* Botón de Subir */}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
+          <div className="relative">
+            <div className='mt-4'>
+              <label className="text-xs font-semibold text-gray-600">Tipo de Evidencia</label>
+              <select
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="">Seleccionar tipo</option>
+                {tiposEvidencia.map((cat) => (
+                  <option key={cat.id} value={cat.nombre}>{cat.nombre}</option>
+                ))}
+              </select>
             </div>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
-            <div>
-              <input
-                type="file"
-                id="file-upload-evidencias"
-                onChange={handleSeleccionArchivo}
-                className="hidden"
-              />
-              <label htmlFor="file-upload-evidencias">
-                <Card
-                  className={`p-4 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-orange-500 bg-orange-50' : 'hover:bg-gray-50 border-gray-300'
-                    }`}
-                >
-                  <div className="text-center">
-                    <Upload className="w-10 h-10 mx-auto mb-2" style={{ color: '#F59E0B' }} />
-                    <p className="font-bold text-gray-900 mb-1">
-                      {cargando ? 'Subiendo archivo...' : 'Adjuntar evidencia'}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
-                    </p>
-                    {archivoError && (
-                      <p className="text-xs text-red-600 mt-2">{archivoError}</p>
-                    )}
-                  </div>
-                </Card>
-              </label>
-            </div>
-            )}
+            <input
+              type="file"
+              id="file-upload-evidencias"
+              onChange={handleSeleccionArchivo}
+              className="hidden"
+            />
+            <label htmlFor="file-upload-evidencias">
+              <Card
+                className={`mt-4 p-8 border-2 border-dashed cursor-pointer transition-all ${cargando ? 'border-orange-500 bg-orange-50' : 'hover:bg-gray-50 border-gray-300'
+                  }`}
+              >
+                <div className="text-center">
+                  <Upload className="w-10 h-10 mx-auto mb-2" style={{ color: '#F59E0B' }} />
+                  <p className="font-bold text-gray-900 mb-1">
+                    {cargando ? 'Subiendo archivos...' : 'Subir Nueva Evidencia'}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
+                  </p>
+                  {archivoError && (
+                    <p className="text-xs text-red-600 mt-2">{archivoError}</p>
+                  )}
+                </div>
+              </Card>
+            </label>
           </div>
+          )}
         </div>
 
         <div className="p-4 border-t bg-gray-50 flex justify-between">
