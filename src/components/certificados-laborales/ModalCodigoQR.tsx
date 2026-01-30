@@ -6,9 +6,7 @@ import {
   Download,
   Copy,
   Printer,
-  Share2,
   CheckCircle,
-  ExternalLink,
   Shield,
   Smartphone,
   Globe,
@@ -76,44 +74,6 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
         duration: 5000
       });
     }
-  };
-
-  const handleCompartir = async () => {
-    const canvas = qrRef.current?.querySelector('canvas');
-    const dataUrl = canvas?.toDataURL('image/png');
-
-    if (navigator.share) {
-      try {
-        const files: File[] = [];
-        if (dataUrl && navigator.canShare && typeof navigator.canShare === 'function') {
-          const res = await fetch(dataUrl);
-          const blob = await res.blob();
-          const file = new File([blob], `QR-${qrData}.png`, { type: 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
-            files.push(file);
-          }
-        }
-
-        await navigator.share({
-          title: 'Verificar Certificado Laboral ESAP',
-          text: `Verificar certificado ${certificado.consecutivo}`,
-          url: urlVerificacion,
-          files: files.length ? files : undefined
-        });
-        toast.success('Compartido exitosamente');
-        return;
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          await handleCopiarEnlace();
-          return;
-        }
-        return;
-      }
-    }
-
-    // Fallback: copiar enlace
-    await handleCopiarEnlace();
-    toast.info('Enlace copiado al portapapeles');
   };
 
   const handleImprimir = () => {
@@ -320,49 +280,33 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                       >
                         <Copy className="w-4 h-4 text-gray-600" />
                       </button>
-                      <a
-                        href={urlVerificacion}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                        title="Abrir en nueva pestaña"
-                      >
-                        <ExternalLink className="w-4 h-4 text-gray-600" />
-                      </a>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Botones de acción */}
-              <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <button
                   onClick={handleDescargarQR}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Download className="w-4 h-4" />
                   Descargar QR
                 </button>
                 <button
                   onClick={handleImprimir}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md border border-gray-800"
                 >
                   <Printer className="w-4 h-4" />
                   Imprimir
                 </button>
                 <button
                   onClick={handleCopiarEnlace}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Copy className="w-4 h-4" />
                   Copiar Enlace
-                </button>
-                <button
-                  onClick={handleCompartir}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Compartir
                 </button>
               </div>
 
