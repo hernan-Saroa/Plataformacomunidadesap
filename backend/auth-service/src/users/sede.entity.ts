@@ -63,14 +63,14 @@ export class Sede {
   @Column({ name: 'num_longitud', type: 'numeric', precision: 32, scale: 29, nullable: true })
   numLongitud: number;
 
-  @Column({ name: 'cod_iac_inscripciones', length: 250, nullable: true })
-  codIacInscripciones: string;
+  // @Column({ name: 'cod_iac_inscripciones', length: 250, nullable: true })
+  // codIacInscripciones: string;
 
-  @Column({ name: 'cod_iac_matricula', length: 250, nullable: true })
-  codIacMatricula: string;
+  // @Column({ name: 'cod_iac_matricula', length: 250, nullable: true })
+  // codIacMatricula: string;
 
-  @Column({ name: 'cod_iac_otros_conceptos', length: 250, nullable: true })
-  codIacOtrosConceptos: string;
+  // @Column({ name: 'cod_iac_otros_conceptos', length: 250, nullable: true })
+  // codIacOtrosConceptos: string;
 
   // Campos adicionales para información de contacto y capacidades
   @Column({ name: 'tel_sede', length: 50, nullable: true })
