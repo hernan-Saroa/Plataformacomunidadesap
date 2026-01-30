@@ -250,7 +250,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   };
 
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
-    const templateType = resolverTemplateType(cert);
+    const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
+    const templateType =
+      cert?.template_type ||
+      cert?.templateType ||
+      templateSnapshot?.templateType ||
+      templateSnapshot?.template_type ||
+      resolverTemplateType(cert);
     const salarioBase = cert.monthly_salary || 0;
     const salarioTextoBase = cert.salary_text;
     const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
@@ -307,6 +313,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         signer_name: cert.signer_name,
         signer_position: cert.signer_position,
         signer_department: cert.signer_department,
+        templateSnapshot,
         templateType,
       },
     };
@@ -585,10 +592,16 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
       toast.success('¡Código validado correctamente!');
 
-      const templateType = resolverTemplateType(cert);
-      const salarioBase = cert.monthly_salary || empleadoEncontrado?.salario_actual || 0;
-      const salarioTextoBase = cert.salary_text;
-      const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
+        const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
+        const templateType =
+          cert?.template_type ||
+          cert?.templateType ||
+          templateSnapshot?.templateType ||
+          templateSnapshot?.template_type ||
+          resolverTemplateType(cert);
+        const salarioBase = cert.monthly_salary || empleadoEncontrado?.salario_actual || 0;
+        const salarioTextoBase = cert.salary_text;
+        const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
 
       // Construir objeto de certificado completo desde la respuesta del backend
       const certificado: CertificadoGenerado = {
@@ -642,13 +655,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           position_location: cert.position_location,
           department: cert.department,
           campus: cert.campus,
-          signer_name: cert.signer_name,
-          signer_position: cert.signer_position,
-          signer_department: cert.signer_department
-          ,
-          templateType,
-        }
-      };
+            signer_name: cert.signer_name,
+            signer_position: cert.signer_position,
+            signer_department: cert.signer_department,
+            templateSnapshot,
+            templateType,
+          }
+        };
 
       registrarCertificado(certificado);
       setCertificadoExistente(false);
@@ -799,6 +812,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         includeSalary: incluirSalario,
         includeTechnicalBonus: false,
         templateType: certificadoGenerado?.certificado_completo?.templateType,
+        publicBaseUrl: getPublicBaseUrl(),
       });
 
       toast.success('Copia enviada al correo', {
@@ -1454,7 +1468,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           <div className="bg-white rounded-lg p-3 border-2 border-blue-300 flex-shrink-0">
                             <QRCodeCanvas
                               value={`${getPublicBaseUrl()}/verificar-certificado/${certificadoGenerado.qr_code}`}
-                              size={112}
+                              size={123}
                               level="H"
                               includeMargin={false}
                             />

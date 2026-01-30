@@ -14,7 +14,8 @@ import { Button } from '../ui/button';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface VisorPDFCertificadoProps {
   isOpen: boolean;
@@ -31,6 +32,10 @@ interface VisorPDFCertificadoProps {
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     technical_bonus?: number;
+    templateSnapshot?: any;
+    templateType?: 'docente' | 'administrador';
+    template_snapshot?: any;
+    template_type?: 'docente' | 'administrador';
     empleado: {
       nombre: string;
       documento: string;
@@ -103,11 +108,19 @@ export function VisorPDFCertificado({
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
+  const obtenerSnapshotPlantilla = () => {
+    return (certificado as any)?.templateSnapshot || (certificado as any)?.template_snapshot || null;
+  };
+
   const resolverTipoPlantilla = (): 'docente' | 'administrador' => {
-    const fromCert = (certificado as any)?.templateType;
+    const snapshot = obtenerSnapshotPlantilla();
+    const snapshotType = snapshot?.templateType || snapshot?.template_type;
+    if (snapshotType === 'docente' || snapshotType === 'administrador') return snapshotType;
+
+    const fromCert = (certificado as any)?.templateType || (certificado as any)?.template_type;
     if (fromCert === 'docente' || fromCert === 'administrador') return fromCert;
 
-    const cargoTexto = `${certificado.empleado.cargo || ''}`;
+    const cargoTexto = `${certificado.empleado.cargo || ''} ${certificado.empleado.tipoVinculacion || ''}`;
     return esDocente(cargoTexto) ? 'docente' : 'administrador';
   };
 
@@ -115,8 +128,13 @@ export function VisorPDFCertificado({
   useEffect(() => {
     const cargarPlantilla = async () => {
       try {
+        const snapshot = obtenerSnapshotPlantilla();
         const tipoDetectado = resolverTipoPlantilla();
         setTemplateType(tipoDetectado);
+        if (snapshot) {
+          setPlantillaConfig(snapshot);
+          return;
+        }
         const config = await certificadosService.plantilla.obtenerConfiguracion(tipoDetectado);
         setPlantillaConfig(config);
       } catch (error) {
@@ -135,7 +153,15 @@ export function VisorPDFCertificado({
     if (isOpen) {
       cargarPlantilla();
     }
-  }, [isOpen, certificado?.empleado?.cargo, certificado?.empleado?.tipoVinculacion]);
+  }, [
+    isOpen,
+    certificado?.empleado?.cargo,
+    certificado?.empleado?.tipoVinculacion,
+    (certificado as any)?.templateSnapshot,
+    (certificado as any)?.template_snapshot,
+    (certificado as any)?.templateType,
+    (certificado as any)?.template_type,
+  ]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
   const salarioBase =
@@ -490,6 +516,37 @@ export function VisorPDFCertificado({
     contenido.style.boxShadow = 'none';
     contenido.style.backgroundColor = '#ffffff';
 
+    // Convertir canvases (QR) en imagenes reales para que se vean en la impresión
+    try {
+      const originalCanvases = Array.from(
+        certificadoRef.current.querySelectorAll('canvas')
+      ) as HTMLCanvasElement[];
+      const clonedCanvases = Array.from(contenido.querySelectorAll('canvas')) as HTMLCanvasElement[];
+
+      clonedCanvases.forEach((canvas, index) => {
+        const source = originalCanvases[index];
+        if (!source) return;
+        let dataUrl = '';
+        try {
+          dataUrl = source.toDataURL('image/png');
+        } catch {
+          return;
+        }
+        if (!dataUrl) return;
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.width = source.width || canvas.width;
+        img.height = source.height || canvas.height;
+        img.style.cssText = canvas.style.cssText || source.style.cssText || '';
+        if (canvas.className) {
+          img.className = canvas.className;
+        }
+        canvas.replaceWith(img);
+      });
+    } catch {
+      // Si falla la conversion, imprimir con el canvas original
+    }
+
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) {
       if (autoAction === 'print') {
@@ -700,6 +757,17 @@ export function VisorPDFCertificado({
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
     ? `<p>Percibe mensualmente una prima tecnica de ($${primaTecnicaParaMostrar.toLocaleString('es-CO')}) adicional a su asignacion basica mensual.</p>`
     : '';
+
+  const qrToken =
+    certificado.qrCode ||
+    certificado.certificateHash ||
+    certificado.consecutivo ||
+    '';
+  const basePublicUrl = getPublicBaseUrl();
+  const qrPayload = qrToken
+    ? `${basePublicUrl}/verificar-certificado/${encodeURIComponent(qrToken)}`
+    : basePublicUrl;
+  const qrSize = 99;
 
   const contenidoFinal = (() => {
     if (!primaTecnicaParrafo) return contenidoNormalizado;
@@ -932,13 +1000,32 @@ export function VisorPDFCertificado({
         <p style={{ margin: 0 }}>Línea nacional gratuita PBX: 018000 423713</p>
       </div>
 
-      {/* Footer - Logo ESAP y URL a la DERECHA */}
+      {/* Footer - QR y URL a la DERECHA */}
       <div style={{
         position: 'absolute',
         bottom: '40px',
         right: '72px',
-        textAlign: 'right'
+        textAlign: 'right',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: '6px'
       }}>
+        <div style={{
+          width: `${qrSize}px`,
+          height: `${qrSize}px`,
+          border: '1px solid #e5e7eb',
+          padding: '4px',
+          background: '#ffffff'
+        }}>
+          <QRCodeCanvas
+            value={qrPayload}
+            size={qrSize - 8}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            includeMargin={false}
+          />
+        </div>
         <p style={{
           margin: 0,
           fontSize: '12pt',

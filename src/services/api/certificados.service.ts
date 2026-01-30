@@ -136,6 +136,7 @@ export const certificadosService = {
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
         templateType?: 'docente' | 'administrador';
+        publicBaseUrl?: string;
       },
     ): Promise<{ mensaje: string; email: string }> {
       return apiClient.post(
