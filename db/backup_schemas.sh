@@ -31,6 +31,7 @@ SCHEMAS=(
   academic_registration
   academic_work_plan
   requerimientos_oc
+  audit
 )
 
 OUTPUT_DIR="$(dirname "$0")/backups"

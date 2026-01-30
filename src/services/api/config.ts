@@ -38,11 +38,23 @@ export const API_CONFIG = {
   },
 } as const;
 
+const getDevBaseURL = (): string => {
+  if (VITE_API_URL) return VITE_API_URL;
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const protocol = window.location.protocol || 'http:';
+    return `${protocol}//${window.location.hostname}:3000`;
+  }
+  return API_URLS.development;
+};
+
 /**
  * Obtener la base URL según el ambiente
  */
 export const getBaseURL = (): string => {
   const env = (VITE_MODE === 'production' ? 'production' : 'development') as 'development' | 'production';
+  if (env === 'development') {
+    return getDevBaseURL();
+  }
   return API_CONFIG.baseURL[env];
 };
 
