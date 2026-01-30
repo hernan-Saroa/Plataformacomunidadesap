@@ -336,65 +336,88 @@ export function ModuloDefensaJudicialV3() {
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
-      const mapped: ExpedienteJudicial[] = data.map((exp: any) => ({
-        uuid: exp.id, // Guardar UUID real para operaciones de API
-        id: exp.radicado || exp.numeroRadicado || exp.id, // Preferir radicado como ID visible
-        radicado: exp.radicado || exp.numeroRadicado || exp.id,
-        tipo: exp.tipoProceso || 'declarativo', // Propiedad requerida por interface antigua
-        tipoAccion: exp.tipoProceso || 'SIN CLASIFICAR', // Propiedad nueva
-        etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
-        prioridad: 'MEDIA',
-        demandante: exp.actors && exp.actors.some((a: any) => a.rol === 'DEMANDANTE')
-          ? exp.actors.find((a: any) => a.rol === 'DEMANDANTE').nombre
-          : (exp.demandante || 'No registrado'),
-        jurisdiccion: 'Contencioso Administrativo', // Valor por defecto
-        apoderado: exp.demandanteApoderado || '', // Valor por defecto
-        fechaNotificacion: exp.fechaNotificacion instanceof Date ? exp.fechaNotificacion.toLocaleDateString('es-CO') : exp.fechaNotificacion,
-        fechaVencimiento: exp.fechaVencimiento || new Date().toISOString(),
-        juzgado: exp.juzgadoConocimiento || 'Sin asignar',
-        juzgadoConocimiento: exp.juzgadoConocimiento,
-        ubicacionFisica: exp.ubicacionFisica,
-        cuantia: exp.cuantia || 0,
-        demandantes: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDANTE') : [],
-        demandados: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDADO') : [],
-        otrosActores: exp.actors ? exp.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : [],
-        medioControl: exp.medioControl || 'Nulidad y Restablecimiento del Derecho',
-        diasTotales: calcularDiasTotales(
-          new Date(exp.fechaNotificacion || Date.now()),
-          new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
-        ),
-        diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
-        // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
-        abogadoAsignado: (() => {
-          // 1. Intentar buscar en el mapa por ID (prioridad)
-          if (exp.abogadoSustanciador && abogadosMap.has(exp.abogadoSustanciador)) {
-            return abogadosMap.get(exp.abogadoSustanciador);
-          }
-          // 2. Si viene el objeto abogado
-          if (exp.abogado?.nombreCompleto) return exp.abogado.nombreCompleto;
+      // Mapear datos del backend al tipo ExpedienteJudicial del frontend
+      const mapped: ExpedienteJudicial[] = data.map((exp: any) => {
+        // Encontrar la última actuación real
+        let latestActuacionVal = null;
+        if (exp.actuaciones && exp.actuaciones.length > 0) {
+          // Ordenar por fecha descendente por si acaso
+          const sortedActs = [...exp.actuaciones].sort((a, b) =>
+            new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime()
+          );
+          const last = sortedActs[0];
+          latestActuacionVal = {
+            fecha: last.fechaActuacion,
+            tipo: last.tipoActuacion,
+            descripcion: last.descripcion,
+            responsable: last.usuarioResponsable || 'Sistema',
+            estado: 'REALIZADO'
+          };
+        }
 
-          // 3. Fallback a string si no parece UUID
-          if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
-            return exp.abogadoSustanciador;
-          }
+        return {
+          uuid: exp.id, // Guardar UUID real para operaciones de API
+          id: exp.radicado || exp.numeroRadicado || exp.id, // Preferir radicado como ID visible
+          radicado: exp.radicado || exp.numeroRadicado || exp.id,
+          tipo: exp.tipoProceso || 'declarativo', // Propiedad requerida por interface antigua
+          tipoAccion: exp.tipoProceso || 'SIN CLASIFICAR', // Propiedad nueva
+          etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
+          prioridad: 'MEDIA',
+          demandante: exp.actors && exp.actors.some((a: any) => a.rol === 'DEMANDANTE')
+            ? exp.actors.find((a: any) => a.rol === 'DEMANDANTE').nombre
+            : (exp.demandante || 'No registrado'),
+          jurisdiccion: 'Contencioso Administrativo', // Valor por defecto
+          apoderado: exp.demandanteApoderado || '', // Valor por defecto
+          fechaNotificacion: exp.fechaNotificacion instanceof Date ? exp.fechaNotificacion.toLocaleDateString('es-CO') : exp.fechaNotificacion,
+          fechaVencimiento: exp.fechaVencimiento || new Date().toISOString(),
+          juzgado: exp.juzgadoConocimiento || 'Sin asignar',
+          juzgadoConocimiento: exp.juzgadoConocimiento,
+          ubicacionFisica: exp.ubicacionFisica,
+          cuantia: exp.cuantia || 0,
+          demandantes: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDANTE') : [],
+          demandados: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDADO') : [],
+          otrosActores: exp.actors ? exp.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : [],
+          medioControl: exp.medioControl || 'Nulidad y Restablecimiento del Derecho',
+          diasTotales: calcularDiasTotales(
+            new Date(exp.fechaNotificacion || Date.now()),
+            new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
+          ),
+          diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
+          // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
+          abogadoAsignado: (() => {
+            // 1. Intentar buscar en el mapa por ID (prioridad)
+            if (exp.abogadoSustanciador && abogadosMap.has(exp.abogadoSustanciador)) {
+              return abogadosMap.get(exp.abogadoSustanciador);
+            }
+            // 2. Si viene el objeto abogado
+            if (exp.abogado?.nombreCompleto) return exp.abogado.nombreCompleto;
 
-          return 'Sin asignar';
-        })(),
-        hechos: '',
-        pretensiones: exp.pretensionDemandante || '',
-        pretensionDemandante: exp.pretensionDemandante,
-        tipoProceso: exp.tipoProceso,
-        documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
-        actuaciones: [],
-        timeline: [],
-        fechaCreacion: new Date(exp.createdAt),
-        fechaActualizacion: new Date(exp.updatedAt),
-        estado: exp.estado || 'ACTIVO',
-        ultimaActuacion: exp.ultimaActuacion || `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
-        demandadoDireccion: exp.demandadoDireccion,
-        demandadoTelefono: exp.demandadoTelefono,
-        demandadoEmail: exp.demandadoEmail,
-      }));
+            // 3. Fallback a string si no parece UUID
+            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
+              return exp.abogadoSustanciador;
+            }
+
+            return 'Sin asignar';
+          })(),
+          hechos: '',
+          pretensiones: exp.pretensionDemandante || '',
+          pretensionDemandante: exp.pretensionDemandante,
+          tipoProceso: exp.tipoProceso,
+          documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
+          actuaciones: exp.actuaciones || [],
+          timeline: [],
+          fechaCreacion: new Date(exp.createdAt),
+          fechaActualizacion: new Date(exp.updatedAt),
+          estado: exp.estado || 'ACTIVO',
+          ultimaActuacion: latestActuacionVal || {
+            descripcion: `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
+            fecha: exp.updatedAt
+          },
+          demandadoDireccion: exp.demandadoDireccion,
+          demandadoTelefono: exp.demandadoTelefono,
+          demandadoEmail: exp.demandadoEmail,
+        }
+      });
       setExpedientes(mapped);
     } catch (error) {
       console.error('Error cargando expedientes:', error);
@@ -472,9 +495,14 @@ export function ModuloDefensaJudicialV3() {
       exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
-    // Filtro por tipo de proceso
-    const tipoProceso = (exp as any).tipoProceso || exp.tipo || '';
-    const matchTipo = filtroTipo === 'TODOS' || tipoProceso === filtroTipo;
+    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
+    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control) 
+    // como para "Tutela" (Tipo Acción)
+    const matchTipo = filtroTipo === 'TODOS' ||
+      exp.tipo === filtroTipo ||
+      exp.tipoAccion === filtroTipo ||
+      exp.medioControl === filtroTipo ||
+      (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
 
     return matchBusqueda && matchTipo;
   });
@@ -541,36 +569,48 @@ export function ModuloDefensaJudicialV3() {
             nombre: d.nombre,
             tipoPersona: d.tipoPersona,
             identificacion: d.identificacion,
-            rol: 'DEMANDANTE'
+            rol: 'DEMANDANTE',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
           })),
           ...demandaData.demandados.map(d => ({
             nombre: d.nombre,
             tipoPersona: d.tipoPersona,
             identificacion: d.identificacion,
             rol: 'DEMANDADO',
-            cargo: d.cargo
+            cargo: d.cargo,
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
           })),
           ...demandaData.otrosActores.map(d => ({
             nombre: d.nombre,
             tipoPersona: d.tipoPersona,
             identificacion: d.identificacion,
-            rol: d.rol || 'OTRO'
+            rol: d.rol || 'OTRO',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
           }))
         ],
 
         // Datos del Demandante Legacy (Primer registro)
         tipoIdDemandante: demandaData.demandantes[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
         numeroIdDemandante: demandaData.demandantes[0]?.identificacion || '',
-        demandanteDireccion: '',
-        demandanteTelefono: '',
-        demandanteEmail: '',
-        demandanteApoderado: '',
+        demandanteDireccion: demandaData.demandantes[0]?.direccion || '',
+        demandanteTelefono: demandaData.demandantes[0]?.telefono || '',
+        demandanteEmail: demandaData.demandantes[0]?.email || '',
+        demandanteApoderado: demandaData.demandantes[0]?.apoderado || '',
         // Datos del Demandado Legacy (Primer registro)
         tipoIdDemandado: demandaData.demandados[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
         numeroIdDemandado: demandaData.demandados[0]?.identificacion || '',
-        demandadoDireccion: '',
-        demandadoTelefono: '',
-        demandadoEmail: '',
+        demandadoDireccion: demandaData.demandados[0]?.direccion || '',
+        demandadoTelefono: demandaData.demandados[0]?.telefono || '',
+        demandadoEmail: demandaData.demandados[0]?.email || '',
       };
 
       await legalService.crearExpediente(expedienteData);
@@ -580,9 +620,9 @@ export function ModuloDefensaJudicialV3() {
       // Recargar expedientes
       loadExpedientes();
       setModalNuevaDemandaOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error guardando demanda:', error);
-      toast.error('Error al guardar la demanda');
+      toast.error(error.message || 'Error al guardar la demanda');
     }
   };
 

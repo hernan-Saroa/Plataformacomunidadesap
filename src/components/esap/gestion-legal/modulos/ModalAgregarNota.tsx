@@ -60,15 +60,7 @@ export function ModalAgregarNota({ isOpen, onClose, expediente, onGuardar }: Mod
         duration: 4000
       });
 
-      // Log para trazabilidad
-      console.log('📝 NOTA AGREGADA AL EXPEDIENTE:', {
-        expediente: expediente.id,
-        titulo,
-        contenido,
-        tipo,
-        autor: 'Usuario Actual', // En producción vendría del contexto de autenticación
-        fecha: new Date().toISOString()
-      });
+
 
       // Limpiar formulario
       setTitulo('');

@@ -321,6 +321,26 @@ interface ConfiguracionesSIGLContextType {
   tiposIndicadores: TipoIndicador[];
   tiposRequerimientos: TipoRequerimiento[];
   cambiosPendientes: boolean;
+
+  // Getters
+  getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
+  getEstadosActivos: (moduloId: string) => EstadoKanban[];
+  getTiposProcesosActivos: (moduloId: string) => TipoProcesoJudicial[];
+  getTiposAutosActivos: (moduloId: string) => TipoAuto[];
+  getEjesEstrategicosActivos: () => EjeEstrategico[];
+  getTiposIndicadoresActivos: () => TipoIndicador[];
+  getTiposRequerimientosActivos: () => TipoRequerimiento[];
+
+  // Updaters
+  actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
+  actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
+  actualizarTiposIndicadores: (nuevosIndicadores: TipoIndicador[]) => void;
+  actualizarTiposRequerimientos: (nuevosRequerimientos: TipoRequerimiento[]) => void;
+
+  // Actions
+  guardarConfiguraciones: () => Promise<void>;
+  restablecerDefecto: () => void;
+  setCambiosPendientes: (valor: boolean) => void;
 }
 
 // ============ CONTEXT ============
@@ -497,10 +517,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
-      
+
       // Aquí se enviaría al backend en producción
       // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
-      
+
       setCambiosPendientes(false);
       toast.success('Configuraciones guardadas correctamente', {
         description: 'Los cambios se han aplicado a todos los módulos',
@@ -572,7 +592,7 @@ export function useConfiguracionesSIGL() {
 
 export function useConfiguracionModulo(moduloId: string) {
   const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos } = useConfiguracionesSIGL();
-  
+
   return {
     configuracion: getConfiguracionModulo(moduloId),
     estadosActivos: getEstadosActivos(moduloId),

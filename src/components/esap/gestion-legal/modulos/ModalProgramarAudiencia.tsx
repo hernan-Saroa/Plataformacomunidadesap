@@ -5,27 +5,31 @@
  * ✅ Historial de cambios
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../ui/dialog';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  Calendar, Save, X, AlertCircle, Clock, 
+import {
+  Calendar, Save, X, AlertCircle, Clock,
   MapPin, User, FileText, Repeat, History,
   CheckCircle, Scale
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalProgramarAudienciaProps {
   isOpen: boolean;
   onClose: () => void;
-  onGuardar: (audiencia: any) => void;
+  onGuardar: (audiencia: any) => Promise<void> | void;
   expedienteId: string;
   audienciaExistente?: any; // Para reasignación
+  abogados?: any[]; // Lista de abogados disponibles
 }
+
+// ... imports remain ... 
+// (Keep TIPOS_AUDIENCIA and MOTIVOS_REASIGNACION)
 
 const TIPOS_AUDIENCIA = [
   'Audiencia Inicial',
@@ -51,16 +55,17 @@ const MOTIVOS_REASIGNACION = [
   'Otro'
 ];
 
-export function ModalProgramarAudiencia({ 
-  isOpen, 
-  onClose, 
-  onGuardar, 
+export function ModalProgramarAudiencia({
+  isOpen,
+  onClose,
+  onGuardar,
   expedienteId,
-  audienciaExistente 
+  audienciaExistente,
+  abogados = []
 }: ModalProgramarAudienciaProps) {
-  
+
   const esReasignacion = !!audienciaExistente;
-  
+
   const [tipo, setTipo] = useState(audienciaExistente?.tipo || '');
   const [fecha, setFecha] = useState(audienciaExistente?.fecha || '');
   const [hora, setHora] = useState(audienciaExistente?.hora || '');
@@ -71,25 +76,45 @@ export function ModalProgramarAudiencia({
   const [abogadoResponsable, setAbogadoResponsable] = useState(audienciaExistente?.abogadoResponsable || '');
   const [objetivoAudiencia, setObjetivoAudiencia] = useState(audienciaExistente?.objetivo || '');
   const [observaciones, setObservaciones] = useState('');
-  
+
   // Específico para reasignación
   const [motivoReasignacion, setMotivoReasignacion] = useState('');
   const [detalleReasignacion, setDetalleReasignacion] = useState('');
-  
+
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
 
-  // Mock historial para audiencias reasignadas
-  const historialReasignaciones = audienciaExistente?.historial || [
-    {
-      fechaOriginal: '15/01/2025 10:00 AM',
-      fechaNueva: '22/01/2025 02:00 PM',
-      motivo: 'Aplazamiento por el Juzgado',
-      registradoPor: 'Dra. María López',
-      fechaRegistro: '12/01/2025'
+  // Sync state when audienciaExistente changes
+  useEffect(() => {
+    if (audienciaExistente) {
+      setTipo(audienciaExistente.tipo || '');
+      // Clear Date and Time to force user selection as requested
+      setFecha('');
+      setHora('');
+
+      setLugar(audienciaExistente.lugar || '');
+      setModalidad(audienciaExistente.modalidad || 'Presencial');
+      // Fix mapping: ModalExpediente passes linkReunion, component uses linkVirtual
+      setLinkVirtual(audienciaExistente.linkReunion || audienciaExistente.linkVirtual || '');
+      setJuez(audienciaExistente.juez || '');
+      setAbogadoResponsable(audienciaExistente.abogadoResponsable || '');
+      setObjetivoAudiencia(audienciaExistente.objetivo || '');
+      setObservaciones(audienciaExistente.observaciones || '');
+
+      // Reset validation warnings
+      setErrores({});
+
+      // Reset reassignment specific fields
+      setMotivoReasignacion('');
+      setDetalleReasignacion('');
+    } else {
+      // Creation mode: Defaults handled by useState initializers or expected to be empty
     }
-  ];
+  }, [audienciaExistente]);
+
+  // Mock historial para audiencias reasignadas
+  const historialReasignaciones = audienciaExistente?.historial || [];
 
   /**
    * Validar formulario
@@ -98,12 +123,21 @@ export function ModalProgramarAudiencia({
     const nuevosErrores: Record<string, string> = {};
 
     if (!tipo) nuevosErrores.tipo = 'Selecciona el tipo de audiencia';
-    if (!fecha) nuevosErrores.fecha = 'Selecciona la fecha de la audiencia';
+    if (!fecha) {
+      nuevosErrores.fecha = 'Selecciona la fecha de la audiencia';
+    } else {
+      const fechaSelect = new Date(fecha + 'T00:00:00');
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      if (fechaSelect < hoy) {
+        nuevosErrores.fecha = 'La fecha no puede ser anterior a la actual';
+      }
+    }
     if (!hora) nuevosErrores.hora = 'Indica la hora de la audiencia';
     if (!lugar.trim() && modalidad === 'Presencial') nuevosErrores.lugar = 'Indica el lugar de la audiencia';
     if (!linkVirtual.trim() && modalidad === 'Virtual') nuevosErrores.linkVirtual = 'Ingresa el enlace de la audiencia virtual';
     if (!abogadoResponsable.trim()) nuevosErrores.abogadoResponsable = 'Asigna el abogado responsable';
-    
+
     if (esReasignacion && !motivoReasignacion) {
       nuevosErrores.motivoReasignacion = 'Indica el motivo de la reasignación';
     }
@@ -115,7 +149,7 @@ export function ModalProgramarAudiencia({
   /**
    * Guardar audiencia
    */
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!validarFormulario()) {
       toast.error('❌ Formulario incompleto', {
         description: 'Por favor corrige los errores marcados'
@@ -124,13 +158,11 @@ export function ModalProgramarAudiencia({
     }
 
     setGuardando(true);
-    toast.loading(esReasignacion ? '🔄 Reasignando audiencia...' : '💾 Programando audiencia...', { 
-      id: 'guardar-audiencia' 
-    });
+    // toast.loading handled by parent or managed via state
 
-    setTimeout(() => {
+    try {
       const audiencia = {
-        id: audienciaExistente?.id || Date.now(),
+        id: audienciaExistente?.id, // ID only if existing
         tipo,
         fecha,
         hora,
@@ -144,7 +176,6 @@ export function ModalProgramarAudiencia({
         expedienteId,
         estado: 'Programada',
         registradoPor: 'funcionario@esap.edu.co',
-        fechaRegistro: new Date().toISOString(),
         ...(esReasignacion && {
           motivoReasignacion,
           detalleReasignacion,
@@ -164,20 +195,15 @@ export function ModalProgramarAudiencia({
         })
       };
 
-      onGuardar(audiencia);
-
-      toast.success(esReasignacion ? '✅ Audiencia reasignada' : '✅ Audiencia programada', {
-        id: 'guardar-audiencia',
-        description: `${tipo} - ${fecha} a las ${hora}`,
-        duration: 4000
-      });
-
-      console.log('📊 Audiencia registrada:', audiencia);
+      await onGuardar(audiencia);
 
       limpiarFormulario();
-      setGuardando(false);
       onClose();
-    }, 1500);
+    } catch (error) {
+      console.error("Error saving audiencia", error);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   /**
@@ -249,7 +275,7 @@ export function ModalProgramarAudiencia({
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="space-y-5">
-            
+
             {/* Alerta de reasignación */}
             {esReasignacion && (
               <Card className="p-4 bg-orange-50 border-orange-200">
@@ -295,9 +321,8 @@ export function ModalProgramarAudiencia({
                   setTipo(e.target.value);
                   setErrores({ ...errores, tipo: '' });
                 }}
-                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 ${
-                  errores.tipo ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 ${errores.tipo ? 'border-red-500' : 'border-gray-300'
+                  }`}
               >
                 <option value="">Selecciona el tipo de audiencia...</option>
                 {TIPOS_AUDIENCIA.map((t) => (
@@ -322,6 +347,7 @@ export function ModalProgramarAudiencia({
                 <Input
                   type="date"
                   value={fecha}
+                  min={new Date().toLocaleDateString('en-CA')} // YYYY-MM-DD in local time (Canadian format is standard ISO-like)
                   onChange={(e) => {
                     setFecha(e.target.value);
                     setErrores({ ...errores, fecha: '' });
@@ -344,6 +370,9 @@ export function ModalProgramarAudiencia({
                 <Input
                   type="time"
                   value={hora}
+                  min={fecha === new Date().toLocaleDateString('en-CA')
+                    ? new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                    : undefined}
                   onChange={(e) => {
                     setHora(e.target.value);
                     setErrores({ ...errores, hora: '' });
@@ -368,22 +397,20 @@ export function ModalProgramarAudiencia({
                 <button
                   type="button"
                   onClick={() => setModalidad('Presencial')}
-                  className={`p-3 rounded-lg border-2 font-bold text-sm transition-all ${
-                    modalidad === 'Presencial'
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
-                  }`}
+                  className={`p-3 rounded-lg border-2 font-bold text-sm transition-all ${modalidad === 'Presencial'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900'
+                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
+                    }`}
                 >
                   🏛️ Presencial
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalidad('Virtual')}
-                  className={`p-3 rounded-lg border-2 font-bold text-sm transition-all ${
-                    modalidad === 'Virtual'
-                      ? 'border-blue-600 bg-blue-50 text-blue-900'
-                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
-                  }`}
+                  className={`p-3 rounded-lg border-2 font-bold text-sm transition-all ${modalidad === 'Virtual'
+                    ? 'border-blue-600 bg-blue-50 text-blue-900'
+                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
+                    }`}
                 >
                   💻 Virtual
                 </button>
@@ -455,15 +482,34 @@ export function ModalProgramarAudiencia({
                 <User className="w-4 h-4 inline mr-1" />
                 Abogado Responsable de ESAP *
               </label>
-              <Input
-                placeholder="Ej: Dra. Ana María López"
-                value={abogadoResponsable}
-                onChange={(e) => {
-                  setAbogadoResponsable(e.target.value);
-                  setErrores({ ...errores, abogadoResponsable: '' });
-                }}
-                className={`text-sm ${errores.abogadoResponsable ? 'border-red-500' : ''}`}
-              />
+              {abogados && abogados.length > 0 ? (
+                <select
+                  value={abogadoResponsable}
+                  onChange={(e) => {
+                    setAbogadoResponsable(e.target.value);
+                    setErrores({ ...errores, abogadoResponsable: '' });
+                  }}
+                  className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 ${errores.abogadoResponsable ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                >
+                  <option value="">Selecciona un abogado...</option>
+                  {abogados.map((abogado) => (
+                    <option key={abogado.id} value={abogado.id}>
+                      {abogado.nombreCompleto} - {abogado.especialidad || 'General'}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  placeholder="Ej: Dra. Ana María López"
+                  value={abogadoResponsable}
+                  onChange={(e) => {
+                    setAbogadoResponsable(e.target.value);
+                    setErrores({ ...errores, abogadoResponsable: '' });
+                  }}
+                  className={`text-sm ${errores.abogadoResponsable ? 'border-red-500' : ''}`}
+                />
+              )}
               {errores.abogadoResponsable && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
@@ -494,7 +540,7 @@ export function ModalProgramarAudiencia({
                     <Repeat className="w-5 h-5 text-orange-600" />
                     Motivo de la Reasignación
                   </h3>
-                  
+
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -506,9 +552,8 @@ export function ModalProgramarAudiencia({
                           setMotivoReasignacion(e.target.value);
                           setErrores({ ...errores, motivoReasignacion: '' });
                         }}
-                        className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-orange-500 ${
-                          errores.motivoReasignacion ? 'border-red-500' : 'border-gray-300'
-                        }`}
+                        className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-orange-500 ${errores.motivoReasignacion ? 'border-red-500' : 'border-gray-300'
+                          }`}
                       >
                         <option value="">Selecciona el motivo de la reasignación...</option>
                         {MOTIVOS_REASIGNACION.map((m) => (
@@ -552,10 +597,10 @@ export function ModalProgramarAudiencia({
                       </span>
                       <span>{mostrarHistorial ? '▲' : '▼'}</span>
                     </button>
-                    
+
                     {mostrarHistorial && (
                       <div className="mt-3 space-y-2">
-                        {historialReasignaciones.map((item, idx) => (
+                        {historialReasignaciones.map((item: any, idx: number) => (
                           <div key={idx} className="p-3 bg-white rounded border border-gray-200">
                             <div className="text-xs space-y-1">
                               <p className="font-bold text-gray-900">
@@ -596,15 +641,15 @@ export function ModalProgramarAudiencia({
 
         {/* Footer */}
         <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleCancelar}
             disabled={guardando}
           >
             <X className="w-4 h-4 mr-2" />
             Cancelar
           </Button>
-          <Button 
+          <Button
             onClick={handleGuardar}
             disabled={guardando}
             style={{ background: esReasignacion ? '#F57C00' : '#003DA5', color: '#FFFFFF' }}

@@ -59,6 +59,10 @@ export interface ParteProcesal {
   identificacion: string;
   cargo?: string;
   rol?: string; // Ej: "Tercero interviniente", "Ministerio Público", etc.
+  telefono?: string;
+  email?: string;
+  direccion?: string;
+  apoderado?: string;
 }
 
 export interface ExpedienteJudicial {
@@ -109,6 +113,7 @@ export interface ExpedienteJudicial {
   // Responsable
   abogadoAsignado: string;
   abogadoResponsable?: string; // Add optional for compatibility
+  abogadoSustanciador?: string; // Backend field name
   prioridad?: string; // Add optional
 
   // Información adicional

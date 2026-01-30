@@ -28,7 +28,7 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { legalService } from '../../../../services/api/legal.service';
-import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
@@ -319,30 +319,6 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleNuevaConsulta = async (data: NuevaConsultaData) => {
-    try {
-      const response = await legalService.createConsultaJuridica({
-        materiaJuridica: data.temaJuridico.toLowerCase(),
-        dependenciaSolicitante: data.solicitante,
-        nombreSolicitante: data.funcionarioSolicitante,
-        emailSolicitante: data.emailSolicitante,
-        cargoSolicitante: data.cargo,
-        descripcion: data.consulta,
-        prioridad: data.prioridad.toLowerCase(),
-        terminoLegalDias: 30
-      });
-
-      // Recargar listado de consultas
-      await loadConsultas();
-
-      toast.success('✅ Consulta creada exitosamente', {
-        description: `${response.numeroRadicado} - ${data.temaJuridico}`
-      });
-    } catch (error) {
-      console.error('Error al crear consulta:', error);
-      toast.error('Error al crear la consulta');
-    }
-  };
 
   const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
     setConsultaSeleccionada(consulta);
@@ -512,7 +488,7 @@ export function ModuloAsesoriaJuridicaV3() {
         <ModalNuevaConsulta
           isOpen={modalNuevaConsultaOpen}
           onClose={() => setModalNuevaConsultaOpen(false)}
-          onSubmit={handleNuevaConsulta}
+          onSuccess={loadConsultas}
         />
       )}
 
@@ -815,14 +791,14 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                   <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
                 </Button>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
-                  size="sm"
-                  variant="outline"
-                  className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
-                >
-                  <Trash2 className="w-3 h-3 mr-1" /> Eliminar
-                </Button>
+                  <Button
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                    size="sm"
+                    variant="outline"
+                    className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" /> Eliminar
+                  </Button>
                 )}
               </td>
             </tr>

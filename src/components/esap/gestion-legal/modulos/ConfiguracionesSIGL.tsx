@@ -48,8 +48,8 @@ import {
 
 export function ConfiguracionesSIGL() {
   // ✅ Usar Context API en lugar de useState local
-  const { 
-    configuraciones, 
+  const {
+    configuraciones,
     ejesEstrategicos,
     tiposIndicadores,
     tiposRequerimientos,
@@ -200,8 +200,8 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarEstado = () => {
     if (!estadoAEliminar) return;
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, estados: m.estados.filter(e => e.id !== estadoAEliminar.id) }
         : m
     ));
@@ -216,14 +216,14 @@ export function ConfiguracionesSIGL() {
   };
 
   const actualizarEstado = (estadoId: string, cambios: Partial<EstadoKanban>) => {
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            estados: m.estados.map(e => 
-              e.id === estadoId ? { ...e, ...cambios } : e
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          estados: m.estados.map(e =>
+            e.id === estadoId ? { ...e, ...cambios } : e
+          )
+        }
         : m
     ));
   };
@@ -241,30 +241,30 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: [...m.tiempos, nuevoTiempo] }
         : m
     ));
   };
 
   const eliminarTiempo = (tiempoId: string) => {
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiempos: m.tiempos.filter(t => t.id !== tiempoId) }
         : m
     ));
   };
 
   const actualizarTiempo = (tiempoId: string, cambios: Partial<ConfiguracionTiempo>) => {
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiempos: m.tiempos.map(t => 
-              t.id === tiempoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiempos: m.tiempos.map(t =>
+            t.id === tiempoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
   };
@@ -347,7 +347,7 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarTipoAuto = () => {
     if (!moduloActual || !moduloActual.tiposAutos) return;
-    
+
     const nuevoTipo: TipoAuto = {
       id: `auto-${Date.now()}`,
       nombre: 'Nuevo Tipo de Auto',
@@ -355,14 +355,14 @@ export function ConfiguracionesSIGL() {
       activo: true,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposAutos: [...(m.tiposAutos || []), nuevoTipo] }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalAgregarTipoAuto(false);
-    
+
     toast.success('Tipo de auto agregado correctamente', {
       description: 'Se ha agregado un nuevo tipo de auto procesal',
       duration: 3000
@@ -380,31 +380,31 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarTipoAuto = () => {
     if (!tipoAutoAEliminar) return;
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposAutos: (m.tiposAutos || []).filter(t => t.id !== tipoAutoAEliminar.id) }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalEliminarTipoAuto(false);
-    
+
     toast.success('Tipo de auto eliminado correctamente', {
       description: `"${tipoAutoAEliminar.nombre}" ha sido eliminado de los tipos de autos procesales`,
       duration: 3000
     });
-    
+
     setTipoAutoAEliminar(null);
   };
 
   const actualizarTipoAuto = (tipoId: string, cambios: Partial<TipoAuto>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiposAutos: (m.tiposAutos || []).map(t => 
-              t.id === tipoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiposAutos: (m.tiposAutos || []).map(t =>
+            t.id === tipoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
     setCambiosPendientes(true);
@@ -536,11 +536,10 @@ export function ConfiguracionesSIGL() {
             <div className="space-y-1">
               <button
                 onClick={() => setModuloActivo('plan-accion')}
-                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
-                  moduloActivo === 'plan-accion'
-                    ? 'bg-blue-50 text-blue-900 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plan-accion'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Target className="w-4 h-4" />
@@ -555,11 +554,10 @@ export function ConfiguracionesSIGL() {
 
               <button
                 onClick={() => setModuloActivo('organos-control')}
-                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
-                  moduloActivo === 'organos-control'
-                    ? 'bg-blue-50 text-blue-900 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'organos-control'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
@@ -577,7 +575,7 @@ export function ConfiguracionesSIGL() {
 
         {/* Panel Principal */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
-          
+
           {/* 🆕 Panel de Plan de Acción - Ejes Estratégicos */}
           {moduloActivo === 'plan-accion' && (
             <div className="max-w-6xl mx-auto space-y-6">
@@ -597,7 +595,7 @@ export function ConfiguracionesSIGL() {
                     <button
                       onClick={() => setShowModalAgregarEje(true)}
                       className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                      style={{ 
+                      style={{
                         background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                         boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                       }}
@@ -609,7 +607,7 @@ export function ConfiguracionesSIGL() {
 
                   <div className="space-y-3">
                     {ejesEstrategicos.map((eje, index) => (
-                      <div 
+                      <div
                         key={eje.id}
                         className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                       >
@@ -622,9 +620,9 @@ export function ConfiguracionesSIGL() {
                           <input
                             type="text"
                             value={eje.icono}
-                            onChange={(e) => {
-                              const nuevosEjes = ejesEstrategicos.map(e => 
-                                e.id === eje.id ? { ...e, icono: e.target.value } : e
+                            onChange={(event) => {
+                              const nuevosEjes = ejesEstrategicos.map(item =>
+                                item.id === eje.id ? { ...item, icono: event.target.value } : item
                               );
                               actualizarEjesEstrategicos(nuevosEjes);
                             }}
@@ -636,9 +634,9 @@ export function ConfiguracionesSIGL() {
                           <input
                             type="text"
                             value={eje.nombre}
-                            onChange={(e) => {
-                              const nuevosEjes = ejesEstrategicos.map(e => 
-                                e.id === eje.id ? { ...e, nombre: e.target.value } : e
+                            onChange={(event) => {
+                              const nuevosEjes = ejesEstrategicos.map(item =>
+                                item.id === eje.id ? { ...item, nombre: event.target.value } : item
                               );
                               actualizarEjesEstrategicos(nuevosEjes);
                             }}
@@ -661,9 +659,9 @@ export function ConfiguracionesSIGL() {
                         <div className="mb-3">
                           <textarea
                             value={eje.descripcion}
-                            onChange={(e) => {
-                              const nuevosEjes = ejesEstrategicos.map(e => 
-                                e.id === eje.id ? { ...e, descripcion: e.target.value } : e
+                            onChange={(event) => {
+                              const nuevosEjes = ejesEstrategicos.map(item =>
+                                item.id === eje.id ? { ...item, descripcion: event.target.value } : item
                               );
                               actualizarEjesEstrategicos(nuevosEjes);
                             }}
@@ -683,9 +681,9 @@ export function ConfiguracionesSIGL() {
                             <input
                               type="color"
                               value={eje.color}
-                              onChange={(e) => {
-                                const nuevosEjes = ejesEstrategicos.map(e => 
-                                  e.id === eje.id ? { ...e, color: e.target.value } : e
+                              onChange={(event) => {
+                                const nuevosEjes = ejesEstrategicos.map(item =>
+                                  item.id === eje.id ? { ...item, color: event.target.value } : item
                                 );
                                 actualizarEjesEstrategicos(nuevosEjes);
                               }}
@@ -699,9 +697,9 @@ export function ConfiguracionesSIGL() {
                             <input
                               type="checkbox"
                               checked={eje.activo}
-                              onChange={(e) => {
-                                const nuevosEjes = ejesEstrategicos.map(e => 
-                                  e.id === eje.id ? { ...e, activo: e.target.checked } : e
+                              onChange={(event) => {
+                                const nuevosEjes = ejesEstrategicos.map(item =>
+                                  item.id === eje.id ? { ...item, activo: event.target.checked } : item
                                 );
                                 actualizarEjesEstrategicos(nuevosEjes);
                               }}
@@ -754,7 +752,7 @@ export function ConfiguracionesSIGL() {
                     <button
                       onClick={() => setShowModalAgregarIndicador(true)}
                       className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                      style={{ 
+                      style={{
                         background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                         boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                       }}
@@ -766,7 +764,7 @@ export function ConfiguracionesSIGL() {
 
                   <div className="space-y-3">
                     {tiposIndicadores.map((tipo, index) => (
-                      <div 
+                      <div
                         key={tipo.id}
                         className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                       >
@@ -779,9 +777,9 @@ export function ConfiguracionesSIGL() {
                           <input
                             type="text"
                             value={tipo.icono}
-                            onChange={(e) => {
-                              const nuevosIndicadores = tiposIndicadores.map(t => 
-                                t.id === tipo.id ? { ...t, icono: e.target.value } : t
+                            onChange={(event) => {
+                              const nuevosIndicadores = tiposIndicadores.map(item =>
+                                item.id === tipo.id ? { ...item, icono: event.target.value } : item
                               );
                               actualizarTiposIndicadores(nuevosIndicadores);
                             }}
@@ -793,9 +791,9 @@ export function ConfiguracionesSIGL() {
                           <input
                             type="text"
                             value={tipo.nombre}
-                            onChange={(e) => {
-                              const nuevosIndicadores = tiposIndicadores.map(t => 
-                                t.id === tipo.id ? { ...t, nombre: e.target.value } : t
+                            onChange={(event) => {
+                              const nuevosIndicadores = tiposIndicadores.map(item =>
+                                item.id === tipo.id ? { ...item, nombre: event.target.value } : item
                               );
                               actualizarTiposIndicadores(nuevosIndicadores);
                             }}
@@ -818,9 +816,9 @@ export function ConfiguracionesSIGL() {
                         <div className="mb-3">
                           <textarea
                             value={tipo.descripcion}
-                            onChange={(e) => {
-                              const nuevosIndicadores = tiposIndicadores.map(t => 
-                                t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
+                            onChange={(event) => {
+                              const nuevosIndicadores = tiposIndicadores.map(item =>
+                                item.id === tipo.id ? { ...item, descripcion: event.target.value } : item
                               );
                               actualizarTiposIndicadores(nuevosIndicadores);
                             }}
@@ -840,9 +838,9 @@ export function ConfiguracionesSIGL() {
                             <input
                               type="color"
                               value={tipo.color}
-                              onChange={(e) => {
-                                const nuevosIndicadores = tiposIndicadores.map(t => 
-                                  t.id === tipo.id ? { ...t, color: e.target.value } : t
+                              onChange={(event) => {
+                                const nuevosIndicadores = tiposIndicadores.map(item =>
+                                  item.id === tipo.id ? { ...item, color: event.target.value } : item
                                 );
                                 actualizarTiposIndicadores(nuevosIndicadores);
                               }}
@@ -856,9 +854,9 @@ export function ConfiguracionesSIGL() {
                             <input
                               type="checkbox"
                               checked={tipo.activo}
-                              onChange={(e) => {
-                                const nuevosIndicadores = tiposIndicadores.map(t => 
-                                  t.id === tipo.id ? { ...t, activo: e.target.checked } : t
+                              onChange={(event) => {
+                                const nuevosIndicadores = tiposIndicadores.map(item =>
+                                  item.id === tipo.id ? { ...item, activo: event.target.checked } : item
                                 );
                                 actualizarTiposIndicadores(nuevosIndicadores);
                               }}
@@ -897,7 +895,7 @@ export function ConfiguracionesSIGL() {
                     <button
                       onClick={() => setShowModalAgregarRequerimiento(true)}
                       className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                      style={{ 
+                      style={{
                         background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                         boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                       }}
@@ -909,7 +907,7 @@ export function ConfiguracionesSIGL() {
 
                   <div className="space-y-3">
                     {tiposRequerimientos.map((tipo, index) => (
-                      <div 
+                      <div
                         key={tipo.id}
                         className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                       >
@@ -923,7 +921,7 @@ export function ConfiguracionesSIGL() {
                             type="text"
                             value={tipo.icono}
                             onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                 t.id === tipo.id ? { ...t, icono: e.target.value } : t
                               );
                               actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -937,7 +935,7 @@ export function ConfiguracionesSIGL() {
                             type="text"
                             value={tipo.nombre}
                             onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                 t.id === tipo.id ? { ...t, nombre: e.target.value } : t
                               );
                               actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -962,7 +960,7 @@ export function ConfiguracionesSIGL() {
                           <textarea
                             value={tipo.descripcion}
                             onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                 t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
                               );
                               actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -984,7 +982,7 @@ export function ConfiguracionesSIGL() {
                               type="color"
                               value={tipo.color}
                               onChange={(e) => {
-                                const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                   t.id === tipo.id ? { ...t, color: e.target.value } : t
                                 );
                                 actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -1000,7 +998,7 @@ export function ConfiguracionesSIGL() {
                               type="checkbox"
                               checked={tipo.activo}
                               onChange={(e) => {
-                                const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                   t.id === tipo.id ? { ...t, activo: e.target.checked } : t
                                 );
                                 actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -1055,17 +1053,17 @@ export function ConfiguracionesSIGL() {
                       </p>
                     </div>
                     {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                    <button
-                      onClick={agregarEstado}
-                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                      style={{
-                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                      }}
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Agregar</span>
-                    </button>
+                      <button
+                        onClick={agregarEstado}
+                        className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar</span>
+                      </button>
                     )}
                   </div>
 
@@ -1109,17 +1107,17 @@ export function ConfiguracionesSIGL() {
                         </p>
                       </div>
                       {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_CREATE) && (
-                      <button
-                        onClick={agregarTipoProceso}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{
-                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                        }}
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Agregar Tipo</span>
-                      </button>
+                        <button
+                          onClick={agregarTipoProceso}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                          style={{
+                            background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                            boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Agregar Tipo</span>
+                        </button>
                       )}
                     </div>
 
@@ -1140,12 +1138,12 @@ export function ConfiguracionesSIGL() {
                               placeholder="Nombre del tipo de proceso"
                             />
                             {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
-                            <button
-                              onClick={() => solicitarEliminarTipoProceso(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                              <button
+                                onClick={() => solicitarEliminarTipoProceso(tipo.id)}
+                                className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
 
@@ -1234,7 +1232,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarTipoAuto}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -1246,7 +1244,7 @@ export function ConfiguracionesSIGL() {
 
                     <div className="space-y-3">
                       {moduloActual.tiposAutos.map((tipo) => (
-                        <div 
+                        <div
                           key={tipo.id}
                           className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                         >
@@ -1615,7 +1613,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo tipo de auto con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nueva Demanda.
@@ -1632,7 +1630,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarTipoAuto}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -1664,7 +1662,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   Tipo: "{tipoAutoAEliminar.nombre}"
@@ -1715,7 +1713,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo eje con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Indicador PEI.
@@ -1742,14 +1740,14 @@ export function ConfiguracionesSIGL() {
                     };
                     actualizarEjesEstrategicos([...ejesEstrategicos, nuevoEje]);
                     setShowModalAgregarEje(false);
-                    
+
                     toast.success('Eje estratégico agregado correctamente', {
                       description: 'Se ha agregado un nuevo eje al Plan de Acción',
                       duration: 3000
                     });
                   }}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -1781,7 +1779,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   {ejeAEliminar.icono} {ejeAEliminar.nombre}
@@ -1807,7 +1805,7 @@ export function ConfiguracionesSIGL() {
                     actualizarEjesEstrategicos(nuevosEjes);
                     setShowModalEliminarEje(false);
                     setEjeAEliminar(null);
-                    
+
                     toast.success('Eje estratégico eliminado correctamente', {
                       description: `"${ejeAEliminar.nombre}" ha sido eliminado del Plan de Acción`,
                       duration: 3000
@@ -1842,7 +1840,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo tipo de indicador con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Indicador PEI.
@@ -1869,14 +1867,14 @@ export function ConfiguracionesSIGL() {
                     };
                     actualizarTiposIndicadores([...tiposIndicadores, nuevoIndicador]);
                     setShowModalAgregarIndicador(false);
-                    
+
                     toast.success('Tipo de indicador agregado correctamente', {
                       description: 'Se ha agregado un nuevo tipo al Plan de Acción',
                       duration: 3000
                     });
                   }}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -1908,7 +1906,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   {indicadorAEliminar.icono} {indicadorAEliminar.nombre}
@@ -1934,7 +1932,7 @@ export function ConfiguracionesSIGL() {
                     actualizarTiposIndicadores(nuevosIndicadores);
                     setShowModalEliminarIndicador(false);
                     setIndicadorAEliminar(null);
-                    
+
                     toast.success('Tipo de indicador eliminado correctamente', {
                       description: `"${indicadorAEliminar.nombre}" ha sido eliminado del Plan de Acción`,
                       duration: 3000
@@ -1969,7 +1967,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-blue-800">
                   Se creará un nuevo tipo de requerimiento con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Nuevo Requerimiento.
@@ -1996,14 +1994,14 @@ export function ConfiguracionesSIGL() {
                     };
                     actualizarTiposRequerimientos([...tiposRequerimientos, nuevoRequerimiento]);
                     setShowModalAgregarRequerimiento(false);
-                    
+
                     toast.success('Tipo de requerimiento agregado correctamente', {
                       description: 'Se ha agregado un nuevo tipo para Órganos de Control',
                       duration: 3000
                     });
                   }}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -2035,7 +2033,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   {requerimientoAEliminar.icono} {requerimientoAEliminar.nombre}
@@ -2061,7 +2059,7 @@ export function ConfiguracionesSIGL() {
                     actualizarTiposRequerimientos(nuevosRequerimientos);
                     setShowModalEliminarRequerimiento(false);
                     setRequerimientoAEliminar(null);
-                    
+
                     toast.success('Tipo de requerimiento eliminado correctamente', {
                       description: `"${requerimientoAEliminar.nombre}" ha sido eliminado de Órganos de Control`,
                       duration: 3000
@@ -2133,15 +2131,15 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
           <span className="text-xs sm:text-sm text-gray-700 whitespace-nowrap">Activo</span>
         </label>
         {authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_DELETE) && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(estado.id);
-          }}
-          className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(estado.id);
+            }}
+            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         )}
       </div>
     </div>

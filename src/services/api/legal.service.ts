@@ -177,6 +177,10 @@ export class LegalService {
         await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
+    async deleteAudiencia(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/audiencias/${id}`);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);
@@ -270,7 +274,7 @@ export class LegalService {
     }
 
     // ==================== AUDIENCIAS ====================
-    async getAudiencias(filtros?: { start?: string; end?: string }): Promise<Audiencia[]> {
+    async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
         return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
     }
 
@@ -290,6 +294,10 @@ export class LegalService {
         notasPreparacion?: string;
     }): Promise<Audiencia> {
         return apiClient.post<Audiencia>(`${SERVICE_PREFIX}/audiencias`, data);
+    }
+
+    async updateAudiencia(id: string, data: any): Promise<Audiencia> {
+        return apiClient.put<Audiencia>(`${SERVICE_PREFIX}/audiencias/${id}`, data);
     }
 
     // Autos

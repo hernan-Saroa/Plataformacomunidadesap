@@ -23,6 +23,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 
 import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environment';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
 
 // Helper to build correct file URL for both direct and gateway modes
 // Direct mode: http://localhost:3008/files/{filename}
@@ -260,7 +261,7 @@ const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
       { id: 'd25', nombre: 'Constancia Cumplimiento.pdf', tipo: 'ACTAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-09-20', autor: 'Dra. Ana López' },
     ]
   },
-  
+
   // ═══════════════════════════════════════════════════════════
   // EXPEDIENTES DE JUZGAMIENTO
   // Vinculados con datosProcesoDisciplinarios.ts
@@ -298,7 +299,7 @@ const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
       { id: 'd13', nombre: 'Fallo Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '2.8 MB', fechaCreacion: '2025-01-10', autor: 'Dr. Carlos Ramírez' },
     ]
   },
-  
+
   // ═══════════════════════════════════════════════════════════
   // EXPEDIENTES DE ASESORÍA JURÍDICA
   // Vinculados con datosConsultasJuridicas.ts
@@ -335,7 +336,7 @@ const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
       { id: 'd19', nombre: 'Borrador Concepto.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2025-01-12', autor: 'Dra. Ana López' },
     ]
   },
-  
+
   // ═══════════════════════════════════════════════════════════
   // EXPEDIENTES DE PROCESOS COACTIVOS
   // Vinculados con datosProcesosCoactivos.ts
@@ -1298,13 +1299,13 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
 
             <div className="flex gap-2 w-full sm:w-auto">
               {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
-              <button
-                onClick={onUpload}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Cargar
-              </button>
+                <button
+                  onClick={onUpload}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Cargar
+                </button>
               )}
               <button
                 onClick={onToggleExpand}
@@ -1537,13 +1538,15 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
                       </div>
 
                       <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver documento"
-                        >
-                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
+                        {isViewableInBrowser(doc.nombre || doc.url) && (
+                          <button
+                            onClick={() => handleVerDocumento(doc)}
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                            title="Ver documento"
+                          >
+                            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDescargarDocumento(doc, e)}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
