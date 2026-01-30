@@ -46,6 +46,18 @@
 
 ---
 
+### 📊 Documentacion de Datos
+
+**[📋 DICCIONARIO_DATOS.md](./DICCIONARIO_DATOS.md)** ⭐ **NUEVO**
+- Diccionario de datos completo de la plataforma
+- Todas las entidades, tipos e interfaces documentadas
+- Relaciones entre entidades
+- Mapeo de archivos por modulo
+- Convenciones y patrones de desarrollo
+- **REFERENCIA TECNICA DE DATOS**
+
+---
+
 ### 🚀 Para Desarrolladores
 
 **[🚀 GUIA_INICIO_RAPIDO_MICROFRONTENDS.md](./GUIA_INICIO_RAPIDO_MICROFRONTENDS.md)**
@@ -105,7 +117,8 @@
 │   ├── ARQUITECTURA_MICRO_FRONTENDS.md      # Documento maestro
 │   ├── PORTAL_TRANSACCIONAL_UNIFICADO.md    # Portal único ⭐
 │   ├── GUIA_INICIO_RAPIDO_MICROFRONTENDS.md # Guía práctica
-│   └── DIAGRAMA_ARQUITECTURA_MICROFRONTENDS.md # Diagramas
+│   ├── DIAGRAMA_ARQUITECTURA_MICROFRONTENDS.md # Diagramas
+│   └── DICCIONARIO_DATOS.md                 # Diccionario de datos ⭐
 │
 ├── modules/                                 # 📦 MÓDULOS (14 total)
 │   ├── core/                                # Shell Application
@@ -173,9 +186,10 @@
 
 ### Si eres **Desarrollador:**
 1. [PORTAL_TRANSACCIONAL_UNIFICADO.md](./PORTAL_TRANSACCIONAL_UNIFICADO.md) ⭐ (30 min)
-2. [GUIA_INICIO_RAPIDO_MICROFRONTENDS.md](./GUIA_INICIO_RAPIDO_MICROFRONTENDS.md) (45 min)
-3. [ARQUITECTURA_MICRO_FRONTENDS.md](./ARQUITECTURA_MICRO_FRONTENDS.md) (1 hora)
-4. **Acción:** Ejecutar script y empezar migración
+2. [DICCIONARIO_DATOS.md](./DICCIONARIO_DATOS.md) ⭐ (45 min) - **Referencia de entidades y tipos**
+3. [GUIA_INICIO_RAPIDO_MICROFRONTENDS.md](./GUIA_INICIO_RAPIDO_MICROFRONTENDS.md) (45 min)
+4. [ARQUITECTURA_MICRO_FRONTENDS.md](./ARQUITECTURA_MICRO_FRONTENDS.md) (1 hora)
+5. **Acción:** Ejecutar script y empezar migración
 
 ---
 
@@ -269,6 +283,12 @@ const { servicios } = useUserServices(user);
 ---
 
 ## 📝 Changelog
+
+### v2.1 - Enero 2026
+- ✅ Nuevo documento: DICCIONARIO_DATOS.md (Diccionario de datos completo)
+- ✅ Documentacion de todas las entidades del sistema
+- ✅ Mapeo de relaciones entre entidades
+- ✅ Convenciones y patrones de desarrollo documentados
 
 ### v2.0 - Enero 2026
 - ✅ Corrección arquitectura: UN SOLO Portal Transaccional
