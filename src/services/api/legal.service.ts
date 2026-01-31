@@ -177,6 +177,10 @@ export class LegalService {
         await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
+    async deleteAudiencia(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/audiencias/${id}`);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);
@@ -270,7 +274,7 @@ export class LegalService {
     }
 
     // ==================== AUDIENCIAS ====================
-    async getAudiencias(filtros?: { start?: string; end?: string }): Promise<Audiencia[]> {
+    async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
         return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
     }
 
@@ -290,6 +294,10 @@ export class LegalService {
         notasPreparacion?: string;
     }): Promise<Audiencia> {
         return apiClient.post<Audiencia>(`${SERVICE_PREFIX}/audiencias`, data);
+    }
+
+    async updateAudiencia(id: string, data: any): Promise<Audiencia> {
+        return apiClient.put<Audiencia>(`${SERVICE_PREFIX}/audiencias/${id}`, data);
     }
 
     // Autos
@@ -394,8 +402,8 @@ export class LegalService {
     // Duplicates removed
 
 
-    async updateEstadoConsulta(id: string, estado: string, usuario?: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario });
+    async updateEstadoConsulta(id: string, estado: string, usuario?: string, estadoNombre?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario, estadoNombre });
     }
 
     async responderConsulta(id: string, respuestaData: any): Promise<any> {
@@ -548,6 +556,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
     }
 
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
+    }
+
     async createRequerimientoOC(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
     }
@@ -662,6 +674,11 @@ class OCService {
     // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    // Catálogo de tipos de requerimiento
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
     }
 
     // Requerimientos OC

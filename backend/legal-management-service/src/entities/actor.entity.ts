@@ -38,6 +38,9 @@ export class Actor {
     @Column({ length: 255, nullable: true })
     direccion: string;
 
+    @Column({ length: 255, nullable: true })
+    apoderado: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

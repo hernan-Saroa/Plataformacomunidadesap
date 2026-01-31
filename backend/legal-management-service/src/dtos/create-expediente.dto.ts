@@ -81,5 +81,6 @@ export class CreateExpedienteDto {
         email?: string;
         telefono?: string;
         direccion?: string;
+        apoderado?: string;
     }>;
 }

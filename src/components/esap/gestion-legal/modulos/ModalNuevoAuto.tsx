@@ -13,13 +13,14 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  FileText, Calendar, Upload, X, AlertCircle, CheckCircle, 
+import {
+  FileText, Calendar, Upload, X, AlertCircle, CheckCircle,
   Save, Scale, Building2, User, Hash, FileUp, Paperclip, Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { legalService } from '../../../../services/api/legal.service';
 
 interface ModalNuevoAutoProps {
   isOpen: boolean;
@@ -39,7 +40,7 @@ const ESTADOS_AUTO = [
 export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: ModalNuevoAutoProps) {
   // ✅ Obtener tipos de autos desde configuración
   const { tiposAutosActivos } = useConfiguracionModulo('defensa-judicial');
-  
+
   // Estados del formulario
   const [tipo, setTipo] = useState('');
   const [numero, setNumero] = useState('');
@@ -137,49 +138,50 @@ export function ModalNuevoAuto({ isOpen, onClose, onGuardar, expedienteId }: Mod
       return;
     }
 
+    if (!archivo) {
+      toast.error('❌ Archivo requerido', { description: 'Debes adjuntar el auto en formato PDF' });
+      return;
+    }
+
     setGuardando(true);
+    const toastId = toast.loading('⏳ Registrando auto procesal...');
 
-    // Simular procesamiento
-    toast.loading('⏳ Registrando auto procesal...', { id: 'guardar-auto' });
-
-    setTimeout(() => {
-      const estadoInfo = ESTADOS_AUTO.find(e => e.valor === estado) || ESTADOS_AUTO[2];
-
-      const nuevoAuto = {
-        id: Date.now(),
+    try {
+      const autoData = {
         tipo,
         numero: numero.toUpperCase(),
-        fecha: new Date(fecha).toLocaleDateString('es-CO'),
+        fechaAuto: fecha, // YYYY-MM-DD
         juzgado,
-        resumen,
-        estado: estadoInfo.valor,
-        estadoColor: estadoInfo.color,
-        archivo: archivo ? archivo.name : `${numero}.pdf`,
-        tamaño: archivo ? `${(archivo.size / (1024 * 1024)).toFixed(2)} MB` : '1.0 MB',
-        cumplimiento: estado === 'Notificado' ? 'Completado' : 'Pendiente',
-        fechaNotificacion: fechaNotificacion ? new Date(fechaNotificacion).toLocaleDateString('es-CO') : null,
-        expedienteId
+        resumen
       };
 
-      onGuardar(nuevoAuto);
+      // El backend espera el radicado (expedienteId) y el objeto data + file
+      const nuevoAuto = await legalService.createAuto(expedienteId, autoData, archivo);
 
       toast.success('✅ Auto procesal registrado', {
-        id: 'guardar-auto',
-        description: `${nuevoAuto.numero} agregado exitosamente al expediente`,
+        id: toastId,
+        description: `${numero} agregado exitosamente`,
         duration: 4000
       });
 
-      // Log para analytics
-      console.log('📊 Nuevo auto registrado:', {
-        ...nuevoAuto,
-        timestamp: new Date().toISOString()
-      });
+      // Si el auto se guardó como Notificado, actualizar estado inmediatamente
+      if (estado === 'Notificado' && nuevoAuto.id) {
+        try {
+          await legalService.updateAutoEstado(nuevoAuto.id, 'Notificado');
+        } catch (err) {
+          console.error('Error actualizando estado a Notificado', err);
+        }
+      }
 
-      // Limpiar formulario y cerrar
+      onGuardar(nuevoAuto);
       limpiarFormulario();
-      setGuardando(false);
       onClose();
-    }, 1500);
+    } catch (error) {
+      console.error('Error creando auto:', error);
+      toast.error('Error al guardar el auto', { id: toastId });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   /**

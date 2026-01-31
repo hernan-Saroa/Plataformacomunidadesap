@@ -5,6 +5,7 @@ import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 
 @Controller('requerimientos-oc')
 export class RequerimientosOCController {
@@ -16,6 +17,14 @@ export class RequerimientosOCController {
     @Get('organismos')
     async getOrganismos(): Promise<OrganismoControlOC[]> {
         return this.service.findAllOrganismos();
+    }
+
+    // ============================================
+    // TIPOS DE REQUERIMIENTO (Catálogo)
+    // ============================================
+    @Get('tipos-requerimiento')
+    async getTiposRequerimiento(): Promise<TipoRequerimientoOC[]> {
+        return this.service.findAllTiposRequerimiento();
     }
 
     // ============================================

@@ -136,13 +136,18 @@ export function ModalGestionarPagos({
     let filteredValue = value.replace(/[^0-9]/g, '');
 
     // Validación estricta de 0 (estilo Defensa Judicial)
-    // Si el valor actual es "0", no permitir más dígitos
     if (valorPago === '0' && filteredValue.length > 1) {
       filteredValue = '0';
     }
-    // Si empieza con 0 y tiene más de 1 dígito, forzar a '0'
     if (filteredValue.startsWith('0') && filteredValue.length > 1) {
       filteredValue = '0';
+    }
+
+    // Validación: No exceder saldo pendiente
+    const numericValue = parseInt(filteredValue || '0', 10);
+    if (numericValue > saldoPendiente) {
+      filteredValue = Math.floor(saldoPendiente).toString();
+      toast.warning('El valor no puede exceder el saldo pendiente');
     }
 
     setValorPago(filteredValue);

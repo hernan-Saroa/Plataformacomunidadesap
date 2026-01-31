@@ -20,6 +20,7 @@ import { Actor } from './entities/actor.entity';
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
 import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { PeiIndicador } from './entities/pei-indicador.entity';
@@ -79,7 +80,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         Actor,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo,
+        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo, TipoRequerimientoOC,
         // PEI
         PeiIndicador, PeiRegistroAvance,
         // Tareas y Notas

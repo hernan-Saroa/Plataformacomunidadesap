@@ -15,7 +15,7 @@ export class ActuacionService {
     ) { }
 
     async registrarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
-        console.log('ActuacionService.registrarActuacion input:', { expedienteId, data });
+
         const safeData = data || {};
         const nuevaActuacion = this.actuacionRepository.create({
             ...safeData,

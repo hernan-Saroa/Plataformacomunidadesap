@@ -11,18 +11,19 @@ import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
-import { 
-  Activity, Save, X, AlertCircle, Calendar, 
+import {
+  Activity, Save, X, AlertCircle, Calendar,
   FileText, User, Clock, CheckCircle, Gavel
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 
 interface ModalRegistrarActuacionProps {
   isOpen: boolean;
   onClose: () => void;
-  onGuardar: (actuacion: any) => void;
+  onGuardar: (actuacion: any, file?: File) => Promise<void> | void;
   expedienteId: string;
+  radicado?: string; // Display-friendly identifier
 }
 
 const TIPOS_ACTUACION = [
@@ -49,13 +50,14 @@ const ESTADOS_ACTUACION = [
   'Programado'
 ];
 
-export function ModalRegistrarActuacion({ 
-  isOpen, 
-  onClose, 
-  onGuardar, 
-  expedienteId 
+export function ModalRegistrarActuacion({
+  isOpen,
+  onClose,
+  onGuardar,
+  expedienteId,
+  radicado
 }: ModalRegistrarActuacionProps) {
-  
+
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [hora, setHora] = useState(new Date().toTimeString().slice(0, 5));
   const [tipo, setTipo] = useState('');
@@ -65,6 +67,7 @@ export function ModalRegistrarActuacion({
   const [observaciones, setObservaciones] = useState('');
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
+  const [archivo, setArchivo] = useState<File | null>(null);
 
   /**
    * Validar formulario
@@ -85,7 +88,7 @@ export function ModalRegistrarActuacion({
   /**
    * Guardar actuación
    */
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     if (!validarFormulario()) {
       toast.error('❌ Formulario incompleto', {
         description: 'Por favor corrige los errores marcados'
@@ -94,36 +97,36 @@ export function ModalRegistrarActuacion({
     }
 
     setGuardando(true);
-    toast.loading('💾 Guardando actuación...', { id: 'guardar-actuacion' });
+    // toast.loading('💾 Guardando actuación...', { id: 'guardar-actuacion' }); // Parent does toast
 
-    setTimeout(() => {
+    try {
+      // Construir fecha ISO válida
+      const fechaISO = new Date(`${fecha}T${hora}:00`).toISOString();
+
       const nuevaActuacion = {
-        id: Date.now(),
-        fecha: `${fecha} ${hora}`,
+        fecha: fechaISO,
         tipo,
         descripcion,
         responsable,
         estado,
         observaciones,
         expedienteId,
-        registradoPor: 'funcionario@esap.edu.co',
-        fechaRegistro: new Date().toISOString()
+        registradoPor: 'funcionario@esap.edu.co'
       };
 
-      onGuardar(nuevaActuacion);
+      await onGuardar(nuevaActuacion, archivo || undefined);
 
-      toast.success('✅ Actuación registrada', {
-        id: 'guardar-actuacion',
-        description: `${tipo} registrada exitosamente`,
-        duration: 4000
-      });
-
-      console.log('📊 Actuación registrada:', nuevaActuacion);
-
+      // Success handled by parent or here if needed, but safer to rely on parent completion
+      // Cleaning up
       limpiarFormulario();
-      setGuardando(false);
       onClose();
-    }, 1500);
+
+    } catch (error) {
+      console.error('Error in modal guardar:', error);
+      // Toast error handled by parent? or here.
+    } finally {
+      setGuardando(false);
+    }
   };
 
   /**
@@ -138,6 +141,7 @@ export function ModalRegistrarActuacion({
     setEstado('Completado');
     setObservaciones('');
     setErrores({});
+    setArchivo(null);
   };
 
   /**
@@ -165,7 +169,7 @@ export function ModalRegistrarActuacion({
         {/* Header */}
         <ModalHeaderClean
           titulo="Registrar Actuación Procesal"
-          subtitulo={`Expediente ${expedienteId} - Nueva actuación judicial`}
+          subtitulo={`Expediente ${radicado || expedienteId} - Nueva actuación judicial`}
           icono={Activity}
           colorIcono="blue"
           badges={
@@ -180,13 +184,13 @@ export function ModalRegistrarActuacion({
         {/* Contenido */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="space-y-5">
-            
+
             {/* Información del expediente */}
             <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center gap-2 text-sm">
                 <FileText className="w-4 h-4 text-blue-600" />
                 <span className="font-bold text-gray-700">Expediente:</span>
-                <span className="text-gray-900">{expedienteId}</span>
+                <span className="text-gray-900 font-mono">{radicado || expedienteId}</span>
               </div>
             </Card>
 
@@ -240,9 +244,8 @@ export function ModalRegistrarActuacion({
                   setTipo(e.target.value);
                   setErrores({ ...errores, tipo: '' });
                 }}
-                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 ${
-                  errores.tipo ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-2.5 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-blue-500 ${errores.tipo ? 'border-red-500' : 'border-gray-300'
+                  }`}
               >
                 <option value="">Selecciona el tipo de actuación...</option>
                 {TIPOS_ACTUACION.map((t) => (
@@ -271,9 +274,8 @@ export function ModalRegistrarActuacion({
                   setErrores({ ...errores, descripcion: '' });
                 }}
                 rows={4}
-                className={`w-full px-4 py-3 text-sm border rounded-lg resize-none ${
-                  errores.descripcion ? 'border-red-500' : 'border-gray-300'
-                }`}
+                className={`w-full px-4 py-3 text-sm border rounded-lg resize-none ${errores.descripcion ? 'border-red-500' : 'border-gray-300'
+                  }`}
               />
               <div className="flex items-center justify-between mt-1">
                 {errores.descripcion ? (
@@ -344,20 +346,76 @@ export function ModalRegistrarActuacion({
               />
             </div>
 
+            {/* Documento Adjunto */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                📎 Documento Adjunto (Opcional)
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                <input
+                  type="file"
+                  id="archivo-actuacion"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      const file = e.target.files[0];
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast.error('El archivo no puede superar los 10MB');
+                        return;
+                      }
+                      setArchivo(file);
+                    }
+                  }}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="archivo-actuacion"
+                  className="flex flex-col items-center cursor-pointer"
+                >
+                  {archivo ? (
+                    <div className="flex items-center gap-2 text-green-700">
+                      <FileText className="w-6 h-6" />
+                      <span className="text-sm font-semibold">{archivo.name}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setArchivo(null);
+                        }}
+                        className="ml-2 text-red-500 hover:text-red-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <FileText className="w-8 h-8 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-600">
+                        Haz clic para seleccionar un archivo
+                      </span>
+                      <span className="text-xs text-gray-400 mt-1">
+                        PDF, DOC, DOCX, JPG, PNG (máx. 10MB)
+                      </span>
+                    </>
+                  )}
+                </label>
+              </div>
+            </div>
+
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleCancelar}
             disabled={guardando}
           >
             <X className="w-4 h-4 mr-2" />
             Cancelar
           </Button>
-          <Button 
+          <Button
             onClick={handleGuardar}
             disabled={guardando}
             style={{ background: '#003DA5', color: '#FFFFFF' }}

@@ -49,6 +49,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const { user } = useAuth();
   // ✅ Obtener etapas activas desde configuración
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  console.log('📋 estadosActivos en modal:', estadosActivos);
 
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
@@ -255,17 +256,30 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       setLoadingEtapa(true);
       toast.loading('Cambiando etapa...', { id: 'change-stage' });
 
-      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      // Construir nombre de usuario, evitando undefined
+      const firstName = user?.firstName || '';
+      const lastName = user?.lastName || '';
+      const usuarioNombre = (firstName || lastName)
+        ? `${firstName} ${lastName}`.trim()
+        : (user?.email || 'Usuario Sistema');
+
+      // Obtener el nombre legible de la etapa para el timeline
+      const estadoInfo = estadosActivos.find(e => e.id === etapaSeleccionada);
+      const estadoNombre = estadoInfo?.nombre || etapaSeleccionada;
 
       if (consulta.uuid) {
-        await legalService.updateEstadoConsulta(consulta.uuid, etapaSeleccionada, usuarioNombre);
+        await legalService.updateEstadoConsulta(consulta.uuid, etapaSeleccionada, usuarioNombre, estadoNombre);
       } else {
-        await legalService.updateEstadoConsulta(consulta.id, etapaSeleccionada, usuarioNombre);
+        await legalService.updateEstadoConsulta(consulta.id, etapaSeleccionada, usuarioNombre, estadoNombre);
       }
 
-      toast.success(`Etapa actualizada`, { id: 'change-stage' });
+      toast.success(`Etapa actualizada correctamente`, { id: 'change-stage' });
       setEditandoEtapa(false);
 
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
       if (onUpdate) {
         onUpdate();
       }
@@ -306,25 +320,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
       await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
 
-      // Actualizar UI localmente (idealmente recargar consulta completa)
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
-
-      // Notificar al padre para recargar si es necesario, o forzar reload
-      // Por ahora simulamos la actualización visual
-      // (Nota: La prop consulta es readonly, idealmente deberíamos tener un onUpdate o reloadConsulta)
-
-      // Hack: Forzar visualización temporal o pedir recarga
-      toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
       if (onUpdate) {
         onUpdate();
       }
-
-      // Si onClose dispara recarga en padre, bien. Si no, quizá debamos inyectar onRefresh.
-      // Como no tengo onRefresh en props, solo cierro edición.
-      // El usuario verá el cambio real al reabrir o si el padre se actualiza.
     } catch (error) {
       console.error(error);
       toast.error('Error al reasignar abogado', { id: 'assign-lawyer' });
@@ -757,10 +763,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         disabled={loadingEtapa}
                       >
                         <option value="">Seleccionar...</option>
-                        <option value="en_radicacion">RADICADA</option>
-                        <option value="en_analisis">ANÁLISIS</option>
-                        <option value="en_revision">REVISIÓN</option>
-                        {/* Excluyendo ENVIADA / RESPONDIDO según solicitud */}
+                        {estadosActivos.map(estado => (
+                          <option key={estado.id} value={estado.id}>
+                            {estado.nombre}
+                          </option>
+                        ))}
                       </select>
                       <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleGuardarEtapa}>
                         <CheckCircle className="w-4 h-4" />
@@ -950,10 +957,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         Descargar Todos (ZIP)
                       </Button>
                       {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
-                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
-                      </Button>
+                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
+                          <Upload className="w-4 h-4 mr-2" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -1002,15 +1009,15 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               Descargar
                             </Button>
                             {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                              onClick={() => handleEliminarDocumento(doc)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              Eliminar
-                            </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                onClick={() => handleEliminarDocumento(doc)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Eliminar
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -1228,7 +1235,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       </Dialog>
 
       {/* Modal Cambio de Etapa */}
-      <Dialog open={editandoEtapa} onOpenChange={setEditandoEtapa}>
+      <Dialog open={editandoEtapa} onOpenChange={(open: boolean) => {
+        setEditandoEtapa(open);
+        if (open) {
+          // Preseleccionar valor actual
+          setEtapaSeleccionada(consulta.estado || '');
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cambiar Etapa del Caso</DialogTitle>
@@ -1238,12 +1251,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           </DialogHeader>
 
           <div className="py-4">
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Nueva Etapa</label>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Nueva Etapa
+            </label>
+            {estadosActivos.length === 0 && (
+              <p className="text-xs text-red-500 mb-2">⚠️ No se cargaron las etapas desde configuración</p>
+            )}
             <Select value={etapaSeleccionada} onValueChange={setEtapaSeleccionada}>
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione una etapa" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[9999]">
                 {estadosActivos.map((estado) => (
                   <SelectItem key={estado.id} value={estado.id}>
                     <div className="flex items-center gap-2">

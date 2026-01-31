@@ -116,7 +116,7 @@ export class EvidenciasController {
             aportadoPor: body.aportadoPor,
             tipo: body.tipo,
             prioridad: body.prioridad,
-            estado: 'En Revisión',
+            estado: 'Pendiente',
             archivoNombre: body.nombre || file.originalname,
             tipoArchivo: fileExt
         };

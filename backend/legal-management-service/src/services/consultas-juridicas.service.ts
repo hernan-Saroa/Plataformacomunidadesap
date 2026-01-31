@@ -160,16 +160,20 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return this.findOne(id);
     }
 
-    async updateEstado(id: string, estado: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
+    async updateEstado(id: string, estado: string, usuario: string = 'Sistema', estadoNombre?: string): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
         const estadoAnterior = consulta.estado;
         consulta.estado = estado;
 
+        // Usar el nombre legible si se proporciona, de lo contrario usar el ID
+        const nombreEstado = estadoNombre || estado;
+        const nombreEstadoAnterior = estadoAnterior || 'Sin estado';
+
         await this.registrarEvento(
             id,
             'CAMBIO_ETAPA',
-            `Cambio de etapa: ${estadoAnterior} -> ${estado}`,
-            `Nueva etapa: ${estado}`,
+            `Cambio de etapa: ${nombreEstadoAnterior} -> ${nombreEstado}`,
+            `Nueva etapa: ${nombreEstado}`,
             usuario
         );
 
@@ -254,12 +258,25 @@ export class ConsultasJuridicasService implements OnModuleInit {
         await this.consultaRepository.remove(consulta);
     }
 
-    // Helper to calculate dias restantes
+    /**
+     * Calcula días hábiles restantes hasta la fecha máxima de respuesta
+     * Usa días HÁBILES según Ley 1437 de 2011 (excluye fines de semana y festivos)
+     */
     calcularDiasRestantes(fechaMaxima: Date | null): number {
         if (!fechaMaxima) return 30; // Default if no date set
         const hoy = new Date();
-        const diff = fechaMaxima.getTime() - hoy.getTime();
-        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+        hoy.setHours(0, 0, 0, 0);
+
+        const fechaMax = new Date(fechaMaxima);
+        fechaMax.setHours(0, 0, 0, 0);
+
+        // Si ya venció, retornar días negativos (también en días hábiles)
+        if (fechaMax < hoy) {
+            return -this.diasHabilesService.calcularDiasHabiles(fechaMax, hoy);
+        }
+
+        // Calcular días hábiles restantes
+        return this.diasHabilesService.calcularDiasHabiles(hoy, fechaMax);
     }
 
     // Calcular prioridad automáticamente basándose en días restantes

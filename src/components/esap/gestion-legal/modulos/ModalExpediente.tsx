@@ -15,7 +15,7 @@ import {
   Building2, Gavel, MapPin, DollarSign, FileCheck,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -41,6 +41,7 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
 
 interface ModalExpedienteProps {
   isOpen: boolean;
@@ -99,17 +100,21 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         loadDocumentos(id);
         loadTareas(id);
         loadNotas(id);
+        loadDocumentos(id);
+        loadTareas(id);
+        loadNotas(id);
         loadActuaciones(id);
+        loadAudiencias(id);
       }
     }
   }, [isOpen, expediente]);
 
-  // Cargar abogados al abrir modal reasignar
+  // Cargar abogados al abrir modal reasignar o programar audiencia
   useEffect(() => {
-    if (showReasignarModal) {
+    if (showReasignarModal || modalProgramarAudienciaAbierto) {
       loadAbogados();
     }
-  }, [showReasignarModal]);
+  }, [showReasignarModal, modalProgramarAudienciaAbierto]);
 
   const loadDocumentos = async (id: string) => {
     try {
@@ -193,12 +198,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const mapped = data.map((a: any) => ({
         id: a.id,
         fecha: new Date(a.fechaActuacion).toLocaleDateString('es-CO'),
+        hora: new Date(a.fechaActuacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
         descripcion: a.descripcion,
         responsable: a.usuarioResponsable || 'Sistema',
         tipo: a.tipoActuacion,
-        estado: 'Registrado', // Backend field usually
+        estado: 'Registrado',
         origen: a.origen || 'MANUAL',
-        metadata: a.metadata
+        metadata: a.metadata,
+        documentoUrl: a.documentoUrl,
+        documentoNombre: a.documentoNombre,
+        createdAt: a.createdAt ? new Date(a.createdAt).toLocaleString('es-CO') : null
       }));
       setActuaciones(mapped);
     } catch (error) {
@@ -206,6 +215,34 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       // Fallback silent
     } finally {
       setLoadingActuaciones(false);
+    }
+  };
+
+  const loadAudiencias = async (id: string) => {
+    try {
+      const data = await legalService.getAudiencias({ expedienteId: id });
+      // Mapear data para asegurar compatibilidad con la vista
+      const mapped = data.map((a: any) => ({
+        id: a.id,
+        tipo: a.titulo.split(' - ')[0] || 'Audiencia', // Fallback si no hay titulo estructurado
+        fecha: new Date(a.fechaHoraInicio).toLocaleDateString('es-CO'),
+        hora: new Date(a.fechaHoraInicio).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+        lugar: a.ubicacion || 'Sede Judicial',
+        modalidad: a.modalidad,
+        linkReunion: a.linkReunion,
+        abogadoResponsable: a.abogadoId || expediente.abogadoAsignado, // Use ID for select
+        nombreAbogado: a.nombreAbogado || 'Abogado Asignado', // Helper for display
+        estado: a.estado || 'Programada',
+        historial: a.historial || [],
+        observaciones: a.notasPreparacion, // Map notes
+        objetivo: a.objetivo // If exists in backend, otherwise it might be lost. 
+        // Backend entity doesn't have 'objetivo'. 'notasPreparacion' is likely 'observaciones'.
+        // 'juez' is also missing in entity.
+      }));
+      setAudienciasProgramadas(mapped);
+    } catch (error) {
+      console.error('Error loading audiencias', error);
+      // No borrar datos anteriores si falla silenciosamente
     }
   };
 
@@ -608,7 +645,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
 
-  const handleGuardarActuacion = async (data: any) => {
+  const handleGuardarActuacion = async (data: any, file?: File) => {
     try {
       const id = expediente.uuid || expediente.id;
       // data viene del ModalRegistrarActuacion
@@ -617,7 +654,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         expedienteId: id,
         tipoActuacion: data.tipo,
         descripcion: data.descripcion,
-        fechaActuacion: data.fecha ? new Date(data.fecha).toISOString() : new Date().toISOString()
+        fechaActuacion: data.fecha ? new Date(data.fecha).toISOString() : new Date().toISOString(),
+        file: file
       });
 
       toast.success('✅ Actuación registrada');
@@ -632,41 +670,81 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const handleGuardarAudiencia = async (audienciaData: any) => {
     try {
       const id = expediente.uuid || expediente.id;
+      const modalidadVal = (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL';
 
       // Adaptar formato si es necesario
       const dataToSend = {
         expedienteId: id,
         abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado, // Asegurar ID
-        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar,
+        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar, // TODO: Check if titulo logic needs adjustment for updates
         fechaHoraInicio: new Date(`${audienciaData.fecha}T${audienciaData.hora}`).toISOString(),
         duracionMinutos: 60, // Default o pedir en modal
-        modalidad: (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL',
+        modalidad: modalidadVal,
         ubicacion: audienciaData.lugar,
         linkReunion: audienciaData.linkVirtual,
-        notasPreparacion: audienciaData.observaciones
+        notasPreparacion: audienciaData.observaciones,
+        // Campos para reasignación
+        motivoReasignacion: audienciaData.motivoReasignacion,
+        detalleReasignacion: audienciaData.detalleReasignacion
       };
 
-      await legalService.createAudiencia(dataToSend);
+      let savedAudiencia;
 
-      toast.success('✅ Audiencia programada exitosamente');
+      if (audienciaData.id) {
+        // UPDATE
+        savedAudiencia = await legalService.updateAudiencia(audienciaData.id, dataToSend);
+        toast.success(`✅ Audiencia ${audienciaData.motivoReasignacion ? 'reasignada' : 'actualizada'} exitosamente`);
+      } else {
+        // CREATE
+        savedAudiencia = await legalService.createAudiencia(dataToSend);
+        toast.success('✅ Audiencia programada exitosamente');
+      }
+
       setModalProgramarAudienciaAbierto(false);
       setAudienciaAReasignar(null);
 
-      // Recargar audiencias
-      // TODO: Implementar loadAudiencias si existe, o refrescar algo
-      // Por ahora agregamos al state local para feedback inmediato si no recargamos todo
-      setAudienciasProgramadas(prev => [...prev, {
-        id: Date.now(),
+      // Buscar nombre del abogado para mostrarlo inmediatamente
+      const abogadoNombre = abogados.find(a => a.id === (audienciaData.abogadoResponsable || expediente.abogadoAsignado))?.nombre || 'Abogado Asignado';
+
+      // Recargar audiencias (Simulación local optimista + carga real en background)
+      if (id) loadAudiencias(id);
+
+      // Optimistic Update
+      const newAudiencia = {
+        id: audienciaData.id || Date.now(), // Use real ID if edit, temp if create (though we reload anyway)
         tipo: audienciaData.tipo,
         fecha: audienciaData.fecha,
         hora: audienciaData.hora,
         lugar: audienciaData.lugar,
+        modalidad: modalidadVal,
+        linkReunion: audienciaData.linkVirtual,
+        abogadoResponsable: abogadoNombre,
         estado: 'Programada'
-      }]);
+      };
+
+      setAudienciasProgramadas(prev => {
+        if (audienciaData.id) {
+          return prev.map(a => a.id === audienciaData.id ? newAudiencia : a);
+        }
+        return [...prev, newAudiencia];
+      });
 
     } catch (error) {
       console.error('Error programando audiencia', error);
       toast.error('Error al programar audiencia');
+    }
+  };
+
+  const handleEliminarAudiencia = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta audiencia?')) return;
+
+    try {
+      await legalService.deleteAudiencia(id.toString());
+      toast.success('🗑️ Audiencia eliminada');
+      setAudienciasProgramadas(prev => prev.filter(a => a.id !== id));
+    } catch (error) {
+      console.error('Error eliminando audiencia', error);
+      toast.error('No se pudo eliminar la audiencia');
     }
   };
 
@@ -708,8 +786,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const handleGuardarEdicionTarea = async (tareaData: any) => {
     try {
-      // Assuming updateTarea exists
-      await legalService.updateTarea(tareaData.id, tareaData);
+      // Mapear datos para el backend
+      const payload = {
+        titulo: tareaData.titulo,
+        descripcion: tareaData.descripcion,
+        fechaVencimiento: tareaData.vencimiento,
+        prioridad: tareaData.prioridad.toLowerCase(),
+        responsableNombre: tareaData.responsable,
+        estado: tareaData.estado === 'En proceso' ? 'en_proceso' :
+          tareaData.estado === 'Completado' ? 'completada' : 'pendiente'
+      };
+
+      await legalService.updateTarea(tareaData.id, payload);
+
       toast.success('✅ Tarea actualizada');
       setTareaParaEditar(null);
       setModalEditarTareaAbierto(false);
@@ -825,16 +914,32 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     });
   } else {
     // Fallback si solo hay string simple
-    partesDelExpediente.push({
-      tipo: 'Demandante',
-      nombre: expediente.demandante || 'Sin registrar',
-      identificacion: expediente.numeroIdDemandante ? `${expediente.tipoIdDemandante} ${expediente.numeroIdDemandante}` : 'Sin identificación',
-      apoderado: 'En proceso',
-      direccion: 'En proceso',
-      telefono: 'En proceso',
-      email: 'En proceso',
-      notificaciones: 'En proceso'
-    });
+    // Agregar demandantes
+    if (expediente.demandantes && expediente.demandantes.length > 0) {
+      expediente.demandantes.forEach(dem => {
+        partesDelExpediente.push({
+          tipo: 'Demandante',
+          nombre: dem.nombre,
+          identificacion: `${dem.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${dem.identificacion}`,
+          apoderado: dem.apoderado || 'En proceso',
+          direccion: dem.direccion || 'En proceso',
+          telefono: dem.telefono || 'En proceso',
+          email: dem.email || 'En proceso',
+          notificaciones: 'En proceso'
+        });
+      });
+    } else {
+      partesDelExpediente.push({
+        tipo: 'Demandante',
+        nombre: expediente.demandante || 'Sin registrar',
+        identificacion: expediente.numeroIdDemandante ? `${expediente.tipoIdDemandante} ${expediente.numeroIdDemandante}` : 'Sin identificación',
+        apoderado: expediente.demandanteApoderado || 'En proceso',
+        direccion: expediente.demandanteDireccion || 'En proceso',
+        telefono: expediente.demandanteTelefono || 'En proceso',
+        email: expediente.demandanteEmail || 'En proceso',
+        notificaciones: 'En proceso'
+      });
+    }
   }
 
   // Agregar demandados
@@ -844,10 +949,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         tipo: 'Demandado',
         nombre: demandado.nombre,
         identificacion: `${demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${demandado.identificacion}`,
-        apoderado: expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
-        direccion: 'En proceso',
-        telefono: 'En proceso',
-        email: 'En proceso',
+        apoderado: demandado.apoderado || expediente.abogadoAsignado || 'Oficina Jurídica ESAP',
+        direccion: demandado.direccion || 'En proceso',
+        telefono: demandado.telefono || 'En proceso',
+        email: demandado.email || 'En proceso',
         notificaciones: 'En proceso',
         tipoPersona: demandado.tipoPersona,
         cargo: demandado.cargo
@@ -874,10 +979,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         nombre: actor.nombre,
         identificacion: `${actor.tipoPersona === 'natural' ? 'CC' : 'NIT'} ${actor.identificacion}`,
         rol: actor.rol,
-        apoderado: 'En proceso',
-        direccion: 'En proceso',
-        telefono: 'En proceso',
-        email: 'En proceso',
+        apoderado: actor.apoderado || 'En proceso',
+        direccion: actor.direccion || 'En proceso',
+        telefono: actor.telefono || 'En proceso',
+        email: actor.email || 'En proceso',
         notificaciones: 'En proceso',
         tipoPersona: actor.tipoPersona
       });
@@ -1186,112 +1291,180 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
               {/* ==================== TAB: PARTES ==================== */}
               <TabsContent value="partes" className="space-y-4">
-                {partes.map((parte, idx) => {
-                  // Determinar colores según tipo de parte
-                  const getParteColors = (tipo: string) => {
-                    if (tipo === 'Demandante') {
-                      return {
-                        borderColor: '#F57C00',
-                        textColor: '#F57C00',
-                        bgColor: '#FFF3E0',
-                        icon: <User className="w-4 h-4" />
-                      };
-                    } else if (tipo === 'Demandado') {
-                      return {
-                        borderColor: '#DC2626',
-                        textColor: '#DC2626',
-                        bgColor: '#FEE2E2',
-                        icon: <Building2 className="w-4 h-4" />
-                      };
-                    } else {
-                      // Otro Actor
-                      return {
-                        borderColor: '#6B7280',
-                        textColor: '#6B7280',
-                        bgColor: '#F3F4F6',
-                        icon: <User className="w-4 h-4" />
-                      };
-                    }
-                  };
+                {(() => {
+                  // Logic to merge legacy arrays and new 'actors' array
+                  const allPartes: any[] = [];
 
-                  const colors = getParteColors(parte.tipo);
+                  // 1. Legacy Arrays
+                  if (expediente.demandantes) {
+                    allPartes.push(...expediente.demandantes.map(p => ({ ...p, tipo: 'Demandante' })));
+                  }
+                  if (expediente.demandados) {
+                    allPartes.push(...expediente.demandados.map(p => ({ ...p, tipo: 'Demandado' })));
+                  }
+                  if (expediente.otrosActores) {
+                    allPartes.push(...expediente.otrosActores.map(p => ({ ...p, tipo: 'Otro Actor' })));
+                  }
 
-                  return (
-                    <Card
-                      key={idx}
-                      className="p-4 border-l-4"
-                      style={{ borderLeftColor: colors.borderColor }}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="text-sm font-black flex items-center gap-2" style={{ color: colors.textColor }}>
-                            {colors.icon}
-                            {parte.tipo.toUpperCase()}
-                          </h4>
-                          {parte.tipo === 'Otro Actor' && parte.rol && (
-                            <p className="text-xs text-gray-600 mt-1 ml-6">
-                              <span className="font-semibold">Rol:</span> {parte.rol}
-                            </p>
-                          )}
-                          {parte.tipo === 'Demandado' && parte.cargo && (
-                            <p className="text-xs text-gray-600 mt-1 ml-6">
-                              <span className="font-semibold">Cargo:</span> {parte.cargo}
-                            </p>
-                          )}
-                        </div>
-                        <Badge
-                          className="font-bold text-xs"
-                          style={{
-                            background: colors.bgColor,
-                            color: colors.textColor
-                          }}
-                        >
-                          {parte.tipo}
-                        </Badge>
-                      </div>
+                  // 2. New 'actors' Array (if present)
+                  const actors = (expediente as any).actors;
+                  if (actors && Array.isArray(actors)) {
+                    actors.forEach((actor: any) => {
+                      let tipo = 'Otro Actor';
+                      if (actor.rol === 'DEMANDANTE') tipo = 'Demandante';
+                      else if (actor.rol === 'DEMANDADO') tipo = 'Demandado';
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Nombre / Razón Social</p>
-                          <p className="text-sm font-bold text-gray-900">{parte.nombre}</p>
+                      const exists = allPartes.some(p => p.identificacion === actor.identificacion && p.tipo === tipo);
+                      if (!exists) {
+                        allPartes.push({
+                          id: actor.id,
+                          nombre: actor.nombre,
+                          identificacion: actor.identificacion,
+                          tipoPersona: actor.tipoPersona,
+                          tipo: tipo,
+                          rol: (actor.rol === 'DEMANDANTE' || actor.rol === 'DEMANDADO') ? undefined : actor.rol,
+                          cargo: actor.cargo,
+                          telefono: actor.telefono,
+                          email: actor.email,
+                          direccion: actor.direccion,
+                          apoderado: actor.apoderado,
+                          notificaciones: 'En proceso'
+                        });
+                      }
+                    });
+                  }
+
+                  // 3. Fallback to single fields
+                  if (allPartes.length === 0 && expediente.demandante) {
+                    allPartes.push({
+                      nombre: expediente.demandante,
+                      identificacion: expediente.numeroIdDemandante || '',
+                      tipo: 'Demandante',
+                      tipoPersona: expediente.tipoIdDemandante === 'NIT' ? 'juridica' : 'natural',
+                      direccion: expediente.demandanteDireccion,
+                      telefono: expediente.demandanteTelefono,
+                      email: expediente.demandanteEmail,
+                      apoderado: expediente.demandanteApoderado
+                    });
+                  }
+                  if (allPartes.length === 0 && expediente.demandado) {
+                    allPartes.push({
+                      nombre: expediente.demandado,
+                      identificacion: expediente.numeroIdDemandado || '',
+                      tipo: 'Demandado',
+                      tipoPersona: expediente.tipoIdDemandado === 'NIT' ? 'juridica' : 'natural',
+                      direccion: expediente.demandadoDireccion,
+                      telefono: expediente.demandadoTelefono,
+                      email: expediente.demandadoEmail
+                    });
+                  }
+
+                  return allPartes.map((parte, idx) => {
+                    // Determinar colores según tipo de parte
+                    const getParteColors = (tipo: string) => {
+                      if (tipo === 'Demandante') {
+                        return {
+                          borderColor: '#F57C00',
+                          textColor: '#F57C00',
+                          bgColor: '#FFF3E0',
+                          icon: <User className="w-4 h-4" />
+                        };
+                      } else if (tipo === 'Demandado') {
+                        return {
+                          borderColor: '#DC2626',
+                          textColor: '#DC2626',
+                          bgColor: '#FEE2E2',
+                          icon: <Building2 className="w-4 h-4" />
+                        };
+                      } else {
+                        // Otro Actor
+                        return {
+                          borderColor: '#6B7280',
+                          textColor: '#6B7280',
+                          bgColor: '#F3F4F6',
+                          icon: <User className="w-4 h-4" />
+                        };
+                      }
+                    };
+
+                    const colors = getParteColors(parte.tipo);
+
+                    return (
+                      <Card
+                        key={idx}
+                        className="p-4 border-l-4"
+                        style={{ borderLeftColor: colors.borderColor }}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="text-sm font-black flex items-center gap-2" style={{ color: colors.textColor }}>
+                              {colors.icon}
+                              {parte.tipo.toUpperCase()}
+                            </h4>
+                            {parte.tipo === 'Otro Actor' && parte.rol && (
+                              <p className="text-xs text-gray-600 mt-1 ml-6">
+                                <span className="font-semibold">Rol:</span> {parte.rol}
+                              </p>
+                            )}
+                            {parte.tipo === 'Demandado' && parte.cargo && (
+                              <p className="text-xs text-gray-600 mt-1 ml-6">
+                                <span className="font-semibold">Cargo:</span> {parte.cargo}
+                              </p>
+                            )}
+                          </div>
+                          <Badge
+                            className="font-bold text-xs"
+                            style={{
+                              background: colors.bgColor,
+                              color: colors.textColor
+                            }}
+                          >
+                            {parte.tipo}
+                          </Badge>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Identificación</p>
-                          <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500 mb-1">Apoderado</p>
-                          <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
-                        </div>
-                        <div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Nombre / Razón Social</p>
+                            <p className="text-sm font-bold text-gray-900">{parte.nombre}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Identificación</p>
+                            <p className="text-sm font-bold text-gray-900">{parte.identificacion}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Apoderado</p>
+                            <p className="text-sm font-bold text-gray-900">{parte.apoderado}</p>
+                          </div>
+                          {/* <div>
                           <p className="text-xs text-gray-500 mb-1">Notificaciones</p>
                           <Badge variant="outline" className="text-xs">
                             {parte.notificaciones}
                           </Badge>
+                        </div> */}
                         </div>
-                      </div>
 
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <h5 className="text-xs font-bold text-gray-700 mb-2">Datos de Contacto</h5>
-                        <div className="space-y-2">
-                          <p className="text-xs text-gray-600 flex items-center gap-2">
-                            <MapPin className="w-3 h-3" />
-                            {parte.direccion}
-                          </p>
-                          <p className="text-xs text-gray-600 flex items-center gap-2">
-                            <Phone className="w-3 h-3" />
-                            {parte.telefono}
-                          </p>
-                          <p className="text-xs text-gray-600 flex items-center gap-2">
-                            <Mail className="w-3 h-3" />
-                            {parte.email}
-                          </p>
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <h5 className="text-xs font-bold text-gray-700 mb-2">Datos de Contacto</h5>
+                          <div className="space-y-2">
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <MapPin className="w-3 h-3" />
+                              {parte.direccion}
+                            </p>
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <Phone className="w-3 h-3" />
+                              {parte.telefono}
+                            </p>
+                            <p className="text-xs text-gray-600 flex items-center gap-2">
+                              <Mail className="w-3 h-3" />
+                              {parte.email}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </TabsContent>
+                      </Card>
+                    );
+                  });
+                })()}</TabsContent>
 
               {/* ==================== TAB: DOCUMENTOS ==================== */}
               <TabsContent value="documentos" className="space-y-3">
@@ -1447,14 +1620,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleVerDocumento(doc)}
-                            title="Vista previa"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
+                          {isViewableInBrowser(doc.nombre || doc.url) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleVerDocumento(doc)}
+                              title="Vista previa"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -1621,36 +1796,49 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                                   <strong>{audiencia.fecha}</strong> a las {audiencia.hora}
                                 </p>
                                 <p className="flex items-center gap-1.5 text-gray-700">
-                                  {audiencia.modalidad === 'Presencial' ? (
+                                  {(audiencia.modalidad === 'PRESENCIAL' || audiencia.modalidad === 'Presencial') ? (
                                     <>
-                                      <MapPin className="w-3 h-3" />
-                                      {audiencia.lugar}
+                                      <MapPin className="w-3 h-3 text-red-500" />
+                                      <span className="font-semibold">{audiencia.lugar || 'Sede Judicial'}</span>
                                     </>
                                   ) : (
                                     <>
-                                      💻 Audiencia Virtual
+                                      <ExternalLink className="w-3 h-3 text-blue-500" />
+                                      <a href={audiencia.linkReunion || '#'} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline truncate max-w-[150px]">
+                                        {audiencia.linkReunion || 'Link de reunión'}
+                                      </a>
                                     </>
                                   )}
                                 </p>
-                                {audiencia.abogadoResponsable && (
-                                  <p className="flex items-center gap-1.5 text-gray-700 col-span-2">
-                                    <User className="w-3 h-3" />
-                                    {audiencia.abogadoResponsable}
-                                  </p>
-                                )}
+                                <p className="flex items-center gap-1.5 text-gray-700 col-span-2">
+                                  <User className="w-3 h-3 text-indigo-600" />
+                                  <span className="font-bold text-gray-900">{audiencia.nombreAbogado || 'Sin asignar'}</span>
+                                </p>
                               </div>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setAudienciaAReasignar(audiencia);
-                                setModalProgramarAudienciaAbierto(true);
-                              }}
-                              className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold"
-                            >
-                              🔄 Reasignar
-                            </Button>
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAudienciaAReasignar(audiencia);
+                                  setModalProgramarAudienciaAbierto(true);
+                                }}
+                                className="text-orange-600 border-orange-300 hover:bg-orange-50 font-bold h-7 px-2"
+                                title="Reasignar"
+                              >
+                                🔄
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEliminarAudiencia(audiencia.id)}
+                                className="text-red-600 border-red-300 hover:bg-red-50 font-bold h-7 px-2"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         </Card>
                       ))}
@@ -1674,7 +1862,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
                       <Card className={`p-4 ${idx === 0 ? 'border-2 border-blue-500 shadow-md' : 'border border-gray-200'}`}>
                         <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Badge
                               className="text-xs font-bold"
                               style={{
@@ -1687,6 +1875,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             <Badge variant="outline" className="text-xs font-semibold">
                               {actuacion.tipo}
                             </Badge>
+                            {actuacion.hora && (
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {actuacion.hora}
+                              </span>
+                            )}
                           </div>
                           {idx === 0 && (
                             <Badge className="text-xs bg-green-100 text-green-700 font-bold animate-pulse">
@@ -1694,14 +1888,51 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-gray-900 mb-2">
+                        <p className="text-sm font-bold text-gray-900 mb-3">
                           {actuacion.descripcion}
                         </p>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-gray-600 flex items-center gap-1.5">
-                            <User className="w-3 h-3" />
-                            {actuacion.responsable}
-                          </p>
+
+                        {/* Documento adjunto */}
+                        {actuacion.documentoUrl && (
+                          <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-semibold text-blue-800">
+                                  {actuacion.documentoNombre || 'Documento adjunto'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isViewableInBrowser(actuacion.documentoNombre || actuacion.documentoUrl) && (
+                                  <a
+                                    href={`${getServiceUrl('legal')}${actuacion.documentoUrl}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    Ver
+                                  </a>
+                                )}
+                                <a
+                                  href={`${getServiceUrl('legal')}${actuacion.documentoUrl}`}
+                                  download={actuacion.documentoNombre}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-green-600 hover:text-green-800 hover:bg-green-100 rounded"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  Descargar
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
+                          {actuacion.createdAt && (
+                            <p className="text-xs text-gray-400">
+                              Registrado: {actuacion.createdAt}
+                            </p>
+                          )}
                           <Badge
                             className="text-xs font-semibold"
                             style={{
@@ -2052,6 +2283,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalRegistrarActuacionAbierto(false)}
         onGuardar={handleGuardarActuacion}
         expedienteId={(expediente.uuid || expediente.id).toString()}
+        radicado={expediente.radicado}
       />
       <ModalProgramarAudiencia
         isOpen={modalProgramarAudienciaAbierto}
@@ -2060,8 +2292,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           setAudienciaAReasignar(null);
         }}
         onGuardar={handleGuardarAudiencia}
-        expedienteId={(expediente.uuid || expediente.id).toString()}
+        expedienteId={expediente.radicado || expediente.id}
         audienciaExistente={audienciaAReasignar}
+        abogados={abogados}
       />
     </>
   );

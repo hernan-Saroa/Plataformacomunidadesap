@@ -66,11 +66,16 @@ export interface TipoIndicador {
 export interface TipoRequerimiento {
   id: string;
   nombre: string;
-  icono: string;
   descripcion: string;
-  color: string;
   activo: boolean;
   orden: number;
+}
+
+export interface OrganismoControl {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
 }
 
 export interface ConfiguracionModulo {
@@ -106,10 +111,11 @@ export const casosPorEstado: Record<string, Record<string, number>> = {
     'E7_FALLO_2I': 0,
   },
   'asesoria-juridica': {
-    'RADICADA': 0,
-    'ANÁLISIS': 0,
-    'RESPUESTA': 0,
-    'ENVIADA': 0,
+    'en_radicacion': 0,
+    'asignado': 0,
+    'en_analisis': 0,
+    'en_revision': 0,
+    'respondido': 0,
   },
 };
 
@@ -177,10 +183,11 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
     id: 'asesoria-juridica',
     nombre: 'Asesoría Jurídica',
     estados: [
-      { id: 'RADICADA', nombre: 'Radicada', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'ANÁLISIS', nombre: 'En Análisis', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'RESPUESTA', nombre: 'En Respuesta', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'ENVIADA', nombre: 'Enviada', color: '#10B981', orden: 4, activo: true },
+      { id: 'en_radicacion', nombre: 'Radicada', color: '#3B82F6', orden: 1, activo: true },
+      { id: 'asignado', nombre: 'Asignado', color: '#8B5CF6', orden: 2, activo: true },
+      { id: 'en_analisis', nombre: 'En Análisis', color: '#06B6D4', orden: 3, activo: true },
+      { id: 'en_revision', nombre: 'En Revisión', color: '#F59E0B', orden: 4, activo: true },
+      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 5, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
@@ -278,92 +285,100 @@ const tiposRequerimientosIniciales: TipoRequerimiento[] = [
   {
     id: 'DOCUMENTOS',
     nombre: 'Documentos',
-    icono: '📄',
     descripcion: 'Requerimientos relacionados con la entrega de documentos',
-    color: '#3B82F6',
     activo: true,
     orden: 1
   },
   {
     id: 'INFORMES',
     nombre: 'Informes',
-    icono: '📊',
     descripcion: 'Requerimientos relacionados con la entrega de informes',
-    color: '#8B5CF6',
     activo: true,
     orden: 2
   },
   {
     id: 'CERTIFICADOS',
     nombre: 'Certificados',
-    icono: '📜',
     descripcion: 'Requerimientos relacionados con la entrega de certificados',
-    color: '#F59E0B',
     activo: true,
     orden: 3
   },
   {
     id: 'OTROS',
     nombre: 'Otros',
-    icono: '📋',
     descripcion: 'Otros tipos de requerimientos',
-    color: '#EC4899',
     activo: true,
     orden: 4
+  }
+];
+
+// ============ ORGANISMOS DE CONTROL INICIALES ============
+
+const organismosControlIniciales: OrganismoControl[] = [
+  {
+    id: 'CONTRALORIA',
+    nombre: 'Contraloría General de la República',
+    descripcion: 'Máximo órgano de control fiscal del Estado',
+    activo: true
+  },
+  {
+    id: 'PROCURADURIA',
+    nombre: 'Procuraduría General de la Nación',
+    descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos, los particulares que ejercen funciones públicas y las agencias del Estado',
+    activo: true
+  },
+  {
+    id: 'FISCALIA',
+    nombre: 'Fiscalía General de la Nación',
+    descripcion: 'Entidad de la rama judicial del poder público con plena autonomía administrativa y presupuestal',
+    activo: true
+  },
+  {
+    id: 'PERSONERIA',
+    nombre: 'Personería Distrital',
+    descripcion: 'Órgano de control del Distrito Capital',
+    activo: true
+  },
+  {
+    id: 'DEFENSORIA',
+    nombre: 'Defensoría del Pueblo',
+    descripcion: 'Institución del Estado encargada de velar por la promoción, el ejercicio y la divulgación de los derechos humanos',
+    activo: true
   }
 ];
 
 // ============ CONTEXT TYPE ============
 
-export interface EntesControl {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  color: string;
-  activo: boolean;
-  orden: number;
+interface ConfiguracionesSIGLContextType {
+  configuraciones: ConfiguracionModulo[];
+  ejesEstrategicos: EjeEstrategico[];
+  tiposIndicadores: TipoIndicador[];
+  tiposRequerimientos: TipoRequerimiento[];
+  organismosControl: OrganismoControl[];
+  cambiosPendientes: boolean;
+
+  // Getters
+  getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
+  getEstadosActivos: (moduloId: string) => EstadoKanban[];
+  getTiposProcesosActivos: (moduloId: string) => TipoProcesoJudicial[];
+  getTiposAutosActivos: (moduloId: string) => TipoAuto[];
+  getEjesEstrategicosActivos: () => EjeEstrategico[];
+  getTiposIndicadoresActivos: () => TipoIndicador[];
+  getTiposRequerimientosActivos: () => TipoRequerimiento[];
+  getOrganismosControlActivos: () => OrganismoControl[];
+
+  // Updaters
+  actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
+  actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
+  actualizarTiposIndicadores: (nuevosIndicadores: TipoIndicador[]) => void;
+  actualizarTiposRequerimientos: (nuevosRequerimientos: TipoRequerimiento[]) => void;
+  actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
+
+  // Actions
+  guardarConfiguraciones: () => Promise<void>;
+  restablecerDefecto: () => void;
+  setCambiosPendientes: (valor: boolean) => void;
 }
-
-export interface ConfiguracionesSIGLContextType {
-  // ... existing code ...
-}
-
-// ============ ENTES DE CONTROL INICIALES ============
-
-const entesControlIniciales: EntesControl[] = [
-  {
-    id: 'CONTRALORIA',
-    nombre: 'Contraloría General',
-    descripcion: 'Control fiscal a la gestión pública',
-    color: '#003DA5',
-    activo: true,
-    orden: 1
-  },
-  {
-    id: 'PROCURADURIA_GENERAL',
-    nombre: 'Procuraduría General',
-    descripcion: 'Control disciplinario y defensa del orden jurídico',
-    color: '#2962FF',
-    activo: true,
-    orden: 2
-  },
-  {
-    id: 'OFICINA_CONTROL_INTERNO',
-    nombre: 'Oficina Control Interno',
-    descripcion: 'Control interno y auditoría',
-    color: '#10B981',
-    activo: true,
-    orden: 3
-  },
-  {
-    id: 'AUDITORIA_EXTERNA',
-    nombre: 'Auditoría Externa',
-    descripcion: 'Auditoría externa y revisoría fiscal',
-    color: '#7C3AED',
-    activo: true,
-    orden: 4
-  }
-];
 
 // ============ CONTEXT ============
 
@@ -376,74 +391,148 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [ejesEstrategicos, setEjesEstrategicos] = useState<EjeEstrategico[]>(ejesEstrategicosIniciales);
   const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
-  const [entesControl, setEntesControl] = useState<EntesControl[]>(entesControlIniciales);
+  const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Cargar configuraciones desde API
   useEffect(() => {
-    // ... existing initialization ...
-    const entesGuardados = localStorage.getItem('sigl-entes-control');
-    if (entesGuardados) {
+    const loadConfig = async () => {
       try {
-        const parsed = JSON.parse(entesGuardados);
-        setEntesControl(parsed);
-        console.log('✅ Entes de Control cargados desde localStorage');
+        console.log('🔄 Cargando configuraciones desde API...');
+        const keys = ['defensa-judicial', 'juzgamiento', 'asesoria-juridica'];
+
+        // Cargar todas las configuraciones en paralelo
+        const responses = await Promise.all(
+          keys.map(key =>
+            legalService.getConfiguration(key)
+              .then(res => res?.value || null) // Asegurar que devolvemos null si no hay valor
+              .catch(err => {
+                console.warn(`⚠️ Config no encontrada para ${key}, usando defecto.`, err);
+                return null;
+              })
+          )
+        );
+
+        // Mapear respuestas a ConfiguracionModulo: filtrar null Y undefined
+        const configsCargadas = responses.filter(c => c !== null && c !== undefined) as ConfiguracionModulo[];
+
+        if (configsCargadas.length > 0) {
+          // Fusionar con las iniciales para asegurar que existen todos los módulos
+          const mergedConfigs = configuracionesIniciales.map(inicial => {
+            // Buscar si existe configuración cargada para este módulo
+            const cargada = configsCargadas.find(c => c && c.id === inicial.id);
+            if (cargada) {
+              return { ...inicial, ...cargada };
+            }
+            return inicial;
+          });
+
+          setConfiguraciones(mergedConfigs);
+          console.log('✅ Configuraciones mezcladas exitosamente (Backend + Defaults):', mergedConfigs.length);
+        } else {
+          console.log('⚠️ No se encontraron configuraciones en backend, usando defaults completos.');
+          // No necesitamos hacer setConfiguraciones porque ya inicia con configuracionesIniciales
+        }
       } catch (error) {
-        console.error('❌ Error al cargar entes de control:', error);
+        console.error('❌ Error general al cargar configuraciones:', error);
+        // No mostrar toast de error para no alarmar al usuario en primera carga si falla
+        console.warn('Usando configuraciones por defecto debido a error de conexión.');
+      }
+    };
+    loadConfig();
+
+    const ejesGuardados = localStorage.getItem('sigl-ejes-estrategicos');
+    if (ejesGuardados) {
+      try {
+        const parsed = JSON.parse(ejesGuardados);
+        setEjesEstrategicos(parsed);
+        console.log('✅ Ejes Estratégicos cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar ejes estratégicos:', error);
+      }
+    }
+
+    const indicadoresGuardados = localStorage.getItem('sigl-tipos-indicadores');
+    if (indicadoresGuardados) {
+      try {
+        const parsed = JSON.parse(indicadoresGuardados);
+        setTiposIndicadores(parsed);
+        console.log('✅ Tipos de Indicadores cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar tipos de indicadores:', error);
+      }
+    }
+
+    const requerimientosGuardados = localStorage.getItem('sigl-tipos-requerimientos');
+    if (requerimientosGuardados) {
+      try {
+        const parsed = JSON.parse(requerimientosGuardados);
+        setTiposRequerimientos(parsed);
+        console.log('✅ Tipos de Requerimientos cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar tipos de requerimientos:', error);
+      }
+    }
+
+    const organismosGuardados = localStorage.getItem('sigl-organismos-control');
+    if (organismosGuardados) {
+      try {
+        const parsed = JSON.parse(organismosGuardados);
+        setOrganismosControl(parsed);
+        console.log('✅ Organismos de Control cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar organismos de control:', error);
       }
     }
   }, []);
 
-  // ... existing Config getter functions ...
-
-  // Obtener solo los entes de control activos
-  const getEntesControlActivos = (): EntesControl[] => {
-    return entesControl.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
-  };
-
-  // Obtener configuración global de un módulo
+  // Obtener configuración de un módulo específico
   const getConfiguracionModulo = (moduloId: string): ConfiguracionModulo | undefined => {
-    return configuraciones.find(c => c.id === moduloId);
+    return configuraciones.find(m => m.id === moduloId);
   };
 
   // Obtener solo los estados activos de un módulo
   const getEstadosActivos = (moduloId: string): EstadoKanban[] => {
-    const config = configuraciones.find(c => c.id === moduloId);
-    return config?.estados.filter(e => e.activo).sort((a, b) => a.orden - b.orden) || [];
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.estados.filter(e => e.activo).sort((a, b) => a.orden - b.orden) || [];
   };
 
-  // Obtener tipos de procesos judiciales activos
-  const getTiposProcesosActivos = (): TipoProcesoJudicial[] => {
-    const config = configuraciones.find(c => c.id === 'defensa-judicial');
-    return config?.tiposProcesos?.filter(t => t.activo) || [];
+  // Obtener solo los tipos de procesos activos
+  const getTiposProcesosActivos = (moduloId: string): TipoProcesoJudicial[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.tiposProcesos?.filter(t => t.activo) || [];
   };
 
-  // Obtener tipos de autos activos
-  const getTiposAutosActivos = (): TipoAuto[] => {
-    const config = configuraciones.find(c => c.id === 'juzgamiento'); // Los autos suelen estar en juzgamiento
-    return config?.tiposAutos?.filter(t => t.activo) || [];
+  // Obtener solo los tipos de autos activos
+  const getTiposAutosActivos = (moduloId: string): TipoAuto[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.tiposAutos?.filter(t => t.activo) || [];
   };
 
-  // Obtener ejes estratégicos activos
+  // Obtener solo los ejes estratégicos activos
   const getEjesEstrategicosActivos = (): EjeEstrategico[] => {
     return ejesEstrategicos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
   };
 
-  // Obtener tipos de indicadores activos
+  // Obtener solo los tipos de indicadores activos
   const getTiposIndicadoresActivos = (): TipoIndicador[] => {
-    return tiposIndicadores.filter(t => t.activo).sort((a, b) => a.orden - b.orden);
+    return tiposIndicadores.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
   };
 
-  // Obtener tipos de requerimientos activos
+  // Obtener solo los tipos de requerimientos activos
+  // Obtener solo los tipos de requerimientos activos
   const getTiposRequerimientosActivos = (): TipoRequerimiento[] => {
-    return tiposRequerimientos.filter(t => t.activo).sort((a, b) => a.orden - b.orden);
+    return tiposRequerimientos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
   };
 
-  // ... Update functions ...
+  // Obtener solo los organismos de control activos
+  const getOrganismosControlActivos = (): OrganismoControl[] => {
+    return organismosControl.filter(e => e.activo);
+  };
 
-  // Actualizar configuraciones generales
-  const actualizarConfiguraciones = (nuevasConfiguraciones: ConfiguracionModulo[]) => {
-    setConfiguraciones(nuevasConfiguraciones);
+  // Actualizar configuraciones
+  const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
+    setConfiguraciones(nuevasConfig);
     setCambiosPendientes(true);
   };
 
@@ -454,20 +543,21 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   };
 
   // Actualizar tipos de indicadores
-  const actualizarTiposIndicadores = (nuevosTipos: TipoIndicador[]) => {
-    setTiposIndicadores(nuevosTipos);
+  const actualizarTiposIndicadores = (nuevosIndicadores: TipoIndicador[]) => {
+    setTiposIndicadores(nuevosIndicadores);
     setCambiosPendientes(true);
   };
 
   // Actualizar tipos de requerimientos
-  const actualizarTiposRequerimientos = (nuevosTipos: TipoRequerimiento[]) => {
-    setTiposRequerimientos(nuevosTipos);
+  // Actualizar tipos de requerimientos
+  const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
+    setTiposRequerimientos(nuevosRequerimientos);
     setCambiosPendientes(true);
   };
 
-  // Actualizar entes de control
-  const actualizarEntesControl = (nuevosEntes: EntesControl[]) => {
-    setEntesControl(nuevosEntes);
+  // Actualizar organismos de control
+  const actualizarOrganismosControl = (nuevosOrganismos: OrganismoControl[]) => {
+    setOrganismosControl(nuevosOrganismos);
     setCambiosPendientes(true);
   };
 
@@ -476,23 +566,31 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     try {
       console.log('💾 Guardando configuraciones en backend...');
 
+      // Guardar cada módulo individualmente en el backend
       await Promise.all(
         configuraciones.map(config =>
           legalService.saveConfiguration(config.id, config)
         )
       );
 
+      // Guardar en localStorage como backup
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));
+
       localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
-      localStorage.setItem('sigl-entes-control', JSON.stringify(entesControl));
+      localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
+
+      // Aquí se enviaría al backend en producción
+      // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
 
       setCambiosPendientes(false);
       toast.success('Configuraciones guardadas correctamente', {
         description: 'Los cambios se han aplicado a todos los módulos',
         duration: 3000
       });
+
+      console.log('✅ Configuraciones sincronizadas con servidor');
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
       toast.error('Error al guardar configuraciones en el servidor');
@@ -502,17 +600,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   // Restablecer a valores por defecto
   const restablecerDefecto = () => {
     setConfiguraciones(configuracionesIniciales);
-    setEjesEstrategicos(ejesEstrategicosIniciales);
-    setTiposIndicadores(tiposIndicadoresIniciales);
-    setTiposRequerimientos(tiposRequerimientosIniciales);
-    setEntesControl(entesControlIniciales);
-
     localStorage.removeItem('sigl-configuraciones');
-    localStorage.removeItem('sigl-ejes-estrategicos');
-    localStorage.removeItem('sigl-tipos-indicadores');
-    localStorage.removeItem('sigl-tipos-requerimientos');
-    localStorage.removeItem('sigl-entes-control');
-
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
       description: 'Se han restaurado los valores por defecto',
@@ -525,7 +613,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     ejesEstrategicos,
     tiposIndicadores,
     tiposRequerimientos,
-    entesControl,
+    organismosControl,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -534,12 +622,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
-    getEntesControlActivos,
+    getOrganismosControlActivos,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
-    actualizarEntesControl,
+    actualizarOrganismosControl,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

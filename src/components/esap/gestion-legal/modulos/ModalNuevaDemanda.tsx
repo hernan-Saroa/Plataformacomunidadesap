@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Scale, Users, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus } from 'lucide-react';
+import { Scale, Users, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Phone, Mail, Briefcase } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
@@ -35,6 +35,10 @@ export interface NuevaDemandaData {
     nombre: string;
     tipoPersona: 'natural' | 'juridica';
     identificacion: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+    apoderado?: string;
   }>;
   demandados: Array<{
     id: string;
@@ -42,13 +46,21 @@ export interface NuevaDemandaData {
     tipoPersona: 'natural' | 'juridica';
     identificacion: string;
     cargo?: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+    apoderado?: string;
   }>;
   otrosActores: Array<{
     id: string;
     nombre: string;
     tipoPersona: 'natural' | 'juridica';
     identificacion: string;
-    rol: string; // Tercero, Ministerio Público, etc.
+    rol: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+    apoderado?: string;
   }>;
   cuantia: string;
   juzgado: string;
@@ -169,7 +181,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const [nuevoDemandante, setNuevoDemandante] = useState({
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
-    identificacion: ''
+    identificacion: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    apoderado: ''
   });
 
   // Estado para el demandado temporal que se está agregando
@@ -177,7 +193,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
     identificacion: '',
-    cargo: ''
+    cargo: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    apoderado: ''
   });
 
   // Estado para el otro actor temporal que se está agregando
@@ -185,7 +205,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
     identificacion: '',
-    rol: ''
+    rol: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    apoderado: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -300,7 +324,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       id: `DEM-${Date.now()}`,
       nombre: nuevoDemandante.nombre,
       tipoPersona: nuevoDemandante.tipoPersona,
-      identificacion: nuevoDemandante.identificacion
+      identificacion: nuevoDemandante.identificacion,
+      telefono: nuevoDemandante.telefono,
+      email: nuevoDemandante.email,
+      direccion: nuevoDemandante.direccion,
+      apoderado: nuevoDemandante.apoderado
     };
 
     setFormData(prev => ({
@@ -312,7 +340,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setNuevoDemandante({
       nombre: '',
       tipoPersona: 'natural',
-      identificacion: ''
+      identificacion: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
 
     toast.success('✅ Demandante agregado', {
@@ -360,7 +392,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       nombre: nuevoDemandado.nombre,
       tipoPersona: nuevoDemandado.tipoPersona,
       identificacion: nuevoDemandado.identificacion,
-      cargo: nuevoDemandado.cargo
+      cargo: nuevoDemandado.cargo,
+      telefono: nuevoDemandado.telefono,
+      email: nuevoDemandado.email,
+      direccion: nuevoDemandado.direccion,
+      apoderado: nuevoDemandado.apoderado
     };
 
     setFormData(prev => ({
@@ -373,7 +409,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       nombre: '',
       tipoPersona: 'natural',
       identificacion: '',
-      cargo: ''
+      cargo: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
 
     toast.success('✅ Demandado agregado', {
@@ -425,7 +465,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       nombre: nuevoOtroActor.nombre,
       tipoPersona: nuevoOtroActor.tipoPersona,
       identificacion: nuevoOtroActor.identificacion,
-      rol: nuevoOtroActor.rol
+      rol: nuevoOtroActor.rol,
+      telefono: nuevoOtroActor.telefono,
+      email: nuevoOtroActor.email,
+      direccion: nuevoOtroActor.direccion,
+      apoderado: nuevoOtroActor.apoderado
     };
 
     setFormData(prev => ({
@@ -438,7 +482,11 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       nombre: '',
       tipoPersona: 'natural',
       identificacion: '',
-      rol: ''
+      rol: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
 
     toast.success('✅ Otro actor agregado', {
@@ -531,19 +579,31 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     setNuevoDemandante({
       nombre: '',
       tipoPersona: 'natural',
-      identificacion: ''
+      identificacion: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
     setNuevoDemandado({
       nombre: '',
       tipoPersona: 'natural',
       identificacion: '',
-      cargo: ''
+      cargo: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
     setNuevoOtroActor({
       nombre: '',
       tipoPersona: 'natural',
       identificacion: '',
-      rol: ''
+      rol: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      apoderado: ''
     });
     setErrors({});
 
@@ -755,7 +815,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   </div>
 
                   {/* Segunda fila: Identificación, Nombre y Botón - ALINEADOS */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Identificación */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -787,19 +847,67 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                         placeholder="Nombre completo del demandante"
                       />
                     </div>
+                  </div>
 
-                    {/* Botón Agregar */}
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAgregarDemandante}
-                        className="w-full text-white text-xs font-bold"
-                        style={{ background: '#F57C00' }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Agregar
-                      </Button>
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.telefono || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Ej: 3001234567"
+                      />
                     </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoDemandante.email || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.direccion || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.apoderado || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarDemandante}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#F57C00' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Demandante
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -833,6 +941,12 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                           <p className="text-xs text-gray-600 mt-0.5">
                             {demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandante.identificacion}
                           </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {demandante.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-orange-400" /> {demandante.telefono}</p>}
+                            {demandante.email && <p className="flex items-center gap-1.5 truncate" title={demandante.email}><Mail className="w-3 h-3 text-orange-400" /> {demandante.email}</p>}
+                            {demandante.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-orange-400" /> {demandante.direccion}</p>}
+                            {demandante.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-orange-400" /> Apoderado: {demandante.apoderado}</p>}
+                          </div>
                         </div>
                       </div>
                       <Button
@@ -911,7 +1025,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   </div>
 
                   {/* Segunda fila: Identificación, Nombre, Cargo y Botón */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {/* Identificación */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -944,7 +1058,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                       />
                     </div>
 
-                    {/* Cargo (Opcional) */}
+                    {/* Cargo */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
                         Cargo / Función (Opcional)
@@ -957,19 +1071,67 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                         placeholder="Ej: Rector, Director, etc."
                       />
                     </div>
+                  </div>
 
-                    {/* Botón Agregar */}
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAgregarDemandado}
-                        className="w-full text-white text-xs font-bold"
-                        style={{ background: '#DC2626' }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Agregar
-                      </Button>
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.telefono || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Ej: 3001234567"
+                      />
                     </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoDemandado.email || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.direccion || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.apoderado || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarDemandado}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#DC2626' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Demandado
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1001,6 +1163,12 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                           <p className="text-xs text-gray-600 mt-0.5">
                             {demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandado.identificacion}
                           </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {demandado.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-red-400" /> {demandado.telefono}</p>}
+                            {demandado.email && <p className="flex items-center gap-1.5 truncate" title={demandado.email}><Mail className="w-3 h-3 text-red-400" /> {demandado.email}</p>}
+                            {demandado.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-red-400" /> {demandado.direccion}</p>}
+                            {demandado.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-red-400" /> Apoderado: {demandado.apoderado}</p>}
+                          </div>
                         </div>
                       </div>
                       <Button
@@ -1079,7 +1247,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   </div>
 
                   {/* Segunda fila: Identificación, Nombre, Rol y Botón */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {/* Identificación */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -1125,19 +1293,67 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                         placeholder="Ej: Tercero, Ministerio Público, etc."
                       />
                     </div>
+                  </div>
 
-                    {/* Botón Agregar */}
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAgregarOtroActor}
-                        className="w-full text-white text-xs font-bold"
-                        style={{ background: '#2962FF' }}
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Agregar
-                      </Button>
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.telefono || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Ej: 3001234567"
+                      />
                     </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoOtroActor.email || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.direccion || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.apoderado || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarOtroActor}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#2962FF' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Otro Actor
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1169,6 +1385,12 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                           <p className="text-xs text-gray-600 mt-0.5">
                             {otroActor.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {otroActor.identificacion}
                           </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {otroActor.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-blue-400" /> {otroActor.telefono}</p>}
+                            {otroActor.email && <p className="flex items-center gap-1.5 truncate" title={otroActor.email}><Mail className="w-3 h-3 text-blue-400" /> {otroActor.email}</p>}
+                            {otroActor.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-blue-400" /> {otroActor.direccion}</p>}
+                            {otroActor.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-blue-400" /> Apoderado: {otroActor.apoderado}</p>}
+                          </div>
                         </div>
                       </div>
                       <Button

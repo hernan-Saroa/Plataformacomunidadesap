@@ -24,7 +24,12 @@ export class ExpedienteService {
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
         const expediente = await this.expedienteRepository.findOne({
             where: { radicado },
-            relations: ['evidencias']
+            relations: ['actuaciones', 'evidencias', 'actors'],
+            order: {
+                actuaciones: {
+                    fechaActuacion: 'DESC'
+                }
+            }
         });
 
         if (expediente) {
@@ -172,6 +177,31 @@ export class ExpedienteService {
     }
 
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
+        // 1. Obtener estado actual
+        const currentExpediente = await this.findOne(id);
+        if (!currentExpediente) throw new NotFoundException('Expediente no encontrado');
+
+        // 2. Detectar cambios relevantes (Etapa / Estado)
+        if (data.etapaProcesal && data.etapaProcesal !== currentExpediente.etapaProcesal) {
+            // Crear actuación automática
+            await this.agregarActuacion(id, {
+                tipoActuacion: 'CAMBIO_ETAPA',
+                descripcion: `Cambio de etapa: ${currentExpediente.etapaProcesal} -> ${data.etapaProcesal}`,
+                fechaActuacion: new Date(),
+                usuarioResponsable: 'Sistema' // O idealmente el usuario del request si se pasa
+            });
+        }
+
+        if (data.estado && data.estado !== currentExpediente.estado) {
+            await this.agregarActuacion(id, {
+                tipoActuacion: 'CAMBIO_ESTADO',
+                descripcion: `Cambio de estado: ${currentExpediente.estado} -> ${data.estado}`,
+                fechaActuacion: new Date(),
+                usuarioResponsable: 'Sistema'
+            });
+        }
+
+        // 3. Actualizar
         await this.expedienteRepository.update(id, data);
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
@@ -187,7 +217,12 @@ export class ExpedienteService {
 
         const expediente = await this.expedienteRepository.findOne({
             where: { id },
-            relations: ['evidencias']
+            relations: ['actuaciones', 'evidencias', 'actors'],
+            order: {
+                actuaciones: {
+                    fechaActuacion: 'DESC'
+                }
+            }
         });
 
         if (expediente) {
