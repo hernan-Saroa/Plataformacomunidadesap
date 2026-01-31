@@ -645,41 +645,27 @@ export function GestionTerminosAlertas() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRecalcular}
-              className="px-4 py-2 rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-2 bg-gray-100 text-gray-700"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Recalcular
-            </button>
-            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_CREATE) && (
-              <button
-                onClick={() => setShowModalNuevoTermino(true)}
-                className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-                style={{ background: '#F59E0B' }}
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Término
-              </button>
-            )}
-            {vistaActual === 'calendario' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE) && (
-              <button
-                onClick={() => setShowModalFestivo(true)}
-                className="px-4 py-2 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
-                style={{ background: '#F59E0B' }}
-              >
-                <Plus className="w-4 h-4" />
-                Agregar Festivo
-              </button>
-            )}
+          {/* Stats Cards */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="px-3 py-2 rounded-lg border bg-green-50 border-green-200">
+              <p className="text-xs text-gray-600">Pendientes</p>
+              <p className="text-lg sm:text-xl font-bold text-green-700">{stats.pendientes}</p>
+            </div>
+            <div className="px-3 py-2 rounded-lg border bg-yellow-50 border-yellow-200">
+              <p className="text-xs text-gray-600">Próximos</p>
+              <p className="text-lg sm:text-xl font-bold text-yellow-700">{stats.proximosVencer}</p>
+            </div>
+            <div className="px-3 py-2 rounded-lg border bg-red-50 border-red-200">
+              <p className="text-xs text-gray-600">Vencidos</p>
+              <p className="text-lg sm:text-xl font-bold text-red-700">{stats.vencidos}</p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Alert Informativo */}
       <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
-        <Card className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
           <div className="flex gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
               <Info className="w-5 h-5 text-blue-600" />
@@ -694,531 +680,67 @@ export function GestionTerminosAlertas() {
               </p>
             </div>
           </div>
-        </Card>
-      </div>
-
-      {/* Pestañas Minimalistas */}
-      <div className="bg-white border border-gray-200 rounded-lg mb-6">
-        <div className="flex gap-1 p-2">
-          <button
-            onClick={() => setVistaActual('terminos')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'terminos'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            Términos Activos ({terminos.length})
-          </button>
-          <button
-            onClick={() => setVistaActual('calendario')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'calendario'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Calendario Festivos ({diasFestivos.length})
-          </button>
-          <button
-            onClick={() => setVistaActual('reglas')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'reglas'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Reglas de Alerta
-          </button>
-          <button
-            onClick={() => setVistaActual('historial')}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${
-              vistaActual === 'historial'
-                ? 'bg-orange-500 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            Historial ({alertas.length})
-          </button>
         </div>
       </div>
 
-      {/* VISTA: TÉRMINOS ACTIVOS */}
-      {vistaActual === 'terminos' && (
-        <div className="space-y-6">
-          {/* Filtros */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por proceso, actuación o responsable..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-            <select
-              value={filterEstado}
-              onChange={(e) => setFilterEstado(e.target.value)}
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
-            >
-              <option value="all">Todos los estados</option>
-              <option value="pendiente">🟢 Pendiente</option>
-              <option value="proximo_vencer">🟡 Próximo a Vencer</option>
-              <option value="vencido">🔴 Vencido</option>
-              <option value="cumplido">✅ Cumplido</option>
-            </select>
-            <button
-              onClick={handleExportarExcel}
-              className="px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 bg-green-600 text-white hover:bg-green-700"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
-            <button
-              onClick={handleExportarPDF}
-              className="px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <Download className="w-4 h-4" />
-              PDF
-            </button>
+      {/* Barra de Navegación */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {[
+                { id: 'terminos', label: 'Términos', icon: <Clock className="w-4 h-4" />, count: terminos.length },
+                { id: 'calendario', label: 'Festivos', icon: <Calendar className="w-4 h-4" />, count: diasFestivos.length },
+                { id: 'reglas', label: 'Reglas', icon: <Settings className="w-4 h-4" />, count: REGLAS_ALERTA_MOCK.length },
+                { id: 'historial', label: 'Historial', icon: <Bell className="w-4 h-4" />, count: ALERTAS_MOCK.length }
+              ].map((vista) => (
+                <button
+                  key={vista.id}
+                  onClick={() => setVistaActual(vista.id as any)}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    vistaActual === vista.id
+                      ? 'text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  style={vistaActual === vista.id ? {
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)'
+                  } : {}}
+                >
+                  {vista.icon}
+                  <span className="hidden sm:inline">{vista.label}</span> ({vista.count})
+                </button>
+              ))}
           </div>
-
-          {/* Tabla de Términos */}
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Estado
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Proceso
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Actuación
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Responsable
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha Inicio
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Días Hábiles
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Vencimiento
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Días Restantes
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {terminosFiltrados.map((termino) => (
-                    <tr key={termino.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Estado Visual */}
-                      <td className="px-4 py-3">
-                        {termino.estado === 'vencido' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                            <span className="text-xs font-semibold text-red-700">Vencido</span>
-                          </div>
-                        )}
-                        {termino.estado === 'proximo_vencer' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                            <span className="text-xs font-semibold text-yellow-700">Próximo</span>
-                          </div>
-                        )}
-                        {termino.estado === 'pendiente' && (
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                            <span className="text-xs font-semibold text-green-700">Pendiente</span>
-                          </div>
-                        )}
-                        {termino.estado === 'cumplido' && (
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4 text-blue-500" />
-                            <span className="text-xs font-semibold text-blue-700">Cumplido</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Proceso */}
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-sm text-gray-900">{termino.numeroProceso}</p>
-                        <p className="text-xs text-gray-600">{termino.proceso}</p>
-                      </td>
-
-                      {/* Actuación */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.actuacion}</p>
-                        {termino.alertaEnviada && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Bell className="w-3 h-3 text-orange-500" />
-                            <span className="text-xs text-orange-600">Alerta enviada</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Responsable */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
-                          <div>
-                            <p className="text-sm text-gray-900">{termino.responsable}</p>
-                            <p className="text-xs text-gray-500">{termino.emailResponsable}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Fecha Inicio */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.fechaInicio}</p>
-                      </td>
-
-                      {/* Días Hábiles */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm font-semibold text-gray-900">{termino.diasHabiles}</span>
-                        </div>
-                      </td>
-
-                      {/* Vencimiento */}
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{termino.fechaVencimiento}</p>
-                      </td>
-
-                      {/* Días Restantes */}
-                      <td className="px-4 py-3">
-                        {termino.estado === 'cumplido' ? (
-                          <span className="text-sm text-blue-600 font-semibold">Completado</span>
-                        ) : termino.diasRestantes < 0 ? (
-                          <span className="text-sm text-red-600 font-bold">
-                            {Math.abs(termino.diasRestantes)} días vencido
-                          </span>
-                        ) : (
-                          <span className={`text-sm font-semibold ${
-                            termino.diasRestantes <= 3 ? 'text-red-600' :
-                            termino.diasRestantes <= 5 ? 'text-yellow-600' :
-                            'text-green-600'
-                          }`}>
-                            {termino.diasRestantes} días
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Acciones */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_FINISH) && (
-                            <button
-                              onClick={() => handleMarcarCompleto(termino.id)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              Cumplido
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setTerminoSeleccionado(termino);
-                              setShowModalDetalle(true);
-                            }}
-                            className="p-2 rounded-lg hover:bg-gray-100"
-                          >
-                            <Eye className="w-4 h-4 text-gray-600" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {terminosFiltrados.length === 0 && (
-              <div className="p-12 text-center">
-                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  No se encontraron términos
-                </h3>
-                <p className="text-gray-600">
-                  Intenta ajustar los filtros o crear un nuevo término
-                </p>
-              </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRecalcular}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Recalcular</span>
+            </button>
+            {vistaActual === 'terminos' && (
+              <button
+                onClick={() => setShowModalNuevoTermino(true)}
+                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Nuevo Término</span>
+              </button>
             )}
-          </Card>
-        </div>
-      )}
-
-      {/* VISTA: CALENDARIO FESTIVOS */}
-      {vistaActual === 'calendario' && (
-        <div className="space-y-6">
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Descripción
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {festivosOrdenados.map((festivo) => (
-                    <tr key={festivo.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-orange-500" />
-                          <span className="text-sm font-semibold text-gray-900">{festivo.fecha}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{festivo.descripcion}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: festivo.tipo === 'nacional' ? '#DBEAFE' : festivo.tipo === 'regional' ? '#FEF3C7' : '#E0E7FF',
-                            color: festivo.tipo === 'nacional' ? '#1E40AF' : festivo.tipo === 'regional' ? '#92400E' : '#3730A3'
-                          }}
-                        >
-                          {festivo.tipo === 'nacional' ? 'Nacional' : festivo.tipo === 'regional' ? 'Regional' : 'Institucional'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_EDIT) && (
-                          <button
-                            onClick={() => {
-                              setNuevoFestivo({
-                          // edit mode: prellenar
-                                fecha: festivo.fecha,
-                                descripcion: festivo.descripcion,
-                                tipo: festivo.tipo,
-                                territorio: festivo.territorio || ''
-                              });
-                        setFestivoEditId(festivo.id);
-                              setShowModalFestivo(true);
-                            }}
-                            className="p-2 rounded-lg hover:bg-gray-100"
-                          >
-                            <Edit2 className="w-4 h-4 text-gray-600" />
-                          </button>
-                          )}
-                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_DELETE) && (
-                          <button
-                            onClick={() => handleEliminarFestivo(festivo.id, festivo.descripcion)}
-                            className="p-2 rounded-lg hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-600" />
-                          </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* VISTA: REGLAS DE ALERTA */}
-      {vistaActual === 'reglas' && (
-        <div className="space-y-6">
-          <Card className="p-4 bg-blue-50 border-blue-200 mb-6">
-            <div className="flex gap-3">
-              <Zap className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-gray-700">
-                <p className="font-semibold text-blue-900 mb-1">
-                  Configuración de Alertas Automáticas
-                </p>
-                <p>
-                  Las reglas de alerta definen cuándo y cómo se notificará a los responsables sobre términos próximos a vencer.
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <div className="grid gap-4">
-            {reglasAlerta.map((regla: ReglaAlerta) => (
-              <Card key={regla.id} className="p-6 border border-gray-200">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-bold text-gray-900">{regla.nombre}</h3>
-                      <Badge
-                        className="text-xs"
-                        style={{
-                          background: regla.activa ? '#D1FAE5' : '#FEE2E2',
-                          color: regla.activa ? '#059669' : '#DC2626'
-                        }}
-                      >
-                        {regla.activa ? 'Activa' : 'Inactiva'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-4">{regla.descripcion}</p>
-                    
-                    <div className="flex items-center gap-6">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm text-gray-700">
-                          <span className="font-semibold">{regla.diasAnticipacion}</span> días antes
-                        </span>
-                      </div>
-                      {regla.enviarEmail && (
-                        <div className="flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-green-500" />
-                          <span className="text-sm text-gray-700">Envía email</span>
-                        </div>
-                      )}
-                      {regla.mostrarPanel && (
-                        <div className="flex items-center gap-2">
-                          <Bell className="w-4 h-4 text-orange-500" />
-                          <span className="text-sm text-gray-700">Muestra en panel</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_EDIT) && (
-                    <button
-                      onClick={() => handleEditarRegla(regla)}
-                      className="p-2 rounded-lg hover:bg-gray-100"
-                      title="Editar regla"
-                    >
-                      <Edit2 className="w-4 h-4 text-gray-600" />
-                    </button>
-                    )}
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_EDIT) && (
-                    <button
-                      onClick={() => handleToggleRegla(regla)}
-                      className={`p-2 rounded-lg ${regla.activa ? 'hover:bg-red-50' : 'hover:bg-green-50'}`}
-                      title={regla.activa ? 'Desactivar regla' : 'Activar regla'}
-                    >
-                      {regla.activa ? (
-                        <Pause className="w-4 h-4 text-red-600" />
-                      ) : (
-                        <Play className="w-4 h-4 text-green-600" />
-                      )}
-                    </button>
-                    )}
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_REGLA_DELETE) && (
-                    <button
-                      onClick={() => handleEliminarRegla(regla)}
-                      className="p-2 rounded-lg hover:bg-red-50"
-                      title="Eliminar regla"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                    </button>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
+            {vistaActual === 'calendario' && (
+              <button
+                onClick={() => setShowModalFestivo(true)}
+                className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Agregar Festivo</span>
+              </button>
+            )}
           </div>
         </div>
-      )}
-
-      {/* VISTA: HISTORIAL DE ALERTAS */}
-      {vistaActual === 'historial' && (
-        <div className="space-y-6">
-          <Card className="border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Fecha/Hora
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Proceso
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Destinatario
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Asunto
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      Estado
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {alertas.map((alerta: Alerta) => (
-                    <tr key={alerta.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{alerta.fechaEnvio}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{alerta.proceso}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: alerta.tipo === 'email' ? '#DBEAFE' : alerta.tipo === 'visual' ? '#FEF3C7' : '#E0E7FF',
-                            color: alerta.tipo === 'email' ? '#1E40AF' : alerta.tipo === 'visual' ? '#92400E' : '#3730A3'
-                          }}
-                        >
-                          {alerta.tipo === 'email' ? '📧 Email' : alerta.tipo === 'visual' ? '👁️ Visual' : '⚙️ Sistema'}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-900">{alerta.destinatario}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-600">{alerta.asunto}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          className="text-xs"
-                          style={{
-                            background: alerta.estado === 'enviada' ? '#D1FAE5' : alerta.estado === 'pendiente' ? '#FEF3C7' : '#FEE2E2',
-                            color: alerta.estado === 'enviada' ? '#059669' : alerta.estado === 'pendiente' ? '#92400E' : '#DC2626'
-                          }}
-                        >
-                          {alerta.estado === 'enviada' ? '✓ Enviada' : alerta.estado === 'pendiente' ? '⏳ Pendiente' : '✗ Error'}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
+      </div>
 
       {/* Contenido Principal */}
       <div className="flex-1 overflow-auto p-3 sm:p-6">
@@ -1599,7 +1121,8 @@ export function GestionTerminosAlertas() {
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => toast.info('Editar regla')}
+                          // onClick={() => toast.info('Editar regla')}
+                          onClick={() => handleEditarRegla(regla)}
                           className="p-2 rounded-lg hover:bg-gray-100 border border-gray-300"
                         >
                           <Edit2 className="w-4 h-4 text-gray-600" />
@@ -2084,199 +1607,6 @@ export function GestionTerminosAlertas() {
         )}
       </AnimatePresence>
 
-      {/* Modal Detalle de Término */}
-      <AnimatePresence>
-        {showModalDetalle && terminoSeleccionado && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowModalDetalle(false);
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-500 to-amber-500 text-white p-6 rounded-t-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-6 h-6" />
-                    <div>
-                      <h2 className="text-xl font-bold">Detalle del Término Procesal</h2>
-                      <p className="text-orange-100 text-sm">{terminoSeleccionado.numeroProceso}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowModalDetalle(false)}
-                    className="p-2 rounded-lg hover:bg-orange-600 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-6">
-                <div className={`p-4 rounded-lg border-2 ${
-                  terminoSeleccionado.estado === 'vencido' ? 'bg-red-50 border-red-300' :
-                  terminoSeleccionado.estado === 'proximo_vencer' ? 'bg-yellow-50 border-yellow-300' :
-                  terminoSeleccionado.estado === 'pendiente' ? 'bg-green-50 border-green-300' :
-                  'bg-blue-50 border-blue-300'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    {terminoSeleccionado.estado === 'vencido' && (
-                      <>
-                        <AlertTriangle className="w-6 h-6 text-red-600" />
-                        <div>
-                          <p className="font-bold text-red-900">TÉRMINO VENCIDO</p>
-                          <p className="text-sm text-red-700">
-                            Vencido hace {Math.abs(terminoSeleccionado.diasRestantes)} días
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'proximo_vencer' && (
-                      <>
-                        <AlertCircle className="w-6 h-6 text-yellow-600" />
-                        <div>
-                          <p className="font-bold text-yellow-900">PRÓXIMO A VENCER</p>
-                          <p className="text-sm text-yellow-700">
-                            Quedan {terminoSeleccionado.diasRestantes} días hábiles
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'pendiente' && (
-                      <>
-                        <Clock className="w-6 h-6 text-green-600" />
-                        <div>
-                          <p className="font-bold text-green-900">TÉRMINO ACTIVO</p>
-                          <p className="text-sm text-green-700">
-                            {terminoSeleccionado.diasRestantes} días hábiles restantes
-                          </p>
-                        </div>
-                      </>
-                    )}
-                    {terminoSeleccionado.estado === 'cumplido' && (
-                      <>
-                        <CheckCircle className="w-6 h-6 text-blue-600" />
-                        <div>
-                          <p className="font-bold text-blue-900">TÉRMINO CUMPLIDO</p>
-                          <p className="text-sm text-blue-700">Completado exitosamente</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-orange-500" />
-                    Información del Proceso
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Número de Proceso</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.numeroProceso}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Denunciado</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.proceso}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-600 mb-1">Actuación Procesal</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.actuacion}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <User className="w-5 h-5 text-orange-500" />
-                    Responsable
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Nombre</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.responsable}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Correo Electrónico</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.emailResponsable}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-orange-500" />
-                    Fechas y Plazos
-                  </h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Fecha de Inicio</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.fechaInicio}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Días Hábiles</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.diasHabiles} días</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Fecha de Vencimiento</p>
-                      <p className="font-semibold text-gray-900">{terminoSeleccionado.fechaVencimiento}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-orange-500" />
-                    Estado de Alertas
-                  </h3>
-                  {terminoSeleccionado.alertaEnviada ? (
-                    <div className="flex items-center gap-2 text-green-700">
-                      <CheckCircle className="w-5 h-5" />
-                      <span className="font-semibold">Alerta enviada al responsable</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Info className="w-5 h-5" />
-                      <span>No se han enviado alertas aún</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowModalDetalle(false)}
-                    className="flex-1 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cerrar
-                  </button>
-                  {terminoSeleccionado.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_FINISH) && (
-                    <button
-                      onClick={() => {
-                        handleMarcarCompleto(terminoSeleccionado.id);
-                        setShowModalDetalle(false);
-                      }}
-                      className="flex-1 px-6 py-3 rounded-lg font-semibold text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle className="w-5 h-5" />
-                      Marcar como Cumplido
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Modal Editar Regla de Alerta */}
       <AnimatePresence>
         {showModalRegla && reglaEditando && (
@@ -2284,6 +1614,7 @@ export function GestionTerminosAlertas() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            style={{zIndex: 101}}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
             onClick={(e) => {
               if (e.target === e.currentTarget) {
@@ -2576,8 +1907,8 @@ export function GestionTerminosAlertas() {
                     className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
                     style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
                   >
-                    <Save className="w-5 h-5" />
-                    {festivoEditId ? 'Guardar Cambios' : 'Agregar Festivo'}
+                    {/* <Save className="w-5 h-5" /> */}
+                    Agregar
                   </button>
                 </div>
               </div>
