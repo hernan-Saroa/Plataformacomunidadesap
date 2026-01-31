@@ -6,12 +6,13 @@ export class Actuacion {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ name: 'expediente_id', type: 'uuid' })
+    // Changed to simple string column to support both GUIDs (Judicial) and Radicados (Disciplinario)
+    // FK constraint was removed in DB to allow this polymorphism
+    @Column({ name: 'expediente_id', type: 'varchar', length: 255 })
     expedienteId: string;
 
-    @ManyToOne(() => Expediente, (expediente) => expediente.actuaciones, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'expediente_id' })
-    expediente: Expediente;
+    // Data populated manually if needed, no ORM relation
+    expediente?: Expediente;
 
     @Column({ name: 'tipo_actuacion', default: 'ACTUACION' })
     tipoActuacion: string;

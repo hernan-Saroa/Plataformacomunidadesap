@@ -920,6 +920,9 @@ export interface CorreoJuridico {
     categoria: string | null;
     moduloSugerido: string | null;
     confianzaClasificacion: number | null;
+    aiSuggestedCategory?: string;
+    isTrained?: boolean;
+    expedienteId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -1048,6 +1051,20 @@ export class CorreosJuridicosService {
     async exportCorreoZip(id: string): Promise<string> {
         const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
         return window.URL.createObjectURL(blob);
+    }
+
+    /**
+     * Update classification manually (AI Feedback Loop)
+     */
+    async updateClasificacion(id: string, category: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/classify`, { category });
+    }
+
+    /**
+     * Link email to legal process
+     */
+    async vincularProceso(id: string, expedienteId: string, targetModule?: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/link-process`, { expedienteId, targetModule });
     }
 
 

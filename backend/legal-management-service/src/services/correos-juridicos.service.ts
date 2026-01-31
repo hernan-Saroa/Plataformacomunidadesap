@@ -4,6 +4,7 @@ import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
+import { SmartClassificationService } from './smart-classification.service';
 
 export interface EmailFilters {
     tipo?: string;
@@ -29,6 +30,8 @@ export interface SendEmailDto {
     attachments?: { name: string; contentBytes: string; contentType: string }[];
 }
 
+import { ActuacionService } from './actuacion.service';
+
 @Injectable()
 export class CorreosJuridicosService {
     private readonly logger = new Logger(CorreosJuridicosService.name);
@@ -39,87 +42,11 @@ export class CorreosJuridicosService {
         @InjectRepository(AdjuntoCorreo)
         private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
         private readonly graphService: MicrosoftGraphService,
+        private readonly smartService: SmartClassificationService,
+        private readonly actuacionService: ActuacionService,
     ) { }
 
-    /**
-     * Classify an email based on subject and body content
-     */
-    classifyEmail(subject: string, bodyPreview: string): EmailClassification {
-        const text = `${subject} ${bodyPreview}`.toLowerCase();
 
-        // JUDICIAL patterns
-        const judicialPatterns = [
-            'tutela', 'juzgado', 'fallo', 'tribunal', 'demanda', 'sentencia',
-            'notificación judicial', 'auto', 'despacho judicial', 'proceso judicial',
-            'acción popular', 'acción de grupo', 'nulidad', 'restablecimiento'
-        ];
-
-        // URGENTE patterns
-        const urgentePatterns = [
-            'urgente', 'inmediato', 'prioritario', 'termino perentorio',
-            'vencimiento', 'último día', 'caducidad', 'prescripción'
-        ];
-
-        // Control bodies patterns
-        const organosControlPatterns = [
-            'contraloría', 'procuraduría', 'personería', 'defensoría',
-            'fiscalía', 'superintendencia', 'auditoría'
-        ];
-
-        // Legal consultation patterns
-        const consultaPatterns = [
-            'consulta', 'concepto jurídico', 'concepto legal', 'asesoría',
-            'revisión jurídica', 'viabilidad jurídica'
-        ];
-
-        // Check for JUDICIAL
-        const isJudicial = judicialPatterns.some(p => text.includes(p));
-        if (isJudicial) {
-            return {
-                tipo: 'JUDICIAL',
-                categoria: 'Proceso Judicial',
-                moduloSugerido: 'MOD-02: Defensa Judicial',
-                urgente: urgentePatterns.some(p => text.includes(p)),
-                confianza: 95,
-            };
-        }
-
-        // Check for control bodies
-        const isOrganoControl = organosControlPatterns.some(p => text.includes(p));
-        if (isOrganoControl) {
-            return {
-                tipo: 'CORREO',
-                categoria: 'Órgano de Control',
-                moduloSugerido: 'MOD-07: Órganos de Control',
-                urgente: true, // Control bodies are always priority
-                confianza: 98,
-            };
-        }
-
-        // Check for legal consultations
-        const isConsulta = consultaPatterns.some(p => text.includes(p));
-        if (isConsulta) {
-            return {
-                tipo: 'CORREO',
-                categoria: 'Consulta Jurídica',
-                moduloSugerido: 'MOD-03: Asesoría Jurídica',
-                urgente: urgentePatterns.some(p => text.includes(p)),
-                confianza: 90,
-            };
-        }
-
-        // Check for urgency in any email
-        const isUrgente = urgentePatterns.some(p => text.includes(p));
-
-        // Default classification
-        return {
-            tipo: 'CORREO',
-            categoria: 'Correo General',
-            moduloSugerido: 'MOD-08: Buzón Oficina Jurídica',
-            urgente: isUrgente,
-            confianza: 70,
-        };
-    }
 
     /**
      * Sync one page of emails from Microsoft Graph
@@ -184,8 +111,14 @@ export class CorreosJuridicosService {
                             }
                         }
                     } else {
-                        // Classify the email
-                        const classification = this.classifyEmail(email.subject || '', email.bodyPreview || '');
+                        // Classify the email (AI)
+                        const classification = await this.smartService.classify(email.subject || '', email.bodyPreview || '');
+                        const isUrgente = this.smartService.analyzeUrgency(email.subject || '', email.bodyPreview || '');
+
+                        // Map AI specific category to DB generic Type
+                        let tipoDB = 'CORREO';
+                        if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
+                        if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
 
                         // Create new record
                         const newCorreo = this.correoRepo.create({
@@ -199,11 +132,14 @@ export class CorreosJuridicosService {
                             tieneAdjuntos: email.hasAttachments || false,
                             leido: email.isRead || false,
                             archivado: false,
-                            urgente: classification.urgente,
-                            tipo: classification.tipo,
-                            categoria: classification.categoria,
-                            moduloSugerido: classification.moduloSugerido,
-                            confianzaClasificacion: classification.confianza,
+                            urgente: isUrgente,
+                            tipo: tipoDB, // JUDICIAL, OFICIO, CORREO
+                            categoria: classification.category, // Specific category (e.g. CONSULTA)
+                            moduloSugerido: classification.module,
+                            confianzaClasificacion: classification.confidence,
+                            aiSuggestedCategory: classification.category,
+                            isTrained: false,
+                            expedienteId: undefined
                         });
 
                         const savedCorreo = await this.correoRepo.save(newCorreo);
@@ -380,17 +316,57 @@ export class CorreosJuridicosService {
         contentBytes: string;
         size: number;
     }> {
+        const fs = require('fs');
+        const path = require('path');
+
         const adjunto = await this.adjuntoRepo.findOne({ where: { id: adjuntoId } });
 
         if (!adjunto) {
             throw new NotFoundException(`Adjunto ${adjuntoId} not found`);
         }
 
-        // Download from Graph API
+        // 1. Check if we already have it locally
+        if (adjunto.descargado && adjunto.archivoLocalUrl) {
+            if (fs.existsSync(adjunto.archivoLocalUrl)) {
+                const buffer = fs.readFileSync(adjunto.archivoLocalUrl);
+                return {
+                    name: adjunto.nombre,
+                    contentType: adjunto.contentType || 'application/octet-stream',
+                    contentBytes: buffer.toString('base64'),
+                    size: buffer.length
+                };
+            }
+        }
+
+        // 2. Not local? Download from Graph
         const attachment = await this.graphService.downloadAttachment(
             adjunto.graphMessageId,
             adjunto.graphAttachmentId
         );
+
+        // 3. Save locally for next time (Lazy Cache)
+        try {
+            const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+
+            const safeName = `${adjunto.id}_${adjunto.nombre.replace(/[^a-z0-9.]/gi, '_')}`;
+            const localPath = path.join(uploadsDir, safeName);
+
+            const buffer = Buffer.from(attachment.contentBytes, 'base64');
+            fs.writeFileSync(localPath, buffer);
+
+            // Update DB
+            adjunto.archivoLocalUrl = localPath;
+            adjunto.descargado = true;
+            await this.adjuntoRepo.save(adjunto);
+
+            this.logger.log(`Adjunto cached locally: ${localPath}`);
+        } catch (saveError) {
+            this.logger.error('Could not cache attachment locally', saveError);
+            // Non-blocking, return downloaded content anyway
+        }
 
         return attachment;
     }
@@ -480,4 +456,138 @@ export class CorreosJuridicosService {
         return archive;
     }
 
+    /**
+     * Update classification manually and retrain AI
+     */
+    async updateClassification(id: string, newCategory: string): Promise<CorreoJuridico> {
+        const correo = await this.correoRepo.findOne({ where: { id } });
+        if (!correo) throw new NotFoundException('Correo no encontrado');
+
+        correo.categoria = newCategory;
+        correo.isTrained = true;
+
+        // Also update 'tipo' if necessary mapping is clear
+        if (newCategory === 'JUDICIAL') correo.tipo = 'JUDICIAL';
+        else if (newCategory === 'OFICIO') correo.tipo = 'OFICIO';
+        // else keep existing tipo or map to CORREO? Better trust the user correction on category.
+
+        const updated = await this.correoRepo.save(correo);
+
+        // Retrain AI
+        const text = `${correo.asunto} ${correo.cuerpoTexto || ''}`;
+        await this.smartService.train(text, newCategory);
+
+        return updated;
+    }
+
+    /**
+     * Link email to an expediente
+     * Creates an Actuacion automatically to ensure visibility in legal process
+     */
+    async linkToProcess(id: string, expedienteId: string, targetModule?: string): Promise<CorreoJuridico> {
+        const correo = await this.correoRepo.findOne({ where: { id } });
+        if (!correo) throw new NotFoundException('Correo no encontrado');
+
+        // 1. Update Email relation
+        correo.expedienteId = expedienteId;
+        // Optional: Save targetModule in email if column exists? Not for now.
+        const savedCorreo = await this.correoRepo.save(correo);
+
+        // 2. Create Actuacion
+        try {
+            const adjuntos = await this.adjuntoRepo.find({ where: { correoId: id } });
+            let documentoUrl: string | undefined = undefined;
+            let documentoNombre: string | undefined = undefined;
+
+            if (adjuntos.length > 0) {
+                documentoUrl = `/legal/api/v1/correos/adjuntos/${adjuntos[0].id}/download`;
+                documentoNombre = adjuntos[0].nombre;
+            }
+
+            const descripcionDetallada = `${correo.asunto} - REMITENTE: ${correo.remitenteNombre || correo.remitenteEmail} - RECIBIDO`;
+
+            // If target is DISCIPLINARIO, we might need a specific handling if the system separates tables.
+            // For now, assuming ActuacionService handles 'expedienteId' universally (since UUIDs are unique)
+            // But we will add it to metadata to be sure.
+
+            await this.actuacionService.registrarActuacion(expedienteId, {
+                tipoActuacion: 'OFICIO',
+                descripcion: descripcionDetallada,
+                fechaActuacion: correo.fechaRecepcion,
+                origen: 'OFICIO',
+                referenciaId: correo.id,
+                documentoUrl: documentoUrl,
+                documentoNombre: documentoNombre,
+                metadata: {
+                    remitente: correo.remitenteNombre || correo.remitenteEmail,
+                    destinatarios: correo.destinatarios,
+                    source: 'EMAIL_LINK',
+                    targetModule: targetModule || 'DEFENSA_JUDICIAL'
+                },
+                usuarioResponsable: 'Sistema (Vinculación Automática)'
+            });
+
+            this.logger.log(`Actuacion created for linked email ${id} in expediente ${expedienteId} (Module: ${targetModule})`);
+
+        } catch (error) {
+            this.logger.error(`Error creating atuacion for linked email ${id}`, error);
+            // Non-blocking error
+        }
+
+        return savedCorreo;
+    }
+
+    /**
+     * Batch Backfill: Classify unclassified emails
+     * @param limit Number of emails to process in this run
+     */
+    async batchClassifyBackfill(limit: number = 50): Promise<{ processed: number; updated: number }> {
+        this.logger.log(`Starting Batch Backfill for ${limit} emails...`);
+
+        // 1. Fetch unclassified emails (where ai_suggested_category is NULL)
+        const unclassified = await this.correoRepo.createQueryBuilder('correo')
+            .where('correo.aiSuggestedCategory IS NULL')
+            .take(limit)
+            .getMany();
+
+        this.logger.log(`Found ${unclassified.length} unclassified emails.`);
+
+        let processed = 0;
+        let updated = 0;
+
+        for (const email of unclassified) {
+            try {
+                // 2. Classify
+                const classification = await this.smartService.classify(email.asunto || '', email.cuerpoTexto || '');
+                const isUrgente = this.smartService.analyzeUrgency(email.asunto || '', email.cuerpoTexto || '');
+
+                // 3. Map to DB fields
+                let tipoDB = 'CORREO';
+                if (classification.category === 'JUDICIAL') tipoDB = 'JUDICIAL';
+                if (classification.category === 'OFICIO') tipoDB = 'OFICIO';
+                // Keep existing 'tipo' if it was manually set? 
+                // Assumption: Backfill overwrites or fills initial classification.
+                // Safest: Update tipo only if it's currently generic 'CORREO'
+                if (email.tipo === 'CORREO' && tipoDB !== 'CORREO') {
+                    email.tipo = tipoDB;
+                }
+
+                email.categoria = classification.category;
+                email.aiSuggestedCategory = classification.category;
+                email.moduloSugerido = classification.module;
+                email.confianzaClasificacion = classification.confidence;
+                email.urgente = isUrgente;
+
+                await this.correoRepo.save(email);
+                updated++;
+                processed++;
+            } catch (error) {
+                this.logger.error(`Error classifying email ${email.id} during backfill:`, error);
+                processed++; // Count as processed (attempted)
+            }
+        }
+
+        this.logger.log(`Batch Backfill complete. Updated ${updated}/${processed} emails.`);
+        return { processed, updated };
+    }
 }

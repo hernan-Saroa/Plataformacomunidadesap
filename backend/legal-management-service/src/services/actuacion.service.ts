@@ -76,8 +76,21 @@ export class ActuacionService {
     }
 
     async listarPorExpediente(expedienteId: string): Promise<Actuacion[]> {
+        // Try to resolve full expediente to get both UUID and Radicado
+        const expediente = await this.expedienteService.findOne(expedienteId) ||
+            await this.expedienteService.findOneByRadicado(expedienteId);
+
+        let whereCondition: any = { expedienteId };
+
+        if (expediente) {
+            whereCondition = [
+                { expedienteId: expediente.id },
+                { expedienteId: expediente.radicado }
+            ];
+        }
+
         return this.actuacionRepository.find({
-            where: { expedienteId },
+            where: whereCondition,
             order: { fechaActuacion: 'DESC' }
         });
     }

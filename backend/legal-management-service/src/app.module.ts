@@ -97,6 +97,7 @@ import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
+import { SmartClassificationService } from './services/smart-classification.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -218,6 +219,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     MicrosoftGraphService,
     CorreosJuridicosService,
     CorreosSyncScheduler,
+    SmartClassificationService,
     // Procesos Coactivos
     ProcesoCoactivoService,
     // Configurations
