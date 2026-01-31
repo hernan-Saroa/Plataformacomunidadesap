@@ -66,11 +66,16 @@ export interface TipoIndicador {
 export interface TipoRequerimiento {
   id: string;
   nombre: string;
-  icono: string;
   descripcion: string;
-  color: string;
   activo: boolean;
   orden: number;
+}
+
+export interface OrganismoControl {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
 }
 
 export interface ConfiguracionModulo {
@@ -106,10 +111,11 @@ export const casosPorEstado: Record<string, Record<string, number>> = {
     'E7_FALLO_2I': 0,
   },
   'asesoria-juridica': {
-    'RADICADA': 0,
-    'ANÁLISIS': 0,
-    'RESPUESTA': 0,
-    'ENVIADA': 0,
+    'en_radicacion': 0,
+    'asignado': 0,
+    'en_analisis': 0,
+    'en_revision': 0,
+    'respondido': 0,
   },
 };
 
@@ -177,10 +183,11 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
     id: 'asesoria-juridica',
     nombre: 'Asesoría Jurídica',
     estados: [
-      { id: 'RADICADA', nombre: 'Radicada', color: '#3B82F6', orden: 1, activo: true },
-      { id: 'ANÁLISIS', nombre: 'En Análisis', color: '#8B5CF6', orden: 2, activo: true },
-      { id: 'RESPUESTA', nombre: 'En Respuesta', color: '#F59E0B', orden: 3, activo: true },
-      { id: 'ENVIADA', nombre: 'Enviada', color: '#10B981', orden: 4, activo: true },
+      { id: 'en_radicacion', nombre: 'Radicada', color: '#3B82F6', orden: 1, activo: true },
+      { id: 'asignado', nombre: 'Asignado', color: '#8B5CF6', orden: 2, activo: true },
+      { id: 'en_analisis', nombre: 'En Análisis', color: '#06B6D4', orden: 3, activo: true },
+      { id: 'en_revision', nombre: 'En Revisión', color: '#F59E0B', orden: 4, activo: true },
+      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 5, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
@@ -278,38 +285,65 @@ const tiposRequerimientosIniciales: TipoRequerimiento[] = [
   {
     id: 'DOCUMENTOS',
     nombre: 'Documentos',
-    icono: '📄',
     descripcion: 'Requerimientos relacionados con la entrega de documentos',
-    color: '#3B82F6',
     activo: true,
     orden: 1
   },
   {
     id: 'INFORMES',
     nombre: 'Informes',
-    icono: '📊',
     descripcion: 'Requerimientos relacionados con la entrega de informes',
-    color: '#8B5CF6',
     activo: true,
     orden: 2
   },
   {
     id: 'CERTIFICADOS',
     nombre: 'Certificados',
-    icono: '📜',
     descripcion: 'Requerimientos relacionados con la entrega de certificados',
-    color: '#F59E0B',
     activo: true,
     orden: 3
   },
   {
     id: 'OTROS',
     nombre: 'Otros',
-    icono: '📋',
     descripcion: 'Otros tipos de requerimientos',
-    color: '#EC4899',
     activo: true,
     orden: 4
+  }
+];
+
+// ============ ORGANISMOS DE CONTROL INICIALES ============
+
+const organismosControlIniciales: OrganismoControl[] = [
+  {
+    id: 'CONTRALORIA',
+    nombre: 'Contraloría General de la República',
+    descripcion: 'Máximo órgano de control fiscal del Estado',
+    activo: true
+  },
+  {
+    id: 'PROCURADURIA',
+    nombre: 'Procuraduría General de la Nación',
+    descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos, los particulares que ejercen funciones públicas y las agencias del Estado',
+    activo: true
+  },
+  {
+    id: 'FISCALIA',
+    nombre: 'Fiscalía General de la Nación',
+    descripcion: 'Entidad de la rama judicial del poder público con plena autonomía administrativa y presupuestal',
+    activo: true
+  },
+  {
+    id: 'PERSONERIA',
+    nombre: 'Personería Distrital',
+    descripcion: 'Órgano de control del Distrito Capital',
+    activo: true
+  },
+  {
+    id: 'DEFENSORIA',
+    nombre: 'Defensoría del Pueblo',
+    descripcion: 'Institución del Estado encargada de velar por la promoción, el ejercicio y la divulgación de los derechos humanos',
+    activo: true
   }
 ];
 
@@ -320,6 +354,7 @@ interface ConfiguracionesSIGLContextType {
   ejesEstrategicos: EjeEstrategico[];
   tiposIndicadores: TipoIndicador[];
   tiposRequerimientos: TipoRequerimiento[];
+  organismosControl: OrganismoControl[];
   cambiosPendientes: boolean;
 
   // Getters
@@ -330,12 +365,14 @@ interface ConfiguracionesSIGLContextType {
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
+  getOrganismosControlActivos: () => OrganismoControl[];
 
   // Updaters
   actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosIndicadores: TipoIndicador[]) => void;
   actualizarTiposRequerimientos: (nuevosRequerimientos: TipoRequerimiento[]) => void;
+  actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
 
   // Actions
   guardarConfiguraciones: () => Promise<void>;
@@ -354,6 +391,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [ejesEstrategicos, setEjesEstrategicos] = useState<EjeEstrategico[]>(ejesEstrategicosIniciales);
   const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
+  const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Cargar configuraciones desde API
@@ -435,6 +473,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar tipos de requerimientos:', error);
       }
     }
+
+    const organismosGuardados = localStorage.getItem('sigl-organismos-control');
+    if (organismosGuardados) {
+      try {
+        const parsed = JSON.parse(organismosGuardados);
+        setOrganismosControl(parsed);
+        console.log('✅ Organismos de Control cargados desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar organismos de control:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -471,8 +520,14 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   };
 
   // Obtener solo los tipos de requerimientos activos
+  // Obtener solo los tipos de requerimientos activos
   const getTiposRequerimientosActivos = (): TipoRequerimiento[] => {
     return tiposRequerimientos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
+  };
+
+  // Obtener solo los organismos de control activos
+  const getOrganismosControlActivos = (): OrganismoControl[] => {
+    return organismosControl.filter(e => e.activo);
   };
 
   // Actualizar configuraciones
@@ -494,8 +549,15 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   };
 
   // Actualizar tipos de requerimientos
+  // Actualizar tipos de requerimientos
   const actualizarTiposRequerimientos = (nuevosRequerimientos: TipoRequerimiento[]) => {
     setTiposRequerimientos(nuevosRequerimientos);
+    setCambiosPendientes(true);
+  };
+
+  // Actualizar organismos de control
+  const actualizarOrganismosControl = (nuevosOrganismos: OrganismoControl[]) => {
+    setOrganismosControl(nuevosOrganismos);
     setCambiosPendientes(true);
   };
 
@@ -517,6 +579,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-ejes-estrategicos', JSON.stringify(ejesEstrategicos));
       localStorage.setItem('sigl-tipos-indicadores', JSON.stringify(tiposIndicadores));
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
+      localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
 
       // Aquí se enviaría al backend en producción
       // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
@@ -550,6 +613,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     ejesEstrategicos,
     tiposIndicadores,
     tiposRequerimientos,
+    organismosControl,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -558,10 +622,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
+    getOrganismosControlActivos,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
+    actualizarOrganismosControl,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

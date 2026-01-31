@@ -17,7 +17,7 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
@@ -104,26 +104,49 @@ export function OrganosControl() {
       setLoading(true);
       const data = await ocService.getRequerimientosOC();
 
+      // Cargar configuración local de organismos como fallback
+      let organismosConfig: any[] = [];
+      try {
+        const stored = localStorage.getItem('sigl-organismos-control');
+        if (stored) organismosConfig = JSON.parse(stored);
+      } catch (e) { console.error('Error parseando config organismos', e); }
+
       // Mapear respuesta del backend al formato del componente
-      const mappedData: Requerimiento[] = data.map((req: any) => ({
-        id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
-        numeroOficio: req.radicadoExterno || 'S/N',
-        organismo: req.organismo?.nombre || 'Desconocido',
-        asunto: req.asunto || 'Sin asunto',
-        responsable: req.funcionarioResponsable || 'Sin asignar',
-        fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
-        fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
-        diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
-        diasTotales: req.plazoOtorgado || 0,
-        etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
-        ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
-        documentos: req.documentosCount || 0,
-        // Map document categories
-        docRequerimientos: req.docRequerimientos || 0,
-        docRespuestas: req.docRespuestas || 0,
-        docSoportes: req.docSoportes || 0,
-        docInternos: req.docInternos || 0,
-      }));
+      const mappedData: Requerimiento[] = data.map((req: any) => {
+        // Resolver nombre de organismo: Backend Relation -> LocalStorage Config -> ID -> 'Desconocido'
+        const rawId = req.organismoId || req.organismo_id;
+        let nombreOrganismo = 'Desconocido';
+
+        if (req.organismo?.nombre) {
+          nombreOrganismo = req.organismo.nombre;
+        } else if (rawId) {
+          const match = organismosConfig.find((o: any) => String(o.id).trim() === String(rawId).trim());
+          if (match) nombreOrganismo = match.nombre;
+          else nombreOrganismo = String(rawId);
+        } else {
+          nombreOrganismo = 'Desconocido';
+        }
+
+        return {
+          id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
+          numeroOficio: req.radicadoExterno || 'S/N',
+          organismo: nombreOrganismo,
+          asunto: req.asunto || 'Sin asunto',
+          responsable: req.funcionarioResponsable || 'Sin asignar',
+          fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
+          fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
+          diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
+          diasTotales: req.plazoOtorgado || 0,
+          etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
+          ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
+          documentos: req.documentosCount || 0,
+          // Map document categories
+          docRequerimientos: req.docRequerimientos || 0,
+          docRespuestas: req.docRespuestas || 0,
+          docSoportes: req.docSoportes || 0,
+          docInternos: req.docInternos || 0,
+        };
+      });
 
       setRequerimientos(mappedData);
     } catch (error) {
@@ -246,7 +269,7 @@ export function OrganosControl() {
         labelMobile: 'Nuevo',
         icon: <Plus className="w-4 h-4" />,
         onClick: () => setModalNuevoOpen(true),
-        variant: 'primary'
+        variant: 'primary' as const
       }]
     }
     return []
@@ -402,6 +425,7 @@ export function OrganosControl() {
           isOpen={modalComentariosOpen}
           onClose={() => setModalComentariosOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
+          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -630,7 +654,7 @@ function TarjetaRequerimiento({
               Ver Requerimiento
             </Button>
 
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 onClick={() => onDocumentos(req)}
                 size="sm"
@@ -648,17 +672,6 @@ function TarjetaRequerimiento({
               >
                 <Send className="w-3 h-3" />
               </Button>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_SOLICITAR_INSUMO) && (
-              <Button
-                onClick={() => onInsumo(req)}
-                size="sm"
-                variant="outline"
-                className="text-[11px] px-1 justify-center"
-                title="Solicitar Insumo"
-              >
-                <User className="w-3 h-3" />
-              </Button>
-              )}
             </div>
 
             <Button
@@ -743,7 +756,8 @@ function VistaLista({
 
   const requerimientosPaginados = requerimientosOrdenados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
 
-  const totalPaginas = Math.ceil(requerimientosFiltrados.length / itemsPorPagina);
+  const total = requerimientosFiltrados.length;
+  const totalPaginas = Math.ceil(total / itemsPorPagina);
 
   return (
     <Card className="p-4">
@@ -907,17 +921,17 @@ function VistaLista({
         </table>
       </div>
 
-  {/* Paginación */}
-  {totalPaginas > 1 && (
-    <div className="flex items-center justify-between mt-4">
-      <p className="text-sm text-gray-600">
-        Mostrando {Math.min((paginaActual - 1) * itemsPorPagina + 1, total)} a {Math.min(paginaActual * itemsPorPagina, total)} de {total} requerimientos
-      </p>
-      <div className="flex gap-2">
-        <Button
+      {/* Paginación */}
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-gray-600">
+            Mostrando {Math.min((paginaActual - 1) * itemsPorPagina + 1, total)} a {Math.min(paginaActual * itemsPorPagina, total)} de {total} requerimientos
+          </p>
+          <div className="flex gap-2">
+            <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+              onClick={() => setPaginaActual(Math.max(1, paginaActual - 1))}
               disabled={paginaActual === 1}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -928,438 +942,14 @@ function VistaLista({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+              onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
               disabled={paginaActual === totalPaginas}
             >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-    )}
-  </Card>
-);
-}
-// Modal Nuevo Requerimiento
-function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
-  const [numeroOficio, setNumeroOficio] = useState('');
-  const [organismo, setOrganismo] = useState('');
-  const [asunto, setAsunto] = useState('');
-  const [responsable, setResponsable] = useState('');
-  const [fechaRadicacion, setFechaRadicacion] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [etapa, setEtapa] = useState('RECIBIDO');
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 pt-20">
-      <Card className="w-[90vw] !max-w-[380px] max-h-[85vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Nuevo Requerimiento"
-          subtitulo="Registro de requerimiento de órgano de control"
-          icono={Building2}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Número de Oficio</label>
-            <Input
-              value={numeroOficio}
-              onChange={(e) => setNumeroOficio(e.target.value)}
-              placeholder="Ej. CGR-OF-2024-00125"
-            />
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Organismo</label>
-            <Input
-              value={organismo}
-              onChange={(e) => setOrganismo(e.target.value)}
-              placeholder="Ej. CGR"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
-            <Textarea
-              value={asunto}
-              onChange={(e) => setAsunto(e.target.value)}
-              placeholder="Ej. Solicitud de información sobre contratación 2024"
-              rows={3}
-              className="w-full"
-            />
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Responsable</label>
-            <Input
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Ej. Dra. María Fernández"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Radicación</label>
-            <Input
-              type="date"
-              value={fechaRadicacion}
-              onChange={(e) => setFechaRadicacion(e.target.value)}
-            />
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Vencimiento</label>
-            <Input
-              type="date"
-              value={fechaVencimiento}
-              onChange={(e) => setFechaVencimiento(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Etapa</label>
-            <select
-              value={etapa}
-              onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="RECIBIDO">Recibido</option>
-              <option value="ANALISIS">Análisis</option>
-              <option value="RESPUESTA">Respuesta</option>
-              <option value="ENVIADO">Enviado</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cancelar</Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            onClick={() => {
-              toast.success('Requerimiento creado correctamente');
-              onClose();
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Crear Requerimiento
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Ver Requerimiento
-function ModalVerRequerimiento({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo={requerimiento.id}
-          subtitulo={`${requerimiento.organismo} • ${requerimiento.numeroOficio}`}
-          icono={Eye}
-          colorIcono="blue"
-          badgePrincipal={requerimiento.etapa}
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">ID Requerimiento</label>
-              <p className="text-sm font-bold mt-1" style={{ color: '#003DA5' }}>{requerimiento.id}</p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Número de Oficio</label>
-              <p className="text-sm font-bold mt-1">{requerimiento.numeroOficio}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Organismo</label>
-              <Badge className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
-                {requerimiento.organismo}
-              </Badge>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Etapa</label>
-              <Badge className="mt-1" variant="outline">
-                {requerimiento.etapa}
-              </Badge>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Asunto</label>
-            <p className="text-sm mt-1 font-medium">{requerimiento.asunto}</p>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Responsable</label>
-            <div className="flex items-center gap-2 mt-1">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                  {requerimiento.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{requerimiento.responsable}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Radicación</label>
-              <p className="text-sm mt-1">{requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}</p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Vencimiento</label>
-              <p className="text-sm mt-1">{requerimiento.fechaVencimiento.toLocaleDateString('es-CO')}</p>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Días Restantes</label>
-            <Badge className="mt-1 text-sm flex items-center gap-2 w-fit" style={{ 
-              color: getSemaforoColor(requerimiento.diasRestantes),
-              backgroundColor: `${getSemaforoColor(requerimiento.diasRestantes)}20`,
-              border: `1px solid ${getSemaforoColor(requerimiento.diasRestantes)}`
-            }}>
-              <div className="w-3 h-3 rounded-full" style={{ background: getSemaforoColor(requerimiento.diasRestantes) }} />
-              {Math.abs(requerimiento.diasRestantes)} días {requerimiento.diasRestantes < 0 ? 'vencido' : 'restantes'}
-            </Badge>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Última Actuación</label>
-            <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-              <p className="text-sm">{requerimiento.ultimaActuacion || 'Sin actuaciones'}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">{requerimiento.documentos || 0}</p>
-              <p className="text-xs text-gray-500 mt-1">Documentos</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">{requerimiento.diasTotales - requerimiento.diasRestantes}</p>
-              <p className="text-xs text-gray-500 mt-1">Días transcurridos</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">
-                {Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100)}%
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Progreso</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
-          <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-            <Download className="w-4 h-4 mr-2" />
-            Exportar PDF
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Documentos
-function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const documentosMock = [
-    { nombre: 'Oficio Original CGR-OF-2024-00125.pdf', fecha: new Date(), tipo: 'PDF', tamaño: '2.4 MB' },
-    { nombre: 'Anexo 1 - Contratos 2024.xlsx', fecha: new Date(), tipo: 'EXCEL', tamaño: '1.1 MB' },
-    { nombre: 'Respuesta Preliminar.docx', fecha: new Date(), tipo: 'WORD', tamaño: '850 KB' },
-  ];
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Documentos del Requerimiento"
-          subtitulo={`${requerimiento.id} • ${requerimiento.documentos || 0} archivos`}
-          icono={FileText}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Total de documentos: <span className="font-bold">{requerimiento.documentos || 0}</span>
-            </p>
-            <Button size="sm" style={{ background: '#003DA5', color: '#FFFFFF' }}>
-              <Upload className="w-4 h-4 mr-2" />
-              Cargar Documento
+              <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Respuesta
-function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const [contenido, setContenido] = useState('');
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Redactar Respuesta"
-          subtitulo={`${requerimiento.id} - ${requerimiento.organismo}`}
-          icono={Send}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Destinatario</label>
-              <Input value={requerimiento.organismo} readOnly />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Referencia</label>
-              <Input value={requerimiento.numeroOficio} readOnly />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
-            <Input value={`Respuesta a: ${requerimiento.asunto}`} readOnly />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Contenido de la Respuesta</label>
-            <Textarea
-              placeholder="Redacte aquí la respuesta al requerimiento..."
-              value={contenido}
-              onChange={(e) => setContenido(e.target.value)}
-              rows={12}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Adjuntar Documentos</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
-              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-sm font-semibold text-gray-600">Haga clic o arrastre archivos aquí</p>
-              <p className="text-xs text-gray-500 mt-1">PDF, Word, Excel - Máx. 10MB</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cancelar</Button>
-          <Button variant="outline" onClick={() => toast.success('Guardado como borrador')}>
-            <Save className="w-4 h-4 mr-2" />
-            Guardar Borrador
-          </Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            onClick={() => {
-              toast.success('Respuesta enviada correctamente');
-              onClose();
-            }}
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Enviar Respuesta
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Comentarios
-function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const [nuevoComentario, setNuevoComentario] = useState('');
-
-  const comentariosMock = [
-    {
-      autor: 'Dra. María Fernández',
-      fecha: new Date('2024-12-28 10:30'),
-      texto: 'Se está revisando la documentación solicitada. Falta el certificado de contratos.'
-    },
-    {
-      autor: 'Dr. Carlos Méndez',
-      fecha: new Date('2024-12-27 15:45'),
-      texto: 'Coordinado con el área de contratación para obtener la información requerida.'
-    }
-  ];
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Comentarios y Seguimiento"
-          subtitulo={`${requerimiento.id} • ${comentariosMock.length} comentarios`}
-          icono={MessageSquare}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="space-y-3">
-            {comentariosMock.map((comentario, idx) => (
-              <Card key={idx} className="p-4 bg-gray-50">
-                <div className="flex items-start gap-3">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                      {comentario.autor.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-semibold text-sm">{comentario.autor}</p>
-                      <p className="text-xs text-gray-500">
-                        {comentario.fecha.toLocaleDateString('es-CO')} {comentario.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    <p className="text-sm text-gray-700">{comentario.texto}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          <div className="border-t pt-4">
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Nuevo Comentario</label>
-            <Textarea
-              placeholder="Escriba su comentario..."
-              value={nuevoComentario}
-              onChange={(e) => setNuevoComentario(e.target.value)}
-              rows={4}
-              className="w-full"
-            />
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            onClick={() => {
-              toast.success('Comentario agregado');
-              setNuevoComentario('');
-            }}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Agregar Comentario
-          </Button>
-        </div>
-      </Card>
-    </div>
+      )}
+    </Card>
   );
 }

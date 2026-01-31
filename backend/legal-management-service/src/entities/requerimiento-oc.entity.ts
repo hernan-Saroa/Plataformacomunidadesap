@@ -3,7 +3,8 @@ import { OrganismoControlOC } from './organismo-control-legal.entity';
 import { Abogado } from './abogado.entity';
 import { DocumentoOC } from './documento-oc.entity';
 
-export type TipoRequerimiento = 'SOLICITUD_INFORMACION' | 'APERTURA_AUDITORIA' | 'NOTIFICACION_HALLAZGO' | 'PLAN_MEJORAMIENTO' | 'OTRO';
+// Legacy type kept for compatibility, but now accepts any string from cat_tipos_requerimiento
+export type TipoRequerimiento = string;
 export type UnidadTiempo = 'HORAS' | 'DIAS_CALENDARIO' | 'DIAS_HABILES';
 export type EstadoRequerimiento = 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO' | 'CERRADO' | 'VENCIDO';
 export type Prioridad = 'CRITICA' | 'ALTA' | 'NORMAL' | 'BAJA';
@@ -20,11 +21,14 @@ export class RequerimientoOC {
     radicadoInterno: string;
 
     @Column({ name: 'organismo_id', nullable: true })
-    organismoId: number;
+    organismoId: string;
 
-    @ManyToOne(() => OrganismoControlOC, (org: OrganismoControlOC) => org.requerimientos, { eager: true })
-    @JoinColumn({ name: 'organismo_id' })
-    organismo: OrganismoControlOC;
+    // Relación eliminada para permitir IDs de organismos locales (UUIDs string)
+    // que no existen en la tabla cat_organismos_control (Integer ID).
+    // El frontend resolverá el nombre basándose en el organismoId almacenado.
+    // @ManyToOne(() => OrganismoControlOC, (org: OrganismoControlOC) => org.requerimientos, { eager: true })
+    // @JoinColumn({ name: 'organismo_id' })
+    // organismo: OrganismoControlOC;
 
     @Column({ name: 'tipo_requerimiento', length: 50 })
     tipoRequerimiento: TipoRequerimiento;

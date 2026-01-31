@@ -8,6 +8,7 @@ import { CorreosJuridicosService } from './correos-juridicos.service';
 import { ComentariosDocumentosOCService } from './comentarios-documentos-oc.service';
 import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 
 @Injectable()
 export class RequerimientosOCService {
@@ -22,6 +23,8 @@ export class RequerimientosOCService {
         private readonly abogadoRepo: Repository<Abogado>,
         @InjectRepository(RespuestaBorradorOC)
         private readonly borradorRepo: Repository<RespuestaBorradorOC>,
+        @InjectRepository(TipoRequerimientoOC)
+        private readonly tipoRequerimientoRepo: Repository<TipoRequerimientoOC>,
         private readonly correosService: CorreosJuridicosService,
         private readonly comentariosService: ComentariosDocumentosOCService,
     ) { }
@@ -34,11 +37,18 @@ export class RequerimientosOCService {
     }
 
     // ============================================
+    // TIPOS DE REQUERIMIENTO (Catálogo)
+    // ============================================
+    async findAllTiposRequerimiento(): Promise<TipoRequerimientoOC[]> {
+        return this.tipoRequerimientoRepo.find({ where: { activo: true }, order: { orden: 'ASC' } });
+    }
+
+    // ============================================
     // REQUERIMIENTOS
     // ============================================
     async findAll(): Promise<RequerimientoOC[]> {
         const reqs = await this.requerimientoRepo.createQueryBuilder('req')
-            .leftJoinAndSelect('req.organismo', 'organismo')
+            // .leftJoinAndSelect('req.organismo', 'organismo') // Relación eliminada para soportar IDs string locales
             .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
             .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
             .loadRelationCountAndMap('req.docRequerimientos', 'req.documentos', 'docReq', qb =>
@@ -62,7 +72,7 @@ export class RequerimientosOCService {
     async findOne(id: string): Promise<RequerimientoOC> {
         const req = await this.requerimientoRepo.findOne({
             where: { id },
-            relations: ['organismo', 'abogadoAsignado']
+            relations: ['abogadoAsignado']
         });
         if (!req) throw new NotFoundException(`Requerimiento ${id} no encontrado`);
         return this.calcularDiasRestantes(req);

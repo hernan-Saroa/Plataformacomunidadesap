@@ -41,6 +41,7 @@ import { PagoCoactivo } from './entities/pago-coactivo.entity';
 import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -126,6 +127,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       RespuestaBorradorOC,
       SolicitudInsumo,
       Hallazgo,
+      TipoRequerimientoOC,
       // Tareas y Notas
       TareaExpediente,
       NotaExpediente,

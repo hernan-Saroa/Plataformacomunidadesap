@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark } from 'lucide-react';
 import { legalService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
 import {
@@ -41,7 +41,8 @@ import {
   ConfiguracionTiempo,
   EjeEstrategico,
   TipoIndicador,
-  TipoRequerimiento
+  TipoRequerimiento,
+  OrganismoControl
 } from '../config/ConfiguracionesSIGLContext';
 
 // ✅ Importar componente de configuración de plantillas
@@ -56,12 +57,14 @@ export function ConfiguracionesSIGL() {
     ejesEstrategicos,
     tiposIndicadores,
     tiposRequerimientos,
+    organismosControl,
     cambiosPendientes,
     setCambiosPendientes,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
+    actualizarOrganismosControl,
     guardarConfiguraciones,
     restablecerDefecto
   } = useConfiguracionesSIGL();
@@ -95,7 +98,13 @@ export function ConfiguracionesSIGL() {
   // Estados para Tipos de Requerimientos
   const [showModalAgregarRequerimiento, setShowModalAgregarRequerimiento] = useState(false);
   const [showModalEliminarRequerimiento, setShowModalEliminarRequerimiento] = useState(false);
+
   const [requerimientoAEliminar, setRequerimientoAEliminar] = useState<TipoRequerimiento | null>(null);
+
+  // Estados para Organismos de Control
+  const [showModalAgregarOrganismo, setShowModalAgregarOrganismo] = useState(false);
+  const [showModalEliminarOrganismo, setShowModalEliminarOrganismo] = useState(false);
+  const [organismoAEliminar, setOrganismoAEliminar] = useState<OrganismoControl | null>(null);
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
@@ -568,18 +577,17 @@ export function ConfiguracionesSIGL() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 ml-6">
                   <span className="text-xs text-gray-500">
-                    {tiposRequerimientos.filter(t => t.activo).length} tipos de requerimientos
+                    {tiposRequerimientos.filter(t => t.activo).length} tipos • {organismosControl.filter(o => o.activo).length} organismos
                   </span>
                 </div>
               </button>
 
               <button
                 onClick={() => setModuloActivo('plantillas-oficios')}
-                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
-                  moduloActivo === 'plantillas-oficios'
-                    ? 'bg-blue-50 text-blue-900 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plantillas-oficios'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
@@ -900,8 +908,127 @@ export function ConfiguracionesSIGL() {
 
           {/* 🆕 Panel de Órganos de Control - Tipos de Requerimientos */}
           {moduloActivo === 'organos-control' && (
-            <div className="max-w-6xl mx-auto space-y-6">
-              {/* Configuración de Tipos de Requerimientos */}
+            <div className="max-w-6xl mx-auto space-y-8">
+
+              {/* SECCIÓN 1: ORGANISMOS DE CONTROL */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 rounded-md">
+                          <Landmark className="w-5 h-5 text-blue-700" />
+                        </div>
+                        Organismos de Control
+                      </h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Gestiona las entidades de control disponibles en el sistema (ej. Contraloría, Procuraduría)
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const nuevo: OrganismoControl = {
+                          id: `org-${Date.now()}`,
+                          nombre: 'Nuevo Organismo',
+                          descripcion: 'Descripción del organismo de control',
+                          activo: true
+                        };
+                        actualizarOrganismosControl([...organismosControl, nuevo]);
+                        toast.success('Organismo agregado');
+                      }}
+                      className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                      style={{
+                        background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                        boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                      }}
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Agregar Organismo</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {organismosControl.map((organismo, index) => (
+                      <div
+                        key={organismo.id}
+                        className="p-3 sm:p-4 bg-gradient-to-br from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
+                      >
+                        {/* Header: Nombre + Activo + Eliminar */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-xs text-gray-500 shadow-sm flex-shrink-0">
+                            {index + 1}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={organismo.nombre}
+                            onChange={(e) => {
+                              const nuevos = organismosControl.map(item =>
+                                item.id === organismo.id ? { ...item, nombre: e.target.value } : item
+                              );
+                              actualizarOrganismosControl(nuevos);
+                            }}
+                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            placeholder="Nombre de la entidad..."
+                          />
+
+                          <div className="flex items-center gap-2 ml-2">
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={organismo.activo}
+                                onChange={(e) => {
+                                  const nuevos = organismosControl.map(item =>
+                                    item.id === organismo.id ? { ...item, activo: e.target.checked } : item
+                                  );
+                                  actualizarOrganismosControl(nuevos);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs font-medium text-gray-600 select-none">Activo</span>
+                            </label>
+
+                            <button
+                              onClick={() => {
+                                const nuevos = organismosControl.filter(o => o.id !== organismo.id);
+                                actualizarOrganismosControl(nuevos);
+                                toast.success('Organismo eliminado');
+                              }}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar organismo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Descripción */}
+                        <textarea
+                          value={organismo.descripcion}
+                          onChange={(e) => {
+                            const nuevos = organismosControl.map(item =>
+                              item.id === organismo.id ? { ...item, descripcion: e.target.value } : item
+                            );
+                            actualizarOrganismosControl(nuevos);
+                          }}
+                          className="w-full px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white"
+                          placeholder="Descripción o función de la entidad..."
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+
+                    {organismosControl.length === 0 && (
+                      <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                        <p>No hay organismos de control registrados.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+
+              {/* SECCIÓN 2: TIPOS DE REQUERIMIENTOS (EXISTENTE) */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                 <div className="p-3 sm:p-4 lg:p-6">
                   <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
@@ -911,7 +1038,7 @@ export function ConfiguracionesSIGL() {
                         Tipos de Requerimientos
                       </h2>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Configurar los tipos de requerimientos disponibles para el módulo de Órganos de Control
+                        Configurar los tipos de requerimientos que pueden solicitar los órganos de control
                       </p>
                     </div>
                     <button
@@ -934,24 +1061,10 @@ export function ConfiguracionesSIGL() {
                         className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                       >
                         {/* Fila 1: Orden + Ícono + Nombre + Eliminar */}
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-xs sm:text-sm text-gray-700 flex-shrink-0">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center font-bold text-xs text-blue-600 shadow-sm flex-shrink-0">
                             {index + 1}
                           </div>
-
-                          <input
-                            type="text"
-                            value={tipo.icono}
-                            onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
-                                t.id === tipo.id ? { ...t, icono: e.target.value } : t
-                              );
-                              actualizarTiposRequerimientos(nuevosRequerimientos);
-                            }}
-                            className="w-12 sm:w-14 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="📄"
-                            maxLength={2}
-                          />
 
                           <input
                             type="text"
@@ -962,94 +1075,60 @@ export function ConfiguracionesSIGL() {
                               );
                               actualizarTiposRequerimientos(nuevosRequerimientos);
                             }}
-                            className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1 px-3 py-2 text-sm font-bold text-gray-800 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             placeholder="Nombre del tipo de requerimiento"
                           />
 
-                          <button
-                            onClick={() => {
-                              setRequerimientoAEliminar(tipo);
-                              setShowModalEliminarRequerimiento(true);
-                            }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Fila 2: Descripción */}
-                        <div className="mb-3">
-                          <textarea
-                            value={tipo.descripcion}
-                            onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
-                                t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
-                              );
-                              actualizarTiposRequerimientos(nuevosRequerimientos);
-                            }}
-                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                            placeholder="Descripción del tipo de requerimiento..."
-                            rows={2}
-                          />
-                        </div>
-
-                        {/* Fila 3: Color + Activo */}
-                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                          {/* Color */}
-                          <div className="flex items-center gap-1.5 sm:gap-2">
-                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                              Color:
+                          <div className="flex items-center gap-2 ml-2">
+                            {/* Toggle Activo */}
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => {
+                                  const nuevosRequerimientos = tiposRequerimientos.map(t =>
+                                    t.id === tipo.id ? { ...t, activo: e.target.checked } : t
+                                  );
+                                  actualizarTiposRequerimientos(nuevosRequerimientos);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs font-medium text-gray-600 select-none">
+                                Activo
+                              </span>
                             </label>
-                            <input
-                              type="color"
-                              value={tipo.color}
-                              onChange={(e) => {
-                                const nuevosRequerimientos = tiposRequerimientos.map(t =>
-                                  t.id === tipo.id ? { ...t, color: e.target.value } : t
-                                );
-                                actualizarTiposRequerimientos(nuevosRequerimientos);
-                              }}
-                              className="w-10 h-8 rounded border border-gray-300 cursor-pointer"
-                            />
-                            <span className="text-xs text-gray-600">{tipo.color}</span>
-                          </div>
 
-                          {/* Toggle Activo */}
-                          <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
-                            <input
-                              type="checkbox"
-                              checked={tipo.activo}
-                              onChange={(e) => {
-                                const nuevosRequerimientos = tiposRequerimientos.map(t =>
-                                  t.id === tipo.id ? { ...t, activo: e.target.checked } : t
-                                );
-                                actualizarTiposRequerimientos(nuevosRequerimientos);
+                            <button
+                              onClick={() => {
+                                setRequerimientoAEliminar(tipo);
+                                setShowModalEliminarRequerimiento(true);
                               }}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-xs sm:text-sm text-gray-700 font-medium">
-                              Activo
-                            </span>
-                          </label>
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Eliminar tipo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Descripción */}
+                        <textarea
+                          value={tipo.descripcion}
+                          onChange={(e) => {
+                            const nuevosRequerimientos = tiposRequerimientos.map(t =>
+                              t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
+                            );
+                            actualizarTiposRequerimientos(nuevosRequerimientos);
+                          }}
+                          className="w-full px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white"
+                          placeholder="Descripción del tipo de requerimiento..."
+                          rows={2}
+                        />
                       </div>
                     ))}
                   </div>
 
-                  {/* Información Importante */}
-                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-blue-900 mb-1">
-                        Información Importante
-                      </h3>
-                      <ul className="text-sm text-blue-800 space-y-1">
-                        <li>• Los tipos de requerimientos se utilizan en el módulo de Órganos de Control</li>
-                        <li>• Solo los tipos activos aparecerán en el formulario de Nuevo Requerimiento</li>
-                        <li>• El ícono debe ser un emoji (copia y pega desde emojipedia.org)</li>
-                        <li>• Los cambios se guardarán al hacer click en "Guardar Cambios"</li>
-                      </ul>
-                    </div>
-                  </div>
+
                 </div>
               </div>
             </div>
@@ -2011,11 +2090,9 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={() => {
                     const nuevoRequerimiento: TipoRequerimiento = {
-                      id: `tipo-req-${Date.now()}`,
-                      nombre: 'Nuevo Tipo de Requerimiento',
-                      icono: '📋',
-                      descripcion: 'Descripción del nuevo tipo de requerimiento',
-                      color: '#2962FF',
+                      id: `req-${Date.now()}`,
+                      nombre: 'Nuevo Tipo',
+                      descripcion: 'Descripción del requerimiento',
                       activo: true,
                       orden: tiposRequerimientos.length + 1
                     };
@@ -2063,7 +2140,7 @@ export function ConfiguracionesSIGL() {
 
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
-                  {requerimientoAEliminar.icono} {requerimientoAEliminar.nombre}
+                  {requerimientoAEliminar.nombre}
                 </p>
                 <p className="text-xs text-red-700 mb-3">
                   {requerimientoAEliminar.descripcion}

@@ -68,8 +68,13 @@ export class ConsultasJuridicasController {
     }
 
     @Patch(':id/estado')
-    async updateEstado(@Param('id') id: string, @Body('estado') estado: string, @Body('usuario') usuario?: string) {
-        return this.consultasService.updateEstado(id, estado, usuario);
+    async updateEstado(
+        @Param('id') id: string,
+        @Body('estado') estado: string,
+        @Body('usuario') usuario?: string,
+        @Body('estadoNombre') estadoNombre?: string
+    ) {
+        return this.consultasService.updateEstado(id, estado, usuario, estadoNombre);
     }
 
     @Patch(':id/respuesta')

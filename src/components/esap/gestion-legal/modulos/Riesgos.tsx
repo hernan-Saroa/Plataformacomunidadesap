@@ -244,28 +244,18 @@ export function Riesgos() {
   };
 
   const addBtnsPermission = () => {
-      const arrayBtns: any[] = [];
+    const arrayBtns: any[] = [];
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_CREATE)) {
       arrayBtns.push({
-        label: 'Reporte Contable',
-        labelMobile: 'Reporte',
-        icon: <Download className="w-4 h-4" />,
-        onClick: () => {
-          const url = riesgosService.getReporteContabilidadUrl();
-          window.open(url, '_blank');
-        },
-        variant: 'outline'
+        label: 'Nuevo Riesgo',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevoOpen(true),
+        variant: 'primary'
       })
-      if (authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_CREATE)) {
-        arrayBtns.push({
-          label: 'Nuevo Riesgo',
-          labelMobile: 'Nuevo',
-          icon: <Plus className="w-4 h-4" />,
-          onClick: () => setModalNuevoOpen(true),
-          variant: 'primary'
-        })
-      }
-      return arrayBtns
-    };
+    }
+    return arrayBtns
+  };
 
   return (
     <div className="space-y-4">
@@ -599,7 +589,7 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
           </thead>
           <tbody>
             {riesgos.map((riesgo) => {
-              const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+              const config = ZONA_RIESGO_CONFIG[riesgo.zonaInherente || 'BAJO'] || ZONA_RIESGO_CONFIG.BAJO;
               return (
                 <tr key={riesgo.id} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.codigo || riesgo.id}</td>
@@ -649,7 +639,7 @@ interface TarjetaRiesgoCompactaProps {
 }
 
 function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
-  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual] || ZONA_RIESGO_CONFIG.MODERADO;
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaInherente || 'BAJO'] || ZONA_RIESGO_CONFIG.BAJO;
   const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión';
 
   return (

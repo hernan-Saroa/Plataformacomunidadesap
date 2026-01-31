@@ -160,20 +160,21 @@ export function ModuloAsesoriaJuridicaV3() {
   };
 
   const mapEstadoToEtapa = (estado: string): string => {
-    // 1. Try to find exact match in configured states (by ID)
+    // Config estados now use backend IDs, so find exact match
     const exactMatch = estadosActivos.find(e => e.id === estado);
-    if (exactMatch) return exactMatch.nombre.toUpperCase();
+    if (exactMatch) return exactMatch.nombre;
 
-    const map: Record<string, string> = {
-      'en_radicacion': 'RADICADA',
-      'asignado': 'ANÁLISIS',
-      'en_analisis': 'ANÁLISIS',
-      'en_revision': 'RESPUESTA',
-      'respondido': 'ENVIADA',
-      'cerrado': 'ENVIADA',
-      'vencido': 'VENCIDA'
+    // Fallback map for any edge cases
+    const fallbackMap: Record<string, string> = {
+      'en_radicacion': 'Radicada',
+      'asignado': 'Asignado',
+      'en_analisis': 'En Análisis',
+      'en_revision': 'En Revisión',
+      'respondido': 'Respondido',
+      'cerrado': 'Respondido',
+      'vencido': 'Vencida'
     };
-    return map[estado] || 'RADICADA';
+    return fallbackMap[estado] || estado || 'Radicada';
   };
 
   const formatMateriaJuridica = (materia: string): string => {
@@ -269,9 +270,9 @@ export function ModuloAsesoriaJuridicaV3() {
       );
     }
 
-    // Filtro por etapa
+    // Filtro por etapa - usando estado del backend (no el displayName)
     if (filtroEtapa !== 'TODAS') {
-      resultado = resultado.filter(c => c.etapa === filtroEtapa);
+      resultado = resultado.filter(c => c.estado === filtroEtapa);
     }
 
     // Filtro por semáforo
@@ -435,10 +436,7 @@ export function ModuloAsesoriaJuridicaV3() {
             options: [
               { value: 'TODAS', label: 'Todas las etapas' },
               ...estadosActivos.map(estado => ({
-                value: estado.nombre.toUpperCase(), // Assuming mapped strings are UPPERCASE (RADICADA, etc) 
-                // OR better: use ID if we change map logic. 
-                // Current mapEstadoToEtapa returns 'RADICADA', 'ANÁLISIS' etc.
-                // Let's rely on the Configured Name but check casing.
+                value: estado.id, // Usar ID del backend (en_radicacion, asignado, etc.)
                 label: estado.nombre
               }))
             ]

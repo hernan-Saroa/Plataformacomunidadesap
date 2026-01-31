@@ -44,17 +44,22 @@ export function ModalSIGL({
   children,
 }: ModalSIGLProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent hideCloseButton className={`${sizeClasses[size]} max-h-[90vh] overflow-y-auto`}>
-        <DialogHeader>
-          <DialogTitle className="text-base sm:text-lg font-semibold text-gray-900">{title}</DialogTitle>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
+      <DialogContent
+        hideCloseButton
+        className={`${sizeClasses[size]} !top-1/2 !-translate-y-1/2 !max-h-[85vh] overflow-hidden flex flex-col p-0`}
+      >
+        <DialogHeader className="px-6 py-4 border-b">
+          <DialogTitle className="text-base sm:text-lg font-bold text-gray-900">{title}</DialogTitle>
           {description && (
             <DialogDescription className="text-sm text-gray-600">
               {description}
             </DialogDescription>
           )}
         </DialogHeader>
-        <div className="mt-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {children}
+        </div>
       </DialogContent>
     </Dialog>
   );
