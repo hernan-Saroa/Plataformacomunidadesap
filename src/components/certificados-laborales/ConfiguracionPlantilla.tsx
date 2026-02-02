@@ -3233,7 +3233,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setIsPreviewOpen(true);
+    // setIsPreviewOpen(true);
 
 
 
@@ -3554,7 +3554,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setSelectedFile(null);
+    // setSelectedFile(null);
 
 
 
@@ -3606,11 +3606,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setVersionARestaurar(log);
+    // setVersionARestaurar(log);
 
 
 
-    setIsRestaurarOpen(true);
+    // setIsRestaurarOpen(true);
 
 
 
@@ -3790,11 +3790,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      setIsRestaurarOpen(false);
+      // setIsRestaurarOpen(false);
 
 
 
-      setVersionARestaurar(null);
+      // setVersionARestaurar(null);
 
 
 
@@ -3923,32 +3923,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
   return (
-
-
-
-    <div className="space-y-6">
-
-
-
-      <style>{`
-        .variable-token {
-          font-weight: inherit !important;
-          display: inline !important;
-          font-size: inherit !important;
-          line-height: inherit !important;
-          padding: 0px 2px !important;
-          margin: 0 !important;
-          border-radius: 2px !important;
-          vertical-align: baseline !important;
-        }
-        .variable-token * {
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-      `}</style>
-
-
-
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
 
 
@@ -3970,29 +3945,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       >
-
-
-
-        <div className="flex items-center justify-between">
-
-
-
-          <div>
-
-
-
-            <div className="flex items-center gap-3 mb-2">
-
-
-
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
               <div 
-
-
-
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-
-
-
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
 
 
@@ -4010,61 +3967,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               >
-
-
-
-                <FileText className="w-6 h-6 text-white" strokeWidth={2.5} />
-
-
-
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
               </div>
-
-
-
-              <div>
-
-
-
-                <h1 
-
-
-
-                  className="font-bold tracking-tight"
-
-
-
-                  style={{
-
-
-
-                    fontSize: '32px',
-
-
-
-                    lineHeight: '40px',
-
-
-
-                    letterSpacing: '-0.25px',
-
-
-
-                    color: '#1F2937'
-
-
-
-                  }}
-
-
-
-                >
-
-
-
-                  Configuracion de Plantilla
-
-
-
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-gray-900 truncate">
+                  Configuración de Plantilla
                 </h1>
 
 
@@ -4074,73 +3981,18 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
             </div>
-
-
-
-            <p
-
-
-
-              className="font-normal"
-
-
-
-              style={{
-
-
-
-                fontSize: '14px',
-
-
-
-                lineHeight: '20px',
-
-
-
-                color: '#6B7280'
-
-
-
-              }}
-
-
-
-            >
-
-
-
-              Configura los elementos visuales de los certificados laborales: firma del responsable y logo institucional.
-
-
-
+            <p className="text-xs sm:text-sm text-gray-600">
+              Gestiona la plantilla base de certificados laborales. Los cambios se aplican a todos los certificados futuros.
             </p>
 
 
 
           </div>
 
-
-
-
-
-
-
-          <div className="flex items-center gap-3">
-
-
-
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             {getEstadoBadge(plantilla.estado)}
-
-
-
-            <Badge variant="outline" className="px-3 py-1 text-sm">
-
-
-
-              Version {plantilla.version}
-
-
-
+            <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
+              Versión {plantilla.version}
             </Badge>
 
 
@@ -4178,49 +4030,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
           animate={{ opacity: 1, y: 0 }}
-
-
-
-          className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4"
-
-
-
+          className="bg-yellow-50 border-2 border-yellow-300 rounded-lg sm:rounded-xl p-3 sm:p-4"
         >
-
-
-
-          <div className="flex items-start gap-3">
-
-
-
-            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-
-
-
-            <div className="flex-1">
-
-
-
-              <h3 className="font-semibold text-yellow-900 mb-1">
-
-
-
+          <div className="flex items-start gap-2 sm:gap-3">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-yellow-900 mb-1 text-sm sm:text-base">
                 Cambios sin guardar
 
 
 
               </h3>
-
-
-
-              <p className="text-sm text-yellow-800">
-
-
-
-                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorizacion antes de cerrar.
-
-
-
+              <p className="text-xs sm:text-sm text-yellow-800">
+                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
               </p>
 
 
@@ -4242,13 +4064,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               onClick={handleDescartarCambios}
-
-
-
-              className="text-yellow-700 hover:text-yellow-900"
-
-
-
+              className="text-yellow-700 hover:text-yellow-900 min-h-[44px] sm:min-h-[36px]"
             >
 
 
@@ -4271,12 +4087,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       )}
 
-
-
-
-
-
-
       {/* Tabs de Navegacion */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600">Tipo de plantilla:</p>
@@ -4298,9 +4108,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
         </div>
       </div>
 
-
-
-      <Tabs
+      {/* Tabs */}
+      <Tabs 
         value={activeTab}
         onValueChange={(newTab: string) => {
           // Guardar el contenido del editor antes de cambiar de pestana
@@ -4314,69 +4123,21 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
         }}
         className="mt-6"
       >
-
-
-
         <TabsList className={`grid w-full ${canEdit ? 'grid-cols-3' : 'grid-cols-1'}`}>
-
-
-
           {canEdit && (
-
-
-
             <TabsTrigger value="Modificacion" className="flex items-center gap-2">
-
-
-
-              <Edit3 className="w-4 h-4" /> Modificacion
-
-
-
+              <Edit3 className="w-4 h-4" /> Modificación
             </TabsTrigger>
-
-
-
           )}
-
-
-
           {canEdit && (
-
-
-
             <TabsTrigger value="Visualizacion" className="flex items-center gap-2">
-
-
-
-              <Eye className="w-4 h-4" /> Visualizacion
-
-
-
+              <Eye className="w-4 h-4" /> Visualización
             </TabsTrigger>
-
-
-
           )}
-
-
-
           <TabsTrigger value="historial" className="flex items-center gap-2">
-
-
-
             <History className="w-4 h-4" />
-
-
-
             Historial
-
-
-
           </TabsTrigger>
-
-
-
         </TabsList>
 
 
@@ -5914,11 +5675,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
           </Card>
 
 
-
-
-
-
-
           {!canEdit && (
 
 
@@ -6111,17 +5867,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
         </TabsContent>
 
-
-
         )}
-
-
-
-
-
-
 
         {/* TAB 2: Visualizacion */}
 
@@ -8284,54 +8033,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
         </TabsContent>
-
-
-
+        
       </Tabs>
 
-
-
-
-
-
-
     </div>
-
-
-
   );
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

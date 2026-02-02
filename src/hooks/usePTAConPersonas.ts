@@ -14,11 +14,10 @@
  * Fecha: 2026-01-03
  */
 
-import { useState, useEffect, useMemo } from 'react';
 import { usePTA } from '../contexts/PTAContext';
 import { personasPTAIntegrationService } from '../services/personasPTAIntegrationService';
 import type { DocentePTA } from '../types/integracion-personas-pta';
-import { MOCK_USERS_WITH_SEDES, type UserWithSedes } from '../data/mockUsersWithSedes';
+import { USUARIOS_EJEMPLO, type UserWithSedes } from '../data/mockUsersWithSedes';
 
 // ============================================================================
 // TIPOS
@@ -133,10 +132,10 @@ export function usePTAConPersonas(userId?: string): UsePTAConPersonasReturn {
         let usuario: UserWithSedes | undefined;
         
         if (userId) {
-          usuario = MOCK_USERS_WITH_SEDES.find(u => u.id === userId);
+          usuario = USUARIOS_EJEMPLO.find(u => u.id === userId);
         } else {
           // Buscar el primer usuario con rol de docente
-          usuario = MOCK_USERS_WITH_SEDES.find(u => 
+          usuario = USUARIOS_EJEMPLO.find(u => 
             u.roles.some(r => r.code === 'DOCENTE')
           );
         }

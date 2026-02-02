@@ -77,7 +77,7 @@ cmd_up() {
     echo ""
     echo -e "${YELLOW}URLs de acceso (QA):${NC}"
     echo "  Frontend:    http://135.237.81.133"
-    echo "  API Gateway: http://135.237.81.133:3000"
+    echo "  API Gateway: http://135.237.81.133/services"
     echo ""
 }
 
@@ -99,6 +99,11 @@ cmd_restart() {
 cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios QA...${NC}"
     docker compose -f docker-compose.qa.yml down
+
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+
     # Construir imagenes
     docker compose -f docker-compose.qa.yml --env-file .env.qa build
     docker compose -f docker-compose.qa.yml --env-file .env.qa up -d

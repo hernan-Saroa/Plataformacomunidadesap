@@ -4,13 +4,13 @@
  * Inbox style similar a MOD-04 (Buzón Notificaciones Judiciales)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star
+  Filter, Star, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -18,9 +18,10 @@ import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Checkbox } from '../../../ui/checkbox';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import type { CorreoOJ } from '../core/types';
-import { correosOficinaJuridica } from '../data/datosBuzonOficinaJuridica';
-import { toast } from 'sonner@2.0.3';
+import { useEmails } from '../../../../hooks/useEmails';
+import type { CorreoJuridico } from '../../../../services/api/legal.service';
+import { legalService } from '../../../../services/api/legal.service';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -28,79 +29,58 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 type VistaModulo = 'inbox' | 'lista';
 
-// Función helper para simular clasificación IA
-const getClasificacionIA = (comunicacion: CorreoOJ) => {
-  const clasificacionMap: Record<string, { tipoDetectado: string; moduloSugerido: string; confianza: number }> = {
-    'CONSULTA_INTERNA': {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 98
-    },
-    'PQRS_EXTERNO': {
-      tipoDetectado: 'PQRS Externa',
-      moduloSugerido: 'MOD-04: Buzón Notificaciones',
-      confianza: 96
-    },
-    'NOT_JUDICIAL': {
-      tipoDetectado: 'Notificación Judicial',
-      moduloSugerido: 'MOD-01: Defensa Judicial',
-      confianza: 97
-    },
-    'ORG_CONTROL': {
-      tipoDetectado: 'Órgano de Control',
-      moduloSugerido: 'MOD-06: Órganos Control',
-      confianza: 99
-    },
-    'TRASLADO': {
-      tipoDetectado: 'Traslado de Competencia',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 94
-    },
-    'OTRO': {
-      tipoDetectado: 'Otro',
-      moduloSugerido: 'Por clasificar',
-      confianza: 75
-    }
-  };
+// Función helper para clasificación IA real
+const getClasificacionIA = (comunicacion: CorreoJuridico) => {
+  if (!comunicacion.aiSuggestedCategory) return null;
 
-  return clasificacionMap[comunicacion.tipo] || clasificacionMap['OTRO'];
+  return {
+    tipoDetectado: comunicacion.aiSuggestedCategory,
+    moduloSugerido: comunicacion.moduloSugerido || 'Por clasificar',
+    confianza: comunicacion.confianzaClasificacion || 0
+  };
 };
 
 export function ModuloBuzonOficinaJuridicaV3() {
+
+  const { emails, loading, fetchEmails, updateClassification, linkProcess, sync } = useEmails();
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
   const [tabActiva, setTabActiva] = useState<TabBandejaType>('pendientes');
   const [busqueda, setBusqueda] = useState('');
-  const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<CorreoOJ | null>(null);
+  const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<CorreoJuridico | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  useEffect(() => {
+    fetchEmails();
+  }, [fetchEmails]);
+
   // Filtrar comunicaciones
   const comunicacionesFiltradas = useMemo(() => {
-    let resultado = [...correosOficinaJuridica];
+    let resultado = [...emails];
 
     // Filtrar por tab
     switch (tabActiva) {
       case 'pendientes':
-        resultado = resultado.filter(c => c.etapa === 'NO_LEIDO' || c.etapa === 'CLASIFICADO');
+        resultado = resultado.filter(c => !c.leido && !c.archivado);
         break;
       case 'leidas':
-        resultado = resultado.filter(c => c.etapa === 'RESPONDIDO' || c.etapa === 'EN_PROCESO' || c.etapa === 'ASIGNADO');
+        resultado = resultado.filter(c => c.leido && !c.archivado);
         break;
       case 'archivadas':
-        resultado = resultado.filter(c => c.etapa === 'ARCHIVADO');
+        resultado = resultado.filter(c => c.archivado);
         break;
       case 'urgentes':
-        resultado = resultado.filter(c => c.prioridad === 'ALTA');
+        resultado = resultado.filter(c => c.urgente);
         break;
     }
 
     // Búsqueda
     if (busqueda) {
       resultado = resultado.filter(c =>
-        c.id.toLowerCase().includes(busqueda.toLowerCase()) ||
         c.asunto?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        c.de.toLowerCase().includes(busqueda.toLowerCase()) ||
-        c.tipo.toLowerCase().includes(busqueda.toLowerCase())
+        c.remitenteNombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        c.remitenteEmail?.toLowerCase().includes(busqueda.toLowerCase()) ||
+        c.tipo?.toLowerCase().includes(busqueda.toLowerCase())
       );
     }
 
@@ -128,10 +108,10 @@ export function ModuloBuzonOficinaJuridicaV3() {
   };
 
   // Métricas
-  const totalPendientes = correosOficinaJuridica.filter(c => c.etapa === 'NO_LEIDO' || c.etapa === 'CLASIFICADO').length;
-  const totalUrgentes = correosOficinaJuridica.filter(c => c.prioridad === 'ALTA').length;
-  const totalArchivadas = correosOficinaJuridica.filter(c => c.etapa === 'ARCHIVADO').length;
-  const totalClasificadas = correosOficinaJuridica.filter(c => c.etapa === 'CLASIFICADO').length;
+  const totalPendientes = emails.filter(c => !c.leido && !c.archivado).length;
+  const totalUrgentes = emails.filter(c => c.urgente).length;
+  const totalArchivadas = emails.filter(c => c.archivado).length;
+  const totalClasificadas = emails.filter(c => c.aiSuggestedCategory).length;
 
   return (
     <div className="space-y-4">
@@ -156,18 +136,21 @@ export function ModuloBuzonOficinaJuridicaV3() {
           {
             icon: <Mail className="w-5 h-5 text-blue-600" />,
             value: totalPendientes,
-            label: 'Sin Clasificar'
+            label: 'Sin Clasificar',
+            color: 'blue'
           },
           {
             icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
             value: totalUrgentes,
-            label: 'Urgentes'
+            label: 'Urgentes',
+            color: 'red'
           },
           {
             icon: <Sparkles className="w-5 h-5 text-purple-600" />,
             value: totalClasificadas > 0 ? 96 : 0,
             label: 'Precisión IA',
-            suffix: '%'
+            suffix: '%',
+            color: 'purple'
           }
         ]}
       />
@@ -188,6 +171,7 @@ export function ModuloBuzonOficinaJuridicaV3() {
           archivarSeleccionadas={archivarSeleccionadas}
           totalPendientes={totalPendientes}
           totalUrgentes={totalUrgentes}
+          updateClassification={updateClassification}
         />
       )}
 
@@ -205,15 +189,16 @@ interface VistaInboxProps {
   setTabActiva: (tab: TabBandejaType) => void;
   busqueda: string;
   setBusqueda: (b: string) => void;
-  comunicacionesFiltradas: CorreoOJ[];
-  comunicacionSeleccionada: CorreoOJ | null;
-  setComunicacionSeleccionada: (c: CorreoOJ | null) => void;
+  comunicacionesFiltradas: CorreoJuridico[];
+  comunicacionSeleccionada: CorreoJuridico | null;
+  setComunicacionSeleccionada: (c: CorreoJuridico | null) => void;
   seleccionadas: Set<string>;
   toggleSeleccion: (id: string) => void;
   marcarComoLeidas: () => void;
   archivarSeleccionadas: () => void;
   totalPendientes: number;
   totalUrgentes: number;
+  updateClassification: (id: string, category: string) => Promise<any>;
 }
 
 function VistaInbox({
@@ -229,141 +214,229 @@ function VistaInbox({
   marcarComoLeidas,
   archivarSeleccionadas,
   totalPendientes,
-  totalUrgentes
+  totalUrgentes,
+  updateClassification
 }: VistaInboxProps) {
+  // ✨ Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 50;
+
+  // Aplicar paginación
+  const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
+  const comunicacionesPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    const fin = inicio + ITEMS_POR_PAGINA;
+    return comunicacionesFiltradas.slice(inicio, fin);
+  }, [comunicacionesFiltradas, paginaActual]);
+
+  // Resetear página cuando cambian filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [tabActiva, busqueda]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Panel izquierdo: Tabs y Lista */}
-      <div className="lg:col-span-2 space-y-3">
-        <Card className="bg-white border border-gray-200">
-          {/* Tabs */}
-          <div className="flex items-center gap-2 p-3 border-b border-gray-200 overflow-x-auto">
-            <button
-              onClick={() => setTabActiva('pendientes')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <Inbox className="w-4 h-4" />
-              Pendientes
-              {totalPendientes > 0 && <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>}
-            </button>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Panel izquierdo: Tabs y Lista */}
+        <div className="lg:col-span-2 space-y-3">
+          <Card className="bg-white border border-gray-200">
+            {/* Tabs */}
+            <div className="flex items-center gap-2 p-3 border-b border-gray-200 overflow-x-auto">
+              <button
+                onClick={() => setTabActiva('pendientes')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <Inbox className="w-4 h-4" />
+                Pendientes
+                {totalPendientes > 0 && <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>}
+              </button>
 
-            <button
-              onClick={() => setTabActiva('leidas')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <MailOpen className="w-4 h-4" />
-              Leídas
-            </button>
+              <button
+                onClick={() => setTabActiva('leidas')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <MailOpen className="w-4 h-4" />
+                Leídas
+              </button>
 
-            <button
-              onClick={() => setTabActiva('archivadas')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <Archive className="w-4 h-4" />
-              Archivadas
-            </button>
+              <button
+                onClick={() => setTabActiva('archivadas')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <Archive className="w-4 h-4" />
+                Archivadas
+              </button>
 
-            <button
-              onClick={() => setTabActiva('urgentes')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${
-                tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <AlertTriangle className="w-4 h-4" />
-              Urgentes
-              {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
-            </button>
-          </div>
-
-          {/* Búsqueda y acciones masivas */}
-          <div className="p-3 space-y-2 border-b border-gray-200">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
-                placeholder="Buscar comunicaciones..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-9"
-              />
+              <button
+                onClick={() => setTabActiva('urgentes')}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all flex-shrink-0 ${tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                <AlertTriangle className="w-4 h-4" />
+                Urgentes
+                {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
+              </button>
             </div>
 
-            {seleccionadas.size > 0 && (
-              <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
-                <span className="text-sm font-semibold text-blue-700">
-                  {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
-                </span>
-                <Button
-                  onClick={marcarComoLeidas}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  <Check className="w-3 h-3 mr-1" />
-                  Marcar como leídas
-                </Button>
-                <Button
-                  onClick={archivarSeleccionadas}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  <Archive className="w-3 h-3 mr-1" />
-                  Archivar
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Lista de comunicaciones */}
-          <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
-            {comunicacionesFiltradas.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-semibold">No hay comunicaciones</p>
-              </div>
-            ) : (
-              comunicacionesFiltradas.map((com) => (
-                <ItemComunicacion
-                  key={com.id}
-                  comunicacion={com}
-                  seleccionada={seleccionadas.has(com.id)}
-                  onToggleSeleccion={toggleSeleccion}
-                  onSeleccionar={() => setComunicacionSeleccionada(com)}
-                  activa={comunicacionSeleccionada?.id === com.id}
+            {/* Búsqueda y acciones masivas */}
+            <div className="p-3 space-y-2 border-b border-gray-200">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar comunicaciones..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="pl-9"
                 />
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
+              </div>
 
-      {/* Panel derecho: Vista previa */}
-      <div className="lg:col-span-1">
-        {comunicacionSeleccionada ? (
-          <TarjetaDetalleComunicacion comunicacion={comunicacionSeleccionada} />
-        ) : (
-          <Card className="bg-white border border-gray-200 p-6">
-            <div className="text-center text-gray-400">
-              <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-semibold">Selecciona una comunicación</p>
-              <p className="text-xs mt-1">para ver los detalles</p>
+              {seleccionadas.size > 0 && (
+                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                  <span className="text-sm font-semibold text-blue-700">
+                    {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
+                  </span>
+                  <Button
+                    onClick={marcarComoLeidas}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    Marcar como leídas
+                  </Button>
+                  <Button
+                    onClick={archivarSeleccionadas}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                  >
+                    <Archive className="w-3 h-3 mr-1" />
+                    Archivar
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Lista de comunicaciones */}
+            <div className="divide-y divide-gray-200 max-h-[600px] overflow-y-auto">
+              {comunicacionesPaginadas.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-semibold">No hay comunicaciones</p>
+                </div>
+              ) : (
+                comunicacionesPaginadas.map((com) => (
+                  <ItemComunicacion
+                    key={com.id}
+                    comunicacion={com}
+                    seleccionada={seleccionadas.has(com.id)}
+                    onToggleSeleccion={toggleSeleccion}
+                    onSeleccionar={() => setComunicacionSeleccionada(com)}
+                    activa={comunicacionSeleccionada?.id === com.id}
+                  />
+                ))
+              )}
             </div>
           </Card>
-        )}
+        </div>
+
+        {/* Panel derecho: Vista previa */}
+        <div className="lg:col-span-1">
+          {comunicacionSeleccionada ? (
+            <TarjetaDetalleComunicacion
+              comunicacion={comunicacionSeleccionada}
+              onConfirm={() => {
+                if (comunicacionSeleccionada.aiSuggestedCategory) {
+                  updateClassification(comunicacionSeleccionada.id, comunicacionSeleccionada.aiSuggestedCategory);
+                }
+              }}
+              onReclassify={() => {
+                const cat = prompt('Ingrese nueva categoría (JUDICIAL, OFICIO, CORREO):');
+                if (cat) updateClassification(comunicacionSeleccionada.id, cat);
+              }}
+              onLink={linkProcess}
+            />
+          ) : (
+            <Card className="bg-white border border-gray-200 p-6">
+              <div className="text-center text-gray-400">
+                <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-semibold">Selecciona una comunicación</p>
+                <p className="text-xs mt-1">para ver los detalles</p>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
+
+      {/* Controles de Paginación */}
+      {totalPaginas > 1 && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600">
+              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, comunicacionesFiltradas.length)} de {comunicacionesFiltradas.length} comunicaciones
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1 || totalPaginas <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </Button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={paginaActual === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                      disabled={totalPaginas <= 1}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+              >
+                Siguiente
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
 
 // ==================== ITEM COMUNICACIÓN ====================
 interface ItemComunicacionProps {
-  comunicacion: CorreoOJ;
+  comunicacion: CorreoJuridico;
   seleccionada: boolean;
   onToggleSeleccion: (id: string) => void;
   onSeleccionar: () => void;
@@ -371,22 +444,22 @@ interface ItemComunicacionProps {
 }
 
 function ItemComunicacion({ comunicacion, seleccionada, onToggleSeleccion, onSeleccionar, activa }: ItemComunicacionProps) {
-  const esNueva = comunicacion.etapa === 'NO_LEIDO';
-  const esUrgente = comunicacion.prioridad === 'ALTA';
+  const esNueva = !comunicacion.leido;
+  const esUrgente = comunicacion.urgente;
+  const remitente = comunicacion.remitenteNombre || comunicacion.remitenteEmail;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-all ${
-        activa ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-      } ${esNueva ? 'bg-blue-50/30' : ''}`}
+      className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-all ${activa ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+        } ${esNueva ? 'bg-blue-50/30' : ''}`}
       onClick={onSeleccionar}
     >
       <Checkbox
         checked={seleccionada}
         onCheckedChange={() => onToggleSeleccion(comunicacion.id)}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
       />
 
       <div className="flex-shrink-0">
@@ -400,7 +473,7 @@ function ItemComunicacion({ comunicacion, seleccionada, onToggleSeleccion, onSel
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <h4 className={`text-sm truncate ${esNueva ? 'font-bold text-gray-900' : 'font-normal text-gray-700'}`}>
-            {comunicacion.de}
+            {remitente}
           </h4>
           {esUrgente && (
             <Badge className="text-xs bg-red-100 text-red-700 flex-shrink-0 flex items-center gap-1">
@@ -426,25 +499,90 @@ function ItemComunicacion({ comunicacion, seleccionada, onToggleSeleccion, onSel
 
 // ==================== TARJETA DETALLE COMUNICACIÓN ====================
 interface TarjetaDetalleComunicacionProps {
-  comunicacion: CorreoOJ;
+  comunicacion: CorreoJuridico;
+  onConfirm: () => void;
+  onReclassify: () => void;
+  onLink: (id: string, expedienteId: string, targetModule: string) => Promise<any>;
 }
 
-function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacionProps) {
-  const esUrgente = comunicacion.prioridad === 'ALTA';
+function TarjetaDetalleComunicacion({ comunicacion, onConfirm, onReclassify, onLink }: TarjetaDetalleComunicacionProps) {
+  const esUrgente = comunicacion.urgente;
   const clasificacionIA = getClasificacionIA(comunicacion);
   const confianzaIA = clasificacionIA?.confianza || 0;
+  const remitente = comunicacion.remitenteNombre || comunicacion.remitenteEmail;
+
+  // Estados para Derivación Manual
+  const [selectedModule, setSelectedModule] = useState<'DEFENSA' | 'DISCIPLINARIO' | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]); // Generic, adapts to both
+  const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  // Reset state when comunicacion changes
+  useEffect(() => {
+    setSelectedModule(null);
+    setSearchTerm('');
+    setSearchResults([]);
+    setSelectedProcess(null);
+  }, [comunicacion.id]);
+
+  const handleSearch = async () => {
+    if (!searchTerm || !selectedModule) return;
+    setIsSearching(true);
+    setSearchResults([]);
+    try {
+      if (selectedModule === 'DEFENSA') {
+        const expedientes = await legalService.getExpedientes({ search: searchTerm });
+        setSearchResults(expedientes);
+      } else if (selectedModule === 'DISCIPLINARIO') {
+        // Mocked search logic since getJuzgamientoProcesos returns all (assuming small dataset)
+        // Ideally backend should support search
+        const procesos = await legalService.getJuzgamientoProcesos();
+        const filtered = procesos.filter((p: any) =>
+          (p.radicado && p.radicado.includes(searchTerm)) ||
+          (p.investigado && p.investigado.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+        setSearchResults(filtered);
+      }
+    } catch (error) {
+      toast.error('Error buscando procesos');
+      console.error(error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const executeLink = async () => {
+    if (!selectedProcess || !selectedModule) return;
+    setLinking(true);
+    try {
+      // Map Process ID - Defensa uses 'id', Juzgamiento uses 'radicado' usually as primary key for linking?
+      // Using 'id' if available (UUID), fallback to radicado.
+      // Check what linkToProcess expects (UUID usually).
+      const processId = selectedProcess.id; // EXPEDIENTE ID (UUID)
+
+      await onLink(comunicacion.id, processId, selectedModule);
+      // UI success handled by hook
+      setSelectedModule(null); // Reset UI
+    } catch (e) {
+      // Handled by hook
+    } finally {
+      setLinking(false);
+    }
+  };
 
   return (
-    <Card 
+    <Card
       className="bg-white border border-gray-200 flex flex-col w-full"
-      style={{ 
+      style={{
         height: '680px',
         minHeight: '680px',
         maxHeight: '680px'
       }}
     >
       {/* Barra superior azul ESAP */}
-      <div 
+      <div
         className="h-1 flex-shrink-0"
         style={{ background: '#003DA5' }}
       />
@@ -453,7 +591,7 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
         {/* Header */}
         <div className="flex items-start justify-between mb-1.5">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div 
+            <div
               className="p-1.5 rounded-lg flex-shrink-0"
               style={{ background: '#E0EDFF' }}
             >
@@ -461,7 +599,7 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="font-bold text-sm truncate" style={{ color: '#003DA5' }}>
-                {comunicacion.id}
+                {comunicacion.id.substring(0, 8)}...
               </h4>
               <p className="text-xs text-gray-600 truncate">
                 {comunicacion.tipo}
@@ -480,10 +618,10 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
         <div className="mb-1.5 pb-1.5 border-b border-gray-200">
           <p className="text-xs text-gray-500 mb-0.5">📧 De:</p>
           <p className="font-bold text-sm text-gray-900 line-clamp-1">
-            {comunicacion.de}
+            {remitente}
           </p>
           <p className="text-xs text-gray-600">
-            {comunicacion.de.includes('@') ? comunicacion.de : 'Correo interno'}
+            {comunicacion.remitenteEmail}
           </p>
         </div>
 
@@ -500,15 +638,15 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
           <div className="mb-1.5 pb-1.5 border-b border-gray-200">
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs text-gray-500">🤖 Clasificación IA:</p>
-              <Badge 
+              <Badge
                 className="text-xs font-semibold"
-                style={{ 
-                  background: confianzaIA >= 95 ? '#10B981' : 
-                              confianzaIA >= 85 ? '#F59E0B' : '#DC2626',
+                style={{
+                  background: confianzaIA >= 95 ? '#10B981' :
+                    confianzaIA >= 85 ? '#F59E0B' : '#DC2626',
                   color: 'white'
                 }}
               >
-                {confianzaIA}%
+                {confianzaIA.toFixed(1)}%
               </Badge>
             </div>
             <p className="font-bold text-sm text-gray-900">
@@ -521,50 +659,104 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
         )}
 
         {/* Contenido */}
-        <div className="mb-1.5 pb-1.5 border-b border-gray-200 flex-1 overflow-y-auto">
+        <div className="mb-1.5 pb-1.5 border-b border-gray-200 flex-1 overflow-y-auto max-h-[150px]">
           <p className="text-xs text-gray-500 mb-0.5">✉️ Contenido:</p>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">
-            {comunicacion.contenido || 'Sin contenido disponible'}
+            {comunicacion.cuerpoTexto || 'Sin contenido disponible'}
           </p>
         </div>
 
-        {/* Métricas */}
-        <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-          <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
-            <p className="text-xs font-bold text-gray-700">
-              {new Date(comunicacion.fechaRecepcion).toLocaleDateString()}
-            </p>
-            <p className="text-xs text-gray-500">Recibido</p>
-          </div>
-          <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
-            <p className="text-xs font-bold text-gray-700">{comunicacion.adjuntos || 0}</p>
-            <p className="text-xs text-gray-500">Adjuntos</p>
-          </div>
-          <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
-            <p className="text-xs font-bold text-gray-700 uppercase">{comunicacion.etapa}</p>
-            <p className="text-xs text-gray-500">Estado</p>
-          </div>
-        </div>
+        {/* --- SECCIÓN DE DERIVACIÓN MANUAL --- */}
+        <div className="mt-auto bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <h5 className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+            <Send className="w-3 h-3" />
+            Derivación / Vinculación
+          </h5>
 
-        {/* Botones de acción */}
-        <div className="grid grid-cols-2 gap-1.5 mt-auto pt-2 border-t border-gray-200">
-          <Button
-            variant="default"
-            size="sm"
-            className="text-xs h-8 justify-center gap-1.5"
-            style={{ background: '#003DA5' }}
-          >
-            <CheckCircle className="w-3.5 h-3.5" />
-            Confirmar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-8 justify-center gap-1.5"
-          >
-            <Send className="w-3.5 h-3.5" />
-            Reclasificar
-          </Button>
+          {/* Selector de Módulo */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              onClick={() => setSelectedModule('DEFENSA')}
+              className={`text-xs py-1.5 px-2 rounded-md border text-center transition-all ${selectedModule === 'DEFENSA'
+                  ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold'
+                  : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              Defensa Judicial
+            </button>
+            <button
+              onClick={() => setSelectedModule('DISCIPLINARIO')}
+              className={`text-xs py-1.5 px-2 rounded-md border text-center transition-all ${selectedModule === 'DISCIPLINARIO'
+                  ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold'
+                  : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              Disciplinario
+            </button>
+          </div>
+
+          {/* Buscador (Solo si hay módulo seleccionado) */}
+          {selectedModule && (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex gap-1">
+                <Input
+                  placeholder={selectedModule === 'DEFENSA' ? "Buscar por radicado, demandante..." : "Buscar por radicado, investigado..."}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <Button size="sm" onClick={handleSearch} disabled={isSearching} className="h-8 w-8 p-0" variant="outline">
+                  <Search className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Resultados */}
+              {searchResults.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-md max-h-[120px] overflow-y-auto">
+                  {searchResults.map((proc) => (
+                    <div
+                      key={proc.id}
+                      onClick={() => setSelectedProcess(proc)}
+                      className={`p-2 text-xs border-b border-gray-100 cursor-pointer hover:bg-blue-50 ${selectedProcess?.id === proc.id ? 'bg-blue-50 border-l-2 border-blue-500' : ''
+                        }`}
+                    >
+                      <p className="font-bold">{proc.radicado}</p>
+                      <p className="text-gray-500 truncate">
+                        {selectedModule === 'DEFENSA' ? proc.demandante : proc.investigado || proc.nombreInvestigado}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.length === 0 && searchTerm && !isSearching && (
+                <p className="text-xs text-gray-400 text-center italic">No se encontraron resultados</p>
+              )}
+
+              {/* Botón Acción Final */}
+              <Button
+                className="w-full h-8 text-xs mt-2"
+                style={{ background: '#003DA5' }}
+                disabled={!selectedProcess || linking}
+                onClick={executeLink}
+              >
+                {linking ? 'Vinculando...' : 'Vincular y Mover'}
+              </Button>
+            </div>
+          )}
+
+          {!selectedModule && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={onReclassify}>
+                Reclasificar
+              </Button>
+              <Button variant="ghost" size="sm" className="flex-1 h-7 text-xs text-gray-500" onClick={onConfirm}>
+                Confirmar (Rápido)
+              </Button>
+            </div>
+          )}
+
         </div>
       </div>
     </Card>
@@ -573,25 +765,32 @@ function TarjetaDetalleComunicacion({ comunicacion }: TarjetaDetalleComunicacion
 
 // ==================== VISTA LISTA ====================
 interface VistaListaProps {
-  comunicaciones: CorreoOJ[];
+  comunicaciones: CorreoJuridico[];
 }
 
 function VistaLista({ comunicaciones }: VistaListaProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const getSemaforoColor = (etapa: string) => {
-    if (etapa === 'NO_LEIDO') return '#DC2626';
-    if (etapa === 'CLASIFICADO') return '#F59E0B';
+  const getSemaforoColor = (com: CorreoJuridico) => {
+    if (!com.leido) return '#DC2626';
+    if (!com.isTrained) return '#F59E0B';
     return '#10B981';
+  };
+
+  const getEstadoLabel = (com: CorreoJuridico) => {
+    if (!com.leido) return 'NO LEÍDO';
+    if (!com.isTrained) return 'PEND. CLASIFICAR';
+    return 'PROCESADO';
   };
 
   const getInitials = (name: string) => {
     return name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'NA';
   };
 
-  const filteredComunicaciones = comunicaciones.filter(c => 
+  const filteredComunicaciones = comunicaciones.filter(c =>
     c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.de.toLowerCase().includes(searchTerm.toLowerCase())
+    (c.remitenteNombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.remitenteEmail.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -636,7 +835,7 @@ function VistaLista({ comunicaciones }: VistaListaProps) {
             </thead>
             <tbody>
               {filteredComunicaciones.map((com) => (
-                <tr 
+                <tr
                   key={com.id}
                   className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 >
@@ -644,7 +843,7 @@ function VistaLista({ comunicaciones }: VistaListaProps) {
                     {com.id}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
-                    {com.de}
+                    {com.remitenteNombre || com.remitenteEmail}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700 truncate max-w-xs">
                     {com.asunto || 'Sin asunto'}
@@ -655,15 +854,15 @@ function VistaLista({ comunicaciones }: VistaListaProps) {
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge 
+                    <Badge
                       className="text-xs flex items-center gap-1 w-fit"
-                      style={{ color: getSemaforoColor(com.etapa) }}
+                      style={{ color: getSemaforoColor(com) }}
                     >
-                      <div 
+                      <div
                         className="w-2 h-2 rounded-full"
-                        style={{ background: getSemaforoColor(com.etapa) }}
+                        style={{ background: getSemaforoColor(com) }}
                       />
-                      {com.etapa}
+                      {getEstadoLabel(com)}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">

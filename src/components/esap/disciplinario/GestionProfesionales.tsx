@@ -1,7 +1,18 @@
 /**
- * GESTIÓN DE PROFESIONALES - Control Disciplinario
- * Asignación y gestión de profesionales al equipo disciplinario
- * NOTA: Los usuarios se crean ÚNICAMENTE desde Administración de Personas
+ * ASIGNACIÓN Y SEGUIMIENTO DE PROFESIONALES - Control Disciplinario
+ * 
+ * ⚠️ IMPORTANTE - GOBERNANZA DE DATOS OTIC:
+ * - NO se crean usuarios desde aquí
+ * - NO se editan datos personales
+ * - NO se asignan roles
+ * - La gestión de personas es EXCLUSIVA del módulo "Gestión de Personas"
+ * 
+ * FUNCIONES DE ESTE MÓDULO:
+ * ✓ Visualizar profesionales del área disciplinaria
+ * ✓ Asignar/reasignar procesos entre profesionales
+ * ✓ Ver carga de trabajo y capacidad
+ * ✓ Generar reportes de desempeño
+ * ✓ Redistribuir casos
  */
 
 import { useState, useEffect } from 'react';
@@ -9,7 +20,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Plus, Filter, Download, Eye, Edit, Trash2, MoreVertical,
   X, Save, Users, Mail, Phone, Award, Target, TrendingUp, Clock,
-  AlertTriangle, CheckCircle, FolderOpen, User, Briefcase, MapPin, Upload, FileText, Shield
+  AlertTriangle, CheckCircle, FolderOpen, User, Briefcase, MapPin, Upload, FileText, Shield,
+  ArrowRightLeft, PieChart, BarChart3, RefreshCw, AlertCircle,
+  Calendar, ChevronDown, Building, CheckCircle2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -19,6 +32,10 @@ import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
 
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
+
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 interface Profesional {
   id: string;
@@ -38,6 +55,19 @@ interface Profesional {
   territorial: string;
   firmaUrl?: string;
 }
+
+interface ProcesoParaAsignar {
+  id: string;
+  numero: string;
+  disciplinable: string;
+  etapa: string;
+  diasRestantes: number;
+  prioridad: 'alta' | 'media' | 'baja';
+}
+
+// ============================================================================
+// MOCK DATA
+// ============================================================================
 
 const PROFESIONALES_DATA: Profesional[] = [
   {
@@ -124,6 +154,50 @@ const PROFESIONALES_DATA: Profesional[] = [
     estado: 'vacaciones',
     tipoContrato: 'Planta',
     territorial: 'Dirección Nacional'
+  },
+  {
+    id: '6',
+    nombre: 'Laura Martínez Díaz',
+    cargo: 'Profesional Universitario',
+    especialidad: 'Derecho Administrativo',
+    email: 'laura.martinez@esap.edu.co',
+    telefono: '3156667788',
+    procesosAsignados: 4,
+    capacidadMaxima: 10,
+    procesosVencidos: 0,
+    procesosEnRiesgo: 1,
+    procesosAlDia: 3,
+    fechaIngreso: '2023-02-01',
+    estado: 'activo',
+    tipoContrato: 'Contratista',
+    territorial: 'Territorial Valle'
+  }
+];
+
+const PROCESOS_SIN_ASIGNAR: ProcesoParaAsignar[] = [
+  {
+    id: 'p1',
+    numero: 'PD-2025-0156',
+    disciplinable: 'Carlos López Martínez',
+    etapa: 'Valoración',
+    diasRestantes: 15,
+    prioridad: 'media'
+  },
+  {
+    id: 'p2',
+    numero: 'PD-2025-0157',
+    disciplinable: 'Laura Gómez Silva',
+    etapa: 'Indagación',
+    diasRestantes: 3,
+    prioridad: 'alta'
+  },
+  {
+    id: 'p3',
+    numero: 'PD-2025-0158',
+    disciplinable: 'Diego Ramírez Castro',
+    etapa: 'Valoración',
+    diasRestantes: 25,
+    prioridad: 'baja'
   }
 ];
 
@@ -781,27 +855,12 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
 
           {/* Configuración Disciplinaria */}
           <div>
-            <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
-              {profesional ? 'Configuración del Profesional' : '2. Configuración para el Equipo Disciplinario'}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-                  Especialidad en Derecho *
-                </label>
-                <select
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                  style={{ borderColor: '#E5E7EB' }}
-                  value={especialidad}
-                  onChange={(e) => setEspecialidad(e.target.value)}
-                >
-                  <option value="">Seleccione...</option>
-                  <option value="Derecho Disciplinario">Derecho Disciplinario</option>
-                  <option value="Derecho Administrativo">Derecho Administrativo</option>
-                  <option value="Derecho Público">Derecho Público</option>
-                  <option value="Derecho Penal">Derecho Penal</option>
-                </select>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div 
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center" 
+                style={{ backgroundColor: '#E0EDFF' }}
+              >
+                <Users size={20} className="sm:w-6 sm:h-6" style={{ color: '#003DA5' }} />
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
@@ -880,12 +939,16 @@ function ModalFormularioProfesional({ onClose, profesional, onSuccess }: { onClo
 export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profesional: Profesional) => void }) {
   // const [profesionales, setProfesionales] = useState(PROFESIONALES_DATA);
   const [profesionales, setProfesionales] = useState<Profesional[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<string>('todos');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterEstado, setFilterEstado] = useState<string>('all');
+  const [filterTerritorial, setFilterTerritorial] = useState<string>('all');
   const [profesionalSeleccionado, setProfesionalSeleccionado] = useState<Profesional | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [profesionalEditar, setProfesionalEditar] = useState<Profesional | undefined>();
   const [loading, setLoading] = useState(true);
+  const [showModalDetalle, setShowModalDetalle] = useState(false);
+  const [showModalAsignacion, setShowModalAsignacion] = useState(false);
+  const [showModalRedistribucion, setShowModalRedistribucion] = useState(false);
 
   // Cargar profesionales del backend
   const fetchProfesionales = async () => {
@@ -924,13 +987,17 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
   }, []);
 
   const profesionalesFiltrados = profesionales.filter(p => {
-    const matchSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.cargo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchEstado = filtroEstado === 'todos' || p.estado === filtroEstado;
+    const matchSearch = p.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.cargo.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesEstado = filterEstado === 'all' || p.estado === filterEstado;
+    const matchesTerritorial = filterTerritorial === 'all' || p.territorial === filterTerritorial;
 
-    return matchSearch && matchEstado;
+    return matchSearch && matchesEstado && matchesTerritorial;
   });
+
+  // Territoriales únicos
+  const territoriales = [...new Set(profesionales.map(p => p.territorial))];
 
   const handleDesasignar = async (id: string) => {
     const profesional = profesionales.find(p => p.id === id);
@@ -957,6 +1024,20 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
     activos: profesionales.filter(p => p.estado === 'activo').length,
     capacidadTotal: profesionales.reduce((sum, p) => sum + p.capacidadMaxima, 0),
     procesosAsignados: profesionales.reduce((sum, p) => sum + p.procesosAsignados, 0)
+  };
+
+  const handleAsignarProceso = (profesionalId: string, procesoId: string) => {
+    toast.success('Proceso asignado exitosamente', {
+      description: 'El proceso ha sido asignado al profesional seleccionado'
+    });
+    setShowModalAsignacion(false);
+  };
+
+  const handleRedistribuir = () => {
+    toast.success('Redistribución completada', {
+      description: 'Los procesos han sido redistribuidos equitativamente'
+    });
+    setShowModalRedistribucion(false);
   };
 
   return (
@@ -1000,78 +1081,96 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
         </div>
       </div>
 
-      {/* Filtros */}
-      <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="flex-1 w-full relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#9CA3AF' }} />
-            <input
-              type="text"
-              placeholder="Buscar por nombre, email o cargo..."
-              className="w-full pl-12 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-              style={{ borderColor: '#E5E7EB' }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      {/* Alert Informativo - Gobernanza */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="text-sm text-gray-700">
+              <p className="font-bold text-purple-900 mb-1">
+                🔒 Gobernanza de Datos OTIC
+              </p>
+              <p className="text-xs sm:text-sm">
+                La gestión de usuarios, roles y permisos se realiza <strong>ÚNICAMENTE</strong> desde el módulo de 
+                <strong> Gestión de Personas</strong>. Este módulo solo permite asignar y visualizar la carga de trabajo 
+                de los profesionales del área disciplinaria.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Barra de Filtros y Acciones */}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Filtros */}
+          <div className="flex items-center gap-2 flex-1">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar profesional..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            <select
+              value={filterEstado}
+              onChange={(e) => setFilterEstado(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-semibold"
+            >
+              <option value="all">Todos</option>
+              <option value="activo">✓ Activos</option>
+              <option value="vacaciones">🏖️ Vacaciones</option>
+              <option value="inactivo">✗ Inactivos</option>
+            </select>
+            <select
+              value={filterTerritorial}
+              onChange={(e) => setFilterTerritorial(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm font-semibold"
+            >
+              <option value="all">Todas las territoriales</option>
+              {territoriales.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
 
-          <select
-            className="px-4 py-3 rounded-xl border-2 focus:outline-none font-semibold"
-            style={{ borderColor: '#E5E7EB', color: '#4B5563' }}
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="activo">✓ Activos</option>
-            <option value="vacaciones">🏖 En vacaciones</option>
-            <option value="inactivo">✕ Inactivos</option>
-          </select>
-
-          <button
-            onClick={() => toast.info('Exportando a Excel...')}
-            className="px-4 py-3 rounded-xl font-semibold flex items-center gap-2"
-            style={{ background: '#10B981', color: '#FFFFFF' }}
-          >
-            <Download className="w-4 h-4" />
-            Exportar
-          </button>
+          {/* Acciones */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowModalAsignacion(true)}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Asignar</span>
+            </button>
+            <button
+              onClick={() => setShowModalRedistribucion(true)}
+              className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">Redistribuir</span>
+            </button>
+            <button
+              onClick={() => toast.info('Exportando reporte...')}
+              className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Reporte</span>
+            </button>
+          </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Lista de Profesionales */}
-      <Card className="border-2 overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
-        <div className="overflow-x-auto">
-          <div className="min-w-[1200px]">
-            {/* Header de la tabla */}
-            <div className="grid grid-cols-12 gap-4 p-4 border-b-2" style={{ background: '#F9FAFB', borderColor: '#E5E7EB' }}>
-              <div className="col-span-3">
-                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Profesional
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Carga de Trabajo
-                </p>
-              </div>
-              <div className="col-span-3">
-                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Distribución de Procesos
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Desempeño
-                </p>
-              </div>
-              <div className="col-span-2 text-right">
-                <p className="text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
-                  Acciones
-                </p>
-              </div>
-            </div>
-
-            {/* Filas de profesionales */}
+      {/* Tabla de Profesionales */}
+      <div className="flex-1 overflow-auto p-3 sm:p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
             <div className="divide-y" style={{ borderColor: '#E5E7EB' }}>
               {profesionalesFiltrados.map((profesional) => {
                 const porcentajeCarga = (profesional.procesosAsignados / profesional.capacidadMaxima) * 100;
@@ -1095,85 +1194,67 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                         <h3 className="font-bold text-sm truncate mb-1" style={{ color: '#1F2937' }}>
                           {profesional.nombre}
                         </h3>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            className="text-xs"
-                            style={{
-                              background: profesional.estado === 'activo' ? '#D1FAE5' : profesional.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
-                              color: profesional.estado === 'activo' ? '#059669' : profesional.estado === 'vacaciones' ? '#D97706' : '#DC2626'
-                            }}
-                          >
-                            {profesional.estado.toUpperCase()}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Award className="w-3 h-3 flex-shrink-0" style={{ color: '#9CA3AF' }} />
-                          <p className="text-xs truncate" style={{ color: '#6B7280' }}>
-                            {profesional.especialidad}
-                          </p>
-                        </div>
+                        <p className="text-xs text-gray-600 truncate">{profesional.email}</p>
+                        <p className="text-[11px] text-gray-500">📞 {profesional.telefono}</p>
                       </div>
                     </div>
 
-                    {/* Columna 2: Carga de Trabajo */}
-                    <div className="col-span-2 flex flex-col justify-center">
-                      <div className="mb-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                            Capacidad
-                          </p>
-                          <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
-                            {profesional.procesosAsignados}/{profesional.capacidadMaxima}
-                          </p>
-                        </div>
-                        <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${porcentajeCarga}%`,
-                              background: porcentajeCarga >= 90
-                                ? '#DC2626'
-                                : porcentajeCarga >= 70
-                                  ? '#F59E0B'
-                                  : '#10B981'
-                            }}
-                          />
-                        </div>
+                    {/* Columna 2: Cargo y Especialidad */}
+                    <div className="col-span-3">
+                      <p className="text-sm font-semibold text-gray-900">{profesional.cargo}</p>
+                      <p className="text-xs text-gray-600">{profesional.especialidad}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge className="bg-blue-50 text-blue-700 border border-blue-200">
+                          <Building className="w-3 h-3 mr-1" />
+                          {profesional.fechaIngreso}
+                        </Badge>
                       </div>
-                      <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                        {porcentajeCarga.toFixed(0)}% de capacidad utilizada
+                    </div>
+
+                    {/* Columna 3: Carga de trabajo */}
+                    <div className="col-span-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-gray-600">Carga de Trabajo</span>
+                        <span className="text-xs font-bold" style={{ color: '#003DA5' }}>
+                          {profesional.procesosAsignados}/{profesional.capacidadMaxima}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full"
+                          style={{
+                            width: `${Math.min(100, porcentajeCarga)}%`,
+                            backgroundColor: porcentajeCarga >= 90 ? '#DC2626' : porcentajeCarga >= 70 ? '#F59E0B' : '#10B981'
+                          }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Uso de capacidad: <strong>{porcentajeCarga.toFixed(0)}%</strong>
                       </p>
                     </div>
 
-                    {/* Columna 3: Distribución de Procesos */}
-                    <div className="col-span-3 flex items-center gap-2">
-                      {/* Al día */}
-                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#F0FDF4', borderColor: '#D1FAE5' }}>
+                    {/* Columna 4: Métricas */}
+                    <div className="col-span-2 flex items-center gap-2">
+                      <div className="flex-1 p-2 rounded-lg border" style={{ background: '#ECFDF3', borderColor: '#D1FADF' }}>
                         <div className="flex items-center gap-2 mb-1">
-                          <CheckCircle className="w-4 h-4" style={{ color: '#10B981' }} />
-                          <p className="text-xs font-semibold" style={{ color: '#059669' }}>
-                            Al día
-                          </p>
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          <p className="text-xs font-semibold text-green-700">Al Día</p>
                         </div>
-                        <p className="text-xl font-bold" style={{ color: '#10B981' }}>
-                          {profesional.procesosAlDia}
-                        </p>
+                        <p className="text-xl font-bold text-green-700">{profesional.procesosAlDia}</p>
                       </div>
 
-                      {/* En riesgo */}
                       <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FFFBEB', borderColor: '#FEF3C7' }}>
                         <div className="flex items-center gap-2 mb-1">
-                          <Clock className="w-4 h-4" style={{ color: '#F59E0B' }} />
+                          <AlertTriangle className="w-4 h-4" style={{ color: '#D97706' }} />
                           <p className="text-xs font-semibold" style={{ color: '#D97706' }}>
-                            Riesgo
+                            En riesgo
                           </p>
                         </div>
-                        <p className="text-xl font-bold" style={{ color: '#F59E0B' }}>
+                        <p className="text-xl font-bold" style={{ color: '#D97706' }}>
                           {profesional.procesosEnRiesgo}
                         </p>
                       </div>
 
-                      {/* Vencidos */}
                       <div className="flex-1 p-2 rounded-lg border" style={{ background: '#FEF2F2', borderColor: '#FEE2E2' }}>
                         <div className="flex items-center gap-2 mb-1">
                           <AlertTriangle className="w-4 h-4" style={{ color: '#DC2626' }} />
@@ -1196,19 +1277,8 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                             Efectividad
                           </span>
                         </div>
-                        <span className="text-lg font-bold" style={{ color: '#003DA5' }}>
-                          {tasaEfectividad}%
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F9FAFB' }}>
-                        <div className="flex items-center gap-2">
-                          <Target className="w-4 h-4" style={{ color: '#003DA5' }} />
-                          <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                            Disponible
-                          </span>
-                        </div>
-                        <span className="text-lg font-bold" style={{ color: '#003DA5' }}>
-                          {profesional.capacidadMaxima - profesional.procesosAsignados}
+                        <span className="text-lg font-bold" style={{ color: '#10B981' }}>
+                          {profesional.efectividad || 0}%
                         </span>
                       </div>
                     </div>
@@ -1228,74 +1298,405 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                         Ver
                       </button>
                       {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_EDIT) && (
-                      <button
-                        onClick={() => {
-                          setProfesionalEditar(profesional);
-                          setShowModal('formulario');
-                        }}
-                        className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        title="Editar configuración"
-                      >
-                        <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
-                      </button>
+                        <button
+                          onClick={() => {
+                            setProfesionalEditar(profesional);
+                            setShowModal('formulario');
+                          }}
+                          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          title="Editar configuración"
+                        >
+                          <Edit className="w-4 h-4" style={{ color: '#6B7280' }} />
+                        </button>
                       )}
                       {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_DELETE) && (
-                      <button
-                        onClick={() => handleDesasignar(profesional.id)}
-                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                        title="Desasignar del equipo"
-                      >
-                        <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
-                      </button>
+                        <button
+                          onClick={() => handleDesasignar(profesional.id)}
+                          className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                          title="Desasignar del equipo"
+                        >
+                          <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
+                        </button>
                       )}
                     </div>
                   </div>
                 );
               })}
             </div>
+
+            {profesionalesFiltrados.length === 0 && (
+              <div className="p-12 text-center">
+                <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-bold text-gray-900 mb-2">
+                  No se encontraron profesionales
+                </h3>
+                <p className="text-gray-600">
+                  Intenta ajustar los filtros de búsqueda
+                </p>
+              </div>
+            )}
           </div>
         </div>
-      </Card>
-
-      {profesionalesFiltrados.length === 0 && (
-        <Card className="p-12 text-center border-2" style={{ borderColor: '#E5E7EB' }}>
-          <Users className="w-16 h-16 mx-auto mb-4" style={{ color: '#9CA3AF' }} />
-          <h3 className="text-lg font-bold mb-2" style={{ color: '#1F2937' }}>
-            No se encontraron profesionales
-          </h3>
-          <p style={{ color: '#6B7280' }}>
-            Intenta ajustar los filtros o asignar profesionales existentes desde Administración de Personas
-          </p>
-        </Card>
-      )}
-
-      {/* Modales */}
+      </div>
+      {/* Modal Detalle Profesional */}
       <AnimatePresence>
-        {showModal === 'detalle' && profesionalSeleccionado && (
-          <ModalDetalleProfesional
-            profesional={profesionalSeleccionado}
-            onClose={() => {
-              setShowModal(null);
-              setProfesionalSeleccionado(null);
+        {showModalDetalle && profesionalSeleccionado && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowModalDetalle(false);
             }}
-            onEditar={(prof) => {
-              setProfesionalEditar(prof);
-              setShowModal('formulario');
-            }}
-            onVerProcesos={onVerProcesos}
-          />
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div 
+                      className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white"
+                      style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                    >
+                      {profesionalSeleccionado.nombre.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                        {profesionalSeleccionado.nombre}
+                      </h2>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {profesionalSeleccionado.cargo}
+                      </p>
+                      <span
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold mt-2"
+                        style={{
+                          backgroundColor: 
+                            profesionalSeleccionado.estado === 'activo' ? '#D1FAE5' :
+                            profesionalSeleccionado.estado === 'vacaciones' ? '#FEF3C7' : '#FEE2E2',
+                          color:
+                            profesionalSeleccionado.estado === 'activo' ? '#059669' :
+                            profesionalSeleccionado.estado === 'vacaciones' ? '#D97706' : '#DC2626'
+                        }}
+                      >
+                        {profesionalSeleccionado.estado.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowModalDetalle(false)}
+                    className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Contenido */}
+              <div className="p-6 space-y-6">
+                {/* Información de Contacto */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">
+                    Información de Contacto
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg bg-gray-50 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0EDFF' }}>
+                        <Mail className="w-5 h-5" style={{ color: '#003DA5' }} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-600">EMAIL</p>
+                        <p className="text-sm text-gray-900">{profesionalSeleccionado.email}</p>
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-gray-50 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0EDFF' }}>
+                        <Phone className="w-5 h-5" style={{ color: '#003DA5' }} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-600">TELÉFONO</p>
+                        <p className="text-sm text-gray-900">{profesionalSeleccionado.telefono}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información Laboral */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">
+                    Información Laboral
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg bg-gray-50">
+                      <p className="text-xs font-bold text-gray-600 mb-1">ESPECIALIDAD</p>
+                      <p className="text-sm text-gray-900">{profesionalSeleccionado.especialidad}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-gray-50">
+                      <p className="text-xs font-bold text-gray-600 mb-1">TIPO CONTRATO</p>
+                      <p className="text-sm text-gray-900">{profesionalSeleccionado.tipoContrato}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-gray-50">
+                      <p className="text-xs font-bold text-gray-600 mb-1">TERRITORIAL</p>
+                      <p className="text-sm text-gray-900">{profesionalSeleccionado.territorial}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Métricas de Desempeño */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">
+                    Métricas de Desempeño
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-4 rounded-lg bg-blue-50 text-center">
+                      <p className="text-2xl font-bold text-blue-700">{profesionalSeleccionado.procesosAsignados}</p>
+                      <p className="text-xs text-gray-600 mt-1">Total Asignados</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-green-50 text-center">
+                      <p className="text-2xl font-bold text-green-700">{profesionalSeleccionado.procesosAlDia}</p>
+                      <p className="text-xs text-gray-600 mt-1">Al Día</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-yellow-50 text-center">
+                      <p className="text-2xl font-bold text-yellow-700">{profesionalSeleccionado.procesosEnRiesgo}</p>
+                      <p className="text-xs text-gray-600 mt-1">En Riesgo</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-red-50 text-center">
+                      <p className="text-2xl font-bold text-red-700">{profesionalSeleccionado.procesosVencidos}</p>
+                      <p className="text-xs text-gray-600 mt-1">Vencidos</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Carga de Trabajo */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">
+                    Carga de Trabajo
+                  </h3>
+                  <div className="p-4 rounded-lg bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-bold text-gray-700">Capacidad</p>
+                      <p className="text-sm font-bold" style={{ color: '#003DA5' }}>
+                        {profesionalSeleccionado.procesosAsignados} / {profesionalSeleccionado.capacidadMaxima}
+                      </p>
+                    </div>
+                    <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full rounded-full"
+                        style={{ 
+                          width: `${(profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100}%`,
+                          background: 'linear-gradient(90deg, #2962FF 0%, #003DA5 100%)'
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-gray-600 mt-2">
+                      {((profesionalSeleccionado.procesosAsignados / profesionalSeleccionado.capacidadMaxima) * 100).toFixed(1)}% de capacidad utilizada
+                    </p>
+                  </div>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex gap-3 justify-end pt-4 border-t">
+                  <button
+                    onClick={() => setShowModalDetalle(false)}
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (onVerProcesos) {
+                        onVerProcesos(profesionalSeleccionado);
+                        setShowModalDetalle(false);
+                      }
+                    }}
+                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all flex items-center gap-2"
+                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    Ver Procesos Asignados
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
-        {showModal === 'formulario' && (
-          <ModalFormularioProfesional
-            profesional={profesionalEditar}
-            onClose={() => {
-              setShowModal(null);
-              setProfesionalEditar(undefined);
+      </AnimatePresence>
+
+      {/* Modal Asignación de Proceso */}
+      <AnimatePresence>
+        {showModalAsignacion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowModalAsignacion(false);
             }}
             onSuccess={() => {
               fetchProfesionales();
             }}
-          />
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <ArrowRightLeft className="w-6 h-6" />
+                    <h2 className="text-xl font-bold">Asignar Proceso a Profesional</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowModalAsignacion(false)}
+                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Seleccionar Proceso Sin Asignar
+                  </label>
+                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Seleccione un proceso</option>
+                    {PROCESOS_SIN_ASIGNAR.map(proceso => (
+                      <option key={proceso.id} value={proceso.id}>
+                        {proceso.numero} - {proceso.disciplinable} ({proceso.etapa})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Asignar a Profesional
+                  </label>
+                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Seleccione un profesional</option>
+                    {profesionales
+                      .filter(p => p.estado === 'activo')
+                      .map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre} ({p.procesosAsignados}/{p.capacidadMaxima})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-3 justify-end pt-4">
+                  <button
+                    onClick={() => setShowModalAsignacion(false)}
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleAsignarProceso('', '')}
+                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
+                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                  >
+                    Asignar Proceso
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Redistribución */}
+      <AnimatePresence>
+        {showModalRedistribucion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[200] p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowModalRedistribucion(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-lg bg-white rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 text-white rounded-t-2xl" style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <RefreshCw className="w-6 h-6" />
+                    <h2 className="text-xl font-bold">Redistribuir Carga de Trabajo</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowModalRedistribucion(false)}
+                    className="p-2 rounded-lg hover:bg-white/20 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+                    <div className="text-sm text-gray-700">
+                      <p className="font-bold text-yellow-900 mb-1">
+                        ⚠️ Redistribución Automática
+                      </p>
+                      <p className="text-xs">
+                        Esta función redistribuirá equitativamente todos los procesos entre los profesionales activos, 
+                        respetando las capacidades máximas configuradas.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-gray-700">Profesionales que participarán:</p>
+                  {profesionales.filter(p => p.estado === 'activo').map(p => (
+                    <div key={p.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                      <span className="text-sm text-gray-900">{p.nombre}</span>
+                      <span className="text-xs font-bold text-gray-600">
+                        {p.procesosAsignados}/{p.capacidadMaxima}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-3 justify-end pt-4">
+                  <button
+                    onClick={() => setShowModalRedistribucion(false)}
+                    className="px-6 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleRedistribuir}
+                    className="px-6 py-2.5 rounded-lg text-white font-bold hover:shadow-lg transition-all"
+                    style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                  >
+                    Redistribuir Ahora
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

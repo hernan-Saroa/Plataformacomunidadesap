@@ -42,7 +42,7 @@ import {
   Calendar, Plus, Filter, Search, Users, MapPin,
   ChevronLeft, ChevronRight, Download, Check, X, AlertCircle,
   Grid, List, Edit2, Save, Trash2, Building2,
-  AlertTriangle, Eye, BarChart3, FileText, Layers, Info
+  AlertTriangle, Eye, BarChart3, FileText, Layers, Info, Send
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { auditoriasApi } from './services/api';
@@ -51,42 +51,13 @@ import ExcelJS from 'exceljs';
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
+import { Badge } from '../../ui/badge';
 
 // ============ COMPONENTES DE AUDITORÍA ============
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
-// ============ COMPONENTE BADGE AUXILIAR ============
-function Badge({ 
-  variant = 'default', 
-  size = 'md',
-  children, 
-  className = '' 
-}: { 
-  variant?: 'default' | 'info' | 'success' | 'warning' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const variants = {
-    default: 'bg-gray-100 text-gray-700',
-    info: 'bg-blue-100 text-blue-700',
-    success: 'bg-green-100 text-green-700',
-    warning: 'bg-yellow-100 text-yellow-700',
-    danger: 'bg-red-100 text-red-700',
-  };
-  
-  const sizes = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-2.5 py-1 text-sm',
-    lg: 'px-3 py-1.5 text-base',
-  };
-
-  return (
-    <span className={`inline-flex items-center gap-1 rounded font-medium ${variants[variant]} ${sizes[size]} ${className}`}>
-      {children}
-    </span>
-  );
-}
+// ============ INTEGRACIÓN CONTEXT ============
+import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';
 
 // ============ TIPOS ============
 
@@ -1359,6 +1330,25 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* ✅ NUEVO: Botón Aprobar Programa */}
+          {!programaAprobado && (
+            <ButtonSIGL
+              variant="primary"
+              icon={<Send className="w-4 h-4" />}
+              onClick={handleAprobarPrograma}
+              className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-md"
+            >
+              Aprobar Programa
+            </ButtonSIGL>
+          )}
+
+          {programaAprobado && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg border border-green-300">
+              <Check className="w-4 h-4" />
+              <span className="text-sm">Programa Aprobado</span>
+            </div>
+          )}
+
           <ButtonSIGL
             variant="outline"
             icon={<Download className="w-4 h-4" />}

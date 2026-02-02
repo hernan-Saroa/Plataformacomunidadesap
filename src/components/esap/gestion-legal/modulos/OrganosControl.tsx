@@ -17,7 +17,7 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
@@ -104,26 +104,49 @@ export function OrganosControl() {
       setLoading(true);
       const data = await ocService.getRequerimientosOC();
 
+      // Cargar configuración local de organismos como fallback
+      let organismosConfig: any[] = [];
+      try {
+        const stored = localStorage.getItem('sigl-organismos-control');
+        if (stored) organismosConfig = JSON.parse(stored);
+      } catch (e) { console.error('Error parseando config organismos', e); }
+
       // Mapear respuesta del backend al formato del componente
-      const mappedData: Requerimiento[] = data.map((req: any) => ({
-        id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
-        numeroOficio: req.radicadoExterno || 'S/N',
-        organismo: req.organismo?.nombre || 'Desconocido',
-        asunto: req.asunto || 'Sin asunto',
-        responsable: req.funcionarioResponsable || 'Sin asignar',
-        fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
-        fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
-        diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
-        diasTotales: req.plazoOtorgado || 0,
-        etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
-        ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
-        documentos: req.documentosCount || 0,
-        // Map document categories
-        docRequerimientos: req.docRequerimientos || 0,
-        docRespuestas: req.docRespuestas || 0,
-        docSoportes: req.docSoportes || 0,
-        docInternos: req.docInternos || 0,
-      }));
+      const mappedData: Requerimiento[] = data.map((req: any) => {
+        // Resolver nombre de organismo: Backend Relation -> LocalStorage Config -> ID -> 'Desconocido'
+        const rawId = req.organismoId || req.organismo_id;
+        let nombreOrganismo = 'Desconocido';
+
+        if (req.organismo?.nombre) {
+          nombreOrganismo = req.organismo.nombre;
+        } else if (rawId) {
+          const match = organismosConfig.find((o: any) => String(o.id).trim() === String(rawId).trim());
+          if (match) nombreOrganismo = match.nombre;
+          else nombreOrganismo = String(rawId);
+        } else {
+          nombreOrganismo = 'Desconocido';
+        }
+
+        return {
+          id: req.id, // O req.radicadoInterno si se prefiere mostrar ese
+          numeroOficio: req.radicadoExterno || 'S/N',
+          organismo: nombreOrganismo,
+          asunto: req.asunto || 'Sin asunto',
+          responsable: req.funcionarioResponsable || 'Sin asignar',
+          fechaRadicacion: req.fechaRecepcion ? new Date(req.fechaRecepcion) : new Date(),
+          fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
+          diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
+          diasTotales: req.plazoOtorgado || 0,
+          etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
+          ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
+          documentos: req.documentosCount || 0,
+          // Map document categories
+          docRequerimientos: req.docRequerimientos || 0,
+          docRespuestas: req.docRespuestas || 0,
+          docSoportes: req.docSoportes || 0,
+          docInternos: req.docInternos || 0,
+        };
+      });
 
       setRequerimientos(mappedData);
     } catch (error) {
@@ -246,7 +269,7 @@ export function OrganosControl() {
         labelMobile: 'Nuevo',
         icon: <Plus className="w-4 h-4" />,
         onClick: () => setModalNuevoOpen(true),
-        variant: 'primary'
+        variant: 'primary' as const
       }]
     }
     return []
@@ -402,6 +425,7 @@ export function OrganosControl() {
           isOpen={modalComentariosOpen}
           onClose={() => setModalComentariosOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
+          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -630,7 +654,7 @@ function TarjetaRequerimiento({
               Ver Requerimiento
             </Button>
 
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <Button
                 onClick={() => onDocumentos(req)}
                 size="sm"
@@ -648,17 +672,6 @@ function TarjetaRequerimiento({
               >
                 <Send className="w-3 h-3" />
               </Button>
-              {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_SOLICITAR_INSUMO) && (
-              <Button
-                onClick={() => onInsumo(req)}
-                size="sm"
-                variant="outline"
-                className="text-[11px] px-1 justify-center"
-                title="Solicitar Insumo"
-              >
-                <User className="w-3 h-3" />
-              </Button>
-              )}
             </div>
 
             <Button
@@ -743,7 +756,8 @@ function VistaLista({
 
   const requerimientosPaginados = requerimientosOrdenados.slice((paginaActual - 1) * itemsPorPagina, paginaActual * itemsPorPagina);
 
-  const totalPaginas = Math.ceil(requerimientosFiltrados.length / itemsPorPagina);
+  const total = requerimientosFiltrados.length;
+  const totalPaginas = Math.ceil(total / itemsPorPagina);
 
   return (
     <Card className="p-4">
@@ -917,7 +931,7 @@ function VistaLista({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+              onClick={() => setPaginaActual(Math.max(1, paginaActual - 1))}
               disabled={paginaActual === 1}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -928,7 +942,7 @@ function VistaLista({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+              onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
               disabled={paginaActual === totalPaginas}
             >
               <ChevronRight className="w-4 h-4" />

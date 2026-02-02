@@ -176,6 +176,9 @@ function mapearListasChequeoAActividades(listasChequeo: any[]): ActividadAuditor
     };
   });
 }
+// Secciones de Hallazgos y Tareas
+import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
+import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 
 // ============ TIPOS ============
 
@@ -1920,10 +1923,10 @@ function TabEjecucion({
             <Info className="w-5 h-5 text-amber-600" />
             <div>
               <p className="text-sm text-amber-900">
-                <strong>Fase de Ejecución</strong> - Gestión integrada de actividades
+                <strong>Fase de Ejecución</strong> - Gestión de hallazgos, tareas y actividades
               </p>
               <p className="text-xs text-amber-700 mt-1">
-                No hay listas de chequeo de ejecución disponibles. Crea listas de chequeo en la configuración.
+                Registra hallazgos, gestiona tareas y completa actividades para avanzar a Comunicación
               </p>
             </div>
           </div>
@@ -1977,6 +1980,17 @@ function TabEjecucion({
         />
       )}
 
+      {/* SECCIÓN: HALLAZGOS */}
+      <div className="bg-white border-2 border-red-200 rounded-lg p-5">
+        <SeccionHallazgosExpediente auditoriaId={auditoria.id} />
+      </div>
+
+      {/* SECCIÓN: TAREAS Y ACTIVIDADES */}
+      <div className="bg-white border-2 border-blue-200 rounded-lg p-5">
+        <SeccionTareasExpediente auditoriaId={auditoria.id} />
+      </div>
+
+      {/* ACTIVIDADES DE LA FASE (Sistema anterior) */}
       <ActividadesIntegradas
         actividades={actividadesEjecucion}
         faseTitulo="Ejecución"

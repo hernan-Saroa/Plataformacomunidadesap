@@ -22,7 +22,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
-  ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
+  ChevronRight, ChevronDown, Plus, Filter, Calendar, User, ArrowLeft, X,
   Archive, CheckCircle2, AlertCircle, Clock,
   File, FolderCheck, FileCheck, Loader2
 } from 'lucide-react';
@@ -44,7 +44,7 @@ import { Permissions } from '../../../enums/permissions';
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type FaseAuditoria = 
+type FaseAuditoria =
   | 'PLANIFICACION'
   | 'EJECUCION'
   | 'HALLAZGOS'
@@ -149,7 +149,7 @@ const mapearEstadoExpediente = (estadoAuditoria: string): 'ABIERTO' | 'EN_PROCES
  */
 const mapearFaseDocumento = (etapa: string | undefined): FaseAuditoria => {
   if (!etapa) return 'PLANIFICACION';
-  
+
   const etapaLower = etapa.toLowerCase();
   if (etapaLower.includes('planificacion') || etapaLower.includes('planeacion')) {
     return 'PLANIFICACION';
@@ -200,7 +200,7 @@ export function ExpedientesModulePremium() {
 
       // Obtener todas las auditorías
       const response = await auditoriasApi.getAllKanban();
-      
+
       if (!response.success || !response.data) {
         throw new Error(response.message || 'Error al cargar auditorías');
       }
@@ -358,8 +358,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       onClick={onClick}
       className={`
         relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
+        ${active
+          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
         }
       `}
@@ -367,9 +367,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       {icon}
       {label}
       {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
+          }`}>
           {badge}
         </span>
       )}
@@ -525,7 +524,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
         </div>
       ) : (
         <div className="space-y-4">
-            {expedientesFiltrados.map((expediente) => (
+          {expedientesFiltrados.map((expediente) => (
             <CardExpediente
               key={expediente.id}
               expediente={expediente}
@@ -555,7 +554,7 @@ interface CardExpedienteProps {
 
 function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: CardExpedienteProps) {
   const [modalCargar, setModalCargar] = useState(false);
-  
+
   const estadoConfig = {
     ABIERTO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Abierto' },
     EN_PROCESO: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Proceso' },
@@ -584,7 +583,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
 
   const handleCargarDocumento = () => {
     setModalCargar(true);
-    
+
     toast.info('Abrir cargador de documentos', {
       description: `Expediente ${expediente.codigoAuditoria}`,
       duration: 2000,
@@ -648,13 +647,13 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
 
             <div className="flex gap-2">
               {authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_UPLOAD) && (
-              <button 
-                onClick={handleCargarDocumento}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Cargar
-              </button>
+                <button
+                  onClick={handleCargarDocumento}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Cargar
+                </button>
               )}
               <button
                 onClick={onToggleExpand}
@@ -756,7 +755,7 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoVisualizando(doc);
-    
+
     toast.info('Visualizar documento', {
       description: doc.nombre,
       duration: 2000,
@@ -781,7 +780,7 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     toast.success('Descargando documento', {
       description: `${doc.nombre} (${doc.tamanio})`,
       duration: 3000,
@@ -858,14 +857,14 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
                         </div>
 
                         <div className="flex gap-2">
-                          <button 
+                          <button
                             onClick={() => handleVerDocumento(doc)}
                             className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
                             title="Ver documento"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button 
+                          <button
                             onClick={(e) => handleDescargarDocumento(doc, e)}
                             className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
                             title="Descargar documento"
@@ -1010,369 +1009,235 @@ interface ModalCargarDocumentoProps {
   onCargar: () => void;
 }
 
+// Adapting the new design to this module's context
 function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocumentoProps) {
-  const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
+  const [step, setStep] = useState<'SELECCION' | 'CARGA'>('SELECCION');
+  const [selectedFase, setSelectedFase] = useState<FaseAuditoria | null>(null);
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
   const [cargando, setCargando] = useState(false);
   const [progresoCarga, setProgresoCarga] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /**
-   * Mapea la fase del expediente a la etapa del backend
-   */
+  // Mapear fase a etapa (logic existing)
   const mapearFaseAEtapa = (fase: FaseAuditoria): string => {
     const mapeo: Record<FaseAuditoria, string> = {
       PLANIFICACION: 'planeacion',
       EJECUCION: 'ejecucion',
-      HALLAZGOS: 'ejecucion', // Los hallazgos están en la fase de ejecución
+      HALLAZGOS: 'ejecucion',
       COMUNICACION_RESULTADOS: 'comunicacion',
       SEGUIMIENTO: 'seguimiento',
-      CIERRE: 'comunicacion' // El cierre está en comunicación
+      CIERRE: 'comunicacion'
     };
     return mapeo[fase] || 'planeacion';
   };
 
-  /**
-   * Valida el archivo seleccionado
-   */
-  const validarArchivo = (file: File): boolean => {
-    // Validar tamaño (máx 50 MB)
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('Archivo demasiado grande', {
-        description: 'El tamaño máximo permitido es 50 MB',
-      });
-      return false;
-    }
-
-    // Validar tipo de archivo
-    const tiposPermitidos = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-    ];
-
-    const extensionesPermitidas = /\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png)$/i;
-
-    if (!tiposPermitidos.includes(file.type) && !extensionesPermitidas.test(file.name)) {
-      toast.error('Tipo de archivo no permitido', {
-        description: 'Solo se permiten: PDF, Word, Excel, JPG, PNG',
-      });
-      return false;
-    }
-
-    return true;
+  const handleFaseSelect = (faseId: FaseAuditoria) => {
+    setSelectedFase(faseId);
+    setStep('CARGA');
   };
 
-  /**
-   * Maneja la selección de archivo
-   */
-  const handleSeleccionarArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBack = () => {
+    setStep('SELECCION');
+    setSelectedFase(null);
+    setArchivoSeleccionado(null);
+    setNombreDocumento('');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (validarArchivo(file)) {
-        setArchivoSeleccionado(file);
-        // Auto-completar nombre si está vacío
-        if (!nombreDocumento.trim()) {
-          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-        }
-      }
+      setArchivoSeleccionado(file);
+      if (!nombreDocumento) setNombreDocumento(file.name.split('.')[0]);
     }
   };
 
-  /**
-   * Maneja el drag & drop
-   */
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      if (validarArchivo(file)) {
-        setArchivoSeleccionado(file);
-        if (!nombreDocumento.trim()) {
-          setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
-        }
-      }
-    }
-  };
-
-  /**
-   * Maneja la carga del documento
-   */
   const handleCargar = async () => {
-    // Validaciones
-    if (!archivoSeleccionado) {
-      toast.error('Debe seleccionar un archivo');
-      return;
-    }
-
-    if (!nombreDocumento.trim()) {
-      toast.error('El nombre del documento es obligatorio');
-      return;
-    }
-
+    if (!archivoSeleccionado || !selectedFase || !nombreDocumento) return;
     setCargando(true);
-    setProgresoCarga(0);
+    setProgresoCarga(10); // Start progress
 
     try {
-      // Subir documento a la base de datos
+      // Simulate progress
+      const interval = setInterval(() => {
+        setProgresoCarga(prev => Math.min(prev + 10, 90));
+      }, 200);
+
       await controlInternoService.createDocumento(
         archivoSeleccionado,
         {
           nombre: nombreDocumento.trim(),
           descripcion: descripcion.trim() || undefined,
-          tipoDocumento: 'otro', // Valor válido según constraint de BD (minúsculas)
-          etapa: mapearFaseAEtapa(fase),
+          tipoDocumento: 'otro',
+          etapa: mapearFaseAEtapa(selectedFase),
           auditoriaId: expediente.id,
           subidoPor: expediente.responsable || 'Usuario',
         },
-        (progress) => {
-          setProgresoCarga(progress);
-        }
+        (progress) => setProgresoCarga(progress)
       );
 
-      toast.success('Documento Cargado Exitosamente', {
-        description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
-        duration: 4000,
-      });
-
-      // Limpiar formulario
-      setArchivoSeleccionado(null);
-      setNombreDocumento('');
-      setDescripcion('');
-      setProgresoCarga(0);
-
-      // Cerrar modal y refrescar
-      onCargar();
+      clearInterval(interval);
+      setProgresoCarga(100);
+      toast.success('Documento cargado exitosamente');
+      onCargar(); // Close and refresh
     } catch (error: any) {
-      console.error('Error al cargar documento:', error);
-      toast.error('Error al cargar el documento', {
-        description: error.message || 'Por favor, intente nuevamente',
-      });
+      console.error('Error uploading:', error);
+      toast.error('Error al cargar documento');
     } finally {
       setCargando(false);
     }
   };
 
+  const selectedFaseInfo = FASES_AUDITORIA.find(f => f.id === selectedFase);
+
   return (
     <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
-        onClick={onClose}
-      />
-      
-      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
-          <h3 className="text-xl font-medium">Cargar Documento al Expediente</h3>
-          <p className="text-sm text-blue-100 mt-1">{expediente.codigoAuditoria} - {expediente.nombreAuditoria}</p>
+        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">
+              {step === 'SELECCION' ? 'Seleccionar Fase del Proceso' : `Cargar a ${selectedFaseInfo?.nombre}`}
+            </h3>
+            <p className="text-sm text-gray-500">{expediente.codigoAuditoria} - {expediente.nombreAuditoria}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
 
-        {/* Contenido */}
-        <div className="px-6 py-6">
-          <div className="space-y-4">
-            {/* Información del Expediente */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center gap-4 text-sm">
-                <div>
-                  <span className="text-blue-700 font-medium">Expediente:</span>
-                  <span className="ml-2 text-blue-900">{expediente.codigoAuditoria}</span>
+        {/* Content */}
+        <div className="p-6 overflow-y-auto">
+          {step === 'SELECCION' && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {FASES_AUDITORIA.map((fase) => {
+                const Icon = fase.icon;
+                const colorClasses = {
+                  blue: 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400',
+                  green: 'bg-green-50 text-green-700 border-green-200 hover:border-green-400',
+                  orange: 'bg-orange-50 text-orange-700 border-orange-200 hover:border-orange-400',
+                  purple: 'bg-purple-50 text-purple-700 border-purple-200 hover:border-purple-400',
+                  cyan: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:border-cyan-400',
+                  gray: 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
+                };
+                const colorClass = colorClasses[fase.color as keyof typeof colorClasses] || colorClasses.gray;
+
+                return (
+                  <button
+                    key={fase.id}
+                    onClick={() => handleFaseSelect(fase.id)}
+                    className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all hover:shadow-md hover:scale-[1.02] gap-3 text-center ${colorClass} min-h-[160px]`}
+                  >
+                    <div className="p-4 rounded-full bg-white bg-opacity-60 shadow-sm">
+                      <Icon className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-base block">{fase.nombre}</span>
+                      <span className="text-xs opacity-80 mt-1 block">{fase.descripcion}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {step === 'CARGA' && (
+            <div className="space-y-6 max-w-2xl mx-auto">
+              <button
+                onClick={handleBack}
+                className="flex items-center text-sm text-gray-500 hover:text-blue-700 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4 mr-1" /> Volver a selección de fase
+              </button>
+
+              <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex items-center gap-4">
+                <div className="p-3 bg-white rounded-lg shadow-sm text-blue-700">
+                  {selectedFaseInfo && <selectedFaseInfo.icon className="w-6 h-6" />}
                 </div>
-                <span className="text-blue-400">•</span>
                 <div>
-                  <span className="text-blue-700 font-medium">Estado:</span>
-                  <span className="ml-2 text-blue-900">{expediente.estado}</span>
+                  <h4 className="font-bold text-gray-900">{selectedFaseInfo?.nombre}</h4>
+                  <p className="text-sm text-gray-600">{selectedFaseInfo?.descripcion}</p>
                 </div>
-                <span className="text-blue-400">•</span>
+              </div>
+
+              <div className="space-y-4">
                 <div>
-                  <span className="text-blue-700 font-medium">Docs actuales:</span>
-                  <span className="ml-2 text-blue-900 font-semibold">{expediente.totalDocumentos}</span>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Documento</label>
+                  <input
+                    type="text"
+                    value={nombreDocumento}
+                    onChange={(e) => setNombreDocumento(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent"
+                    placeholder="Ej: Informe de hallazgos preliminares..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (Opcional)</label>
+                  <textarea
+                    rows={2}
+                    value={descripcion}
+                    onChange={(e) => setDescripcion(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent"
+                    placeholder="Detalles adicionales..."
+                  />
+                </div>
+
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-[#1e5da8] hover:bg-gray-50 transition-all text-center relative cursor-pointer group">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
+                  />
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-[#1e5da8] group-hover:scale-110 transition-transform">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 text-lg">
+                        {archivoSeleccionado ? archivoSeleccionado.name : 'Haz clic o arrastra un archivo aquí'}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">PDF, Excel, Word, Imágenes (Máx 50MB)</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* Selección de Fase */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fase del Proceso <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={fase}
-                onChange={(e) => setFase(e.target.value as FaseAuditoria)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-              >
-                {FASES_AUDITORIA.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {f.nombre} - {f.descripcion}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Selecciona la fase a la que pertenece este documento
-              </p>
-            </div>
-
-            {/* Nombre del Documento */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Nombre del Documento <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={nombreDocumento}
-                onChange={(e) => setNombreDocumento(e.target.value)}
-                placeholder="Ej: Programa de Auditoría AU-2025-001.pdf"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-              />
-            </div>
-
-            {/* Descripción */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descripción / Notas
-              </label>
-              <textarea
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
-                placeholder="Información adicional sobre este documento (opcional)"
-              />
-            </div>
-
-            {/* Selector de Archivo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Archivo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="file"
-                ref={(el) => {
-                  if (el) {
-                    (fileInputRef as any).current = el;
-                  }
-                }}
-                onChange={handleSeleccionarArchivo}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                className="hidden"
-                disabled={cargando}
-              />
-              <div
-                onClick={() => !cargando && (fileInputRef as any).current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`
-                  border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer
-                  ${isDragging 
-                    ? 'border-[#1e5da8] bg-blue-50' 
-                    : archivoSeleccionado 
-                      ? 'border-green-400 bg-green-50' 
-                      : 'border-gray-300 hover:border-[#1e5da8] hover:bg-gray-50'
-                  }
-                  ${cargando ? 'opacity-50 cursor-not-allowed' : ''}
-                `}
-              >
-                {archivoSeleccionado ? (
-                  <div className="space-y-2">
-                    <FileText className="w-8 h-8 text-green-600 mx-auto" />
-                    <p className="text-sm font-medium text-gray-900">{archivoSeleccionado.name}</p>
-                    <p className="text-xs text-gray-600">
-                      {(archivoSeleccionado.size / (1024 * 1024)).toFixed(2)} MB
-                    </p>
-                    {!cargando && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setArchivoSeleccionado(null);
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = '';
-                          }
-                        }}
-                        className="text-xs text-red-600 hover:text-red-700 mt-2"
-                      >
-                        Eliminar archivo
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <Upload className={`w-8 h-8 mx-auto mb-2 ${isDragging ? 'text-[#1e5da8]' : 'text-gray-400'}`} />
-                    <p className="text-sm text-gray-600 mb-1">
-                      {isDragging ? 'Suelta el archivo aquí' : 'Haz clic para seleccionar o arrastra el archivo aquí'}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      PDF, DOCX, XLSX, JPG, PNG hasta 50MB
-                    </p>
-                  </>
-                )}
-              </div>
-              
-              {/* Barra de progreso */}
-              {cargando && progresoCarga > 0 && (
-                <div className="mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-[#1e5da8] h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${progresoCarga}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1 text-center">
-                    Cargando... {progresoCarga}%
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              disabled={cargando}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancelar
-            </button>
+        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium"
+          >
+            Cancelar
+          </button>
+          {step === 'CARGA' && (
             <button
               onClick={handleCargar}
-              disabled={cargando || !archivoSeleccionado || !nombreDocumento.trim()}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={cargando || !archivoSeleccionado || !nombreDocumento}
+              className="px-6 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a70] disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2 shadow-sm transition-all hover:shadow-md"
             >
               {cargando ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Cargando...
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Cargando... {progresoCarga}%
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  Cargar Documento
+                  Subir Documento
                 </>
               )}
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -1392,11 +1257,11 @@ interface ModalVerDocumentoProps {
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
   return (
     <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
-      <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">

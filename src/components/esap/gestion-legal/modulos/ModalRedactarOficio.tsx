@@ -29,6 +29,40 @@ interface ModalRedactarOficioProps {
   expedienteId: string;
 }
 
+interface ConfiguracionPlantilla {
+  nombreEntidad: string;
+  subtituloEntidad: string;
+  dependencia: string;
+  direccion: string;
+  telefono: string;
+  email: string;
+  website: string;
+  colorPrimario: string;
+  colorSecundario: string;
+  tamañoFuente: string;
+  estiloFuente: string;
+  includirLogo: boolean;
+  includirBordeSuperior: boolean;
+  textoPiePagina: string;
+}
+
+const CONFIGURACION_DEFAULT: ConfiguracionPlantilla = {
+  nombreEntidad: 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA',
+  subtituloEntidad: 'ESAP - República de Colombia',
+  dependencia: 'Oficina Jurídica',
+  direccion: 'Calle 44 No. 53-37, Bogotá D.C., Colombia',
+  telefono: '(601) 220-2790',
+  email: 'juridica@esap.edu.co',
+  website: 'www.esap.edu.co',
+  colorPrimario: '#003DA5',
+  colorSecundario: '#F57C00',
+  tamañoFuente: '14px',
+  estiloFuente: 'Arial, sans-serif',
+  includirLogo: true,
+  includirBordeSuperior: true,
+  textoPiePagina: 'Este es un documento oficial generado por el Sistema de Gestión Legal ESAP'
+};
+
 // Plantillas de oficios predefinidas
 const PLANTILLAS_OFICIOS = {
   solicitudProrroga: {
@@ -369,8 +403,8 @@ export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancelar}>
-      <DialogContent hideCloseButton className="max-w-4xl max-h-[95vh] overflow-hidden flex flex-col p-0">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">Redactar Oficio Judicial</DialogTitle>
         <DialogDescription className="sr-only">
           Formulario para redactar y enviar oficios judiciales oficiales

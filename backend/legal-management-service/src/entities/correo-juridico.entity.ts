@@ -50,12 +50,15 @@ export class CorreoJuridico {
     @Column({ name: 'modulo_sugerido', length: 100, nullable: true })
     moduloSugerido: string;
 
-    @Column({ name: 'confianza_clasificacion', nullable: true })
+    @Column({ name: 'confianza_clasificacion', type: 'float', nullable: true })
     confianzaClasificacion: number;
 
-    @CreateDateColumn({ name: 'created_at' })
-    createdAt: Date;
+    @Column({ name: 'ai_suggested_category', length: 100, nullable: true })
+    aiSuggestedCategory: string;
 
-    @UpdateDateColumn({ name: 'updated_at' })
-    updatedAt: Date;
+    @Column({ name: 'is_trained', default: false })
+    isTrained: boolean;
+
+    @Column({ name: 'expediente_id', nullable: true })
+    expedienteId: string;
 }

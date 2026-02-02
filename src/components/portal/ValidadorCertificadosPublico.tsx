@@ -41,19 +41,24 @@ type TipoCertificado = 'selector' | 'laboral' | 'grado';
 export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPublicoProps) {
   const [tipoSeleccionado, setTipoSeleccionado] = useState<TipoCertificado>('selector');
 
-  // Si el usuario seleccionó Certificado Laboral
-  if (tipoSeleccionado === 'laboral') {
-    return <ValidarCertificadoQR onBack={() => setTipoSeleccionado('selector')} />;
-  }
-
-  // Si el usuario seleccionó Certificado de Grado
-  if (tipoSeleccionado === 'grado') {
-    return <ValidarCertificadoGrado onBack={() => setTipoSeleccionado('selector')} />;
-  }
-
-  // Vista principal: Selector de tipo de certificado
+  // Vista principal: Selector de tipo de certificado + Modales
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F0F6FF] to-[#E0EEFF]">
+      {/* ✅ Modal de Certificado de Grado */}
+      <ValidarCertificadoGrado 
+        isOpen={tipoSeleccionado === 'grado'} 
+        onClose={() => setTipoSeleccionado('selector')}
+        onBack={() => setTipoSeleccionado('selector')}
+      />
+
+      {/* Si el usuario seleccionó Certificado Laboral - Vista completa */}
+      {tipoSeleccionado === 'laboral' && (
+        <ValidarCertificadoQR onBack={() => setTipoSeleccionado('selector')} />
+      )}
+
+      {/* Vista del selector - Solo se muestra si tipoSeleccionado es 'selector' */}
+      {tipoSeleccionado === 'selector' && (
+        <>
       {/* Navbar Superior Flotante - Similar al Landing */}
       <motion.nav 
         initial={{ y: -100, opacity: 0 }}
@@ -374,6 +379,8 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
         {/* Footer del Landing */}
         <FooterWorldClass />
       </div>
+        </>
+      )}
     </div>
   );
 }

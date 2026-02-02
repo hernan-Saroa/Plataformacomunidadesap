@@ -1164,12 +1164,12 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
                       <div className="flex items-start gap-3">
                         <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <p className="font-semibold text-green-900 mb-2">¡Registro encontrado!</p>
                           <div className="space-y-1 text-sm text-green-800">
-                            <p><strong>Nombre:</strong> {empleadoEncontrado.nombre_completo}</p>
-                            <p><strong>Cargo:</strong> {empleadoEncontrado.cargo}</p>
-                            <p><strong>Tipo:</strong> {empleadoEncontrado.tipo_vinculacion}</p>
+                            <p className="break-words"><strong>Nombre:</strong> {empleadoEncontrado.nombre_completo}</p>
+                            <p className="break-words"><strong>Cargo:</strong> {empleadoEncontrado.cargo}</p>
+                            <p className="break-words"><strong>Tipo:</strong> {empleadoEncontrado.tipo_vinculacion}</p>
                           </div>
                         </div>
                       </div>
@@ -1179,20 +1179,20 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-5 mb-6">
                       <div className="flex flex-col sm:flex-row items-start gap-3">
                         <Mail className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm w-full">
+                        <div className="text-sm flex-1 min-w-0">
                           <p className="font-semibold text-blue-900 mb-1">
                             Código enviado a tu correo
                           </p>
-                          <div className="bg-white border border-blue-300 rounded-lg px-3 py-2 inline-flex items-center gap-2 w-full sm:w-auto max-w-full">
-                            <Shield className="w-4 h-4 text-blue-600" />
+                          <div className="bg-white border border-blue-300 rounded-lg px-3 py-2 inline-flex items-center gap-2 max-w-full overflow-hidden">
+                            <Shield className="w-4 h-4 text-blue-600 flex-shrink-0" />
                             <span className="font-mono text-blue-900 font-bold break-all">
                               {enmascararCorreo(empleadoEncontrado.correo_institucional)}
                             </span>
                           </div>
-                          <p className="text-xs text-blue-600 mt-3">
+                          <p className="text-xs text-blue-600 mt-3 break-words">
                             Revisa tu bandeja de entrada (o spam). El código tiene 6 dígitos.
                           </p>
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-gray-500 mt-1 break-words">
                             📧 Por protección de datos personales, solo mostramos parte de tu correo
                           </p>
                         </div>
@@ -1616,7 +1616,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-8">
             {/* INSTITUCIONAL */}
             <div>
-              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛️ Institucional</h4>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛��� Institucional</h4>
               <ul className="space-y-2 text-sm text-blue-100">
                 <li><a href="#" className="hover:text-white transition-colors">Acerca de ESAP</a></li>
                 <li><a href="#" className="hover:text-white transition-colors">Misión y Visión</a></li>

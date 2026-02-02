@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -85,6 +85,11 @@ export class ExpedienteController {
         }
 
         return this.expedienteService.crearExpediente(data);
+    }
+
+    @Delete(':id')
+    async eliminar(@Param('id') id: string): Promise<void> {
+        return this.expedienteService.deleteExpediente(id);
     }
 }
 

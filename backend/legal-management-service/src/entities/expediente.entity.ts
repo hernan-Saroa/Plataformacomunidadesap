@@ -4,13 +4,17 @@ import { Actuacion } from './actuacion.entity';
 import { DecisionDisciplinaria } from './decision-disciplinaria.entity';
 import { Evidencia } from './evidencia.entity';
 import { Documento } from './documento.entity';
+import { Actor } from './actor.entity';
 
 @Entity('expedientes', { schema: 'legal_management' })
 export class Expediente {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
+    @OneToMany(() => Actor, (actor) => actor.expediente, { cascade: true })
+    actors: Actor[];
+
+    // Data populated manually by Service, no ORM relation
     actuaciones: Actuacion[];
 
     @OneToMany(() => DecisionDisciplinaria, (decision) => decision.expediente)

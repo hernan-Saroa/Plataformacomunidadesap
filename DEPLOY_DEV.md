@@ -127,7 +127,7 @@ Los principales comandos disponibles son:
 - Levanta los servicios definidos en `docker-compose.dev.yml` en modo **detached** (en segundo plano).
 - Una vez levantado, la aplicación debería ser accesible en:
   - **Frontend**: `http://4.156.71.181`
-  - **API Gateway**: `http://4.156.71.181:3000`
+  - **API Gateway**: `http://4.156.71.181/services`
 
 ### 5.2. Detener todos los servicios – `down`
 
@@ -259,7 +259,7 @@ A continuación, un flujo recomendado para desplegar una nueva versión en el en
 
 8. **Probar acceso a la aplicación**
    - Frontend: `http://4.156.71.181`
-   - API Gateway / Backend: `http://4.156.71.181:3000`
+  - API Gateway / Backend: `http://4.156.71.181/services`
 
 ---
 

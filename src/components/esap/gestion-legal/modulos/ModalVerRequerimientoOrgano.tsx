@@ -297,14 +297,28 @@ export function ModalVerRequerimientoOrgano({
 
   const getOrganoInfo = (organo: string) => {
     // Normalizar string para coincidencia aproximada
-    const org = organo.toUpperCase();
+    const org = organo ? organo.toUpperCase() : 'DESCONOCIDO';
     if (org.includes('CGR') || org.includes('CONTRALORIA GENERAL')) return { nombre: 'Contraloría General de la República', icon: '🏛️', color: '#1E40AF' };
     if (org.includes('TERRITORIAL')) return { nombre: 'Contraloría Territorial', icon: '📊', color: '#7C3AED' };
     if (org.includes('PROCURADURIA')) return { nombre: 'Procuraduría General de la Nación', icon: '⚖️', color: '#059669' };
     if (org.includes('FISCALIA')) return { nombre: 'Fiscalía General de la Nación', icon: '🔍', color: '#DC2626' };
     if (org.includes('DEFENSORIA')) return { nombre: 'Defensoría del Pueblo', icon: '🛡️', color: '#EA580C' };
     if (org.includes('PERSONERIA')) return { nombre: 'Personería Municipal', icon: '📜', color: '#0891B2' };
-    return { nombre: organo, icon: '📋', color: '#6B7280' };
+
+    // Intentar buscar en config local si es desconocido o ID
+    try {
+      const stored = localStorage.getItem('sigl-organismos-control');
+      if (stored) {
+        const configs: any[] = JSON.parse(stored);
+        // Buscar por igualdad de nombre exacta o ID si organo parece un ID
+        const match = configs.find((c: any) => c.nombre.toUpperCase() === org || c.id.toString() === organo);
+        if (match) return { nombre: match.nombre, icon: '🏢', color: '#4B5563' };
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    return { nombre: organo || 'Desconocido', icon: '📋', color: '#6B7280' };
   };
 
   const organoInfo = getOrganoInfo(requerimiento.organismo);
@@ -318,7 +332,7 @@ export function ModalVerRequerimientoOrgano({
 
   return (
     <Dialog open={isOpen && modalPadreVisible} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 my-4 overflow-hidden">
+      <DialogContent className="fixed !left-1/2 !top-1/2 !z-[100] grid !w-[90vw] !max-w-[680px] !-translate-x-1/2 !-translate-y-1/2 gap-0 border bg-white p-0 shadow-lg duration-200 sm:rounded-lg !max-h-[85vh] overflow-hidden flex flex-col">
         <DialogTitle className="sr-only">
           Detalle del Requerimiento {requerimiento.id}
         </DialogTitle>
@@ -642,35 +656,35 @@ export function ModalVerRequerimientoOrgano({
           </Button>
           <div className="flex items-center gap-2">
             {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) && (
-            <Button
-              variant="outline"
-              className="text-red-600 hover:bg-red-50"
-              onClick={async () => {
-                if (!confirm('¿Está seguro de eliminar este requerimiento? Esta acción no se puede deshacer.')) return;
-                try {
-                  await ocService.deleteRequerimientoOC(requerimiento.id);
-                  toast.success('Requerimiento eliminado');
-                  if (onUpdate) onUpdate();
-                  onClose();
-                } catch (error) {
-                  console.error(error);
-                  toast.error('Error al eliminar el requerimiento');
-                }
-              }}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Eliminar
-            </Button>
+              <Button
+                variant="outline"
+                className="text-red-600 hover:bg-red-50"
+                onClick={async () => {
+                  if (!confirm('¿Está seguro de eliminar este requerimiento? Esta acción no se puede deshacer.')) return;
+                  try {
+                    await ocService.deleteRequerimientoOC(requerimiento.id);
+                    toast.success('Requerimiento eliminado');
+                    if (onUpdate) onUpdate();
+                    onClose();
+                  } catch (error) {
+                    console.error(error);
+                    toast.error('Error al eliminar el requerimiento');
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
+              </Button>
             )}
             {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) && (
-            <Button
-              style={{ background: '#003DA5' }}
-              className="text-white"
-              onClick={handleAbrirRespuesta}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Elaborar Respuesta
-            </Button>
+              <Button
+                style={{ background: '#003DA5' }}
+                className="text-white"
+                onClick={handleAbrirRespuesta}
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Elaborar Respuesta
+              </Button>
             )}
           </div>
         </div>
@@ -711,6 +725,7 @@ export function ModalVerRequerimientoOrgano({
         etapaActual={requerimiento.etapa}
         onCambioEtapa={() => {
           if (onUpdate) onUpdate();
+          onClose();
         }}
       />
 
@@ -721,6 +736,7 @@ export function ModalVerRequerimientoOrgano({
         responsableActual={requerimiento.responsable}
         onReasignacion={() => {
           if (onUpdate) onUpdate();
+          onClose();
         }}
       />
 

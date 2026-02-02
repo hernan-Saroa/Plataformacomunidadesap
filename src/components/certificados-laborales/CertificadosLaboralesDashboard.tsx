@@ -363,30 +363,29 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        className="flex flex-col gap-4"
       >
         <div>
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2">
             <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center"
               style={{
                 background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
                 boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
               }}
             >
-              <Briefcase className="w-6 h-6 text-white" strokeWidth={2.5} />
+              <Briefcase className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
             </div>
             <h1 
-              className="font-bold tracking-tight"
+              className="font-bold tracking-tight text-2xl sm:text-3xl lg:text-[32px]"
               style={{
-                fontSize: '32px',
-                lineHeight: '40px',
+                lineHeight: '1.2',
                 letterSpacing: '-0.25px',
                 color: '#1F2937'
               }}
@@ -395,10 +394,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             </h1>
           </div>
           <p 
-            className="font-normal"
+            className="font-normal text-sm sm:text-base"
             style={{
-              fontSize: '14px',
-              lineHeight: '20px',
+              lineHeight: '1.5',
               color: '#6B7280'
             }}
           >
@@ -406,7 +404,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Botones de acción - Mobile First */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <button
             onClick={() => onNavigate?.('validar-qr')}
             className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
@@ -415,10 +414,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               color: '#FFFFFF',
               border: 'none',
               borderRadius: '12px',
-              padding: '12px 24px',
+              padding: '12px 20px',
               fontSize: '14px',
               fontWeight: 600,
-              cursor: 'pointer'
+              cursor: 'pointer',
+              minHeight: '48px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'translateY(-2px)';
@@ -441,11 +441,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               color: puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF',
               border: '2px solid #E5E7EB',
               borderRadius: '12px',
-              padding: '12px 24px',
+              padding: '12px 20px',
               fontSize: '14px',
               fontWeight: 600,
               cursor: 'pointer',
-              opacity: puedeConfigurarPlantilla ? 1 : 0.9
+              opacity: puedeConfigurarPlantilla ? 1 : 0.9,
+              minHeight: '48px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#F9FAFB';
@@ -461,7 +462,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             }}
           >
             <Settings className="w-5 h-5" strokeWidth={2} />
-            <span>{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
+            <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
+            <span className="sm:hidden">Plantilla</span>
           </button>
           
           <button
@@ -506,11 +508,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               background: '#FFFFFF',
               color: '#003DA5',
               border: '2px solid #003DA5',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
+              borderRadius: '12px',
+              padding: '12px 20px',
+              fontSize: '14px',
               fontWeight: 500,
-              cursor: 'pointer'
+              cursor: 'pointer',
+              minHeight: '48px'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#F0F6FF';
@@ -558,51 +561,48 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
-        className="bg-[#EFF6FF] border-2 border-[#93C5FD] rounded-xl p-5"
+        className="bg-[#EFF6FF] border-2 border-[#93C5FD] rounded-xl p-4 sm:p-5"
       >
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
           <div 
             className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: '#DBEAFE' }}
           >
             <Mail className="w-5 h-5" style={{ color: '#3B82F6' }} strokeWidth={2.5} />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h3 
-              className="font-bold mb-1"
+              className="font-bold mb-1 text-sm sm:text-base"
               style={{
-                fontSize: '14px',
-                lineHeight: '20px',
+                lineHeight: '1.4',
                 color: '#1E3A8A'
               }}
             >
               📧 Certificados por Autoservicio
             </h3>
             <p 
-              className="font-normal text-sm mb-2"
-              style={{ color: '#1E3A8A', lineHeight: '20px' }}
+              className="font-normal text-xs sm:text-sm mb-3"
+              style={{ color: '#1E3A8A', lineHeight: '1.5' }}
             >
               Los certificados laborales solo pueden ser solicitados por el interesado a través del portal de autoservicio. Una vez generado, el documento PDF se envía automáticamente al correo electrónico registrado en la plataforma.
             </p>
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-blue-200">
+            {/* Métricas - Responsive grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-blue-200">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
                   <Briefcase className="w-4 h-4 text-purple-600" />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-600">Empleados Elegibles</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {isLoading ? '...' : certificados.length}
-                  </p>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-600 truncate">Empleados Elegibles</p>
+                  <p className="text-lg font-bold text-gray-900">{isLoading ? '...' : certificados.length}</p>
                 </div>
               </div>
-              <div className="h-8 w-px bg-blue-200"></div>
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
                   <Briefcase className="w-4 h-4 text-indigo-600" />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-600">Docentes Activos</p>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-600 truncate">Docentes Activos</p>
                   <p className="text-lg font-bold text-gray-900">
                     {isLoading ? '...' : certificados.filter(cert =>
                       cert.empleado.cargo.toLowerCase().includes('docente')
@@ -610,13 +610,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   </p>
                 </div>
               </div>
-              <div className="h-8 w-px bg-blue-200"></div>
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
                   <Briefcase className="w-4 h-4 text-orange-600" />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-600">Administrativos Activos</p>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-600 truncate">Administrativos Activos</p>
                   <p className="text-lg font-bold text-gray-900">
                     {isLoading ? '...' : certificados.filter(cert =>
                       !cert.empleado.cargo.toLowerCase().includes('docente')
@@ -629,16 +628,16 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         </div>
       </motion.div>
 
-      {/* Búsqueda y Filtros */}
+      {/* Búsqueda y Filtros - Mobile First */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.2 }}
-        className="bg-white rounded-xl border border-[#E5E7EB] p-4"
+        className="bg-white rounded-xl border border-[#E5E7EB] p-3 sm:p-4"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
         <div className="flex flex-col lg:flex-row gap-4">
-          {/* Búsqueda */}
+          {/* Búsqueda - Siempre full width en mobile */}
           <div className="flex-1 relative">
             <Search 
               className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
@@ -646,20 +645,20 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             />
             <input
               type="text"
-              placeholder="Buscar por empleado, documento, certificado o cargo..."
+              placeholder="Buscar certificado..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full border-2 rounded-lg transition-all"
+              className="w-full border-2 rounded-lg transition-all text-sm"
               style={{
-                paddingLeft: '48px',
-                paddingRight: searchQuery ? '48px' : '16px',
+                paddingLeft: '44px',
+                paddingRight: searchQuery ? '44px' : '16px',
                 paddingTop: '12px',
                 paddingBottom: '12px',
                 fontSize: '14px',
                 lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '44px',
+                height: '48px',
                 outline: 'none'
               }}
               onFocus={(e) => {
@@ -674,7 +673,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

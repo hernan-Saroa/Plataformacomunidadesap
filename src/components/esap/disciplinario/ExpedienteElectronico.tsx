@@ -1,7 +1,6 @@
 /**
- * RF005 - GESTIÓN DOCUMENTAL Y EXPEDIENTE ELECTRÓNICO
- * Sistema completo de gestión de expedientes con índice electrónico, versiones y auditoría
- * DISEÑO: Replicado del módulo Carpeta Digital para coherencia visual
+ * EXPEDIENTES ELECTRÓNICOS - Control Interno Disciplinario
+ * Diseño limpio y profesional alineado con Gestión Legal (SIGL v5.0)
  */
 
 import { useState, useEffect } from 'react';
@@ -14,7 +13,6 @@ import {
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
   BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale
 } from 'lucide-react';
-import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { toast } from 'sonner';
@@ -165,183 +163,209 @@ interface Persona {
 interface Proceso {
   id: string;
   numero: string;
-  denunciado: Persona | string; // Permite ambos tipos para compatibilidad
-  etapaActual: string;
-  fechaInicio: string;
-  estado: string;
+  tipo: 'Defensa Judicial' | 'Juzgamiento Disciplinario' | 'Derecho de Petición';
+  descripcion: string;
+  responsable: string;
+  inicio: string;
+  documentos: number;
+  estado: 'En Proceso' | 'Activo' | 'Finalizado';
+  etapa?: string;
 }
 
-interface ActividadAuditoria {
+interface Documento {
   id: string;
-  tipo: 'carga' | 'descarga' | 'visualizacion' | 'modificacion' | 'eliminacion' | 'exportacion' | 'enlace_externo';
+  nombre: string;
+  tipo: 'Auto' | 'Evidencia' | 'Oficio' | 'Notificación' | 'Acta' | 'Otro';
+  carpeta: string;
+  tamaño: string;
+  fechaCarga: string;
   usuario: string;
-  fecha: string;
-  documento: string;
-  detalles: string;
+}
+
+interface Carpeta {
+  id: string;
+  nombre: string;
+  color: string;
+  icono: string;
+  documentos: Documento[];
 }
 
 // Mock Data
 const PROCESOS_MOCK: Proceso[] = [
   {
-    id: 'p1',
-    numero: 'P-120-2025',
-    denunciado: 'Juan Pérez Gómez',
-    etapaActual: 'Indagación Preliminar',
-    fechaInicio: '2025-01-03',
-    estado: 'Activo'
+    id: '1',
+    numero: 'PJ-2025-001',
+    tipo: 'Defensa Judicial',
+    descripcion: 'NBD - María González Pérez vs ESAP',
+    responsable: 'Dr. Juan Pérez López',
+    inicio: '2024-10-15',
+    documentos: 15,
+    estado: 'En Proceso'
   },
   {
-    id: 'p2',
-    numero: 'P-089-2024',
-    denunciado: 'María González Castro',
-    etapaActual: 'Valoración',
-    fechaInicio: '2024-12-15',
-    estado: 'Activo'
+    id: '2',
+    numero: 'PJ-2024-045',
+    tipo: 'Defensa Judicial',
+    descripcion: 'Tutela - Derecho de Petición',
+    responsable: 'Dra. Ana López García',
+    inicio: '2024-08-15',
+    documentos: 10,
+    estado: 'Finalizado'
   },
   {
-    id: 'p3',
-    numero: 'P-156-2025',
-    denunciado: 'Carlos Andrés Rodríguez',
-    etapaActual: 'Investigación Formal',
-    fechaInicio: '2025-01-10',
-    estado: 'Activo'
+    id: '3',
+    numero: 'PD-2025-001',
+    tipo: 'Juzgamiento Disciplinario',
+    descripcion: 'Disciplinario - Dr. Carlos Rodríguez',
+    responsable: 'Dra. Ana López García',
+    inicio: '2025-01-08',
+    documentos: 6,
+    estado: 'Activo',
+    etapa: 'Indagación Preliminar'
   },
   {
-    id: 'p4',
-    numero: 'P-045-2024',
-    denunciado: 'Ana María López Hernández',
-    etapaActual: 'Descargos',
-    fechaInicio: '2024-11-20',
-    estado: 'Activo'
+    id: '4',
+    numero: 'PD-2024-089',
+    tipo: 'Juzgamiento Disciplinario',
+    descripcion: 'Queja - Servidor Público Regional',
+    responsable: 'Dr. Juan Pérez López',
+    inicio: '2024-12-15',
+    documentos: 12,
+    estado: 'En Proceso',
+    etapa: 'Valoración'
   },
   {
-    id: 'p5',
-    numero: 'P-198-2025',
-    denunciado: 'Jorge Luis Martínez Sánchez',
-    etapaActual: 'Noticia',
-    fechaInicio: '2025-01-15',
-    estado: 'Activo'
+    id: '5',
+    numero: 'PD-2024-156',
+    tipo: 'Juzgamiento Disciplinario',
+    descripcion: 'Investigación - Presunta Falta',
+    responsable: 'Dra. Ana López García',
+    inicio: '2024-11-20',
+    documentos: 18,
+    estado: 'En Proceso',
+    etapa: 'Investigación Formal'
   },
   {
-    id: 'p6',
-    numero: 'P-023-2024',
-    denunciado: 'Diana Patricia Torres',
-    etapaActual: 'Cierre',
-    fechaInicio: '2024-10-05',
-    estado: 'Archivado'
+    id: '6',
+    numero: 'PJ-2024-032',
+    tipo: 'Derecho de Petición',
+    descripcion: 'Solicitud Información Pública',
+    responsable: 'Dr. Juan Pérez López',
+    inicio: '2024-09-10',
+    documentos: 4,
+    estado: 'Finalizado'
+  },
+  {
+    id: '7',
+    numero: 'PD-2024-201',
+    tipo: 'Juzgamiento Disciplinario',
+    descripcion: 'Denuncia Ciudadana - Sede Nacional',
+    responsable: 'Dr. Juan Pérez López',
+    inicio: '2024-10-25',
+    documentos: 8,
+    estado: 'Activo',
+    etapa: 'Valoración'
   }
 ];
 
-const DOCUMENTOS_MOCK: Documento[] = [
-  {
-    id: 'd1',
-    nombre: 'Auto de Apertura Indagación Preliminar',
-    tipo: 'auto',
-    etapa: 'Indagación Preliminar',
-    version: 3,
-    tamaño: '245 KB',
-    fechaCarga: '2025-01-08T14:30:00',
-    usuarioCarga: 'Juan Carlos Pérez',
-    descripcion: 'Auto de apertura firmado por el Jefe OCID',
-    metadatos: {
-      firmado: true,
-      notificado: true,
-      folios: 5
+// Carpetas Mock por proceso
+const getCarpetasByProceso = (procesoId: string): Carpeta[] => {
+  return [
+    {
+      id: '1',
+      nombre: 'Autos',
+      color: '#3B82F6',
+      icono: 'scale',
+      documentos: [
+        {
+          id: '1',
+          nombre: 'Auto de Apertura.pdf',
+          tipo: 'Auto',
+          carpeta: 'Autos',
+          tamaño: '245 KB',
+          fechaCarga: '2025-01-10',
+          usuario: 'Dr. Juan Pérez López'
+        },
+        {
+          id: '2',
+          nombre: 'Auto de Pruebas.pdf',
+          tipo: 'Auto',
+          carpeta: 'Autos',
+          tamaño: '312 KB',
+          fechaCarga: '2025-01-15',
+          usuario: 'Dr. Juan Pérez López'
+        }
+      ]
     },
-    versiones: [
-      {
-        numero: 3,
-        fecha: '2025-01-08T14:30:00',
-        usuario: 'Juan Carlos Pérez',
-        cambios: 'Corrección de fundamentación jurídica según observaciones del Jefe',
-        tamaño: '245 KB'
-      },
-      {
-        numero: 2,
-        fecha: '2025-01-08T10:15:00',
-        usuario: 'Juan Carlos Pérez',
-        cambios: 'Ajuste de numerales y fechas',
-        tamaño: '243 KB'
-      },
-      {
-        numero: 1,
-        fecha: '2025-01-07T16:00:00',
-        usuario: 'Juan Carlos Pérez',
-        cambios: 'Versión inicial',
-        tamaño: '240 KB'
-      }
-    ]
-  },
-  {
-    id: 'd2',
-    nombre: 'Noticia Disciplinaria ND-260',
-    tipo: 'evidencia',
-    etapa: 'Noticia',
-    version: 1,
-    tamaño: '1.2 MB',
-    fechaCarga: '2025-01-03T09:00:00',
-    usuarioCarga: 'Sistema',
-    descripcion: 'Queja inicial presentada por denunciante',
-    metadatos: {
-      folios: 3
+    {
+      id: '2',
+      nombre: 'Evidencias',
+      color: '#8B5CF6',
+      icono: 'folder',
+      documentos: [
+        {
+          id: '3',
+          nombre: 'Testimonio Testigo 1.pdf',
+          tipo: 'Evidencia',
+          carpeta: 'Evidencias',
+          tamaño: '1.2 MB',
+          fechaCarga: '2025-01-12',
+          usuario: 'Dra. Ana López García'
+        },
+        {
+          id: '4',
+          nombre: 'Prueba Documental A.pdf',
+          tipo: 'Evidencia',
+          carpeta: 'Evidencias',
+          tamaño: '890 KB',
+          fechaCarga: '2025-01-14',
+          usuario: 'Dra. Ana López García'
+        }
+      ]
     },
-    versiones: [
-      {
-        numero: 1,
-        fecha: '2025-01-03T09:00:00',
-        usuario: 'Sistema',
-        cambios: 'Carga inicial desde formulario web',
-        tamaño: '1.2 MB'
-      }
-    ]
-  },
-  {
-    id: 'd3',
-    nombre: 'Evidencias Testimoniales',
-    tipo: 'evidencia',
-    etapa: 'Indagación Preliminar',
-    version: 1,
-    tamaño: 'Externo',
-    fechaCarga: '2025-01-05T11:30:00',
-    usuarioCarga: 'María Torres',
-    descripcion: 'Archivos de audio y video almacenados en Google Drive',
-    urlExterna: 'https://drive.google.com/drive/folders/1a2b3c4d5e6f',
-    metadatos: {},
-    versiones: [
-      {
-        numero: 1,
-        fecha: '2025-01-05T11:30:00',
-        usuario: 'María Torres',
-        cambios: 'Enlace a carpeta de Google Drive con testimonios grabados',
-        tamaño: 'Externo'
-      }
-    ]
-  },
-  {
-    id: 'd4',
-    nombre: 'Constancia de Notificación Personal',
-    tipo: 'notificacion',
-    etapa: 'Indagación Preliminar',
-    version: 1,
-    tamaño: '180 KB',
-    fechaCarga: '2025-01-09T15:45:00',
-    usuarioCarga: 'Secretaría OCID',
-    descripcion: 'Acta de notificación personal firmada por el investigado',
-    metadatos: {
-      notificado: true,
-      folios: 2
+    {
+      id: '3',
+      nombre: 'Oficios',
+      color: '#10B981',
+      icono: 'file-text',
+      documentos: [
+        {
+          id: '5',
+          nombre: 'Oficio Citación.pdf',
+          tipo: 'Oficio',
+          carpeta: 'Oficios',
+          tamaño: '156 KB',
+          fechaCarga: '2025-01-11',
+          usuario: 'Dr. Juan Pérez López'
+        }
+      ]
     },
-    versiones: [
-      {
-        numero: 1,
-        fecha: '2025-01-09T15:45:00',
-        usuario: 'Secretaría OCID',
-        cambios: 'Carga de acta firmada escaneada',
-        tamaño: '180 KB'
-      }
-    ]
-  }
-];
+    {
+      id: '4',
+      nombre: 'Notificaciones',
+      color: '#F59E0B',
+      icono: 'bell',
+      documentos: [
+        {
+          id: '6',
+          nombre: 'Notificación Personal.pdf',
+          tipo: 'Notificación',
+          carpeta: 'Notificaciones',
+          tamaño: '201 KB',
+          fechaCarga: '2025-01-13',
+          usuario: 'Dr. Juan Pérez López'
+        }
+      ]
+    },
+    {
+      id: '5',
+      nombre: 'Actas',
+      color: '#EF4444',
+      icono: 'file-signature',
+      documentos: []
+    }
+  ];
+};
 
 const AUDITORIA_MOCK: ActividadAuditoria[] = [
   {
@@ -1226,8 +1250,6 @@ function ModalSubirDocumento({
   const [etapa, setEtapa] = useState(defaultEtapa || '');
   const [descripcion, setDescripcion] = useState('');
   const [archivo, setArchivo] = useState<File | null>(null);
-  const [usarEnlaceExterno, setUsarEnlaceExterno] = useState(false);
-  const [urlExterna, setUrlExterna] = useState('');
   const [dragActive, setDragActive] = useState(false);
 
   // Sync state with prop
@@ -1266,16 +1288,10 @@ function ModalSubirDocumento({
   };
 
   const handleConfirmar = () => {
-    if (!nombreDocumento.trim()) {
-      toast.error('Campo Requerido', { description: 'Ingrese el nombre del documento' });
-      return;
-    }
-    if (!usarEnlaceExterno && !archivo) {
-      toast.error('Archivo Requerido', { description: 'Seleccione un archivo para cargar' });
-      return;
-    }
-    if (usarEnlaceExterno && !urlExterna.trim()) {
-      toast.error('URL Requerida', { description: 'Ingrese la URL del enlace externo' });
+    if (!nombre || !archivo) {
+      toast.error('Campos Incompletos', {
+        description: 'Por favor complete todos los campos requeridos'
+      });
       return;
     }
     if (!usarEnlaceExterno && archivo && !validarTipoArchivo(archivo)) {
@@ -1286,13 +1302,21 @@ function ModalSubirDocumento({
     }
 
     onConfirm({
-      nombre: nombreDocumento,
-      tipo: tipoDocumento,
-      etapa,
+      nombre,
+      tipo,
+      carpeta,
       descripcion,
       archivo,
-      urlExterna: usarEnlaceExterno ? urlExterna : undefined
+      tamaño: `${(archivo.size / 1024).toFixed(0)} KB`,
+      fechaCarga: new Date().toISOString().split('T')[0],
+      usuario: 'Usuario Actual'
     });
+
+    toast.success('Documento Cargado', {
+      description: `${nombre} ha sido agregado al expediente ${proceso.numero}`
+    });
+
+    onClose();
   };
 
   return (
@@ -1300,76 +1324,101 @@ function ModalSubirDocumento({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl"
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-auto"
       >
         {/* Header */}
-        <div className="p-6 border-b bg-gradient-to-r from-green-50 to-emerald-50">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
-              <Upload className="w-6 h-6 text-green-600" />
+        <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+                <Upload className="w-6 h-6" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Cargar Documento
+                </h2>
+                <p className="text-sm text-gray-600">Proceso: {proceso.numero}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Cargar Documento</h3>
-              <p className="text-sm text-gray-600">Agregar documento al expediente electrónico</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Formatos permitidos: PDF, Word (.doc, .docx), PowerPoint (.ppt, .pptx), Excel (.xls, .xlsx)
-              </p>
-            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
           </div>
         </div>
 
-        {/* Contenido */}
-        <div className="p-6 space-y-4">
-          {/* Nombre */}
+        {/* Body */}
+        <div className="p-6 space-y-5">
           <div>
-            <label className="block font-semibold text-gray-900 mb-2">
-              Nombre del Documento <span className="text-red-600">*</span>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Nombre del Documento *
             </label>
             <input
               type="text"
-              value={nombreDocumento}
-              onChange={(e) => setNombreDocumento(e.target.value)}
-              placeholder="Ej: Auto de Apertura de Investigación"
-              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Ej: Auto de Apertura"
+              className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+              style={{ borderColor: '#E5E7EB' }}
             />
           </div>
 
-          {/* Tipo */}
-          <div>
-            <label className="block font-semibold text-gray-900 mb-2">
-              Tipo de Documento <span className="text-red-600">*</span>
-            </label>
-            <select
-              value={tipoDocumento}
-              onChange={(e) => {
-                const nuevoTipo = e.target.value as Documento['tipo'];
-                setTipoDocumento(nuevoTipo);
-                if (onSwitchType && (nuevoTipo === 'auto' || nuevoTipo === 'evidencia' || nuevoTipo === 'oficio')) {
-                  onSwitchType(nuevoTipo);
-                }
-              }}
-              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="auto">Auto</option>
-              <option value="evidencia">Evidencia</option>
-              <option value="oficio">Oficio</option>
-              <option value="notificacion">Constancia de Notificación</option>
-              <option value="acta">Acta</option>
-              <option value="otro">Otro</option>
-            </select>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                Tipo de Documento *
+              </label>
+              <select
+                value={tipoDocumento}
+                onChange={(e) => {
+                  const nuevoTipo = e.target.value as Documento['tipo'];
+                  setTipoDocumento(nuevoTipo);
+                  if (onSwitchType && (nuevoTipo === 'auto' || nuevoTipo === 'evidencia' || nuevoTipo === 'oficio')) {
+                    onSwitchType(nuevoTipo);
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                style={{ borderColor: '#E5E7EB' }}
+              >
+                <option value="Auto">Auto</option>
+                <option value="Evidencia">Evidencia</option>
+                <option value="Oficio">Oficio</option>
+                <option value="Notificación">Notificación</option>
+                <option value="Acta">Acta</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                Carpeta *
+              </label>
+              <select
+                value={carpeta}
+                onChange={(e) => setCarpeta(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                style={{ borderColor: '#E5E7EB' }}
+              >
+                <option value="Autos">Autos</option>
+                <option value="Evidencias">Evidencias</option>
+                <option value="Oficios">Oficios</option>
+                <option value="Notificaciones">Notificaciones</option>
+                <option value="Actas">Actas</option>
+              </select>
+            </div>
           </div>
 
-          {/* Etapa */}
           <div>
-            <label className="block font-semibold text-gray-900 mb-2">
-              Etapa Procesal <span className="text-red-600">*</span>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Descripción (Opcional)
             </label>
             <select
               value={etapa}
@@ -1398,42 +1447,30 @@ function ModalSubirDocumento({
             <textarea
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Describa brevemente el contenido del documento..."
-              className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Descripción breve del documento..."
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+              style={{ borderColor: '#E5E7EB' }}
             />
           </div>
 
-          {/* Opción: Enlace Externo */}
-          <Card className="p-4 bg-gray-50">
-            <div className="flex items-center gap-3 mb-3">
-              <input
-                type="checkbox"
-                checked={usarEnlaceExterno}
-                onChange={(e) => setUsarEnlaceExterno(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <label className="font-semibold text-gray-900">
-                Usar enlace externo (Google Drive, OneDrive, etc.)
-              </label>
-            </div>
-            {usarEnlaceExterno && (
-              <input
-                type="url"
-                value={urlExterna}
-                onChange={(e) => setUrlExterna(e.target.value)}
-                placeholder="https://drive.google.com/..."
-                className="w-full p-3 border-2 border-gray-300 rounded-lg"
-              />
-            )}
-          </Card>
-
-          {/* Archivo Local */}
-          {!usarEnlaceExterno && (
+          {/* Área de carga de archivo */}
+          <div>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Archivo *
+            </label>
             <div
-              className={`relative w-full h-32 border-2 border-gray-300 rounded-lg flex items-center justify-center cursor-pointer ${dragActive ? 'bg-gray-100' : ''
-                }`}
-              onDragEnter={() => setDragActive(true)}
-              onDragLeave={() => setDragActive(false)}
+              className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragActive(false);
+              }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -1452,19 +1489,31 @@ function ModalSubirDocumento({
               }}
             >
               {archivo ? (
-                <p className="text-sm text-gray-600">
-                  Seleccionado: {archivo.name} ({(archivo.size / 1024).toFixed(0)} KB)
-                </p>
+                <div className="space-y-2">
+                  <FileText className="w-12 h-12 mx-auto" style={{ color: '#10B981' }} />
+                  <p className="text-sm font-semibold text-gray-900">{archivo.name}</p>
+                  <p className="text-xs text-gray-600">{(archivo.size / 1024).toFixed(0)} KB</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setArchivo(null);
+                    }}
+                    className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    Eliminar archivo
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
-                  <Upload className="w-6 h-6 text-gray-600" />
-                  <p className="text-sm text-gray-600">Arrastre y suelte un archivo aquí</p>
-                  <p className="text-xs text-gray-500">o haga clic para seleccionar</p>
+                  <Upload className="w-12 h-12 text-gray-400" />
+                  <p className="text-sm font-semibold text-gray-700">Arrastra y suelta un archivo aquí</p>
+                  <p className="text-xs text-gray-500">o haz clic para seleccionar</p>
+                  <p className="text-xs text-gray-400 mt-2">PDF, DOC, DOCX (máx. 10 MB)</p>
                 </div>
               )}
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                accept=".pdf,.doc,.docx"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   if (file) {
@@ -1481,18 +1530,238 @@ function ModalSubirDocumento({
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t bg-gray-50 flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirmar}
+            disabled={!nombre || !archivo}
+            className="px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: '#003DA5' }}
+          >
+            <Upload className="w-4 h-4" />
+            Cargar Documento
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Modal de Ver Carpetas
+interface ModalVerCarpetasProps {
+  proceso: Proceso;
+  onClose: () => void;
+}
+
+function ModalVerCarpetas({ proceso, onClose }: ModalVerCarpetasProps) {
+  const [carpetas] = useState<Carpeta[]>(getCarpetasByProceso(proceso.id));
+  const [carpetaSeleccionada, setCarpetaSeleccionada] = useState<Carpeta | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleVerDocumento = (documento: Documento) => {
+    toast.info('Visualizar Documento', {
+      description: `Abriendo ${documento.nombre}`
+    });
+  };
+
+  const handleDescargarDocumento = (documento: Documento) => {
+    toast.success('Descarga Iniciada', {
+      description: `Descargando ${documento.nombre}`
+    });
+  };
+
+  const totalDocumentos = carpetas.reduce((acc, carpeta) => acc + carpeta.documentos.length, 0);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+                <FolderOpen className="w-6 h-6" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Expediente Electrónico
+                </h2>
+                <p className="text-sm text-gray-600">{proceso.numero} - {proceso.descripcion}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto p-6">
+          {!carpetaSeleccionada ? (
+            <>
+              {/* Vista de carpetas */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold" style={{ color: '#1F2937' }}>
+                    Carpetas del Expediente
+                  </h3>
+                  <Badge style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                    {totalDocumentos} documentos totales
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {carpetas.map((carpeta) => (
+                    <div
+                      key={carpeta.id}
+                      onClick={() => setCarpetaSeleccionada(carpeta)}
+                      className="bg-white rounded-xl border-2 p-5 cursor-pointer hover:shadow-lg transition-all"
+                      style={{ borderColor: '#E5E7EB' }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: `${carpeta.color}20` }}
+                        >
+                          <Folder className="w-6 h-6" style={{ color: carpeta.color }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-lg font-bold mb-1" style={{ color: '#1F2937' }}>
+                            {carpeta.nombre}
+                          </h4>
+                          <p className="text-sm" style={{ color: '#6B7280' }}>
+                            {carpeta.documentos.length} {carpeta.documentos.length === 1 ? 'documento' : 'documentos'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Vista de documentos de una carpeta */}
+              <div className="mb-4">
+                <button
+                  onClick={() => setCarpetaSeleccionada(null)}
+                  className="flex items-center gap-2 text-sm font-semibold hover:underline mb-4"
+                  style={{ color: '#003DA5' }}
+                >
+                  <ChevronRight className="w-4 h-4 rotate-180" />
+                  Volver a Carpetas
+                </button>
+
+                <div className="flex items-center gap-3 mb-4">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center"
+                    style={{ background: `${carpetaSeleccionada.color}20` }}
+                  >
+                    <Folder className="w-6 h-6" style={{ color: carpetaSeleccionada.color }} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold" style={{ color: '#1F2937' }}>
+                      {carpetaSeleccionada.nombre}
+                    </h3>
+                    <p className="text-sm" style={{ color: '#6B7280' }}>
+                      {carpetaSeleccionada.documentos.length} {carpetaSeleccionada.documentos.length === 1 ? 'documento' : 'documentos'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Lista de documentos */}
+                {carpetaSeleccionada.documentos.length === 0 ? (
+                  <div className="text-center py-12">
+                    <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
+                    <p className="text-lg font-semibold mb-2" style={{ color: '#6B7280' }}>
+                      No hay documentos
+                    </p>
+                    <p className="text-sm" style={{ color: '#9CA3AF' }}>
+                      Esta carpeta está vacía
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {carpetaSeleccionada.documentos.map((documento) => (
+                      <div
+                        key={documento.id}
+                        className="bg-white rounded-xl border-2 p-4 hover:shadow-md transition-all"
+                        style={{ borderColor: '#E5E7EB' }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7' }}>
+                            <FileText className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-bold mb-1" style={{ color: '#1F2937' }}>
+                              {documento.nombre}
+                            </h4>
+                            <div className="flex items-center gap-4 text-xs" style={{ color: '#6B7280' }}>
+                              <span>{documento.tamaño}</span>
+                              <span>•</span>
+                              <span>{documento.fechaCarga}</span>
+                              <span>•</span>
+                              <span>{documento.usuario}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleVerDocumento(documento)}
+                              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                              title="Visualizar"
+                            >
+                              <Eye className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            </button>
+                            <button
+                              onClick={() => handleDescargarDocumento(documento)}
+                              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                              title="Descargar"
+                            >
+                              <Download className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex gap-3">
-          <Button onClick={handleConfirmar} style={{ background: '#10B981', color: '#FFFFFF' }}>
-            <Upload className="w-4 h-4 mr-2" />
-            Cargar Documento
-          </Button>
-          <Button onClick={onClose} className="bg-gray-500">
-            Cancelar
-          </Button>
+        <div className="p-6 border-t bg-gray-50 flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity"
+            style={{ background: '#003DA5' }}
+          >
+            Cerrar
+          </button>
         </div>
       </motion.div>
     </motion.div>
@@ -2141,40 +2410,105 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
 
     const matchesTipo = filterTipo === 'all' || d.tipo === filterTipo;
 
-    return matchesSearch && matchesTipo;
-  });
+  // Obtener color según tipo de proceso
+  const getTipoColor = (tipo: string) => {
+    switch(tipo) {
+      case 'Defensa Judicial':
+        return {
+          bg: '#10B981',
+          text: '#FFFFFF',
+          icon: Scale
+        };
+      case 'Juzgamiento Disciplinario':
+        return {
+          bg: '#DC2626',
+          text: '#FFFFFF',
+          icon: Scale
+        };
+      case 'Derecho de Petición':
+        return {
+          bg: '#3B82F6',
+          text: '#FFFFFF',
+          icon: File
+        };
+      default:
+        return {
+          bg: '#6B7280',
+          text: '#FFFFFF',
+          icon: Folder
+        };
+    }
+  };
 
-  // Calcular métricas
-  const metrics = {
-    totalDocumentos: documentos.length,
-    autos: documentos.filter(d => d.tipo === 'auto').length,
-    evidencias: documentos.filter(d => d.tipo === 'evidencia').length,
-    oficios: documentos.filter(d => d.tipo === 'oficio').length,
-    actas: documentos.filter(d => d.tipo === 'acta').length,
-    notificaciones: documentos.filter(d => d.tipo === 'notificacion').length,
-    firmados: documentos.filter(d => d.metadatos.firmado).length,
-    notificados: documentos.filter(d => d.metadatos.notificado).length
+  // Obtener badge de estado
+  const getEstadoBadge = (estado: string) => {
+    switch(estado) {
+      case 'En Proceso':
+        return { bg: '#FEF3C7', color: '#D97706', text: 'En Proceso' };
+      case 'Finalizado':
+        return { bg: '#DBEAFE', color: '#2563EB', text: 'Finalizado' };
+      case 'Activo':
+        return { bg: '#D1FAE5', color: '#059669', text: 'Activo' };
+      default:
+        return { bg: '#F3F4F6', color: '#6B7280', text: estado };
+    }
   };
 
   return (
     <div className="w-full max-w-full">
-      {/* Breadcrumb */}
-      <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-        <button className="hover:text-blue-600">Backoffice</button>
-        <ChevronRight className="w-4 h-4" />
-        <button className="hover:text-blue-600">Control Interno Disciplinario</button>
-        <ChevronRight className="w-4 h-4" />
-        <span className="text-gray-900 font-medium">Expediente Electrónico</span>
-      </div>
-
       {/* Header */}
       <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <Archive className="w-6 h-6" style={{ color: '#003DA5' }} />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Expediente Electrónico</h1>
-              <p className="text-sm text-gray-600">RF005 - Gestión Documental Completa</p>
+        <h1 className="text-3xl font-extrabold mb-2" style={{ color: '#1F2937' }}>
+          Expedientes Electrónicos
+        </h1>
+        <p className="text-sm" style={{ color: '#6B7280' }}>
+          Sistema Integrado de Gestión Legal (SIGL v5.0)
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-6 mb-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+        <button
+          onClick={() => setVistaActual('procesos')}
+          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${
+            vistaActual === 'procesos'
+              ? 'border-[#003DA5] text-[#003DA5]'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Folder className="w-4 h-4" />
+          Expedientes por Proceso
+          <Badge className="ml-2" style={{ background: '#003DA5', color: '#FFFFFF' }}>
+            {PROCESOS_MOCK.length}
+          </Badge>
+        </button>
+        <button
+          onClick={() => setVistaActual('estadisticas')}
+          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${
+            vistaActual === 'estadisticas'
+              ? 'border-[#003DA5] text-[#003DA5]'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Estadísticas
+        </button>
+      </div>
+
+      {vistaActual === 'procesos' ? (
+        <>
+          {/* Buscador */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#9CA3AF' }} />
+              <input
+                type="text"
+                placeholder="Buscar por radicado o nombre del proceso..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                style={{ borderColor: '#E5E7EB' }}
+              />
             </div>
           </div>
 
@@ -2631,8 +2965,8 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             documento={documentoSeleccionado}
             processId={procesoSeleccionado?.id}
             onClose={() => {
-              setShowModalVisor(false);
-              setDocumentoSeleccionado(null);
+              setModalCargar(false);
+              setProcesoSeleccionado(null);
             }}
             onEdit={(doc) => {
               // En lugar de EditorDocumentos, abrir ModalGestionAutos en modo edición

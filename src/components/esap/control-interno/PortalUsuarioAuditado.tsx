@@ -215,11 +215,10 @@ const TOOLTIP_PORTAL_AUDITADO = {
 // ════════════════════════════════════════════════════════════════════════════
 
 interface PortalUsuarioAuditadoProps {
-  hideHeader?: boolean; // Nueva prop para ocultar el header cuando se invoca desde otro componente
-  onVolver?: () => void; // Función para volver al portal principal
+  onVolver: () => void; // Función para volver al portal principal
 }
 
-export function PortalUsuarioAuditado({ hideHeader = false, onVolver }: PortalUsuarioAuditadoProps = {}) {
+export function PortalUsuarioAuditado({ onVolver }: PortalUsuarioAuditadoProps) {
   const [auditorias] = useState<AuditoriaUsuario[]>(AUDITORIAS_MOCK);
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState<AuditoriaUsuario | null>(null);
   const [vistaActual, setVistaActual] = useState<'lista' | 'detalle'>('lista');
@@ -255,92 +254,90 @@ export function PortalUsuarioAuditado({ hideHeader = false, onVolver }: PortalUs
   return (
     <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
-      {!hideHeader && (
-        <div className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {/* Botón Volver - Si viene del portal principal */}
-            {onVolver && (
-              <motion.button
-                onClick={onVolver}
-                className="inline-flex items-center gap-2 px-4 py-2.5 mb-4 bg-white border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-[#2962FF] hover:text-[#2962FF] font-semibold transition-all shadow-sm hover:shadow-md group"
-                whileHover={{ scale: 1.02, x: -2 }}
-                whileTap={{ scale: 0.98 }}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Botón Volver - Si viene del portal principal */}
+          {onVolver && (
+            <motion.button
+              onClick={onVolver}
+              className="inline-flex items-center gap-2 px-4 py-2.5 mb-4 bg-white border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 hover:border-[#2962FF] hover:text-[#2962FF] font-semibold transition-all shadow-sm hover:shadow-md group"
+              whileHover={{ scale: 1.02, x: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <svg 
+                className="w-5 h-5 group-hover:-translate-x-1 transition-transform" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
               >
-                <svg 
-                  className="w-5 h-5 group-hover:-translate-x-1 transition-transform" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Volver al Dashboard
+            </motion.button>
+          )}
+          
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <div 
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, #1e5da8 0%, #2a6dbd 100%)' }}
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Volver al Dashboard
-              </motion.button>
-            )}
-            
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'linear-gradient(135deg, #1e5da8 0%, #2a6dbd 100%)' }}
-                  >
-                    <Shield className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
-                      Mis Auditorías
-                    </h1>
-                    <p className="text-sm text-gray-600">
-                      Portal del Usuario Auditado - Control Interno de Gestión
-                    </p>
-                  </div>
+                  <Shield className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Mis Auditorías
+                  </h1>
+                  <p className="text-sm text-gray-600">
+                    Portal del Usuario Auditado - Control Interno de Gestión
+                  </p>
                 </div>
               </div>
-              <TooltipGuia {...TOOLTIP_PORTAL_AUDITADO} />
             </div>
+            <TooltipGuia {...TOOLTIP_PORTAL_AUDITADO} />
+          </div>
 
-            {/* ESTADÍSTICAS RÁPIDAS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-              <Card className="p-4 border-l-4 border-blue-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Auditorías Activas</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {auditorias.filter(a => a.estado !== 'Finalizada').length}
-                    </p>
-                  </div>
-                  <FolderOpen className="w-8 h-8 text-blue-500" />
+          {/* ESTADÍSTICAS RÁPIDAS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            <Card className="p-4 border-l-4 border-blue-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Auditorías Activas</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {auditorias.filter(a => a.estado !== 'Finalizada').length}
+                  </p>
                 </div>
-              </Card>
+                <FolderOpen className="w-8 h-8 text-blue-500" />
+              </div>
+            </Card>
 
-              <Card className="p-4 border-l-4 border-amber-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Pendientes de Respuesta</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {auditorias.filter(a => a.estado === 'En Respuesta').length}
-                    </p>
-                  </div>
-                  <Clock className="w-8 h-8 text-amber-500" />
+            <Card className="p-4 border-l-4 border-amber-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Pendientes de Respuesta</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {auditorias.filter(a => a.estado === 'En Respuesta').length}
+                  </p>
                 </div>
-              </Card>
+                <Clock className="w-8 h-8 text-amber-500" />
+              </div>
+            </Card>
 
-              <Card className="p-4 border-l-4 border-green-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {auditorias.filter(a => a.estado === 'Finalizada').length}
-                    </p>
-                  </div>
-                  <CheckCircle2 className="w-8 h-8 text-green-500" />
+            <Card className="p-4 border-l-4 border-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {auditorias.filter(a => a.estado === 'Finalizada').length}
+                  </p>
                 </div>
-              </Card>
-            </div>
+                <CheckCircle2 className="w-8 h-8 text-green-500" />
+              </div>
+            </Card>
           </div>
         </div>
-      )}
+      </div>
 
       {/* FILTROS Y BÚSQUEDA */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

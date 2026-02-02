@@ -154,12 +154,6 @@ EFECTIVIDAD DE CONTROLES
 ═══════════════════════════════════════════════════════════════
 Reducción del Riesgo: ${reduccionRiesgo}%
 
-ESTIMACIÓN CONTABLE
-═══════════════════════════════════════════════════════════════
-Cuantía Estimada:     $${Number(riesgo.cuantiaEstimada || 0).toLocaleString('es-CO')}
-Porcentaje Provisión: ${riesgo.porcentajeProvision || 0}%
-Provisión Contable:   $${Number(riesgo.provisionContable || 0).toLocaleString('es-CO')}
-Fecha Cálculo:        ${riesgo.fechaCalculoProvision ? new Date(riesgo.fechaCalculoProvision).toLocaleString('es-CO') : '-'}
 
 CAUSAS IDENTIFICADAS
 ═══════════════════════════════════════════════════════════════
@@ -206,7 +200,7 @@ Metodología DAFP - MECI
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="max-w-3xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden !top-[10vh] !translate-y-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-4xl h-auto max-h-[80vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-2xl">
         <DialogTitle className="sr-only">
           Detalle del Riesgo {riesgo.codigo || riesgo.id}
         </DialogTitle>
@@ -307,47 +301,7 @@ Metodología DAFP - MECI
               </div>
             </div>
 
-            {/* PROVISIÓN CONTABLE */}
-            <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-              <h4 className="font-bold text-green-900 mb-3 flex items-center gap-2">
-                💰 Provisión Contable
-              </h4>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
-                  <p className="text-xs text-green-700 mb-1">Cuantía Estimada</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    ${Number(riesgo.cuantiaEstimada || 0).toLocaleString()}
-                  </p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-green-700 mb-1">Porcentaje ({riesgo.zonaResidual})</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {riesgo.porcentajeProvision || (
-                      riesgo.zonaResidual === 'EXTREMO' ? 100 :
-                        riesgo.zonaResidual === 'ALTO' ? 75 :
-                          riesgo.zonaResidual === 'MODERADO' ? 50 : 25
-                    )}%
-                  </p>
-                </div>
-                <div className="text-center bg-green-100 rounded-lg p-2">
-                  <p className="text-xs text-green-700 mb-1">Provisión Calculada</p>
-                  <p className="text-xl font-bold text-green-600">
-                    ${Number(riesgo.provisionContable || (
-                      (Number(riesgo.cuantiaEstimada || 0) * (
-                        riesgo.zonaResidual === 'EXTREMO' ? 1 :
-                          riesgo.zonaResidual === 'ALTO' ? 0.75 :
-                            riesgo.zonaResidual === 'MODERADO' ? 0.5 : 0.25
-                      ))
-                    )).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              {riesgo.fechaCalculoProvision && (
-                <p className="text-xs text-green-600 mt-2 text-right">
-                  📅 Calculada: {new Date(riesgo.fechaCalculoProvision).toLocaleDateString('es-CO')}
-                </p>
-              )}
-            </div>
+
 
             {/* TABS CON INFORMACIÓN DETALLADA */}
             <Tabs value={tabActiva} onValueChange={setTabActiva}>
@@ -683,16 +637,16 @@ Metodología DAFP - MECI
               Exportar
             </Button>
             {authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_EDIT) && (
-            <Button variant="outline" onClick={handleEditar}>
-              <Edit className="w-4 h-4 mr-2" />
-              Editar
-            </Button>
+              <Button variant="outline" onClick={handleEditar}>
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </Button>
             )}
             {authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_DELETE) && (
-            <Button variant="outline" onClick={handleEliminar} className="text-red-600 border-red-300 hover:bg-red-50">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Eliminar
-            </Button>
+              <Button variant="outline" onClick={handleEliminar} className="text-red-600 border-red-300 hover:bg-red-50">
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
+              </Button>
             )}
           </div>
         </div>

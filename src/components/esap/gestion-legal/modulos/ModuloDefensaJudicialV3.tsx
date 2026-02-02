@@ -16,7 +16,7 @@ import {
   List, Columns3, ChevronsDown, ChevronsUp,
   Scale, DollarSign, Filter, Search,
   ExternalLink, Download, Upload, RefreshCw, Paperclip,
-  MessageSquare, FileCheck, Send, Archive, Mail, Edit
+  MessageSquare, FileCheck, Send, Archive, Mail, Edit, Trash2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -37,6 +37,7 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
+import { IndicadorDiasHabiles, BannerDiasHabiles } from '../design-system/BadgeDiasHabiles';
 import { VistaListaDefensaJudicial } from './VistaListaDefensaJudicial';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -64,8 +65,220 @@ export function ModuloDefensaJudicialV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
-  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Estado local para manejar drag and drop
+  const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
+
+  // ✅ Datos mock para cada etapa del tablero Kanban
+  const expedientesMockDefensaJudicial: any[] = [
+    {
+      id: 'DJ-001',
+      radicado: '25000-23-33-001-2024-00045-00',
+      demandante: 'María Rodríguez López',
+      tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
+      estado: 'ACTIVO',
+      etapa: 'NOTIFICADA',
+      prioridad: 'ALTA',
+      fechaNotificacion: '2025-01-15',
+      fechaVencimiento: '2025-02-15',
+      juzgado: 'Juzgado 12 Administrativo de Bogotá',
+      abogadoResponsable: 'Dra. Ana María López',
+      cuantia: '85000000',
+      pretensiones: 'Nulidad del acto administrativo por el cual se declaró insubsistencia del cargo y restablecimiento del derecho con reintegro y pago de salarios dejados de percibir.',
+      demandantes: [
+        {
+          id: 'DEM-001',
+          nombre: 'María Rodríguez López',
+          tipoPersona: 'natural',
+          identificacion: '52123456'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-001',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Accionada'
+        },
+        {
+          id: 'DEMAN-002',
+          nombre: 'José Alberto Ramírez González',
+          tipoPersona: 'natural',
+          identificacion: '79456123',
+          cargo: 'Rector ESAP'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-001',
+          nombre: 'Procuraduría General de la Nación',
+          tipoPersona: 'juridica',
+          identificacion: '899999007-1',
+          rol: 'Ministerio Público'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-20',
+        tipo: 'Auto Admisorio',
+        descripcion: 'Se admite demanda y se ordena notificación a ESAP',
+        responsable: 'Juzgado 12 Administrativo',
+        estado: 'NOTIFICADO'
+      }
+    },
+    {
+      id: 'DJ-002',
+      radicado: '11001-03-25-000-2024-00123-00',
+      demandante: 'Carlos Eduardo Martínez',
+      tipoAccion: 'REPARACIÓN DIRECTA',
+      estado: 'ACTIVO',
+      etapa: 'CONTESTACIÓN',
+      prioridad: 'MEDIA',
+      fechaNotificacion: '2024-12-05',
+      fechaVencimiento: '2025-02-05',
+      juzgado: 'Tribunal Administrativo de Cundinamarca',
+      abogadoResponsable: 'Dr. Juan Carlos Pérez',
+      cuantia: '120000000',
+      pretensiones: 'Reparación directa por daños y perjuicios ocasionados en accidente de tránsito con vehículo institucional de ESAP.',
+      demandantes: [
+        {
+          id: 'DEM-002',
+          nombre: 'Carlos Eduardo Martínez',
+          tipoPersona: 'natural',
+          identificacion: '80123456'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-003',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Demandada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-002',
+          nombre: 'Seguros del Estado S.A.',
+          tipoPersona: 'juridica',
+          identificacion: '860066119-1',
+          rol: 'Tercero Llamado en Garantía'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-18',
+        tipo: 'Contestación Demanda',
+        descripcion: 'Se presenta escrito de contestación y excepciones',
+        responsable: 'Oficina Jurídica ESAP',
+        estado: 'RADICADO'
+      }
+    },
+    {
+      id: 'DJ-003',
+      radicado: '76001-23-33-000-2024-00089-00',
+      demandante: 'Asociación Docentes ESAP',
+      tipoAccion: 'ACCIÓN DE GRUPO',
+      estado: 'ACTIVO',
+      etapa: 'PROBATORIA',
+      prioridad: 'ALTA',
+      fechaNotificacion: '2024-10-10',
+      fechaVencimiento: '2025-03-10',
+      juzgado: 'Juzgado 8 Administrativo del Circuito de Cali',
+      abogadoResponsable: 'Dra. María González',
+      cuantia: '450000000',
+      pretensiones: 'Acción de grupo por falta de pago de primas de vacaciones a docentes de planta durante los años 2022-2024.',
+      demandantes: [
+        {
+          id: 'DEM-003',
+          nombre: 'Asociación Docentes ESAP',
+          tipoPersona: 'juridica',
+          identificacion: '900123789-1'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-004',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Demandada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-003',
+          nombre: 'Dr. Alberto Mendoza Ramírez',
+          tipoPersona: 'natural',
+          identificacion: '79345678',
+          rol: 'Curador Ad Litem del Grupo'
+        },
+        {
+          id: 'OTRO-004',
+          nombre: 'Defensoría del Pueblo',
+          tipoPersona: 'juridica',
+          identificacion: '899999011-7',
+          rol: 'Agente Oficioso'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-22',
+        tipo: 'Decreto Pruebas',
+        descripcion: 'Se decretan testimonios y pruebas documentales solicitadas',
+        responsable: 'Juzgado 8 Administrativo',
+        estado: 'EN PRÁCTICA'
+      }
+    },
+    {
+      id: 'DJ-004',
+      radicado: '05001-23-33-000-2024-00234-00',
+      demandante: 'Pedro Antonio Gómez',
+      tipoAccion: 'TUTELA',
+      estado: 'ACTIVO',
+      etapa: 'ALEGATOS',
+      prioridad: 'URGENTE',
+      fechaNotificacion: '2025-01-08',
+      fechaVencimiento: '2025-01-30',
+      juzgado: 'Juzgado 5 Civil del Circuito de Medellín',
+      abogadoResponsable: 'Dr. Carlos Ramírez',
+      cuantia: '0',
+      pretensiones: 'Protección del derecho fundamental al debido proceso en investigación disciplinaria adelantada por ESAP.',
+      demandantes: [
+        {
+          id: 'DEM-004',
+          nombre: 'Pedro Antonio Gómez',
+          tipoPersona: 'natural',
+          identificacion: '71234567'
+        }
+      ],
+      demandados: [
+        {
+          id: 'DEMAN-005',
+          nombre: 'ESAP - Escuela Superior de Administración Pública',
+          tipoPersona: 'juridica',
+          identificacion: '899999061-4',
+          cargo: 'Entidad Accionada'
+        }
+      ],
+      otrosActores: [
+        {
+          id: 'OTRO-005',
+          nombre: 'Agencia Nacional de Defensa Jurídica del Estado',
+          tipoPersona: 'juridica',
+          identificacion: '900460870-4',
+          rol: 'Tercero con Interés'
+        }
+      ],
+      ultimaActuacion: {
+        fecha: '2025-01-25',
+        tipo: 'Alegatos de Conclusión',
+        descripcion: 'Se presentan alegatos finales por parte de ESAP',
+        responsable: 'Oficina Jurídica ESAP',
+        estado: 'PRESENTADO'
+      }
+    }
+  ];
 
   // ✅ Log de configuraciones cargadas
   useEffect(() => {
@@ -74,6 +287,20 @@ export function ModuloDefensaJudicialV3() {
     console.log('   ⚖️ Tipos de procesos activos:', tiposProcesosActivos.length);
     console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
   }, [estadosActivos, tiposProcesosActivos]);
+
+  // ✅ Cargar datos mock al montar el componente
+  useEffect(() => {
+    const mockMapped = expedientesMockDefensaJudicial.map(exp => ({
+      ...exp,
+      abogadoAsignado: exp.abogadoResponsable || 'Sin asignar',
+      diasRestantes: exp.fechaVencimiento ? Math.ceil((new Date(exp.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
+      diasTotales: exp.fechaVencimiento && exp.fechaNotificacion ? Math.ceil((new Date(exp.fechaVencimiento).getTime() - new Date(exp.fechaNotificacion).getTime()) / (1000 * 60 * 60 * 24)) : 0,
+      fechaActualizacion: new Date(exp.ultimaActuacion?.fecha || exp.fechaNotificacion || new Date()),
+      documentos: [],
+      medioControl: exp.tipoAccion || 'N/A'
+    }));
+    setExpedientes(mockMapped as ExpedienteJudicial[]);
+  }, []);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -92,57 +319,105 @@ export function ModuloDefensaJudicialV3() {
   const loadExpedientes = async () => {
     try {
       setLoading(true);
-      const data = await legalService.getExpedientes();
+
+      // Cargar expedientes y abogados en paralelo
+      const [data, abogadosData] = await Promise.all([
+        legalService.getExpedientes(),
+        legalService.getAbogadosDashboard()
+      ]);
+
+      // Crear mapa de abogados para búsqueda rápida
+      const abogadosMap = new Map();
+      if (Array.isArray(abogadosData)) {
+        abogadosData.forEach((a: any) => {
+          const nombre = a.nombreCompleto || `${a.nombre || ''} ${a.apellido || ''}`.trim();
+          if (a.id) abogadosMap.set(a.id, nombre);
+        });
+      }
+
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
-      const mapped: ExpedienteJudicial[] = data.map((exp: any) => ({
-        uuid: exp.id, // Guardar UUID real para operaciones de API
-        id: exp.radicado || exp.id, // Usar radicado como ID visible, fallback al UUID
-        tipo: exp.tipoProceso || 'declarativo',
-        tipoProceso: exp.tipoProceso || '', // ✅ Agregar explícitamente para filtros
-        medioControl: exp.medioControl || 'NRD Art.138',
-        jurisdiccion: exp.jurisdiccion || 'Contencioso Administrativo',
-        etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
-        demandante: exp.demandante || 'Sin demandante',
-        demandado: exp.demandado || 'ESAP - Escuela Superior de Administración Pública',
-        tipoIdDemandante: exp.tipoIdDemandante,
-        numeroIdDemandante: exp.numeroIdDemandante,
-        tipoIdDemandado: exp.tipoIdDemandado,
-        numeroIdDemandado: exp.numeroIdDemandado,
-        // Campos de contacto del demandante
-        demandanteDireccion: exp.demandanteDireccion,
-        demandanteTelefono: exp.demandanteTelefono,
-        demandanteEmail: exp.demandanteEmail,
-        demandanteApoderado: exp.demandanteApoderado,
-        apoderado: exp.demandanteApoderado || '',
-        juzgado: exp.juzgadoConocimiento || '',
-        radicado: exp.radicado,
-        cuantia: exp.cuantia || 0,
-        fechaNotificacion: new Date(exp.fechaNotificacion || exp.fechaRadicacion),
-        diasTotales: calcularDiasTotales(
-          new Date(exp.fechaNotificacion || exp.fechaRadicacion),
-          new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
-        ),
-        diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
-        // Para abogado, buscar el nombre en la relación o usar valor directo si es string
-        abogadoAsignado: exp.abogado?.nombreCompleto || exp.abogadoNombre || (
-          typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 50
-            ? exp.abogadoSustanciador
-            : 'Sin asignar'
-        ),
-        hechos: '',
-        pretensiones: exp.pretensionDemandante || '',
-        documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
-        actuaciones: [],
-        timeline: [],
-        fechaCreacion: new Date(exp.createdAt),
-        fechaActualizacion: new Date(exp.updatedAt),
-        estado: exp.estado || 'ACTIVO',
-        ultimaActuacion: exp.ultimaActuacion || `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
-        // Campos de contacto del demandado
-        demandadoDireccion: exp.demandadoDireccion,
-        demandadoTelefono: exp.demandadoTelefono,
-        demandadoEmail: exp.demandadoEmail,
-      }));
+      // Mapear datos del backend al tipo ExpedienteJudicial del frontend
+      const mapped: ExpedienteJudicial[] = data.map((exp: any) => {
+        // Encontrar la última actuación real
+        let latestActuacionVal = null;
+        if (exp.actuaciones && exp.actuaciones.length > 0) {
+          // Ordenar por fecha descendente por si acaso
+          const sortedActs = [...exp.actuaciones].sort((a, b) =>
+            new Date(b.fechaActuacion).getTime() - new Date(a.fechaActuacion).getTime()
+          );
+          const last = sortedActs[0];
+          latestActuacionVal = {
+            fecha: last.fechaActuacion,
+            tipo: last.tipoActuacion,
+            descripcion: last.descripcion,
+            responsable: last.usuarioResponsable || 'Sistema',
+            estado: 'REALIZADO'
+          };
+        }
+
+        return {
+          uuid: exp.id, // Guardar UUID real para operaciones de API
+          id: exp.radicado || exp.numeroRadicado || exp.id, // Preferir radicado como ID visible
+          radicado: exp.radicado || exp.numeroRadicado || exp.id,
+          tipo: exp.tipoProceso || 'declarativo', // Propiedad requerida por interface antigua
+          tipoAccion: exp.tipoProceso || 'SIN CLASIFICAR', // Propiedad nueva
+          etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
+          prioridad: 'MEDIA',
+          demandante: exp.actors && exp.actors.some((a: any) => a.rol === 'DEMANDANTE')
+            ? exp.actors.find((a: any) => a.rol === 'DEMANDANTE').nombre
+            : (exp.demandante || 'No registrado'),
+          jurisdiccion: 'Contencioso Administrativo', // Valor por defecto
+          apoderado: exp.demandanteApoderado || '', // Valor por defecto
+          fechaNotificacion: exp.fechaNotificacion instanceof Date ? exp.fechaNotificacion.toLocaleDateString('es-CO') : exp.fechaNotificacion,
+          fechaVencimiento: exp.fechaVencimiento || new Date().toISOString(),
+          juzgado: exp.juzgadoConocimiento || 'Sin asignar',
+          juzgadoConocimiento: exp.juzgadoConocimiento,
+          ubicacionFisica: exp.ubicacionFisica,
+          cuantia: exp.cuantia || 0,
+          demandantes: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDANTE') : [],
+          demandados: exp.actors ? exp.actors.filter((a: any) => a.rol === 'DEMANDADO') : [],
+          otrosActores: exp.actors ? exp.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : [],
+          medioControl: exp.medioControl || 'Nulidad y Restablecimiento del Derecho',
+          diasTotales: calcularDiasTotales(
+            new Date(exp.fechaNotificacion || Date.now()),
+            new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))
+          ),
+          diasRestantes: calcularDiasRestantes(new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000))),
+          // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
+          abogadoAsignado: (() => {
+            // 1. Intentar buscar en el mapa por ID (prioridad)
+            if (exp.abogadoSustanciador && abogadosMap.has(exp.abogadoSustanciador)) {
+              return abogadosMap.get(exp.abogadoSustanciador);
+            }
+            // 2. Si viene el objeto abogado
+            if (exp.abogado?.nombreCompleto) return exp.abogado.nombreCompleto;
+
+            // 3. Fallback a string si no parece UUID
+            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
+              return exp.abogadoSustanciador;
+            }
+
+            return 'Sin asignar';
+          })(),
+          hechos: '',
+          pretensiones: exp.pretensionDemandante || '',
+          pretensionDemandante: exp.pretensionDemandante,
+          tipoProceso: exp.tipoProceso,
+          documentos: new Array(Number(exp.documentosCount || 0) + (exp.documentosInicialesUrls?.length || 0)).fill({}),
+          actuaciones: exp.actuaciones || [],
+          timeline: [],
+          fechaCreacion: new Date(exp.createdAt),
+          fechaActualizacion: new Date(exp.updatedAt),
+          estado: exp.estado || 'ACTIVO',
+          ultimaActuacion: latestActuacionVal || {
+            descripcion: `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
+            fecha: exp.updatedAt
+          },
+          demandadoDireccion: exp.demandadoDireccion,
+          demandadoTelefono: exp.demandadoTelefono,
+          demandadoEmail: exp.demandadoEmail,
+        }
+      });
       setExpedientes(mapped);
     } catch (error) {
       console.error('Error cargando expedientes:', error);
@@ -220,22 +495,27 @@ export function ModuloDefensaJudicialV3() {
       exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
-    // Filtro por tipo de proceso
-    const tipoProceso = (exp as any).tipoProceso || exp.tipo || '';
-    const matchTipo = filtroTipo === 'TODOS' || tipoProceso === filtroTipo;
+    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
+    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control) 
+    // como para "Tutela" (Tipo Acción)
+    const matchTipo = filtroTipo === 'TODOS' ||
+      exp.tipo === filtroTipo ||
+      exp.tipoAccion === filtroTipo ||
+      exp.medioControl === filtroTipo ||
+      (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
 
     return matchBusqueda && matchTipo;
   });
 
   // Agrupar expedientes filtrados por etapa de forma dinámica
-  const expedientesPorEtapa = estadosActivos.reduce((acc, estado) => {
+  const expedientesPorEtapa = estadosActivos.reduce((acc: Record<string, ExpedienteJudicial[]>, estado: any) => {
     // Si hay filtro de etapa, solo incluir esa etapa
     if (filtroEtapa !== 'TODAS' && estado.nombre !== filtroEtapa) {
       acc[estado.id] = [];
       return acc;
     }
 
-    acc[estado.id] = expedientesFiltrados.filter(exp => {
+    acc[estado.id] = expedientesFiltrados.filter((exp: ExpedienteJudicial) => {
       const stage = exp.etapa ? exp.etapa.toString().toLowerCase().replace(/_/g, ' ') : '';
       const stateId = estado.id.toLowerCase().replace(/-/g, ' ');
       const stateName = estado.nombre.toLowerCase();
@@ -246,12 +526,12 @@ export function ModuloDefensaJudicialV3() {
   }, {} as Record<string, ExpedienteJudicial[]>);
 
   // Calcular estadísticas - solo expedientes en las etapas activas
-  const expedientesVisibles = Object.values(expedientesPorEtapa).flat();
+  const expedientesVisibles = Object.values(expedientesPorEtapa).flat() as ExpedienteJudicial[];
   const totalExpedientes = expedientesVisibles.length;
-  const expedientesCriticos = expedientesVisibles.filter(e => e.diasRestantes <= 5).length;
-  const expedientesEnTermino = expedientesVisibles.filter(e => e.diasRestantes > 15).length;
+  const expedientesCriticos = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes <= 5).length;
+  const expedientesEnTermino = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes > 15).length;
 
-  const etapas = estadosActivos.map(estado => ({
+  const etapas = estadosActivos.map((estado: any) => ({
     nombre: estado.nombre,
     valor: estado.id, // Usamos el ID del estado como valor para mover
     color: estado.color,
@@ -266,10 +546,10 @@ export function ModuloDefensaJudicialV3() {
       // Mapear datos del formulario al formato del backend
       const expedienteData = {
         radicado: demandaData.numeroRadicado,
-        tipoProceso: demandaData.tipoProceso, // ✅ Usar el campo correcto del formulario
+        tipoProceso: demandaData.tipoProceso,
         jurisdiccion: 'Contencioso Administrativo',
-        demandante: demandaData.demandante,
-        demandado: demandaData.demandado || 'ESAP',
+        demandante: demandaData.demandantes[0]?.nombre || 'Sin Demandante',
+        demandado: demandaData.demandados[0]?.nombre || 'Sin Demandado',
         estado: 'ACTIVO',
         fechaRadicacion: new Date().toISOString(),
         cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
@@ -282,19 +562,55 @@ export function ModuloDefensaJudicialV3() {
         fechaVencimientoTermino: demandaData.fechaVencimiento,
         etapaProcesal: demandaData.etapa,
         ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
-        // Datos del Demandante
-        tipoIdDemandante: demandaData.tipoPersona === 'natural' ? 'CC' : 'NIT',
-        numeroIdDemandante: demandaData.identificacionDemandante,
-        demandanteDireccion: demandaData.demandanteDireccion,
-        demandanteTelefono: demandaData.demandanteTelefono,
-        demandanteEmail: demandaData.demandanteEmail,
-        demandanteApoderado: demandaData.demandanteApoderado,
-        // Datos del Demandado
-        tipoIdDemandado: demandaData.tipoIdDemandado,
-        numeroIdDemandado: demandaData.numeroIdDemandado,
-        demandadoDireccion: demandaData.demandadoDireccion,
-        demandadoTelefono: demandaData.demandadoTelefono,
-        demandadoEmail: demandaData.demandadoEmail,
+
+        // Mapeo unificado de actores
+        actors: [
+          ...demandaData.demandantes.map(d => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: 'DEMANDANTE',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          })),
+          ...demandaData.demandados.map(d => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: 'DEMANDADO',
+            cargo: d.cargo,
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          })),
+          ...demandaData.otrosActores.map(d => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: d.rol || 'OTRO',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          }))
+        ],
+
+        // Datos del Demandante Legacy (Primer registro)
+        tipoIdDemandante: demandaData.demandantes[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandante: demandaData.demandantes[0]?.identificacion || '',
+        demandanteDireccion: demandaData.demandantes[0]?.direccion || '',
+        demandanteTelefono: demandaData.demandantes[0]?.telefono || '',
+        demandanteEmail: demandaData.demandantes[0]?.email || '',
+        demandanteApoderado: demandaData.demandantes[0]?.apoderado || '',
+        // Datos del Demandado Legacy (Primer registro)
+        tipoIdDemandado: demandaData.demandados[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandado: demandaData.demandados[0]?.identificacion || '',
+        demandadoDireccion: demandaData.demandados[0]?.direccion || '',
+        demandadoTelefono: demandaData.demandados[0]?.telefono || '',
+        demandadoEmail: demandaData.demandados[0]?.email || '',
       };
 
       await legalService.crearExpediente(expedienteData);
@@ -304,9 +620,9 @@ export function ModuloDefensaJudicialV3() {
       // Recargar expedientes
       loadExpedientes();
       setModalNuevaDemandaOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error guardando demanda:', error);
-      toast.error('Error al guardar la demanda');
+      toast.error(error.message || 'Error al guardar la demanda');
     }
   };
 
@@ -333,7 +649,7 @@ export function ModuloDefensaJudicialV3() {
             buttons={addBtnsPermission()}
             toggleView={{
               current: tipoVista,
-              onChange: setTipoVista,
+              onChange: (v: string) => setTipoVista(v as VistaModulo),
               options: [
                 { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
                 { label: 'Lista', icon: <List className="w-4 h-4" /> }
@@ -430,7 +746,7 @@ export function ModuloDefensaJudicialV3() {
             onChange: setFiltroEtapa,
             options: [
               { value: 'TODAS', label: 'Todas las etapas' },
-              ...etapas.map(e => ({ value: e.nombre, label: e.nombre }))
+              ...etapas.map((e: any) => ({ value: e.nombre, label: e.nombre }))
             ]
           },
           {
@@ -440,7 +756,7 @@ export function ModuloDefensaJudicialV3() {
             onChange: setFiltroTipo,
             options: [
               { value: 'TODOS', label: 'Todos los tipos' },
-              ...tiposProcesosActivos.map(t => ({ value: t.id, label: t.nombre }))
+              ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
             ]
           }
         ]}
@@ -452,6 +768,9 @@ export function ModuloDefensaJudicialV3() {
           setFiltroTipo('TODOS');
         }}
       />
+
+      {/* ✅ Banner de Días Hábiles - Indicador prominente */}
+      <IndicadorDiasHabiles className="animate-fade-in" />
 
       {/* Tablero Kanban - IGUAL A DISCIPLINARIO */}
       {tipoVista === 'kanban' && (
@@ -475,7 +794,7 @@ export function ModuloDefensaJudicialV3() {
                 WebkitOverflowScrolling: 'touch'
               }}
             >
-              {etapas.map((etapa) => (
+              {etapas.map((etapa: any) => (
                 <ColumnaKanban
                   key={etapa.nombre}
                   etapa={etapa}
@@ -493,7 +812,7 @@ export function ModuloDefensaJudicialV3() {
       {/* Vista de Lista - NUEVA IMPLEMENTACIÓN */}
       {tipoVista === 'lista' && (
         <VistaListaDefensaJudicial
-          expedientes={etapas.flatMap(e => e.expedientes)}
+          expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
           isTablet={isTablet}
         />
@@ -561,7 +880,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, onMoverExpediente, onRefresh
                 </h3>
                 <p className="text-[10px] text-gray-500 flex items-center gap-1">
                   <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días
+                  {etapa.diasEstimados} días hábiles
                 </p>
               </div>
             </div>
@@ -627,9 +946,33 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
 
+  const puedeEliminar = true; // authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE);
+
   // Handler para abrir modal de expediente
   const handleAbrirExpediente = () => {
     setModalExpedienteOpen(true);
+  };
+
+  const handleEliminarExpediente = async () => {
+    const id = expediente.uuid || expediente.id;
+    if (!id) {
+      toast.error('No se encontró el ID del expediente');
+      return;
+    }
+
+    const confirmDelete = window.confirm(`¿Eliminar el expediente ${expediente.id}? Esta acción no se puede deshacer.`);
+    if (!confirmDelete) return;
+
+    try {
+      await legalService.deleteExpediente(id);
+      toast.success('Expediente eliminado', {
+        description: `Radicado ${expediente.id}`
+      });
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error eliminando expediente:', error);
+      toast.error('No se pudo eliminar el expediente');
+    }
   };
 
   // Determinar semáforo
@@ -641,7 +984,7 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
 
   const semaforo = getSemaforoColor(expediente.diasRestantes);
   const porcentajeTiempo = Math.round(((expediente.diasTotales - expediente.diasRestantes) / expediente.diasTotales) * 100);
-  const ultimaActuacion = expediente.ultimaActuacion || `Expediente en etapa de ${expediente.etapa}`;
+  const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -678,13 +1021,70 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
                 <p className="text-xs text-gray-600 truncate">{expediente.medioControl}</p>
               </div>
             </div>
+            {puedeEliminar && (
+              <Button
+                size="icon"
+                variant="ghost"
+                title="Eliminar expediente"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={(e: any) => {
+                  e.stopPropagation();
+                  handleEliminarExpediente();
+                }}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
           </div>
 
           <div className="mb-2 pb-2 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">👤 Demandante:</p>
-            <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-              {expediente.demandante}
-            </p>
+            <p className="text-xs text-gray-500 mb-0.5">👤 Partes Procesales:</p>
+
+            {/* Demandantes */}
+            {expediente.demandantes && expediente.demandantes.length > 0 ? (
+              <div className="mb-1.5">
+                <p className="text-xs font-semibold text-orange-700 mb-0.5">Demandante(s):</p>
+                <div className="space-y-0.5">
+                  {expediente.demandantes.map((demandante, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {demandante.nombre}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
+                {expediente.demandante}
+              </p>
+            )}
+
+            {/* Demandados */}
+            {expediente.demandados && expediente.demandados.length > 0 && (
+              <div className="mb-1.5">
+                <p className="text-xs font-semibold text-red-700 mb-0.5">Demandado(s):</p>
+                <div className="space-y-0.5">
+                  {expediente.demandados.map((demandado, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {demandado.nombre} <span className="text-[10px] text-gray-600">({demandado.cargo})</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Otros Actores */}
+            {expediente.otrosActores && expediente.otrosActores.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-blue-700 mb-0.5">Otros Actores:</p>
+                <div className="space-y-0.5">
+                  {expediente.otrosActores.map((actor, idx) => (
+                    <p key={idx} className={`font-bold ${isMobile ? 'text-xs' : 'text-xs'} text-gray-900 line-clamp-1`}>
+                      • {actor.nombre} <span className="text-[10px] text-gray-600">({actor.rol})</span>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mb-2 pb-2 border-b border-gray-200">
@@ -704,7 +1104,7 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500">👨‍💼 Profesional:</p>
                 <p className={`font-bold ${isMobile ? 'text-xs' : 'text-sm'} text-gray-900 line-clamp-1`}>
-                  {expediente.abogadoAsignado || 'Sin asignar'}
+                  {expediente.abogadoAsignado || 'No asignado'}
                 </p>
               </div>
             </div>

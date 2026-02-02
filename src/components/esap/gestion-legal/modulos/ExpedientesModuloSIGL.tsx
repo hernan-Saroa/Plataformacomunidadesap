@@ -23,6 +23,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 
 import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environment';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
 
 // Helper to build correct file URL for both direct and gateway modes
 // Direct mode: http://localhost:3008/files/{filename}
@@ -76,6 +77,7 @@ type TipoDocumento =
   | 'CONTESTACION'
   | 'PRUEBAS'
   | 'EVIDENCIAS'
+  | 'AUTOS'
   | 'SENTENCIAS'
   | 'TUTELAS'
   | 'RECURSOS'
@@ -146,9 +148,16 @@ export const TIPOS_DOCUMENTO = [
     icon: FolderCheck
   },
   {
+    id: 'AUTOS' as TipoDocumento,
+    nombre: 'Autos',
+    descripcion: 'Autos judiciales, providencias, decretos',
+    color: 'violet',
+    icon: Gavel
+  },
+  {
     id: 'SENTENCIAS' as TipoDocumento,
     nombre: 'Sentencias y Fallos',
-    descripcion: 'Sentencias, autos, providencias judiciales',
+    descripcion: 'Sentencias finales y fallos definitivos',
     color: 'purple',
     icon: Gavel
   },
@@ -203,8 +212,135 @@ export const TIPOS_DOCUMENTO = [
   }
 ];
 
+// ════════════════════════════════════════════════════════════════════════════
+// DATOS MOCK
+// ════════════════════════════════════════════════════════════════════════════
+
+// const EXPEDIENTES_MOCK: Expediente[] = [
 // Placeholder para Coactivos que no está implementado en backend aún
 const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
+  // ═══════════════════════════════════════════════════════════
+  // EXPEDIENTES DE DEFENSA JUDICIAL
+  // Vinculados con datosExpedientesJudicialesExpandido.ts
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: 'exp-dj-001',
+    radicado: 'PJ-2025-001',
+    nombreProceso: 'NRD - María González Pérez vs ESAP',
+    tipoProceso: 'DEFENSA_JUDICIAL',
+    fechaInicio: '2024-10-15',
+    fechaActualizacion: '2025-01-12',
+    estado: 'EN_PROCESO',
+    responsable: 'Dr. Juan Pérez López',
+    totalDocumentos: 15,
+    documentos: [
+      { id: 'd1', nombre: 'Demanda NRD - María González.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '2.4 MB', fechaCreacion: '2024-10-15', autor: 'Tribunal Administrativo' },
+      { id: 'd2', nombre: 'Auto Admisorio.pdf', tipo: 'AUTOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-10-20', autor: 'Tribunal' },
+      { id: 'd3', nombre: 'Notificación Auto Admisorio.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2024-10-22', autor: 'Notificador' },
+      { id: 'd4', nombre: 'Contestación ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '3.8 MB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
+      { id: 'd5', nombre: 'Prueba - Resolución Litigio.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-11-15', autor: 'Dr. Juan Pérez' },
+      { id: 'd6', nombre: 'Auto Decreto Pruebas.pdf', tipo: 'AUTOS', tipoArchivo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-10', autor: 'Tribunal' },
+    ]
+  },
+  {
+    id: 'exp-dj-002',
+    radicado: 'PJ-2024-045',
+    nombreProceso: 'Tutela - Derecho de Petición',
+    tipoProceso: 'DEFENSA_JUDICIAL',
+    fechaInicio: '2024-08-15',
+    fechaActualizacion: '2024-09-20',
+    estado: 'FINALIZADO',
+    responsable: 'Dra. Ana López García',
+    totalDocumentos: 10,
+    documentos: [
+      { id: 'd20', nombre: 'Acción de Tutela.pdf', tipo: 'TUTELAS', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-08-15', autor: 'Ciudadano' },
+      { id: 'd21', nombre: 'Informe ESAP.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.5 MB', fechaCreacion: '2024-08-16', autor: 'Dra. Ana López' },
+      { id: 'd22', nombre: 'Sentencia Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '890 KB', fechaCreacion: '2024-08-20', autor: 'Juzgado' },
+      { id: 'd23', nombre: 'Impugnación.pdf', tipo: 'RECURSOS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2024-08-22', autor: 'Ciudadano' },
+      { id: 'd24', nombre: 'Sentencia Segunda Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'Tribunal' },
+      { id: 'd25', nombre: 'Constancia Cumplimiento.pdf', tipo: 'ACTAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-09-20', autor: 'Dra. Ana López' },
+    ]
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPEDIENTES DE JUZGAMIENTO
+  // Vinculados con datosProcesoDisciplinarios.ts
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: 'exp-juz-001',
+    radicado: 'PD-2025-001',
+    nombreProceso: 'Disciplinario - Dr. Carlos Rodríguez',
+    tipoProceso: 'JUZGAMIENTO',
+    fechaInicio: '2025-01-08',
+    fechaActualizacion: '2025-01-13',
+    estado: 'ACTIVO',
+    responsable: 'Dra. Ana López García',
+    totalDocumentos: 6,
+    documentos: [
+      { id: 'd7', nombre: 'Queja Inicial.pdf', tipo: 'OTROS', tipoArchivo: 'PDF', tamanio: '456 KB', fechaCreacion: '2024-12-15', autor: 'Ciudadano' },
+      { id: 'd8', nombre: 'Auto Avocamiento.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '678 KB', fechaCreacion: '2025-01-08', autor: 'Dra. Ana López' },
+      { id: 'd9', nombre: 'Notificación Investigado.pdf', tipo: 'NOTIFICACIONES', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-10', autor: 'Notificador' },
+    ]
+  },
+  {
+    id: 'exp-juz-002',
+    radicado: 'PD-2024-015',
+    nombreProceso: 'Disciplinario - Funcionario Administrativo',
+    tipoProceso: 'JUZGAMIENTO',
+    fechaInicio: '2024-06-20',
+    fechaActualizacion: '2025-01-10',
+    estado: 'EN_PROCESO',
+    responsable: 'Dr. Carlos Ramírez Soto',
+    totalDocumentos: 18,
+    documentos: [
+      { id: 'd10', nombre: 'Pliego de Cargos.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2024-09-01', autor: 'Dr. Carlos Ramírez' },
+      { id: 'd11', nombre: 'Descargos Investigado.pdf', tipo: 'CONTESTACION', tipoArchivo: 'PDF', tamanio: '2.3 MB', fechaCreacion: '2024-09-20', autor: 'Investigado' },
+      { id: 'd12', nombre: 'Pruebas - Testimonios.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '3.1 MB', fechaCreacion: '2024-10-15', autor: 'Dr. Carlos Ramírez' },
+      { id: 'd13', nombre: 'Fallo Primera Instancia.pdf', tipo: 'SENTENCIAS', tipoArchivo: 'PDF', tamanio: '2.8 MB', fechaCreacion: '2025-01-10', autor: 'Dr. Carlos Ramírez' },
+    ]
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPEDIENTES DE ASESORÍA JURÍDICA
+  // Vinculados con datosConsultasJuridicas.ts
+  // ═══════════════════════════════════════════════════════════
+  {
+    id: 'exp-as-001',
+    radicado: 'CJ-2025-001',
+    nombreProceso: 'Concepto - Contratación Directa',
+    tipoProceso: 'ASESORIA',
+    fechaInicio: '2025-01-11',
+    fechaActualizacion: '2025-01-12',
+    estado: 'ACTIVO',
+    responsable: 'Dr. Juan Pérez López',
+    totalDocumentos: 5,
+    documentos: [
+      { id: 'd14', nombre: 'Solicitud Concepto DAF.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-01-11', autor: 'Dir. Administrativa' },
+      { id: 'd15', nombre: 'Normatividad Ley 80.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '567 KB', fechaCreacion: '2025-01-11', autor: 'Dr. Juan Pérez' },
+      { id: 'd16', nombre: 'Concepto No. 001-2025.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.8 MB', fechaCreacion: '2025-01-12', autor: 'Dr. Juan Pérez' },
+    ]
+  },
+  {
+    id: 'exp-as-002',
+    radicado: 'CJ-2025-002',
+    nombreProceso: 'Concepto - Fuero Sindical',
+    tipoProceso: 'ASESORIA',
+    fechaInicio: '2025-01-08',
+    fechaActualizacion: '2025-01-12',
+    estado: 'EN_PROCESO',
+    responsable: 'Dra. Ana López García',
+    totalDocumentos: 7,
+    documentos: [
+      { id: 'd17', nombre: 'Solicitud RRHH Medellín.pdf', tipo: 'OFICIOS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
+      { id: 'd18', nombre: 'Carta Renuncia.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '156 KB', fechaCreacion: '2025-01-08', autor: 'Gestión Humana' },
+      { id: 'd19', nombre: 'Borrador Concepto.pdf', tipo: 'CONCEPTOS', tipoArchivo: 'PDF', tamanio: '1.5 MB', fechaCreacion: '2025-01-12', autor: 'Dra. Ana López' },
+    ]
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPEDIENTES DE PROCESOS COACTIVOS
+  // Vinculados con datosProcesosCoactivos.ts
+  // ═══════════════════════════════════════════════════════════
   {
     id: 'exp-coa-001',
     radicado: 'PC-2025-001',
@@ -1094,6 +1230,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
       CONTESTACION: [],
       PRUEBAS: [],
       EVIDENCIAS: [],
+      AUTOS: [],
       SENTENCIAS: [],
       TUTELAS: [],
       RECURSOS: [],
@@ -1162,13 +1299,13 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
 
             <div className="flex gap-2 w-full sm:w-auto">
               {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
-              <button
-                onClick={onUpload}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Cargar
-              </button>
+                <button
+                  onClick={onUpload}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Cargar
+                </button>
               )}
               <button
                 onClick={onToggleExpand}
@@ -1262,6 +1399,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
     red: 'bg-red-50 border-red-200 text-red-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
+    violet: 'bg-violet-50 border-violet-200 text-violet-700',
     purple: 'bg-purple-50 border-purple-200 text-purple-700',
     orange: 'bg-orange-50 border-orange-200 text-orange-700',
     indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
@@ -1400,13 +1538,15 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
                       </div>
 
                       <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver documento"
-                        >
-                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
+                        {isViewableInBrowser(doc.nombre || doc.url) && (
+                          <button
+                            onClick={() => handleVerDocumento(doc)}
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                            title="Ver documento"
+                          >
+                            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDescargarDocumento(doc, e)}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
@@ -1571,6 +1711,7 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
       DEMANDA: 0,
       CONTESTACION: 0,
       PRUEBAS: 0,
+      AUTOS: 0,
       SENTENCIAS: 0,
       TUTELAS: 0,
       RECURSOS: 0,

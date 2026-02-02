@@ -305,34 +305,42 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-          {/* Header */}
-          <div className="bg-[#003DA5] px-6 py-4">
+      {/* Modal - Mobile Optimized */}
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <motion.div 
+          initial={{ y: '100%', opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
+        >
+          {/* Header - Sticky */}
+          <div className="bg-[#003DA5] px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText className="w-6 h-6 text-white" />
-                <h2 className="text-white text-xl">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" />
+                <h2 className="text-white text-base sm:text-xl font-semibold truncate">
                   Generar Certificado Laboral
                 </h2>
               </div>
-              <button
-                onClick={onClose}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              {step !== 'generar' && (
+                <button
+                  onClick={onClose}
+                  className="text-white/80 hover:text-white transition-colors p-2 -mr-2 flex-shrink-0"
+                >
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          {/* Content - Scrollable */}
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1">
             {/* Step 1: Buscar Empleado */}
             {!isGenerating && step === 'buscar' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 <div>
-                  <Label htmlFor="search">Buscar Empleado</Label>
+                  <Label htmlFor="search" className="text-sm sm:text-base mb-2">Buscar Empleado</Label>
                   <div className="relative mt-2">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input
@@ -560,7 +568,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+          <div className="border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-gray-50">
             <div className="flex justify-between">
               {step === 'validar' && (
                 <>
@@ -589,7 +597,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {certificadoSeleccionado && (

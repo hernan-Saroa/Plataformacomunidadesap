@@ -26,7 +26,6 @@ import {
   procesosCoactivosService,
   ProcesoCoactivo as ProcesoCoactivoAPI,
   ProcesoCoactivoStats,
-  ProcesoCoactivoStats,
   ProcesoCoactivoAdjunto
 } from '../../../../services/api/legal.service';
 import { ModalGestionarPagos } from '../procesos-coactivos/ModalGestionarPagos';
@@ -213,16 +212,16 @@ export function ModuloProcesosCoactivosV3() {
             </p>
           </div>
           {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
-            <ButtonSIGL
+            <button
               onClick={() => {
                 setProcesoEditar(null);
                 setModalNuevoProceso(true);
               }}
-              className="flex-shrink-0"
-              icon={<Plus className="w-4 h-4" />}
+              className="flex-shrink-0 flex items-center gap-2 px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
             >
-              {!isMobile && 'Nuevo Proceso'}
-            </ButtonSIGL>
+              <Plus className="w-5 h-5" />
+              {!isMobile && <span>Nuevo Proceso</span>}
+            </button>
           )}
         </div>
 
@@ -272,7 +271,7 @@ export function ModuloProcesosCoactivosV3() {
               <div>
                 <p className="text-xs sm:text-sm text-gray-500">Saldo Pendiente</p>
                 <p className="text-base sm:text-lg font-bold text-gray-900">
-                  ${(stats.totalMonto / 1000000).toFixed(1)}M
+                  {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(stats.totalMonto)}
                 </p>
               </div>
             </div>
@@ -497,13 +496,13 @@ function TarjetaProceso({
           <div>
             <p className="text-xs text-gray-500 mb-1">Valor Original</p>
             <p className="text-sm font-semibold text-gray-700">
-              ${proceso.obligacion.valor.toLocaleString('es-CO')}
+              {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valor)}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Saldo Pendiente</p>
             <p className="text-lg font-bold text-[#003DA5]">
-              ${proceso.obligacion.saldoPendiente.toLocaleString('es-CO')}
+              {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.saldoPendiente)}
             </p>
           </div>
           <div>
@@ -557,54 +556,48 @@ function TarjetaProceso({
 
         {/* Acciones */}
         <div className="flex flex-wrap gap-2">
-          <ButtonSIGL
-            variant="primary"
-            size="md"
+          <button
             onClick={() => onVerDetalle(proceso)}
-            className="flex-none"
-            icon={<Eye className="w-4 h-4" />}
+            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
           >
+            <Eye className="w-3.5 h-3.5" />
             Ver Detalle
-          </ButtonSIGL>
-          <ButtonSIGL
-            variant="secondary"
-            size="md"
+          </button>
+
+          <button
             onClick={() => onGestionarPagos(proceso)}
-            className="flex-none"
-            icon={<CreditCard className="w-4 h-4" />}
+            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
           >
+            <CreditCard className="w-3.5 h-3.5 text-green-600" />
             Pagos
-          </ButtonSIGL>
-          <ButtonSIGL
-            variant="secondary"
-            size="md"
+          </button>
+
+          <button
             onClick={() => onVerHistorial(proceso)}
-            className="flex-none"
-            icon={<History className="w-4 h-4" />}
+            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
           >
+            <History className="w-3.5 h-3.5 text-purple-600" />
             Historial
-          </ButtonSIGL>
+          </button>
+
           {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
-            <ButtonSIGL
-              variant="secondary"
-              size="md"
+            <button
               onClick={() => onEditar(proceso)}
-              className="flex-none"
-              icon={<Edit className="w-4 h-4" />}
+              className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
             >
+              <Edit className="w-3.5 h-3.5 text-blue-600" />
               Editar
-            </ButtonSIGL>
+            </button>
           )}
+
           {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-            <ButtonSIGL
-              variant="danger"
-              size="md"
+            <button
               onClick={() => onEliminar(proceso.id)}
-              className="flex-none"
-              icon={<Trash2 className="w-4 h-4" />}
+              className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 font-medium text-sm transition-all shadow-sm hover:shadow-md"
             >
+              <Trash2 className="w-3.5 h-3.5" />
               Eliminar
-            </ButtonSIGL>
+            </button>
           )}
         </div>
       </div>
@@ -660,6 +653,24 @@ function ModalNuevoProceso({
         break;
       case 'deudorTelefono':
         filteredValue = phoneFormat(value);
+        break;
+      case 'valor':
+        // Eliminar caracteres no numéricos
+        filteredValue = value.replace(/[^0-9]/g, '');
+
+        // Regla: Si empieza con 0, solo puede ser "0" (no "00", "01", etc)
+        if (filteredValue.startsWith('0') && filteredValue.length > 1) {
+          filteredValue = filteredValue.replace(/^0+/, '');
+          // Si quedó vacío es porque eran solo ceros, lo dejamos en "0" si el usuario solo escribió ceros
+          // Pero la lógica de replace(/^0+/, '') convierte "05" en "5", correcto.
+          // Si escribe "00", replace devuelve "", así que evitamos que escriba múltiples ceros
+          if (filteredValue === '') filteredValue = '0';
+        }
+
+        // Máximo 12 dígitos
+        if (filteredValue.length > 12) {
+          filteredValue = filteredValue.slice(0, 12);
+        }
         break;
       default:
         filteredValue = value;
@@ -919,7 +930,7 @@ function ModalNuevoProceso({
               <input
                 type="number"
                 value={formData.valor}
-                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                onChange={(e) => handleInputChange('valor', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
                 placeholder="0"
               />
@@ -1032,19 +1043,26 @@ function ModalNuevoProceso({
 
         {/* Footer Actions */}
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-          <ButtonSIGL variant="secondary" onClick={onClose}>
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-all"
+          >
             Cancelar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={handleSubmit} disabled={loading} className="min-w-[120px]">
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="min-w-[140px] px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
             {loading ? (
-              <span className="flex items-center gap-2">
+              <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 Guardando...
-              </span>
+              </>
             ) : (
               procesoEditar ? 'Actualizar' : 'Crear Proceso'
             )}
-          </ButtonSIGL>
+          </button>
         </div>
       </div>
     </ModalSIGL>
@@ -1149,23 +1167,42 @@ function ModalDetalleProceso({
 
       <div className="space-y-4">
         {/* Header con Estado y Botones */}
+        {/* Header con Estado y Botones */}
         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0">Estado Actual</p>
           <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado Actual</p>
-            <span className={`px-3 py-1 mt-1 inline-flex text-sm font-bold rounded-full ${estadoConfig.color}`}>
-              {estadoConfig.label}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <ButtonSIGL size="sm" variant="secondary" onClick={() => setModalHistorial(true)}>
-              <History className="w-4 h-4 mr-2" />
-              Trazabilidad
-            </ButtonSIGL>
-            {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
-              <ButtonSIGL size="sm" onClick={() => setModalPagos(true)} className="bg-green-600 hover:bg-green-700 text-white border-none">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Gestionar Pagos
-              </ButtonSIGL>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) ? (
+              <div className="relative inline-block">
+                <select
+                  value={proceso.estado}
+                  onChange={async (e) => {
+                    const wrongTypeState = e.target.value as any;
+                    try {
+                      await procesosCoactivosService.update(proceso.id, { estado: wrongTypeState });
+                      toast.success('Estado actualizado correctamente');
+                      if (onUpdate) onUpdate();
+                      onClose(); // Cerrar modal al cambiar estado
+                    } catch (err) {
+                      console.error(err);
+                      toast.error('Error al actualizar el estado');
+                    }
+                  }}
+                  className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-sm font-bold border-2 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer transition-all ${estadoConfig.color.replace('bg-', 'bg-white border-').replace('text-', 'text-')}`}
+                  style={{ backgroundImage: 'none' }}
+                >
+                  <option value="IDENTIFICADO">Identificado</option>
+                  <option value="PERSUASIVO">Persuasivo</option>
+                  <option value="PREJURIDICO">Prejurídico</option>
+                  <option value="MANDAMIENTO">Mandamiento</option>
+                  <option value="EMBARGO">Embargo</option>
+                  <option value="FINALIZADO">Finalizado</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none opacity-50" />
+              </div>
+            ) : (
+              <span className={`px-3 py-1 mt-1 inline-flex text-sm font-bold rounded-full ${estadoConfig.color}`}>
+                {estadoConfig.label}
+              </span>
             )}
           </div>
         </div>
@@ -1212,7 +1249,7 @@ function ModalDetalleProceso({
                 <div>
                   <p className="text-xs text-gray-500">Valor Capital</p>
                   <p className="text-lg font-bold text-green-700">
-                    ${proceso.obligacion.valor.toLocaleString('es-CO')}
+                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valor)}
                   </p>
                 </div>
                 <div>
@@ -1226,13 +1263,13 @@ function ModalDetalleProceso({
                 <div>
                   <p className="text-xs text-gray-500">Pagado</p>
                   <p className="text-sm font-bold text-green-600">
-                    ${(proceso.obligacion.valorPagado || 0).toLocaleString('es-CO')}
+                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valorPagado || 0)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Saldo Pendiente</p>
                   <p className="text-sm font-bold text-orange-600">
-                    ${(proceso.obligacion.saldoPendiente || 0).toLocaleString('es-CO')}
+                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.saldoPendiente || 0)}
                   </p>
                 </div>
               </div>
@@ -1341,16 +1378,22 @@ function ModalDetalleProceso({
 
         {/* Botones de acción */}
         <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="secondary" onClick={onClose}>
+          <button
+            onClick={onClose}
+            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-all"
+          >
             Cerrar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={() => {
-            const url = procesosCoactivosService.getFichaDownloadUrl(proceso.id);
-            window.open(url, '_blank');
-          }}>
-            <Download className="w-4 h-4 mr-2" />
+          </button>
+          <button
+            onClick={() => {
+              const url = procesosCoactivosService.getFichaDownloadUrl(proceso.id);
+              window.open(url, '_blank');
+            }}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+          >
+            <Download className="w-5 h-5" />
             Descargar Ficha
-          </ButtonSIGL>
+          </button>
         </div>
       </div>
     </ModalSIGL>

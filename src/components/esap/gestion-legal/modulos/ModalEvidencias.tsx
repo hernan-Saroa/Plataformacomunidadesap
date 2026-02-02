@@ -269,7 +269,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       formData.append('nombre', newEvidenciaData.nombre || selectedFile.name);
       formData.append('descripcion', newEvidenciaData.descripcion || 'Sin descripción');
       formData.append('tipo', newEvidenciaData.tipo);
-      formData.append('relevancia', newEvidenciaData.relevancia);
+      formData.append('prioridad', newEvidenciaData.relevancia);
       formData.append('categoria', newEvidenciaData.tipo);
       formData.append('aportadoPor', 'ESAP');
 
@@ -313,13 +313,19 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogContent
+          hideCloseButton
+          className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] overflow-hidden flex flex-col p-0 gap-0"
+        >
           <DialogTitle className="sr-only">
             Evidencias y Pruebas - Expediente {expediente.id}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Gestión de evidencias y pruebas documentales del expediente {expediente.id}
           </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+
 
           {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean
@@ -450,18 +456,18 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
                             </Button>
                           )}
                           {hasPermission('delete') && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (confirm(`¿Estás seguro de eliminar "${ev.nombre}"?`)) {
-                                handleEliminarEvidencia(ev.id, ev.nombre);
-                              }
-                            }}
-                            className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (confirm(`¿Estás seguro de eliminar "${ev.nombre}"?`)) {
+                                  handleEliminarEvidencia(ev.id, ev.nombre);
+                                }
+                              }}
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -496,10 +502,10 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
                   Descargar Todas (ZIP)
                 </Button>
                 {hasPermission('create') && (
-                <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
-                  <Upload className="w-4 h-4 mr-1.5" />
-                  Cargar Evidencia
-                </Button>
+                  <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
+                    <Upload className="w-4 h-4 mr-1.5" />
+                    Cargar Evidencia
+                  </Button>
                 )}
               </div>
             </div>

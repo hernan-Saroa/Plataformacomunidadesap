@@ -15,6 +15,116 @@
   display: none;
 }
 
+/* ===================== CROSS-BROWSER VIEWPORT HEIGHTS (SAFARI FIX) ===================== */
+/* 
+ * Safari mobile tiene problemas con vh cuando la barra de navegación aparece/desaparece
+ * Usamos dvh (dynamic viewport height) que ajusta dinámicamente
+ * + fallback para navegadores antiguos
+ */
+
+/* Height utilities con soporte Safari */
+.h-screen-safe {
+  height: 100vh; /* Fallback para navegadores antiguos */
+  height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.min-h-screen-safe {
+  min-height: 100vh; /* Fallback */
+  min-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-screen-safe {
+  max-height: 100vh; /* Fallback */
+  max-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+/* Height utilities para modales (90vh, 95vh) */
+.h-modal-90 {
+  height: 90vh; /* Fallback */
+  height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-90 {
+  max-height: 90vh; /* Fallback */
+  max-height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-95 {
+  height: 95vh; /* Fallback */
+  height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-95 {
+  max-height: 95vh; /* Fallback */
+  max-height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-80 {
+  height: 80vh; /* Fallback */
+  height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-80 {
+  max-height: 80vh; /* Fallback */
+  max-height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+/* Flexbox gap support (Safari < 14.1) */
+@supports not (gap: 1rem) {
+  .flex.gap-2 > * + * {
+    margin-left: 0.5rem;
+  }
+  
+  .flex.gap-3 > * + * {
+    margin-left: 0.75rem;
+  }
+  
+  .flex.gap-4 > * + * {
+    margin-left: 1rem;
+  }
+}
+
+/* Backdrop-filter support (Safari prefixes) */
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.backdrop-blur {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.backdrop-blur-md {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.backdrop-blur-lg {
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.backdrop-blur-xl {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+/* Sticky position fallback for older browsers */
+@supports not (position: sticky) {
+  .sticky {
+    position: -webkit-sticky;
+    position: fixed;
+  }
+}
+
+/* Transform 3D acceleration for smooth animations (all browsers) */
+.transform-gpu {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
 /* Custom scrollbar para Kanban */
 .custom-scrollbar {
   scrollbar-width: thin;
@@ -47,6 +157,7 @@
   
   /* Responsive viewport height (para mobile Safari) */
   --vh: 1vh;
+  --vh-offset: 0px;
   
   /* Sidebar widths - Optimizado para laptops 13-14" */
   --sidebar-width: 280px;
@@ -187,11 +298,62 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
     max-width: 100vw;
+    width: 100%;
   }
   
   body {
     position: relative;
     width: 100%;
+  }
+  
+  /* ===== OPTIMIZACIÓN ESPECÍFICA PARA 4K (3840px) ===== */
+  @media (min-width: 3840px) {
+    body {
+      /* Ligeramente más grande la fuente base para mejor legibilidad en 4K */
+      font-size: 18px;
+    }
+    
+    /* Aprovecha todo el ancho disponible */
+    .container, .max-w-7xl {
+      max-width: 100% !important;
+    }
+    
+    /* Grids expandidos para 4K */
+    .grid-cols-3 {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    .grid-cols-4 {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+    
+    /* Stats cards en 4 columnas mínimo */
+    .stats-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    /* Más espaciado en 4K */
+    .gap-6 {
+      gap: 2rem !important;
+    }
+    
+    .gap-8 {
+      gap: 2.5rem !important;
+    }
+    
+    /* Padding más generoso */
+    .p-6 {
+      padding: 2rem !important;
+    }
+    
+    .p-8 {
+      padding: 2.5rem !important;
+    }
+    
+    /* Sidebar más ancho en 4K */
+    :root {
+      --sidebar-width: 320px;
+    }
   }
   
   /* Prevenir scroll horizontal en modales */
@@ -211,6 +373,23 @@
     -webkit-backface-visibility: hidden;
     perspective: 1000px;
     -webkit-perspective: 1000px;
+  }
+  
+  /* Optimización adicional para pantallas de alta resolución (4K, 5K, 8K) */
+  @media (min-width: 1920px) {
+    * {
+      transform: translateZ(0);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* Mejorar rendimiento de gradientes en alta resolución */
+    [class*="bg-gradient"],
+    [style*="background: linear-gradient"],
+    [style*="background-image: linear-gradient"] {
+      will-change: transform;
+      transform: translateZ(0);
+    }
   }
 
   /* 2. Optimizar transiciones y animaciones */

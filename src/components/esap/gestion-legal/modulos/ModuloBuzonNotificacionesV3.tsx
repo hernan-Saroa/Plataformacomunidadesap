@@ -3,12 +3,12 @@
  * DISEÑO INBOX STYLE (TIPO GMAIL/OUTLOOK)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Mail, MailOpen, Inbox, Archive, Star, StarOff, Clock, AlertTriangle,
   CheckCircle, Eye, Plus, Search, Filter, XCircle, Send, Trash2,
-  FileText, Download, Circle, Check
+  FileText, Download, Circle, Check, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -186,6 +186,10 @@ export function ModuloBuzonNotificacionesV3() {
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // ✨ Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 50;
+
   const notificacionesFiltradas = useMemo(() => {
     let resultado = [...notificacionesMock];
 
@@ -224,6 +228,19 @@ export function ModuloBuzonNotificacionesV3() {
     }
 
     return resultado;
+  }, [tabActiva, busqueda, filtroEstado, filtroUrgencia]);
+
+  // ✨ Aplicar paginación
+  const totalPaginas = Math.ceil(notificacionesFiltradas.length / ITEMS_POR_PAGINA);
+  const notificacionesPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    const fin = inicio + ITEMS_POR_PAGINA;
+    return notificacionesFiltradas.slice(inicio, fin);
+  }, [notificacionesFiltradas, paginaActual]);
+
+  // Resetear página cuando cambian filtros
+  useEffect(() => {
+    setPaginaActual(1);
   }, [tabActiva, busqueda, filtroEstado, filtroUrgencia]);
 
   const toggleSeleccion = (id: string) => {
@@ -414,13 +431,13 @@ export function ModuloBuzonNotificacionesV3() {
 
             {/* Lista de notificaciones */}
             <div className="divide-y divide-gray-200">
-              {notificacionesFiltradas.length === 0 ? (
+              {notificacionesPaginadas.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm font-semibold">No hay notificaciones</p>
                 </div>
               ) : (
-                notificacionesFiltradas.map((notif) => (
+                notificacionesPaginadas.map((notif) => (
                   <ItemNotificacion
                     key={notif.id}
                     notificacion={notif}
@@ -450,6 +467,66 @@ export function ModuloBuzonNotificacionesV3() {
           )}
         </div>
       </div>
+
+      {/* Controles de Paginación */}
+      {notificacionesFiltradas.length > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600">
+              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, notificacionesFiltradas.length)} de {notificacionesFiltradas.length} notificaciones
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1 || totalPaginas <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </Button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={paginaActual === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                      disabled={totalPaginas <= 1}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+              >
+                Siguiente
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

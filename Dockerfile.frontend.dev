@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Dockerfile para Frontend en DEV Server
 # Multi-stage build: Build con Node.js, Serve con Nginx
 
@@ -10,14 +11,15 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 
-# Instalar dependencias
-RUN npm install --legacy-peer-deps
+# Instalar dependencias (cachea npm para rebuilds más rápidos)
+# Usamos npm install en vez de npm ci para evitar fallar por desalineación de lockfile en entorno dev server.
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
 
 # Argumentos para las URLs (se pasan en build time)
-ARG VITE_API_URL=http://4.156.71.181:3000
+ARG VITE_API_URL=http://4.156.71.181/services
 ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:9000
 
 # Exportar como variables de entorno Y crear .env.production

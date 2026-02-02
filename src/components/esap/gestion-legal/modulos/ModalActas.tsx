@@ -421,13 +421,16 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+        <DialogContent hideCloseButton className="w-full max-w-[95vw] sm:max-w-5xl !max-h-[70vh] overflow-hidden flex flex-col p-0 gap-0">
           <DialogTitle className="sr-only">
             Actas de Audiencias - Expediente {expediente.id}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Gestión de actas de audiencias y diligencias del expediente {expediente.id}
           </DialogDescription>
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+
 
           {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean
@@ -656,14 +659,14 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
                                 Descargar
                               </Button>
                               {hasPermission('delete') && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleEliminarActa(acta.id, acta.numero)}
-                                className="hover:bg-red-100 text-red-600"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleEliminarActa(acta.id, acta.numero)}
+                                  className="hover:bg-red-100 text-red-600"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
                               )}
                             </div>
                           </div>
@@ -729,13 +732,13 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
                   Descargar Firmadas (ZIP)
                 </Button>
                 {hasPermission('create') && (
-                <Button
-                  onClick={() => setIsCreateOpen(true)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1.5" />
-                  Nueva Acta
-                </Button>
+                  <Button
+                    onClick={() => setIsCreateOpen(true)}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Nueva Acta
+                  </Button>
                 )}
               </div>
             </div>

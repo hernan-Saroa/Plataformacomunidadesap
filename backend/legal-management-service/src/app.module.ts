@@ -41,6 +41,7 @@ import { PagoCoactivo } from './entities/pago-coactivo.entity';
 import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -97,6 +98,7 @@ import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
 import { ConfigurationsService } from './services/configurations.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
+import { SmartClassificationService } from './services/smart-classification.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -126,6 +128,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       RespuestaBorradorOC,
       SolicitudInsumo,
       Hallazgo,
+      TipoRequerimientoOC,
       // Tareas y Notas
       TareaExpediente,
       NotaExpediente,
@@ -218,6 +221,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     MicrosoftGraphService,
     CorreosJuridicosService,
     CorreosSyncScheduler,
+    SmartClassificationService,
     // Procesos Coactivos
     ProcesoCoactivoService,
     // Configurations

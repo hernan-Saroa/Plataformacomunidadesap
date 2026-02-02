@@ -1,6 +1,6 @@
 /**
  * MODAL ARCHIVAR NOTICIA DISCIPLINARIA
- * Diseño EXACTO al modal de referencia (imagen amarilla)
+ * Diseño actualizado alineado con el estándar ESAP (SIGL v5.0)
  */
 
 import { useState } from 'react';
@@ -8,7 +8,8 @@ import { motion } from 'motion/react';
 import {
   X,
   AlertCircle,
-  Archive
+  Archive,
+  Info
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
@@ -51,7 +52,7 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[200]"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
@@ -60,47 +61,50 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
         className="bg-white rounded-xl shadow-2xl w-full max-w-xl"
       >
         {/* Header - Blanco */}
-        <div className="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-red-600" />
+        <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: '#FEE2E2' }}>
+                <Archive className="w-6 h-6" style={{ color: '#DC2626' }} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#DC2626' }}>
+                  Archivar Noticia Disciplinaria
+                </h2>
+                <p className="text-sm" style={{ color: '#6B7280' }}>
+                  Esta acción se puede revertir
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-red-900">
-                Archivar Noticia Disciplinaria
-              </h2>
-              <p className="text-xs text-gray-600">
-                Esta acción se puede revertir
-              </p>
-            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" style={{ color: '#6B7280' }} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
         {/* Contenido */}
-        <div className="px-6 py-5 space-y-5">
+        <div className="p-6 space-y-5">
           {/* Advertencia */}
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+          <div className="p-4 rounded-xl border-l-4" style={{ background: '#FEF2F2', borderColor: '#DC2626' }}>
             <div className="flex gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />
               <div className="flex-1">
-                <p className="font-bold text-red-900 text-sm mb-2">
-                  ⚠️ ADVERTENCIA: Acción irreversible
+                <p className="font-bold text-sm mb-2" style={{ color: '#991B1B' }}>
+                  ⚠️ ADVERTENCIA: Acción de Archivo
                 </p>
-                <p className="text-sm text-red-800 mb-3">
+                <p className="text-sm mb-3" style={{ color: '#7F1D1D' }}>
                   Estás a punto de archivar permanentemente la siguiente noticia disciplinaria:
                 </p>
-                <div className="bg-white rounded-lg p-3 border border-red-200 shadow-sm">
-                  <p className="font-bold text-gray-900">{noticia.radicado}</p>
-                  <p className="text-sm text-gray-700">
+                {/* <div className="bg-white rounded-lg p-3 border border-red-200 shadow-sm"> */}
+                <div className="p-3 rounded-lg border-2" style={{ background: '#FFFFFF', borderColor: '#FECACA' }}>
+                  <p className="font-bold" style={{ color: '#1F2937' }}>{noticia.radicado}</p>
+                  <p className="text-sm" style={{ color: '#6B7280' }}>
                     {(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.nombre : noticia.disciplinable?.nombre) || 'Sin nombre'}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>
                     {(Array.isArray(noticia.disciplinable) ? noticia.disciplinable[0]?.cedula : noticia.disciplinable?.cedula) || 'N/A'}
                   </p>
                 </div>
@@ -110,13 +114,14 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
 
           {/* Motivo de Archivo */}
           <div>
-            <label className="block text-sm font-bold text-gray-900 mb-2">
-              Motivo de Archivo <span className="text-red-600">*</span>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Motivo de Archivo <span style={{ color: '#DC2626' }}>*</span>
             </label>
             <select
               value={motivoArchivo}
               onChange={(e) => setMotivoArchivo(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+              className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#DC2626]"
+              style={{ borderColor: '#E5E7EB' }}
             >
               <option value="">Selecciona un motivo...</option>
               <option value="duplicado">Noticia duplicada</option>
@@ -129,10 +134,10 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
 
           {/* Confirmación de Archivo */}
           <div>
-            <label className="block text-sm font-bold text-gray-900 mb-2">
-              Confirmación de Archivo <span className="text-red-600">*</span>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Confirmación de Archivo <span style={{ color: '#DC2626' }}>*</span>
             </label>
-            <p className="text-xs text-gray-600 mb-2">
+            <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
               Para confirmar, escribe el número de radicado: <span className="font-mono font-semibold text-gray-900">{noticia.radicado}</span>
             </p>
             <input
@@ -140,37 +145,40 @@ export function ModalArchivarNoticia({ noticia, onClose, onConfirm }: Props) {
               value={confirmacionTexto}
               onChange={(e) => setConfirmacionTexto(e.target.value)}
               placeholder="Escribe el radicado aquí"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent font-mono"
+              className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#DC2626] font-mono"
+              style={{ borderColor: '#E5E7EB' }}
             />
             {confirmacionTexto && confirmacionTexto !== noticia.radicado && (
-              <p className="text-xs text-red-600 mt-1.5">❌ El radicado no coincide</p>
+              <p className="text-xs mt-2" style={{ color: '#DC2626' }}>❌ El radicado no coincide</p>
             )}
             {confirmacionTexto === noticia.radicado && (
-              <p className="text-xs text-green-600 mt-1.5">✅ Radicado confirmado</p>
+              <p className="text-xs mt-2" style={{ color: '#059669' }}>✅ Radicado confirmado</p>
             )}
           </div>
 
           {/* Nota */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-xs text-gray-700">
-              <strong className="text-gray-900">Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario,
+          <div className="p-4 rounded-xl border-2 flex items-start gap-3" style={{ background: '#EFF6FF', borderColor: '#DBEAFE' }}>
+            <Info className="w-5 h-5 flex-shrink-0" style={{ color: '#2563EB' }} />
+            <p className="text-xs" style={{ color: '#1E40AF' }}>
+              <strong>Nota:</strong> La acción de archivo quedará registrada en el sistema de auditoría con tu usuario,
               fecha y hora exacta. Este registro es permanente y no puede ser modificado.
             </p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex gap-3">
+        <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex-1 px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
           >
             Cancelar
           </button>
           <button
             onClick={handleArchivar}
             disabled={confirmacionTexto !== noticia.radicado || !motivoArchivo}
-            className="flex-1 px-4 py-2.5 rounded-lg font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            className="flex-1 px-6 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:opacity-90"
             style={{
               background: confirmacionTexto === noticia.radicado && motivoArchivo ? '#DC2626' : '#9CA3AF'
             }}

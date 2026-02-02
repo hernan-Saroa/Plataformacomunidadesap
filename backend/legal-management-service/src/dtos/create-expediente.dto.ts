@@ -69,4 +69,18 @@ export class CreateExpedienteDto {
     @IsArray()
     @IsString({ each: true })
     documentosInicialesUrls?: string[];
+
+    @IsOptional()
+    @IsArray()
+    actors?: Array<{
+        nombre: string;
+        tipoPersona: string;
+        identificacion?: string;
+        rol: string;
+        cargo?: string;
+        email?: string;
+        telefono?: string;
+        direccion?: string;
+        apoderado?: string;
+    }>;
 }

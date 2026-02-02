@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Multi-stage build for NestJS application
 FROM node:20-alpine AS builder
 
@@ -34,5 +35,3 @@ EXPOSE 3011
 
 # Start the application
 CMD ["node", "dist/main"]
-
-

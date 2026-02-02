@@ -317,7 +317,7 @@ export function ModalGestionDocumentos({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton={false} className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton style={{ maxWidth: '900px' }} className="fixed !left-1/2 !top-1/2 !z-[9999] grid w-full !-translate-x-1/2 !-translate-y-1/2 gap-0 border bg-white p-0 shadow-lg duration-200 sm:rounded-lg !max-h-[85vh] overflow-hidden flex flex-col">
         <DialogTitle className="sr-only">
           {tituloContexto} - {requerimientoId}
         </DialogTitle>
@@ -326,7 +326,7 @@ export function ModalGestionDocumentos({
         </DialogDescription>
 
         {/* Header */}
-        <div className="px-6 py-5 bg-white border-b flex items-center justify-between sticky top-0 z-10">
+        <div className="sticky top-0 z-10 px-6 py-5 bg-white border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-50 border-2 border-blue-200 rounded-lg">
               <Paperclip className="w-5 h-5 text-blue-600" />
@@ -349,7 +349,7 @@ export function ModalGestionDocumentos({
         </div>
 
         {/* Contenido */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* ZONA DE SELECCIÓN Y CARGA */}
           <div className="border-2 border-blue-300 rounded-lg p-6 bg-blue-50">
@@ -368,23 +368,6 @@ export function ModalGestionDocumentos({
               className="hidden"
             />
 
-            {/* Selector de categoría */}
-            <div className="mb-4">
-              <label className="text-sm font-bold text-gray-900 mb-2 block">
-                Categoría de Documento
-              </label>
-              <Select value={categoriaActual} onValueChange={(value: any) => setCategoriaActual(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[100000]">
-                  <SelectItem value="Requerimiento">📋 Requerimiento</SelectItem>
-                  <SelectItem value="Respuesta">✅ Respuesta</SelectItem>
-                  <SelectItem value="Soporte">📎 Soporte</SelectItem>
-                  <SelectItem value="Interno">🔒 Interno</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
             {/* Botón de selección */}
             <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 bg-white hover:bg-blue-50 transition-colors">
@@ -395,14 +378,14 @@ export function ModalGestionDocumentos({
                   Arrastra archivos aquí o haz clic en el botón
                 </p>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
-                <Button
-                  onClick={handleSeleccionarArchivo}
-                  style={{ background: '#003DA5' }}
-                  className="text-white font-bold"
-                >
-                  <FolderOpen className="w-4 h-4 mr-2" />
-                  📂 Seleccionar Archivo
-                </Button>
+                  <Button
+                    onClick={handleSeleccionarArchivo}
+                    style={{ background: '#003DA5' }}
+                    className="text-white font-bold"
+                  >
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    📂 Seleccionar Archivo
+                  </Button>
                 )}
                 <p className="text-xs text-gray-500 mt-3">
                   Tamaño máximo: 50 MB por archivo • Formatos: PDF, Word, Excel, Imágenes (JPG, PNG)
@@ -654,7 +637,7 @@ export function ModalGestionDocumentos({
         </div>
 
         {/* Footer */}
-        <div className="border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 z-10 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
           <Button
             variant="outline"
             onClick={onClose}
@@ -672,14 +655,14 @@ export function ModalGestionDocumentos({
               Descargar Todos
             </Button>
             {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DOC_UPLOAD) && (
-            <Button
-              onClick={handleSeleccionarArchivo}
-              style={{ background: '#003DA5' }}
-              className="text-white"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Agregar Más Documentos
-            </Button>
+              <Button
+                onClick={handleSeleccionarArchivo}
+                style={{ background: '#003DA5' }}
+                className="text-white"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Agregar Más Documentos
+              </Button>
             )}
           </div>
         </div>

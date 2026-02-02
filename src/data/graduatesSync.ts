@@ -1,182 +1,241 @@
 /**
- * Interface para graduado (estructura del módulo de Registro Académico)
+ * MÓDULO DE SINCRONIZACIÓN CON BACKOFFICE - GESTIÓN DE GRADUADOS
+ * 
+ * Este módulo simula la consulta a la base de datos del backoffice
+ * donde se gestiona el registro de todos los graduados de ESAP
+ * (Pregrado, Especialización y Maestría)
  */
+
 export interface Graduate {
   id: string;
+  documento: string;
   nombre: string;
   apellido: string;
-  email: string;
-  telefono: string;
-  rol: 'Graduado';
-  programa: string;
-  estado: 'Graduado';
-  fechaIngreso: string;
+  nombreCompleto: string; // ✅ NUEVO: Nombre completo para validación
+  fechaExpedicionDocumento?: string;
   fechaGrado: string;
-  documento: string;
-  fechaExpedicionDocumento?: string;  // ✅ NUEVO: Fecha de expedición del documento
-  direccion: string;
-  ciudad: string;
-  promedio: number;
+  programa: string;
   tituloObtenido: string;
-  modalidadGrado: string;
-  certificateDownloads?: number;
+  promedio: number;
+  sede: string;
+  territorial: string;
 }
 
-import { MOCK_USERS_WITH_SEDES, type UserWithSedes } from './mockUsersWithSedes';
-
-/**
- * Mapea un usuario del sistema a un graduado del módulo académico
- */
-function mapUserToGraduate(user: UserWithSedes): Graduate | null {
-  // Verificar si el usuario tiene rol de Graduado o Egresado
-  const isGraduate = user.roles.some(role => 
-    role.name === 'Graduado' || 
-    role.name === 'Egresado' ||
-    role.code === 'GRADUADO' ||
-    role.code === 'EGRESADO'
-  );
-
-  if (!isGraduate) {
-    return null;
+// Base de datos simulada de graduados (sincronizada con backoffice)
+const graduatesDatabase: Graduate[] = [
+  // ✅ DATOS DE PRUEBA ACTUALIZADOS - ENERO 2026
+  // 🎯 CASO PRINCIPAL DE TESTING
+  {
+    id: 'GRAD-2024-001',
+    documento: '52987654',
+    nombre: 'Laura Marcela',
+    apellido: 'Rodríguez Gutiérrez',
+    nombreCompleto: 'Laura Marcela Rodríguez Gutiérrez',
+    fechaExpedicionDocumento: '2015-03-15',
+    fechaGrado: '2024-12-01',
+    programa: 'Administración Pública Territorial',
+    tituloObtenido: 'Pregrado en Administración Pública Territorial',
+    promedio: 4.5,
+    sede: 'Bogotá',
+    territorial: 'Cundinamarca'
+  },
+  // Caso secundario - Especialización
+  {
+    id: 'GRAD-2023-045',
+    documento: '9876543210',
+    nombre: 'Juan Carlos',
+    apellido: 'Pérez Martínez',
+    nombreCompleto: 'Juan Carlos Pérez Martínez',
+    fechaExpedicionDocumento: '2010-07-20',
+    fechaGrado: '2023-06-10',
+    programa: 'Especialización en Gestión Pública',
+    tituloObtenido: 'Especialización en Gestión Pública',
+    promedio: 4.8,
+    sede: 'Medellín',
+    territorial: 'Antioquia'
+  },
+  {
+    id: 'GRAD-2024-120',
+    documento: '1122334455',
+    nombre: 'Ana María',
+    apellido: 'González López',
+    nombreCompleto: 'Ana María González López',
+    fechaExpedicionDocumento: '2012-11-30',
+    fechaGrado: '2024-11-25',
+    programa: 'Maestría en Administración y Políticas Públicas',
+    tituloObtenido: 'Maestría en Administración y Políticas Públicas',
+    promedio: 4.9,
+    sede: 'Cali',
+    territorial: 'Valle del Cauca'
+  },
+  {
+    id: 'GRAD-2025-256',
+    documento: '1020304050',
+    nombre: 'Carlos Andrés',
+    apellido: 'Gómez Rincón',
+    nombreCompleto: 'Carlos Andrés Gómez Rincón',
+    fechaExpedicionDocumento: '2018-05-10',
+    fechaGrado: '2025-12-18',
+    programa: 'Administración Pública Territorial',
+    tituloObtenido: 'Pregrado en Administración Pública Territorial',
+    promedio: 4.3,
+    sede: 'Barranquilla',
+    territorial: 'Atlántico'
+  },
+  {
+    id: 'GRAD-2025-089',
+    documento: '5566778899',
+    nombre: 'Laura Sofía',
+    apellido: 'Martínez Díaz',
+    nombreCompleto: 'Laura Sofía Martínez Díaz',
+    fechaExpedicionDocumento: '2016-09-22',
+    fechaGrado: '2025-11-30',
+    programa: 'Especialización en Alta Gerencia',
+    tituloObtenido: 'Especialización en Alta Gerencia',
+    promedio: 4.7,
+    sede: 'Bucaramanga',
+    territorial: 'Santander'
+  },
+  {
+    id: 'GRAD-2024-312',
+    documento: '3344556677',
+    nombre: 'Diego Fernando',
+    apellido: 'Torres Vargas',
+    nombreCompleto: 'Diego Fernando Torres Vargas',
+    fechaExpedicionDocumento: '2014-01-15',
+    fechaGrado: '2024-06-28',
+    programa: 'Maestría en Gobierno y Políticas Públicas',
+    tituloObtenido: 'Maestría en Gobierno y Políticas Públicas',
+    promedio: 4.85,
+    sede: 'Bogotá',
+    territorial: 'Cundinamarca'
+  },
+  // ✅ NUEVOS GRADUADOS DE PRUEBA - MÁS CASOS DIVERSOS
+  {
+    id: 'GRAD-2025-401',
+    documento: '7788990011',
+    nombre: 'Claudia Patricia',
+    apellido: 'Jiménez Sánchez',
+    nombreCompleto: 'Claudia Patricia Jiménez Sánchez',
+    fechaExpedicionDocumento: '2017-08-12',
+    fechaGrado: '2025-07-20',
+    programa: 'Especialización en Gerencia Social',
+    tituloObtenido: 'Especialización en Gerencia Social',
+    promedio: 4.6,
+    sede: 'Cartagena',
+    territorial: 'Bolívar'
+  },
+  {
+    id: 'GRAD-2024-589',
+    documento: '4455667788',
+    nombre: 'Andrés Felipe',
+    apellido: 'Castro Moreno',
+    nombreCompleto: 'Andrés Felipe Castro Moreno',
+    fechaExpedicionDocumento: '2013-02-28',
+    fechaGrado: '2024-03-15',
+    programa: 'Administración Pública',
+    tituloObtenido: 'Pregrado en Administración Pública',
+    promedio: 4.4,
+    sede: 'Pereira',
+    territorial: 'Risaralda'
+  },
+  {
+    id: 'GRAD-2023-712',
+    documento: '2233445566',
+    nombre: 'Paula Andrea',
+    apellido: 'Hernández Ruiz',
+    nombreCompleto: 'Paula Andrea Hernández Ruiz',
+    fechaExpedicionDocumento: '2011-06-18',
+    fechaGrado: '2023-12-10',
+    programa: 'Maestría en Planeación para el Desarrollo',
+    tituloObtenido: 'Maestría en Planeación para el Desarrollo',
+    promedio: 4.75,
+    sede: 'Manizales',
+    territorial: 'Caldas'
+  },
+  {
+    id: 'GRAD-2025-923',
+    documento: '6677889900',
+    nombre: 'José Miguel',
+    apellido: 'Ramírez Ortiz',
+    nombreCompleto: 'José Miguel Ramírez Ortiz',
+    fechaExpedicionDocumento: '2019-04-05',
+    fechaGrado: '2025-06-12',
+    programa: 'Especialización en Gestión de Proyectos',
+    tituloObtenido: 'Especialización en Gestión de Proyectos',
+    promedio: 4.55,
+    sede: 'Pasto',
+    territorial: 'Nariño'
+  },
+  {
+    id: 'GRAD-2024-834',
+    documento: '8899001122',
+    nombre: 'Sandra Milena',
+    apellido: 'López Ríos',
+    nombreCompleto: 'Sandra Milena López Ríos',
+    fechaExpedicionDocumento: '2015-09-10',
+    fechaGrado: '2024-08-22',
+    programa: 'Administración Pública Territorial',
+    tituloObtenido: 'Pregrado en Administración Pública Territorial',
+    promedio: 4.65,
+    sede: 'Ibagué',
+    territorial: 'Tolima'
+  },
+  {
+    id: 'GRAD-2023-445',
+    documento: '3366778899',
+    nombre: 'Ricardo Javier',
+    apellido: 'Montoya Cardona',
+    nombreCompleto: 'Ricardo Javier Montoya Cardona',
+    fechaExpedicionDocumento: '2012-12-20',
+    fechaGrado: '2023-11-18',
+    programa: 'Maestría en Gobierno y Políticas Públicas',
+    tituloObtenido: 'Maestría en Gobierno y Políticas Públicas',
+    promedio: 4.8,
+    sede: 'Armenia',
+    territorial: 'Quindío'
   }
-
-  // Calcular fechas (ejemplo: si no tiene, usar fechas por defecto)
-  const enrollmentDate = user.enrollmentDate || '2020-01-15';
-  const graduationDate = user.lastLogin || '2024-06-15';
-
-  return {
-    id: user.id,
-    nombre: user.firstName,
-    apellido: user.lastName,
-    email: user.email,
-    telefono: user.phone,
-    rol: 'Graduado',
-    programa: user.program || 'Administración Pública',
-    estado: 'Graduado',
-    fechaIngreso: enrollmentDate,
-    fechaGrado: graduationDate,
-    documento: user.documentNumber,
-    fechaExpedicionDocumento: user.documentIssueDate,  // ✅ Fecha de expedición del documento
-    direccion: user.address || 'Sin dirección registrada',
-    ciudad: user.location,
-    promedio: 4.5, // Valor por defecto - debería venir del perfil académico
-    tituloObtenido: `Profesional en ${user.program || 'Administración Pública'}`,
-    modalidadGrado: 'Trabajo de Grado',
-    certificateDownloads: 0
-  };
-}
+];
 
 /**
- * Obtiene todos los graduados sincronizados desde Gestión de Personas
- * Esta es la fuente única de verdad (Single Source of Truth)
- */
-export function getSyncedGraduates(): Graduate[] {
-  return MOCK_USERS_WITH_SEDES
-    .map(mapUserToGraduate)
-    .filter((graduate): graduate is Graduate => graduate !== null);
-}
-
-/**
- * Busca un graduado por cédula
- */
-export function findGraduateByCedula(cedula: string): Graduate | undefined {
-  const graduates = getSyncedGraduates();
-  return graduates.find(grad => grad.documento === cedula);
-}
-
-/**
- * Busca graduados por nombre
- */
-export function findGraduatesByName(searchTerm: string): Graduate[] {
-  const graduates = getSyncedGraduates();
-  const term = searchTerm.toLowerCase();
-  
-  return graduates.filter(grad => 
-    grad.nombre.toLowerCase().includes(term) ||
-    grad.apellido.toLowerCase().includes(term) ||
-    `${grad.nombre} ${grad.apellido}`.toLowerCase().includes(term)
-  );
-}
-
-/**
- * Obtiene estadísticas de graduados
- */
-export function getGraduatesStats() {
-  const graduates = getSyncedGraduates();
-  
-  return {
-    total: graduates.length,
-    porPrograma: graduates.reduce((acc, grad) => {
-      acc[grad.programa] = (acc[grad.programa] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    porCiudad: graduates.reduce((acc, grad) => {
-      acc[grad.ciudad] = (acc[grad.ciudad] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    promedioGeneral: graduates.length > 0
-      ? graduates.reduce((sum, grad) => sum + grad.promedio, 0) / graduates.length
-      : 0,
-    certificadosDescargados: graduates.reduce((sum, grad) => sum + (grad.certificateDownloads || 0), 0)
-  };
-}
-
-/**
- * Verifica si existe un graduado con la cédula especificada
- */
-export function existsGraduateWithCedula(cedula: string): boolean {
-  return findGraduateByCedula(cedula) !== undefined;
-}
-
-/**
- * Valida un graduado usando los 3 campos del servicio público:
- * - Cédula
- * - Fecha de Grado
- * - Apellido
- * 
- * Esta es la función que coordina el servicio público de "Certificación de Títulos"
- * con el módulo de "Gestión de Graduados" del backoffice.
+ * FUNCIÓN DE VALIDACIÓN PÚBLICA
+ * Valida si un graduado existe en la base de datos del backoffice
+ * y si los datos proporcionados coinciden
  */
 export function validateGraduateForPublicService(
-  cedula: string,
-  fechaGrado: string,
-  apellido: string
+  documentNumber: string,
+  graduationDate: string,
+  fullName: string
 ): { isValid: boolean; graduate?: Graduate; error?: string } {
-  // 1. Buscar graduado por cédula
-  const graduate = findGraduateByCedula(cedula);
+  
+  // Buscar por número de documento
+  const graduate = graduatesDatabase.find(g => g.documento === documentNumber);
   
   if (!graduate) {
     return {
       isValid: false,
-      error: 'No se encontró un graduado con esta cédula en nuestros registros'
+      error: 'No se encontró ningún graduado con ese número de documento'
     };
   }
-
-  // 2. Validar apellido (case insensitive)
-  const apellidoNormalizado = apellido.toLowerCase().trim();
-  const apellidoGraduadoNormalizado = graduate.apellido.toLowerCase().trim();
   
-  if (apellidoGraduadoNormalizado !== apellidoNormalizado) {
-    return {
-      isValid: false,
-      error: 'El apellido no coincide con nuestros registros'
-    };
-  }
-
-  // 3. Validar fecha de grado (comparar solo la fecha, sin hora)
-  const fechaGradoInput = new Date(fechaGrado).toISOString().split('T')[0];
-  const fechaGradoRegistro = new Date(graduate.fechaGrado).toISOString().split('T')[0];
-  
-  if (fechaGradoInput !== fechaGradoRegistro) {
+  // Validar fecha de grado
+  if (graduate.fechaGrado !== graduationDate) {
     return {
       isValid: false,
       error: 'La fecha de grado no coincide con nuestros registros'
     };
   }
-
-  // ✅ TODOS LOS DATOS COINCIDEN
+  
+  // Validar nombre completo
+  if (graduate.nombreCompleto !== fullName) {
+    return {
+      isValid: false,
+      error: 'El nombre completo no coincide con nuestros registros'
+    };
+  }
+  
   return {
     isValid: true,
-    graduate: graduate
+    graduate
   };
 }

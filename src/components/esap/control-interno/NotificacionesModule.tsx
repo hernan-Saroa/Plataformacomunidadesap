@@ -7,13 +7,13 @@ import {
   Info,
   Clock,
   FileText,
-  Users,
   Calendar,
   Trash2,
   Eye,
   Filter,
   X,
-  Loader2
+  Loader2,
+  CheckCheck
 } from 'lucide-react';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
@@ -112,6 +112,92 @@ function mapearNotificacionBackend(notif: any): Notificacion {
     } : undefined
   };
 }
+const NOTIFICACIONES_MOCK: Notificacion[] = [
+  {
+    id: 'n1',
+    tipo: 'recordatorio',
+    titulo: 'Seguimiento Trimestral Próximo',
+    mensaje: 'El seguimiento trimestral del Plan de Mejoramiento PM-2025-005 vence en 7 días (15 de Octubre).',
+    fecha: '2025-10-08T09:00:00',
+    leida: false,
+    origen: 'Sistema de Seguimiento',
+    accion: {
+      texto: 'Ir al Seguimiento',
+      url: '/seguimiento-plan/PM-2025-005'
+    }
+  },
+  {
+    id: 'n2',
+    tipo: 'exito',
+    titulo: 'Informe Aprobado',
+    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCI.',
+    fecha: '2025-09-30T14:22:00',
+    leida: true,
+    origen: 'Aprobaciones'
+  },
+  {
+    id: 'n3',
+    tipo: 'advertencia',
+    titulo: 'Plan de Mejoramiento Pendiente',
+    mensaje: 'El Plan de Mejoramiento para la auditoría AUD-2025-008 debe ser presentado antes del 28 de Octubre.',
+    fecha: '2025-10-05T10:15:00',
+    leida: false,
+    origen: 'Planes de Mejoramiento',
+    accion: {
+      texto: 'Formular Plan',
+      url: '/formulacion-plan/AUD-2025-008'
+    }
+  },
+  {
+    id: 'n4',
+    tipo: 'info',
+    titulo: 'Nueva Auditoría Programada',
+    mensaje: 'Se ha programado la auditoría AUD-2025-012 - Gestión de TI para el 15 de Noviembre.',
+    fecha: '2025-10-01T08:30:00',
+    leida: true,
+    origen: 'Programa Anual'
+  },
+  {
+    id: 'n5',
+    tipo: 'error',
+    titulo: 'Evidencia Rechazada',
+    mensaje: 'La evidencia "Conciliaciones_Ago.pdf" ha sido rechazada. Motivo: Documento incompleto.',
+    fecha: '2025-09-28T16:45:00',
+    leida: false,
+    origen: 'Validación de Evidencias',
+    accion: {
+      texto: 'Ver Observaciones',
+      url: '/seguimiento-plan/PM-2025-005'
+    }
+  },
+  {
+    id: 'n6',
+    tipo: 'recordatorio',
+    titulo: 'Reunión de Apertura Mañana',
+    mensaje: 'Reunión de apertura de auditoría AUD-2025-010 programada para mañana a las 10:00 AM.',
+    fecha: '2025-10-07T17:00:00',
+    leida: false,
+    origen: 'Planeación de Auditoría'
+  },
+  {
+    id: 'n7',
+    tipo: 'info',
+    titulo: 'Documento Cargado',
+    mensaje: 'El documento "Plan_Anual_2026.pdf" ha sido cargado en la carpeta Planes Anuales.',
+    fecha: '2025-10-06T11:20:00',
+    leida: true,
+    origen: 'Gestión Documental'
+  },
+  {
+    id: 'n8',
+    tipo: 'exito',
+    titulo: 'Auditoría Finalizada',
+    mensaje: 'La auditoría AUD-2025-007 ha sido completada exitosamente.',
+    fecha: '2025-09-25T15:30:00',
+    leida: true,
+    origen: 'Comunicación'
+  }
+];
 
 // ====================================
 // COMPONENTE PRINCIPAL
@@ -196,30 +282,30 @@ export const NotificacionesModule: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50 to-slate-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px]">
+      <div className="space-y-6">
         
-        {/* HEADER */}
+        {/* HEADER WORLD CLASS */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-lg p-6"
+          className="bg-gradient-to-br from-white via-blue-50/30 to-white rounded-2xl p-6 shadow-sm border border-[#E0EDFF]"
         >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg relative">
-                  <Bell className="w-6 h-6 text-white" />
-                  {estadisticas.noLeidas > 0 && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                      <span className="text-xs text-white font-bold">{estadisticas.noLeidas}</span>
-                    </div>
-                  )}
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+            <div className="flex items-start gap-4">
+              <div className="relative">
+                <div className="w-14 h-14 bg-gradient-to-br from-[#003DA5] to-[#2962FF] rounded-xl flex items-center justify-center shadow-md">
+                  <Bell className="w-7 h-7 text-white" strokeWidth={2.5} />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Centro de Notificaciones</h1>
-                  <p className="text-sm text-gray-500">Alertas y recordatorios del sistema</p>
-                </div>
+                {estadisticas.noLeidas > 0 && (
+                  <div className="absolute -top-1 -right-1 w-6 h-6 bg-[#F57C00] rounded-full flex items-center justify-center shadow-md">
+                    <span className="text-xs text-white font-bold">{estadisticas.noLeidas}</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-[#003DA5] mb-1">Centro de Notificaciones</h1>
+                <p className="text-sm text-gray-600">Alertas y recordatorios del sistema</p>
               </div>
             </div>
 
@@ -236,135 +322,152 @@ export const NotificacionesModule: React.FC = () => {
           </div>
         </motion.div>
 
-        {/* ESTADÍSTICAS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <CardSIGL>
-            <div className="p-6">
-              <Bell className="w-8 h-8 text-violet-600 mb-2" />
-              <div className="text-3xl font-bold text-gray-900 mb-1">{estadisticas.total}</div>
-              <div className="text-sm text-gray-600">Total Notificaciones</div>
-            </div>
-          </CardSIGL>
+        {/* ESTADÍSTICAS WORLD CLASS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-gradient-to-br from-[#003DA5] to-[#2962FF] rounded-xl p-6 shadow-md border border-[#E0EDFF] text-white"
+          >
+            <Bell className="w-8 h-8 mb-3 opacity-90" strokeWidth={2} />
+            <div className="text-4xl font-bold mb-1">{estadisticas.total}</div>
+            <div className="text-sm opacity-90">Total Notificaciones</div>
+          </motion.div>
 
-          <CardSIGL>
-            <div className="p-6">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mb-2">
-                <Eye className="w-5 h-5 text-blue-600" />
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-1">{estadisticas.noLeidas}</div>
-              <div className="text-sm text-gray-600">No Leídas</div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-[#E0EDFF]"
+          >
+            <div className="w-10 h-10 bg-[#E0EDFF] rounded-xl flex items-center justify-center mb-3">
+              <Eye className="w-5 h-5 text-[#003DA5]" strokeWidth={2.5} />
             </div>
-          </CardSIGL>
+            <div className="text-4xl font-bold text-[#003DA5] mb-1">{estadisticas.noLeidas}</div>
+            <div className="text-sm text-gray-600">No Leídas</div>
+          </motion.div>
 
-          <CardSIGL>
-            <div className="p-6">
-              <Calendar className="w-8 h-8 text-green-600 mb-2" />
-              <div className="text-3xl font-bold text-gray-900 mb-1">{estadisticas.hoyCount}</div>
-              <div className="text-sm text-gray-600">Hoy</div>
-            </div>
-          </CardSIGL>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-[#E0EDFF]"
+          >
+            <Calendar className="w-8 h-8 text-green-600 mb-3" strokeWidth={2} />
+            <div className="text-4xl font-bold text-[#003DA5] mb-1">{estadisticas.hoyCount}</div>
+            <div className="text-sm text-gray-600">Hoy</div>
+          </motion.div>
 
-          <CardSIGL>
-            <div className="p-6">
-              <AlertTriangle className="w-8 h-8 text-yellow-600 mb-2" />
-              <div className="text-3xl font-bold text-gray-900 mb-1">{estadisticas.advertencias}</div>
-              <div className="text-sm text-gray-600">Advertencias Activas</div>
-            </div>
-          </CardSIGL>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-[#E0EDFF]"
+          >
+            <AlertTriangle className="w-8 h-8 text-[#F57C00] mb-3" strokeWidth={2} />
+            <div className="text-4xl font-bold text-[#003DA5] mb-1">{estadisticas.advertencias}</div>
+            <div className="text-sm text-gray-600">Advertencias Activas</div>
+          </motion.div>
         </div>
 
-        {/* FILTROS */}
-        <CardSIGL>
-          <div className="p-6">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex items-center gap-2">
-                <Filter className="w-5 h-5 text-gray-600" />
-                <span className="text-sm font-medium text-gray-700">Tipo:</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setFiltroTipo('todos')}
-                    className={`px-3 py-1 rounded-lg text-sm ${
-                      filtroTipo === 'todos'
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setFiltroTipo('recordatorio')}
-                    className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${
-                      filtroTipo === 'recordatorio'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    <Clock className="w-3 h-3" />
-                    Recordatorios
-                  </button>
-                  <button
-                    onClick={() => setFiltroTipo('advertencia')}
-                    className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${
-                      filtroTipo === 'advertencia'
-                        ? 'bg-yellow-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    <AlertTriangle className="w-3 h-3" />
-                    Advertencias
-                  </button>
-                  <button
-                    onClick={() => setFiltroTipo('error')}
-                    className={`px-3 py-1 rounded-lg text-sm flex items-center gap-1 ${
-                      filtroTipo === 'error'
-                        ? 'bg-red-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    <X className="w-3 h-3" />
-                    Errores
-                  </button>
-                </div>
+        {/* FILTROS WORLD CLASS */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-xl p-5 shadow-sm border border-[#E0EDFF]"
+        >
+          <div className="flex flex-col lg:flex-row gap-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-1">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#003DA5] min-w-fit">
+                <Filter className="w-4 h-4" />
+                <span>Tipo:</span>
               </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setFiltroTipo('todos')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    filtroTipo === 'todos'
+                      ? 'bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setFiltroTipo('recordatorio')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+                    filtroTipo === 'recordatorio'
+                      ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Recordatorios
+                </button>
+                <button
+                  onClick={() => setFiltroTipo('advertencia')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+                    filtroTipo === 'advertencia'
+                      ? 'bg-gradient-to-r from-[#F57C00] to-amber-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Advertencias
+                </button>
+                <button
+                  onClick={() => setFiltroTipo('error')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${
+                    filtroTipo === 'error'
+                      ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Errores
+                </button>
+              </div>
+            </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">Estado:</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setFiltroEstado('todos')}
-                    className={`px-3 py-1 rounded-lg text-sm ${
-                      filtroEstado === 'todos'
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Todas
-                  </button>
-                  <button
-                    onClick={() => setFiltroEstado('no-leidas')}
-                    className={`px-3 py-1 rounded-lg text-sm ${
-                      filtroEstado === 'no-leidas'
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    No Leídas
-                  </button>
-                  <button
-                    onClick={() => setFiltroEstado('leidas')}
-                    className={`px-3 py-1 rounded-lg text-sm ${
-                      filtroEstado === 'leidas'
-                        ? 'bg-violet-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Leídas
-                  </button>
-                </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <span className="text-sm font-semibold text-[#003DA5] min-w-fit">Estado:</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setFiltroEstado('todos')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    filtroEstado === 'todos'
+                      ? 'bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Todas
+                </button>
+                <button
+                  onClick={() => setFiltroEstado('no-leidas')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    filtroEstado === 'no-leidas'
+                      ? 'bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  No Leídas
+                </button>
+                <button
+                  onClick={() => setFiltroEstado('leidas')}
+                  className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    filtroEstado === 'leidas'
+                      ? 'bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Leídas
+                </button>
               </div>
             </div>
           </div>
-        </CardSIGL>
+        </motion.div>
 
         {/* LISTA DE NOTIFICACIONES */}
         <div className="space-y-2">
@@ -397,24 +500,45 @@ export const NotificacionesModule: React.FC = () => {
               key={notif.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.03 }}
+              transition={{ delay: index * 0.05 }}
+              className={`bg-white rounded-xl shadow-sm border hover:shadow-md transition-all ${
+                !notif.leida ? 'border-[#003DA5] border-l-4' : 'border-[#E0EDFF]'
+              }`}
             >
-              <CardSIGL>
-                <div className={`p-6 ${!notif.leida ? 'bg-violet-50' : ''}`}>
-                  <div className="flex items-start gap-4">
-                    {/* Icono */}
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      notif.tipo === 'recordatorio' ? 'bg-blue-100' :
-                      notif.tipo === 'advertencia' ? 'bg-yellow-100' :
-                      notif.tipo === 'error' ? 'bg-red-100' :
-                      notif.tipo === 'exito' ? 'bg-green-100' :
-                      'bg-gray-100'
-                    }`}>
-                      {notif.tipo === 'recordatorio' && <Clock className="w-5 h-5 text-blue-600" />}
-                      {notif.tipo === 'advertencia' && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
-                      {notif.tipo === 'error' && <X className="w-5 h-5 text-red-600" />}
-                      {notif.tipo === 'exito' && <CheckCircle2 className="w-5 h-5 text-green-600" />}
-                      {notif.tipo === 'info' && <Info className="w-5 h-5 text-gray-600" />}
+              <div className={`p-5 ${!notif.leida ? 'bg-gradient-to-r from-[#E0EDFF]/50 to-transparent' : ''}`}>
+                <div className="flex items-start gap-4">
+                  {/* Icono Tipo Chat */}
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
+                    notif.tipo === 'recordatorio' ? 'bg-gradient-to-br from-blue-500 to-blue-600' :
+                    notif.tipo === 'advertencia' ? 'bg-gradient-to-br from-[#F57C00] to-amber-600' :
+                    notif.tipo === 'error' ? 'bg-gradient-to-br from-red-500 to-red-600' :
+                    notif.tipo === 'exito' ? 'bg-gradient-to-br from-green-500 to-green-600' :
+                    'bg-gradient-to-br from-gray-400 to-gray-500'
+                  }`}>
+                    {notif.tipo === 'recordatorio' && <Clock className="w-5 h-5 text-white" strokeWidth={2.5} />}
+                    {notif.tipo === 'advertencia' && <AlertTriangle className="w-5 h-5 text-white" strokeWidth={2.5} />}
+                    {notif.tipo === 'error' && <X className="w-5 h-5 text-white" strokeWidth={2.5} />}
+                    {notif.tipo === 'exito' && <CheckCircle2 className="w-5 h-5 text-white" strokeWidth={2.5} />}
+                    {notif.tipo === 'info' && <Info className="w-5 h-5 text-white" strokeWidth={2.5} />}
+                  </div>
+
+                  {/* Contenido */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between mb-2 gap-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className={`font-semibold ${!notif.leida ? 'text-[#003DA5]' : 'text-gray-700'}`}>
+                          {notif.titulo}
+                        </h3>
+                        {!notif.leida && (
+                          <div className="w-2 h-2 bg-[#F57C00] rounded-full animate-pulse" />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => eliminarNotificacion(notif.id)}
+                        className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     {/* Contenido */}
@@ -467,7 +591,7 @@ export const NotificacionesModule: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              </CardSIGL>
+              </div>
             </motion.div>
           ))}
 
@@ -478,6 +602,8 @@ export const NotificacionesModule: React.FC = () => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No hay notificaciones</h3>
                 <p className="text-gray-600">No se encontraron notificaciones con los filtros seleccionados</p>
               </div>
+              <h3 className="text-lg font-semibold text-[#003DA5] mb-2">No hay notificaciones</h3>
+              <p className="text-gray-600">No se encontraron notificaciones con los filtros seleccionados</p>
             </CardSIGL>
           )}
         </div>

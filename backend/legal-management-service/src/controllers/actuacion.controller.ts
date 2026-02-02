@@ -34,7 +34,7 @@ export class ActuacionController {
             documentoUrl: file ? `/uploads/${file.filename}` : undefined,
             documentoNombre: file ? file.originalname : undefined
         };
-        console.log('ActuacionController.registrar payload:', { id, body, file: file ? file.originalname : 'no-file', data });
+
         return this.actuacionService.registrarActuacion(id, data);
     }
 }

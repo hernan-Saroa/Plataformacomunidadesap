@@ -1009,7 +1009,7 @@ export function EnrollmentActivationModal({
               <DialogTitle className="text-xl font-bold text-gray-900 mb-1">
                 {stepInfo.title}
               </DialogTitle>
-              <DialogDescription className="text-sm text-gray-600">
+              <DialogDescription className="text-sm text-gray-600 break-words">
                 {stepInfo.description}
               </DialogDescription>
             </div>

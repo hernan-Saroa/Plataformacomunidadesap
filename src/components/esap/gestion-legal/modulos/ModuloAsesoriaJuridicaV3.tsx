@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { Input } from '../../../ui/input';
 import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
+import { ConsultaJuridica } from '../core/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner';
@@ -27,7 +28,7 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { legalService } from '../../../../services/api/legal.service';
-import { ModalNuevaConsulta, NuevaConsultaData } from './ModalNuevaConsulta';
+import { ModalNuevaConsulta } from './ModalNuevaConsulta';
 import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
@@ -159,20 +160,21 @@ export function ModuloAsesoriaJuridicaV3() {
   };
 
   const mapEstadoToEtapa = (estado: string): string => {
-    // 1. Try to find exact match in configured states (by ID)
+    // Config estados now use backend IDs, so find exact match
     const exactMatch = estadosActivos.find(e => e.id === estado);
-    if (exactMatch) return exactMatch.nombre.toUpperCase();
+    if (exactMatch) return exactMatch.nombre;
 
-    const map: Record<string, string> = {
-      'en_radicacion': 'RADICADA',
-      'asignado': 'ANÁLISIS',
-      'en_analisis': 'ANÁLISIS',
-      'en_revision': 'RESPUESTA',
-      'respondido': 'ENVIADA',
-      'cerrado': 'ENVIADA',
-      'vencido': 'VENCIDA'
+    // Fallback map for any edge cases
+    const fallbackMap: Record<string, string> = {
+      'en_radicacion': 'Radicada',
+      'asignado': 'Asignado',
+      'en_analisis': 'En Análisis',
+      'en_revision': 'En Revisión',
+      'respondido': 'Respondido',
+      'cerrado': 'Respondido',
+      'vencido': 'Vencida'
     };
-    return map[estado] || 'RADICADA';
+    return fallbackMap[estado] || estado || 'Radicada';
   };
 
   const formatMateriaJuridica = (materia: string): string => {
@@ -268,9 +270,9 @@ export function ModuloAsesoriaJuridicaV3() {
       );
     }
 
-    // Filtro por etapa
+    // Filtro por etapa - usando estado del backend (no el displayName)
     if (filtroEtapa !== 'TODAS') {
-      resultado = resultado.filter(c => c.etapa === filtroEtapa);
+      resultado = resultado.filter(c => c.estado === filtroEtapa);
     }
 
     // Filtro por semáforo
@@ -318,30 +320,6 @@ export function ModuloAsesoriaJuridicaV3() {
     }
   };
 
-  const handleNuevaConsulta = async (data: NuevaConsultaData) => {
-    try {
-      const response = await legalService.createConsultaJuridica({
-        materiaJuridica: data.temaJuridico.toLowerCase(),
-        dependenciaSolicitante: data.solicitante,
-        nombreSolicitante: data.funcionarioSolicitante,
-        emailSolicitante: data.emailSolicitante,
-        cargoSolicitante: data.cargo,
-        descripcion: data.consulta,
-        prioridad: data.prioridad.toLowerCase(),
-        terminoLegalDias: 30
-      });
-
-      // Recargar listado de consultas
-      await loadConsultas();
-
-      toast.success('✅ Consulta creada exitosamente', {
-        description: `${response.numeroRadicado} - ${data.temaJuridico}`
-      });
-    } catch (error) {
-      console.error('Error al crear consulta:', error);
-      toast.error('Error al crear la consulta');
-    }
-  };
 
   const handleAbrirExpediente = (consulta: ConsultaJuridica) => {
     setConsultaSeleccionada(consulta);
@@ -354,8 +332,8 @@ export function ModuloAsesoriaJuridicaV3() {
         label: 'Nueva Consulta',
         labelMobile: 'Nueva',
         icon: <Plus className="w-4 h-4" />,
-        onClick: () => setIsCreateOpen(true),
-        // onClick: () => setModalNuevaConsultaOpen(true),
+        // onClick: () => setIsCreateOpen(true),
+        onClick: () => setModalNuevaConsultaOpen(true),
         variant: 'primary'
       }]
     }
@@ -458,10 +436,7 @@ export function ModuloAsesoriaJuridicaV3() {
             options: [
               { value: 'TODAS', label: 'Todas las etapas' },
               ...estadosActivos.map(estado => ({
-                value: estado.nombre.toUpperCase(), // Assuming mapped strings are UPPERCASE (RADICADA, etc) 
-                // OR better: use ID if we change map logic. 
-                // Current mapEstadoToEtapa returns 'RADICADA', 'ANÁLISIS' etc.
-                // Let's rely on the Configured Name but check casing.
+                value: estado.id, // Usar ID del backend (en_radicacion, asignado, etc.)
                 label: estado.nombre
               }))
             ]
@@ -511,7 +486,7 @@ export function ModuloAsesoriaJuridicaV3() {
         <ModalNuevaConsulta
           isOpen={modalNuevaConsultaOpen}
           onClose={() => setModalNuevaConsultaOpen(false)}
-          onSubmit={handleNuevaConsulta}
+          onSuccess={loadConsultas}
         />
       )}
 
@@ -814,14 +789,14 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                   <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
                 </Button>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
-                  size="sm"
-                  variant="outline"
-                  className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
-                >
-                  <Trash2 className="w-3 h-3 mr-1" /> Eliminar
-                </Button>
+                  <Button
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                    size="sm"
+                    variant="outline"
+                    className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" /> Eliminar
+                  </Button>
                 )}
               </td>
             </tr>

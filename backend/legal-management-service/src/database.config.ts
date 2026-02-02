@@ -14,11 +14,13 @@ import { Evidencia } from './entities/evidencia.entity';
 import { Acta } from './entities/acta.entity';
 import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
+import { Actor } from './entities/actor.entity';
 
 // Órganos de Control - Nuevo módulo
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
 import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { PeiIndicador } from './entities/pei-indicador.entity';
@@ -72,11 +74,13 @@ export const databaseConfig: TypeOrmModuleOptions = {
     password: process.env.DB_PASS,
     database: process.env.DB_NAME || 'esap_db',
     // No especificar schema por defecto para permitir múltiples schemas
+
     entities: [
         Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
+        Actor,
         // Órganos de Control
-        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo,
+        OrganismoControlOC, RequerimientoOC, RespuestaBorradorOC, SolicitudInsumo, Hallazgo, TipoRequerimientoOC,
         // PEI
         PeiIndicador, PeiRegistroAvance,
         // Tareas y Notas
