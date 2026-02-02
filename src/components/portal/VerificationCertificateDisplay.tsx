@@ -20,13 +20,13 @@ import {
   Loader2,
   ArrowUp
 } from 'lucide-react';
-import { VerificationCertificate } from '../../types';
+import { VerificationCertificate } from '../../types/index';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { QRCodeSVG } from 'qrcode.react';
-import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -291,7 +291,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="bg-white rounded-xl p-3 shadow-lg">
-                  <img src={esapLogo} alt="ESAP Logo" className="h-16 w-auto" />
+                  <ESAPLogo variant="color" className="h-16 w-auto" />
                 </div>
                 <div className="text-white">
                   <h1 className="text-2xl font-bold tracking-wide">

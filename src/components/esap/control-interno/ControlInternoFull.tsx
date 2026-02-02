@@ -7,6 +7,8 @@ import {
   FolderOpen,
   Settings,
   FileText,
+  Columns3,
+  Layers
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
@@ -18,6 +20,8 @@ import { toast } from "sonner";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
+import { DashboardOCIG } from "./components/DashboardOCIG";  // ✨ NUEVO: Dashboard Ejecutivo Oficial
+import { TableroKanbanOCIG } from "./components/TableroKanbanOCIG";  // ✨ NUEVO: Tablero Kanban Oficial OCIG
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
@@ -27,7 +31,10 @@ import { ListasChequeoModule } from "./listas-chequeo/ListasChequeoModuleComplet
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
-  | "planificacion"                  // RF001-004 (4 tabs)
+  | "dashboard-ocig"                 // ✨ NUEVO: Dashboard Ejecutivo Oficial
+  | "kanban-ocig"                    // ✨ NUEVO: Tablero Kanban Oficial OCIG
+  | "universo-auditable"             // ✨ NUEVO: Universo Auditable + Programa Anual
+  | "plan-operativo"                 // ✨ NUEVO: Plan Operativo (independiente)
   | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
@@ -86,16 +93,43 @@ function ControlInternoContent({
       color: "#10B981", // Verde - Principal
     },
     
-    // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 2. DASHBOARD OCIG ━━━━━━━━━━━
     {
-      id: "planificacion",
-      label: "Planeación OCIG",
-      subtitle: "Plan Anual • Universo • Programa",
+      id: "dashboard-ocig",
+      label: "Dashboard OCIG",
+      subtitle: "Ejecutivo oficial de OCIG",
+      icon: <Columns3 className="w-5 h-5" />,
+      color: "#1B4F72", // Azul ESAP Oscuro
+    },
+    
+    // ━━━━━━━━━━━ 3. KANBAN OCIG ━━━━━━━━━━━
+    {
+      id: "kanban-ocig",
+      label: "Kanban OCIG",
+      subtitle: "Tablero oficial de OCIG",
+      icon: <Columns3 className="w-5 h-5" />,
+      color: "#1B4F72", // Azul ESAP Oscuro
+    },
+    
+    // ━━━━━━━━━━━ 4. PLAN OPERATIVO ━━━━━━━━━━━
+    {
+      id: "plan-operativo",
+      label: "Plan Operativo",
+      subtitle: "QUÉ auditar • Plan de trabajo",
       icon: <ClipboardList className="w-5 h-5" />,
+      color: "#2962FF", // Azul corporativo
+    },
+    
+    // ━━━━━━━━━━━ 5. UNIVERSO AUDITABLE ━━━━━━━━━━━
+    {
+      id: "universo-auditable",
+      label: "Universo Auditable",
+      subtitle: "DÓNDE auditar • Programa Anual",
+      icon: <Layers className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
     },
     
-    // ━━━━━━━━━━━ 3. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 6. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
     {
       id: "listas-chequeo",
       label: "Listas de Chequeo",
@@ -104,7 +138,7 @@ function ControlInternoContent({
       color: "#6366F1", // Azul claro - Requisitos
     },
     
-    // ━━━━━━━━━━━ 4. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 7. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
       id: "planes-mejoramiento",
       label: "Planes de Mejoramiento",
@@ -114,7 +148,7 @@ function ControlInternoContent({
       badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
     },
     
-    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 8. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
@@ -123,7 +157,7 @@ function ControlInternoContent({
       color: "#0891B2", // Cyan - Documental
     },
     
-    // ━━━━━━━━━━━ 6. CONFIGURACIONES ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 9. CONFIGURACIONES ━━━━━━━━━━━
     {
       id: "config-auditorias",
       label: "Configuraciones",
@@ -138,8 +172,17 @@ function ControlInternoContent({
       case "dashboard":
         return <GestionAuditoriasKanbanSimple />;
       
-      case "planificacion":
-        return <PlanificacionModuleRediseno />;
+      case "dashboard-ocig":
+        return <DashboardOCIG />;
+      
+      case "kanban-ocig":
+        return <TableroKanbanOCIG />;
+      
+      case "universo-auditable":
+        return <PlanificacionModuleRediseno vista="universo-programa" />;
+      
+      case "plan-operativo":
+        return <PlanificacionModuleRediseno vista="plan-operativo" />;
       
       case "listas-chequeo":
         return <ListasChequeoModule />;

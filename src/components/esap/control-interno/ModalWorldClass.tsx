@@ -1,103 +1,72 @@
 /**
  * ============================================
- * MODAL WORLD CLASS - ESTÁNDAR ESAP
+ * MODAL WORLD CLASS - COMPONENTE BASE
  * ============================================
  * 
- * Modal estandarizado para todo el módulo de Control Interno
- * Basado en el diseño corporativo premium de ESAP
+ * Componente modal reutilizable con diseño ESAP
+ * Incluye soporte para:
+ * - Chat timeline
+ * - Footer personalizado
+ * - Badges y etiquetas
+ * - Animaciones
  * 
- * CARACTERÍSTICAS:
- * - Header con ícono, título, código y badges
- * - Contenido flexible (chat, formulario, tabla, etc.)
- * - Footer opcional con acciones
- * - Responsive y mobile-first
- * - Animaciones suaves con motion/react
- * - Cierre con overlay, X, o ESC
- * 
- * USO:
- * ```tsx
- * <ModalWorldClass
- *   isOpen={isOpen}
- *   onClose={onClose}
- *   titulo="Comunicaciones del Proceso"
- *   codigo="PJ-2025-001"
- *   icono={<MessageSquare />}
- *   badges={[
- *     { label: 'NOTIFICADA', variant: 'primary' },
- *     { label: '5 mensajes', icon: <Clock />, variant: 'info' }
- *   ]}
- * >
- *   {children}
- * </ModalWorldClass>
- * ```
- * 
- * ÚLTIMA ACTUALIZACIÓN: 22 Enero 2025
+ * ÚLTIMA ACTUALIZACIÓN: 30 Enero 2025
  */
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, LucideIcon } from 'lucide-react';
 
-// ============ TIPOS ============
+// ============================================
+// TIPOS
+// ============================================
 
-export type BadgeVariant = 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
-
-export interface ModalBadge {
-  label: string;
-  icon?: ReactNode;
-  variant?: BadgeVariant;
+export interface MensajeChat {
+  id: string;
+  autor: string;
+  rol: string;
+  mensaje: string;
+  timestamp: Date;
+  tipo?: 'ENVIADO' | 'RECIBIDO' | 'SISTEMA';
+  estado?: 'PENDIENTE' | 'ENVIADO' | 'LEIDO';
+  reacciones?: Array<{
+    emoji: string;
+    count: number;
+    usuarios: string[];
+  }>;
 }
 
 export interface ModalWorldClassProps {
-  /** Estado de apertura del modal */
   isOpen: boolean;
-  
-  /** Función para cerrar el modal */
   onClose: () => void;
-  
-  /** Título principal del modal */
   titulo: string;
-  
-  /** Código o referencia (aparece bajo el título) */
   codigo?: string;
-  
-  /** Ícono del header (lucide-react) */
   icono?: ReactNode;
-  
-  /** Badges en el header */
-  badges?: ModalBadge[];
-  
-  /** Contenido del modal */
-  children: ReactNode;
-  
-  /** Footer personalizado (opcional) */
-  footer?: ReactNode;
-  
-  /** Tamaño del modal */
+  badges?: Array<{
+    texto: string;
+    color: string;
+  }>;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
-  
-  /** Permitir cerrar con overlay click */
   closeOnOverlay?: boolean;
-  
-  /** Mostrar botón de cerrar */
-  showCloseButton?: boolean;
-  
-  /** Clase CSS adicional para el contenedor del modal */
-  className?: string;
+  footer?: ReactNode;
+  children: ReactNode;
 }
 
-// ============ ESTILOS DE BADGES ============
+export interface ChatTimelineProps {
+  mensajes: MensajeChat[];
+  usuarioActual?: string;
+  onReaccionar?: (mensajeId: string, emoji: string) => void;
+}
 
-const badgeStyles: Record<BadgeVariant, string> = {
-  primary: 'bg-[#003DA5] text-white',
-  success: 'bg-green-600 text-white',
-  warning: 'bg-orange-600 text-white',
-  danger: 'bg-red-600 text-white',
-  info: 'bg-blue-100 text-blue-800 border border-blue-200',
-  neutral: 'bg-gray-100 text-gray-800 border border-gray-200'
-};
+export interface ModalChatFooterProps {
+  placeholder?: string;
+  onEnviar: (mensaje: string) => void;
+  disabled?: boolean;
+}
 
-// ============ COMPONENTE PRINCIPAL ============
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
 
 export function ModalWorldClass({
   isOpen,
@@ -105,109 +74,74 @@ export function ModalWorldClass({
   titulo,
   codigo,
   icono,
-  badges = [],
-  children,
-  footer,
+  badges,
   size = 'lg',
   closeOnOverlay = true,
-  showCloseButton = true,
-  className = ''
+  footer,
+  children
 }: ModalWorldClassProps) {
-  
-  // Cerrar con ESC
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener('keydown', handleEsc);
-      // Prevenir scroll del body
-      document.body.style.overflow = 'hidden';
-    }
-    
-    return () => {
-      document.removeEventListener('keydown', handleEsc);
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen, onClose]);
+  if (!isOpen) return null;
 
-  // Tamaños del modal
   const sizeClasses = {
     sm: 'max-w-md',
     md: 'max-w-2xl',
     lg: 'max-w-4xl',
     xl: 'max-w-6xl',
-    full: 'max-w-7xl mx-4'
+    full: 'max-w-[95vw]'
+  };
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (closeOnOverlay && e.target === e.currentTarget) {
+      onClose();
+    }
   };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-          {/* Overlay con blur */}
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-y-auto flex items-center justify-center p-6"
+          onClick={handleOverlayClick}
+        >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={closeOnOverlay ? onClose : undefined}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-          />
-
-          {/* Modal Container */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ 
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1] // easeOutCubic
-            }}
-            className={`
-              relative w-full ${sizeClasses[size]}
-              bg-white rounded-2xl shadow-2xl
-              flex flex-col max-h-[90vh]
-              ${className}
-            `}
+            exit={{ opacity: 0, scale: 0.95, y: -20 }}
+            transition={{ duration: 0.2 }}
+            className={`bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} flex flex-col max-h-[90vh] my-8`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ============ HEADER ============ */}
-            <div className="flex items-start justify-between p-6 pb-4 border-b border-gray-200">
+            {/* Header */}
+            <div className="flex items-start justify-between p-6 border-b border-gray-200">
               <div className="flex items-start gap-4 flex-1">
-                {/* Ícono */}
+                {/* Icono */}
                 {icono && (
-                  <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-md">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white flex-shrink-0">
                     {icono}
                   </div>
                 )}
 
-                {/* Título y Código */}
+                {/* Título y badges */}
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-xl md:text-2xl text-gray-900 mb-1">
-                    {titulo}
-                  </h2>
-                  {codigo && (
-                    <p className="text-sm text-gray-600">
-                      {codigo}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-xl font-semibold text-gray-900">{titulo}</h2>
+                    {codigo && (
+                      <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-mono">
+                        {codigo}
+                      </span>
+                    )}
+                  </div>
 
                   {/* Badges */}
-                  {badges.length > 0 && (
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  {badges && badges.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
                       {badges.map((badge, index) => (
                         <span
                           key={index}
-                          className={`
-                            inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium
-                            ${badgeStyles[badge.variant || 'neutral']}
-                          `}
+                          className="px-2 py-1 text-xs font-medium rounded-full text-white"
+                          style={{ backgroundColor: badge.color }}
                         >
-                          {badge.icon}
-                          {badge.label}
+                          {badge.texto}
                         </span>
                       ))}
                     </div>
@@ -215,24 +149,21 @@ export function ModalWorldClass({
                 </div>
               </div>
 
-              {/* Botón Cerrar */}
-              {showCloseButton && (
-                <button
-                  onClick={onClose}
-                  className="flex-shrink-0 p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors"
-                  aria-label="Cerrar modal"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+              {/* Botón cerrar */}
+              <button
+                onClick={onClose}
+                className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0 ml-4"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
             </div>
 
-            {/* ============ CONTENIDO ============ */}
+            {/* Contenido */}
             <div className="flex-1 overflow-y-auto p-6">
               {children}
             </div>
 
-            {/* ============ FOOTER ============ */}
+            {/* Footer */}
             {footer && (
               <div className="border-t border-gray-200 p-6 bg-gray-50">
                 {footer}
@@ -245,182 +176,147 @@ export function ModalWorldClass({
   );
 }
 
-// ============ COMPONENTES AUXILIARES ============
+// ============================================
+// COMPONENTE: CHAT TIMELINE
+// ============================================
 
-/**
- * Chat Timeline - Para mostrar mensajes tipo chat
- */
-export interface MensajeChat {
-  id: string;
-  autor: {
-    nombre: string;
-    cargo: string;
-    iniciales: string;
-  };
-  contenido: string;
-  timestamp: string;
-  tipo?: 'enviado' | 'recibido' | 'sistema';
-  reacciones?: string[];
-}
-
-interface ChatTimelineProps {
-  mensajes: MensajeChat[];
-  onResponder?: (mensaje: MensajeChat) => void;
-  onReaccionar?: (mensaje: MensajeChat) => void;
-}
-
-export function ChatTimeline({ mensajes, onResponder, onReaccionar }: ChatTimelineProps) {
+export function ChatTimeline({
+  mensajes,
+  usuarioActual,
+  onReaccionar
+}: ChatTimelineProps) {
   return (
     <div className="space-y-4">
-      {mensajes.map((mensaje) => (
-        <div key={mensaje.id} className="flex gap-3">
-          {/* Avatar */}
-          <div className="flex-shrink-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shadow-sm">
-              {mensaje.autor.iniciales}
-            </div>
-          </div>
+      {mensajes.map((mensaje) => {
+        const esPropio = mensaje.autor === usuarioActual;
+        const esProcesoAuditado = mensaje.rol === 'PROCESO_AUDITADO';
 
-          {/* Contenido */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div>
-                <span className="text-sm text-gray-900 font-medium">
-                  {mensaje.autor.nombre}
+        return (
+          <div
+            key={mensaje.id}
+            className={`flex ${esPropio ? 'justify-end' : 'justify-start'}`}
+          >
+            <div
+              className={`max-w-[70%] rounded-lg p-4 ${
+                esPropio
+                  ? 'bg-blue-600 text-white'
+                  : esProcesoAuditado
+                  ? 'bg-orange-50 text-gray-900 border border-orange-200'
+                  : 'bg-gray-100 text-gray-900'
+              }`}
+            >
+              {/* Header del mensaje */}
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className={`text-sm font-medium ${
+                    esPropio ? 'text-blue-100' : 'text-gray-600'
+                  }`}
+                >
+                  {mensaje.autor}
                 </span>
-                <span className="text-sm text-gray-600 ml-2">
-                  {mensaje.autor.cargo}
+                <span
+                  className={`text-xs ${
+                    esPropio ? 'text-blue-200' : 'text-gray-500'
+                  }`}
+                >
+                  {new Date(mensaje.timestamp).toLocaleTimeString('es-CO', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
                 </span>
               </div>
-              <span className="text-xs text-gray-500 flex-shrink-0">
-                {mensaje.timestamp}
-              </span>
-            </div>
 
-            <div className="text-sm text-gray-700 mb-2">
-              {mensaje.contenido}
-            </div>
+              {/* Contenido */}
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {mensaje.mensaje}
+              </p>
 
-            {/* Acciones */}
-            {(onResponder || onReaccionar) && (
-              <div className="flex items-center gap-3">
-                {onResponder && (
-                  <button
-                    onClick={() => onResponder(mensaje)}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Responder
-                  </button>
-                )}
-                {onReaccionar && (
-                  <button
-                    onClick={() => onReaccionar(mensaje)}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Reaccionar
-                  </button>
-                )}
-              </div>
-            )}
+              {/* Reacciones */}
+              {mensaje.reacciones && mensaje.reacciones.length > 0 && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200/20">
+                  {mensaje.reacciones.map((reaccion, index) => (
+                    <button
+                      key={index}
+                      onClick={() => onReaccionar?.(mensaje.id, reaccion.emoji)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                        esPropio
+                          ? 'bg-blue-500 hover:bg-blue-400'
+                          : 'bg-white hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{reaccion.emoji}</span>
+                      <span className={esPropio ? 'text-white' : 'text-gray-700'}>
+                        {reaccion.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Estado */}
+              {mensaje.estado && esPropio && (
+                <div className="mt-2 text-xs text-blue-200">
+                  {mensaje.estado === 'LEIDO' && '✓✓ Leído'}
+                  {mensaje.estado === 'ENVIADO' && '✓ Enviado'}
+                  {mensaje.estado === 'PENDIENTE' && '○ Enviando...'}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-/**
- * Footer con input de mensaje - Para modales tipo chat
- */
-interface ModalChatFooterProps {
-  placeholder?: string;
-  onEnviar: (mensaje: string) => void;
-  filtros?: Array<{
-    label: string;
-    active: boolean;
-    onClick: () => void;
-    icon?: ReactNode;
-  }>;
-}
+// ============================================
+// COMPONENTE: MODAL CHAT FOOTER
+// ============================================
 
-export function ModalChatFooter({ 
-  placeholder = 'Escribe un mensaje...', 
+export function ModalChatFooter({
+  placeholder = 'Escribe un mensaje...',
   onEnviar,
-  filtros = []
+  disabled = false
 }: ModalChatFooterProps) {
-  const [mensaje, setMensaje] = useState('');
+  const [mensaje, setMensaje] = React.useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (mensaje.trim()) {
+  const handleEnviar = () => {
+    if (mensaje.trim() && !disabled) {
       onEnviar(mensaje);
       setMensaje('');
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleEnviar();
     }
   };
 
   return (
-    <div className="space-y-3">
-      {/* Filtros */}
-      {filtros.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {filtros.map((filtro, index) => (
-            <button
-              key={index}
-              onClick={filtro.onClick}
-              className={`
-                inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
-                ${filtro.active 
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
-                }
-              `}
-            >
-              {filtro.icon}
-              {filtro.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Input de mensaje */}
-      <form onSubmit={handleSubmit} className="relative">
-        <textarea
-          value={mensaje}
-          onChange={(e) => setMensaje(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          rows={3}
-          className="w-full px-4 py-3 pr-24 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
-        />
-        
-        {/* Botón enviar */}
-        <button
-          type="submit"
-          disabled={!mensaje.trim()}
-          className="absolute bottom-3 right-3 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg text-sm font-medium hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        >
-          Enviar
-        </button>
-      </form>
-
-      {/* Tip */}
-      <p className="text-xs text-gray-500 flex items-center gap-1">
-        <span>💡</span>
-        <span>Usa <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Enter</kbd> para enviar y <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Shift + Enter</kbd> para salto de línea</span>
-      </p>
+    <div className="flex items-end gap-3">
+      <textarea
+        value={mensaje}
+        onChange={(e) => setMensaje(e.target.value)}
+        onKeyPress={handleKeyPress}
+        placeholder={placeholder}
+        disabled={disabled}
+        rows={3}
+        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+      />
+      <button
+        onClick={handleEnviar}
+        disabled={disabled || !mensaje.trim()}
+        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+      >
+        Enviar
+      </button>
     </div>
   );
 }
 
-// ============ EXPORT ADICIONALES ============
+// Importar React para useState
+import * as React from 'react';
 
-import { useState } from 'react';
-
-export { badgeStyles };
+export default ModalWorldClass;

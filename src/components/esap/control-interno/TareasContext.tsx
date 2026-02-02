@@ -72,6 +72,10 @@ interface TareasContextType {
   contarTareasCompletadas: (auditoriaId: string) => number;
   calcularProgresoTareas: (auditoriaId: string) => number;
   
+  // Validación de completitud por fase
+  verificarFaseCompleta: (auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento') => boolean;
+  contarTareasPendientesPorFase: (auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento') => number;
+  
   // Filtros
   filtrarTareas: (auditoriaId: string, filtros: FiltrosTarea) => Tarea[];
 }
@@ -421,6 +425,27 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     return Math.round(totalProgreso / tareas.length);
   }, [tareasPorAuditoria]);
 
+  // ============ VALIDACIÓN DE COMPLETITUD POR FASE ============
+  const verificarFaseCompleta = useCallback((auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento'): boolean => {
+    const tareas = tareasPorAuditoria[auditoriaId];
+    if (!tareas || tareas.length === 0) return true;
+
+    const tareasFase = tareas.filter(t => t.fase === fase);
+    if (tareasFase.length === 0) return true;
+
+    return tareasFase.every(t => t.estado === 'Completada');
+  }, [tareasPorAuditoria]);
+
+  const contarTareasPendientesPorFase = useCallback((auditoriaId: string, fase: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento'): number => {
+    const tareas = tareasPorAuditoria[auditoriaId];
+    if (!tareas || tareas.length === 0) return 0;
+
+    const tareasFase = tareas.filter(t => t.fase === fase);
+    if (tareasFase.length === 0) return 0;
+
+    return tareasFase.filter(t => t.estado === 'Pendiente' || t.estado === 'En Progreso').length;
+  }, [tareasPorAuditoria]);
+
   // ============ FILTROS ============
   const filtrarTareas = useCallback((auditoriaId: string, filtros: FiltrosTarea): Tarea[] => {
     let tareasFiltradas = obtenerTareasPorAuditoria(auditoriaId);
@@ -469,6 +494,8 @@ export function TareasProvider({ children }: { children: ReactNode }) {
         contarTareasPendientes,
         contarTareasCompletadas,
         calcularProgresoTareas,
+        verificarFaseCompleta,
+        contarTareasPendientesPorFase,
         filtrarTareas
       }}
     >

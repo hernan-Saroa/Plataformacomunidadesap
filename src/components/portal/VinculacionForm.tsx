@@ -1,25 +1,45 @@
 import { useState } from 'react';
-import { Card, CardContent } from '../ui/card';
+import { motion } from 'motion/react';
+import { 
+  ArrowLeft, 
+  FileText, 
+  Upload, 
+  Check, 
+  AlertCircle, 
+  UserPlus, 
+  Mail, 
+  Phone, 
+  Building, 
+  CheckCircle2, 
+  Shield, 
+  Sparkles, 
+  User, 
+  GraduationCap, 
+  MapPin, 
+  Loader2, 
+  Send, 
+  UserCircle 
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Card, CardContent } from '../ui/card';
 import { 
-  CheckCircle2, User, Mail, Phone, GraduationCap, ArrowLeft, 
-  Send, Sparkles, AlertCircle, FileText, Shield, MapPin, Loader2, 
-  UserCircle, Building2, Check
-} from 'lucide-react';
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '../ui/select';
 import { toast } from 'sonner@2.0.3';
-import { motion } from 'motion/react';
 import { PublicNavbar } from './PublicNavbar';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VinculacionFormProps {
   onBack: () => void;
-  onLoginClick?: () => void;
 }
 
-export function VinculacionForm({ onBack, onLoginClick }: VinculacionFormProps) {
+export function VinculacionForm({ onBack }: VinculacionFormProps) {
   const [formData, setFormData] = useState({
     nombres: '',
     apellidos: '',
@@ -256,7 +276,7 @@ export function VinculacionForm({ onBack, onLoginClick }: VinculacionFormProps) 
               
               {/* Brand */}
               <div>
-                <img src={esapLogoWhite} alt="ESAP" className="h-12 mb-6" />
+                <ESAPLogo variant="white" className="h-12 mb-6" />
                 <p className="text-gray-400 mb-6 leading-relaxed">
                   Transformando la educación pública en Colombia con tecnología de clase mundial.
                 </p>
@@ -337,12 +357,9 @@ export function VinculacionForm({ onBack, onLoginClick }: VinculacionFormProps) 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Public Navbar */}
-      {onLoginClick && (
-        <PublicNavbar 
-          onLoginClick={onLoginClick}
-          onNavigateToHome={onBack}
-        />
-      )}
+      <PublicNavbar 
+        onNavigateToHome={onBack}
+      />
 
       {/* Main Content - con padding-top para el navbar flotante */}
       <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24 sm:pt-28 max-w-5xl">
@@ -658,7 +675,7 @@ export function VinculacionForm({ onBack, onLoginClick }: VinculacionFormProps) 
             
             {/* Brand */}
             <div>
-              <img src={esapLogoWhite} alt="ESAP" className="h-12 mb-6" />
+              <ESAPLogo variant="white" className="h-12 mb-6" />
               <p className="text-gray-400 mb-6 leading-relaxed">
                 Transformando la educación pública en Colombia con tecnología de clase mundial.
               </p>

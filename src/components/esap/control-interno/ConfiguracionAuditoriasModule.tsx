@@ -27,6 +27,9 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ====================================
 // TIPOS
 // ====================================

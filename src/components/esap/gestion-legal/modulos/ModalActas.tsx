@@ -36,7 +36,7 @@ const tiposActa = [
   'Audiencia de Fallo'
 ];
 
-// Datos mock de actas
+// Datos mock de actas (REDUCIDOS)
 const actasMock = [
   {
     id: 1,
@@ -44,80 +44,23 @@ const actasMock = [
     numero: 'ACTA-AUD-001-2024',
     fecha: '12/12/2024',
     hora: '10:00 AM - 11:30 AM',
-    lugar: 'Juzgado 1° Administrativo - Sala 3',
-    presidente: 'Dra. María Fernanda Torres',
+    lugar: 'Juzgado Administrativo',
+    presidente: 'Dra. Juez Titular',
     participantes: [
-      'Dra. María Fernanda Torres (Jueza)',
-      'Dr. Juan Pérez López (Apoderado ESAP)',
-      'Dr. Carlos Gómez (Apoderado Demandante)',
+      'Juez',
+      'Apoderado ESAP',
       'Secretaria Judicial'
     ],
-    resumen: 'Se llevó a cabo la audiencia inicial del proceso. Se verificó la competencia del juzgado, se fijó como objeto del proceso las pretensiones del demandante. Se concedió traslado para contestación de demanda por 30 días.',
+    resumen: 'Acta de ejemplo para referencia',
     decisiones: [
       'Se admite la demanda presentada',
-      'Se ordena traslado a la parte demandada por 30 días',
-      'Se programa audiencia de conciliación para el 15/01/2025'
     ],
     estado: 'Firmada',
     estadoColor: 'green',
-    archivo: 'acta_audiencia_inicial_001.pdf',
+    archivo: 'acta_ejemplo.pdf',
     tamaño: '1.8 MB',
     duracion: '1h 30min'
   },
-  {
-    id: 2,
-    tipo: 'Audiencia de Conciliación',
-    fecha: '15/01/2025',
-    numero: 'ACTA-CONC-002-2025',
-    hora: '09:00 AM - 10:30 AM',
-    lugar: 'Juzgado 1° Administrativo - Sala 2',
-    presidente: 'Dra. María Fernanda Torres',
-    participantes: [
-      'Dra. María Fernanda Torres (Jueza)',
-      'Dr. Juan Pérez López (Apoderado ESAP)',
-      'Dr. Carlos Gómez (Apoderado Demandante)',
-      'Gloria Ramírez Ortiz (Demandante)',
-      'Secretaria Judicial'
-    ],
-    resumen: 'Se adelantó audiencia de conciliación entre las partes. Se expusieron las posiciones de cada parte. No fue posible llegar a un acuerdo conciliatorio. Se ordena continuar con el trámite ordinario del proceso.',
-    decisiones: [
-      'No hay acuerdo conciliatorio',
-      'Se ordena continuar el proceso',
-      'Se fija audiencia de pruebas para el 05/02/2025'
-    ],
-    estado: 'Programada',
-    estadoColor: 'blue',
-    archivo: null,
-    tamaño: null,
-    duracion: '1h 30min'
-  },
-  {
-    id: 3,
-    tipo: 'Inspección Judicial',
-    fecha: '20/01/2025',
-    numero: 'ACTA-INSP-003-2025',
-    hora: '02:00 PM - 04:00 PM',
-    lugar: 'Instalaciones ESAP - Sede Bogotá',
-    presidente: 'Dra. María Fernanda Torres',
-    participantes: [
-      'Dra. María Fernanda Torres (Jueza)',
-      'Perito Judicial',
-      'Dr. Juan Pérez López (Apoderado ESAP)',
-      'Dr. Carlos Gómez (Apoderado Demandante)',
-      'Secretaria Judicial'
-    ],
-    resumen: 'Se realizó inspección judicial en las instalaciones de ESAP para verificar las condiciones del puesto de trabajo del demandante y contrastar con sus afirmaciones en la demanda.',
-    decisiones: [
-      'Se dejó constancia de las instalaciones visitadas',
-      'Se tomó registro fotográfico',
-      'Se ordenó anexar informe pericial al expediente'
-    ],
-    estado: 'Programada',
-    estadoColor: 'orange',
-    archivo: null,
-    tamaño: null,
-    duracion: '2h'
-  }
 ];
 
 export function ModalActas({ isOpen, onClose, expediente }: ModalActasProps) {

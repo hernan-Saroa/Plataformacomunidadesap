@@ -15,15 +15,14 @@
  * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  Columns, Plus, Edit2, Trash2, Save, X, Clock, AlertTriangle,
-  GripVertical, Eye, EyeOff, Settings, TrendingUp, Bell,
-  ArrowRight, CheckCircle2, Info, Palette, Hash, Timer
-} from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { ResponsiveHeader } from '@/components/ui';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -247,7 +246,7 @@ export function ConfiguracionKanbanModule() {
   });
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K>
       {/* Header con selector de tablero */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -352,7 +351,7 @@ export function ConfiguracionKanbanModule() {
           }}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 

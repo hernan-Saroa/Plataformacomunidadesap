@@ -11,7 +11,7 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { useKeyboardNavigation } from '../../../hooks/useKeyboardNavigation';
 import { KeyboardShortcutsHelper } from './KeyboardShortcutsHelper';
-import logoESAP from 'figma:asset/37be53b3a386e74bb2b064005155c7696a9d7d7e.png';
+import { ESAPLogo } from '../../assets/ESAPLogo';
 
 export interface MenuItem {
   id: string;
@@ -223,80 +223,95 @@ export function ModuleLayout({
           width: sidebarCollapsed ? 64 : (isSmallTablet ? 200 : 280)
         }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-        className="hidden md:flex flex-shrink-0 border-r-2 flex-col"
+        className="hidden md:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
         style={{ 
           background: '#FFFFFF',
           borderColor: '#E5E7EB'
         }}
       >
         {/* Header del Sidebar */}
-        <div className="p-4 border-b-2" style={{ borderColor: '#E5E7EB' }}>
-          <div className="flex items-center justify-between">
-            <AnimatePresence mode="wait">
-              {!sidebarCollapsed && (
-                <motion.div
-                  key="expanded"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                  className="flex items-center gap-3 flex-1"
+        <div className="p-4 border-b-2 relative" style={{ borderColor: '#E5E7EB' }}>
+          <AnimatePresence mode="wait">
+            {!sidebarCollapsed ? (
+              <motion.div
+                key="expanded"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                className="flex items-center gap-3"
+              >
+                <div className="p-2 rounded-xl" style={{ background: `${moduleColor}15` }}>
+                  <div style={{ color: moduleColor }}>
+                    {moduleIcon}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <h2 className="font-black text-sm leading-tight" style={{ color: moduleColor }}>
+                    {moduleName}
+                  </h2>
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                    {moduleDescription}
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="collapsed"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                className="w-full flex items-center justify-center"
+              >
+                {/* ✅ Ícono del módulo cuando está colapsado (centrado y más grande) */}
+                <div 
+                  className="p-3 rounded-xl" 
+                  style={{ background: `${moduleColor}15` }}
                 >
-                  <div className="p-2 rounded-xl" style={{ background: `${moduleColor}15` }}>
-                    <div style={{ color: moduleColor }}>
-                      {moduleIcon}
-                    </div>
+                  <div style={{ color: moduleColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {moduleIcon}
                   </div>
-                  <div className="flex-1">
-                    <h2 className="font-black text-sm leading-tight" style={{ color: moduleColor }}>
-                      {moduleName}
-                    </h2>
-                    <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                      {moduleDescription}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => setSidebarCollapsed(true)}
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0"
-                    style={{ color: moduleColor }}
-                    title="Contraer menú"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </Button>
-                </motion.div>
-              )}
-              {sidebarCollapsed && (
-                <motion.div
-                  key="collapsed"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-                  className="w-full relative group"
-                >
-                  <button
-                    onClick={() => setSidebarCollapsed(false)}
-                    className="w-full flex items-center justify-center rounded-xl hover:bg-gray-50 transition-colors relative py-2"
-                    title="Expandir menú"
-                  >
-                    {/* Logo ESAP cuando está colapsado */}
-                    <img 
-                      src={logoESAP} 
-                      alt="ESAP Logo" 
-                      className="w-12 h-12 object-contain"
-                    />
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg" 
-                       style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px' }}>
-                    Expandir menú
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          {/* ✅ Botón Toggle Premium - SIEMPRE VISIBLE (Igual que SidebarPremium) */}
+          <motion.button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="absolute -right-3 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-xl border-2 z-10"
+            style={{ 
+              top: '50%', 
+              transform: 'translateY(-50%)', 
+              borderColor: '#E5E7EB',
+              color: moduleColor
+            }}
+            whileHover={{ 
+              scale: 1.15,
+              boxShadow: `0 8px 24px ${moduleColor}30`
+            }}
+            whileTap={{ scale: 0.9 }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 30,
+              mass: 0.8
+            }}
+            title={sidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
+          >
+            <motion.div
+              animate={{ rotate: sidebarCollapsed ? 180 : 0 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 30,
+                mass: 0.8
+              }}
+            >
+              <ChevronLeft className="w-4 h-4" strokeWidth={2.5} />
+            </motion.div>
+          </motion.button>
         </div>
 
         {/* Menu Items */}
@@ -310,7 +325,9 @@ export function ModuleLayout({
                 <motion.button
                   key={item.id}
                   onClick={() => onSectionChange(item.id)}
-                  className="w-full rounded-xl p-3 transition-all relative group"
+                  className={`w-full rounded-xl transition-all relative group ${
+                    sidebarCollapsed ? 'p-2.5' : 'p-3'
+                  }`}
                   style={{
                     background: isActive ? `${itemColor}15` : 'transparent',
                     color: isActive ? itemColor : '#6B7280'
@@ -318,27 +335,33 @@ export function ModuleLayout({
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`flex-shrink-0 ${sidebarCollapsed ? 'mx-auto' : ''}`}>
+                  {sidebarCollapsed ? (
+                    // ✅ MODO COLAPSADO: Ícono centrado perfectamente
+                    <div className="flex items-center justify-center w-full">
                       {item.icon}
                     </div>
-                    {!sidebarCollapsed && (
+                  ) : (
+                    // MODO EXPANDIDO: Layout normal con texto
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0">
+                        {item.icon}
+                      </div>
                       <span className="font-bold text-sm flex-1 text-left truncate">
                         {item.label}
                       </span>
-                    )}
-                    {!sidebarCollapsed && item.badge && (
-                      <Badge 
-                        className="text-xs font-bold"
-                        style={{ 
-                          background: itemColor,
-                          color: '#FFFFFF'
-                        }}
-                      >
-                        {item.badge}
-                      </Badge>
-                    )}
-                  </div>
+                      {item.badge && (
+                        <Badge 
+                          className="text-xs font-bold"
+                          style={{ 
+                            background: itemColor,
+                            color: '#FFFFFF'
+                          }}
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
 
                   {/* Indicador activo */}
                   {isActive && (
@@ -352,11 +375,11 @@ export function ModuleLayout({
 
                   {/* Tooltip para sidebar colapsado */}
                   {sidebarCollapsed && (
-                    <div className="absolute left-full ml-3 top-2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg" 
+                    <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg whitespace-nowrap" 
                          style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px', maxWidth: '250px' }}>
                       <div className="font-semibold">{item.label}</div>
                       {item.subtitle && (
-                        <div className="text-xs opacity-80 mt-0.5">{item.subtitle}</div>
+                        <div className="text-xs opacity-80 mt-0.5 whitespace-normal">{item.subtitle}</div>
                       )}
                       {item.badge && (
                         <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: itemColor }}>
@@ -370,25 +393,6 @@ export function ModuleLayout({
             })}
           </div>
         </nav>
-
-        {/* Toggle Button */}
-        <div className="p-3 border-t-2" style={{ borderColor: '#E5E7EB' }}>
-          <Button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            variant="outline"
-            className="w-full border-2"
-            style={{ borderColor: '#E5E7EB' }}
-          >
-            {sidebarCollapsed ? (
-              <ChevronRight className="w-5 h-5 mx-auto" />
-            ) : (
-              <>
-                <ChevronLeft className="w-5 h-5 mr-2" />
-                <span className="font-bold text-sm">Contraer</span>
-              </>
-            )}
-          </Button>
-        </div>
       </motion.aside>
 
       {/* CONTENIDO PRINCIPAL */}

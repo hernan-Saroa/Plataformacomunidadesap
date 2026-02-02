@@ -84,8 +84,7 @@ import {
   SelectValue,
 } from '../../ui/select';
 import { PortalUsuarioAuditado } from './PortalUsuarioAuditado';
-import logoESAP from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../../assets/ESAPLogo';
 import { FooterWorldClass } from '../../FooterWorldClass';
 import { BreadcrumbNavegacion, StickyNavBar } from './BreadcrumbNavegacion';
 
@@ -508,14 +507,17 @@ function HeaderMD3({
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <motion.img 
-              src={logoESAP} 
-              alt="ESAP"
-              className="h-10 sm:h-11 w-auto object-contain cursor-pointer"
+            <motion.div
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.2 }}
               onClick={breadcrumbItems?.[0]?.onClick}
-            />
+              className="cursor-pointer"
+            >
+              <ESAPLogo 
+                variant="color"
+                className="h-10 sm:h-11 w-auto"
+              />
+            </motion.div>
             <div className="hidden md:block border-l border-gray-300 pl-3">
               <p className="text-sm font-semibold text-gray-900">Portal Transaccional</p>
               <p className="text-xs text-gray-500">Control Interno de Gestión</p>

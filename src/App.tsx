@@ -7,9 +7,6 @@ import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
 import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
 import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
-import { ConfiguracionPlantillasOficios } from './components/esap/gestion-legal/configuracion/ConfiguracionPlantillasOficios';
-// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
-// import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { AlertTriangle, Clock } from 'lucide-react';
@@ -25,11 +22,14 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * 3. Portal Transaccional (usuarios externos)
  * 4. Backoffice Administrativo (usuarios internos)
  * 
- * DEMO ESPECIAL:
+ * MÓDULOS ESPECIALES:
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
  * - Vista 'password-demo': Demo de Validación de Contraseñas
  * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
- * - Vista 'edicion-foto-perfil-demo': Demo de Edición de Foto de Perfil
+ * 
+ * MÓDULO PRINCIPAL OCIG:
+ * El Plan Operativo OCIG es el módulo único para gestión de auditorías,
+ * accesible desde Control Interno Gestión en el Backoffice.
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -37,7 +37,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
  * - Alerta previa antes de cerrar sesión
  */
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo' | 'config-plantillas-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo';
 
 interface Usuario {
   id: string;
@@ -376,9 +376,6 @@ export default function App() {
       
       case 'procesos-coactivos-demo':
         return <DemoReprogramacionAudiencia />;
-      
-      case 'config-plantillas-demo':
-        return <ConfiguracionPlantillasOficios />;
       
       default:
         return <LandingPage onIrALogin={handleIrALogin} />;

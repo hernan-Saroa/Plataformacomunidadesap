@@ -42,7 +42,9 @@ import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
 import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesContext';
-import { useInicializarDatosEjemplo } from './DatosEjemploAuditorias';
+
+// ✅ FASE 1 DÍA 2: Componentes responsive
+import { useResponsive } from '@/hooks/useResponsive';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -362,8 +364,6 @@ export function PlanesMejoramientoModuleRediseno() {
     crearPlan,
     generarExpediente // ✅ NUEVO: Para generar expedientes
   } = useIntegracionAuditoriaPlanes();
-
-  useInicializarDatosEjemplo();
 
   // Auto-abrir modal si viene desde auditorías
   useEffect(() => {
@@ -806,8 +806,16 @@ interface VistaKanbanProps {
 
 function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
   return (
-    <div className="flex gap-4 overflow-x-auto pb-6">
-      {COLUMNAS_KANBAN.map((columna) => {
+    <>
+      {/* Indicador Mobile - FASE 1 DÍA 2 */}
+      <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
+        <p className="text-sm text-blue-900">
+          💡 <strong>Vista móvil:</strong> Las etapas de planes se muestran apiladas para mejor seguimiento
+        </p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-4 overflow-x-auto lg:overflow-x-visible pb-6">
+        {COLUMNAS_KANBAN.map((columna) => {
         const planesColumna = planes.filter(p => p.estado === columna.id);
         const colapsada = columnasColapsadas.has(columna.id);
         
@@ -824,6 +832,7 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -861,9 +870,9 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
     return (
       <motion.div
         ref={drop}
-        className="flex-shrink-0 h-full"
-        initial={{ width: 64 }}
-        animate={{ width: 64 }}
+        className="w-full lg:w-16 flex-shrink-0 lg:h-full"
+        initial={{ width: '100%' }}
+        animate={{ width: '100%' }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         <Card 
@@ -939,7 +948,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
 
   // Versión expandida
   return (
-    <div className="flex-shrink-0" style={{ width: '320px' }}>
+    <div className="w-full lg:w-80 flex-shrink-0">
       {/* Header Columna */}
       <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl">
         <div className="flex items-center justify-between mb-2">

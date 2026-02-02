@@ -37,6 +37,28 @@ import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ NUEVO: Importar validaciones Decreto 648/2017
+import {
+  validarDecreto648,
+  validarAntesDeAprobar,
+  validacionRapida,
+  generarMensajeToast,
+  obtenerEstadisticasPlan,
+  type ResultadoValidacion
+} from './utils/validacionesDecreto648';
+
+// ✅ NUEVO: Importar badge de cumplimiento Decreto 648
+import { BadgeDecreto648Completo, BadgeDecreto648Simple } from './components/BadgeDecreto648';
+
+// ✅ NUEVO: Importar servicio de generación de PDF
+import { generarPDFPlanAnual, validarDatosParaPDF } from './services/pdfPlanAnual';
+
+// ✅ NUEVO: Importar helper de configuración
+import { cargarConfiguracionPDF } from './utils/configuracionHelper';
+
 // ============ TIPOS ============
 
 interface Actividad {
@@ -263,10 +285,35 @@ export function PlanAnualModule() {
   };
 
   const handleGuardarPlan = (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar al guardar (opcional, solo advertencias)
+    const validacion = validarDecreto648(plan);
+    
     setPlanes(prev => [...prev, plan]);
-    toast.success('Plan Anual creado exitosamente', {
-      description: `Plan ${plan.año} guardado como borrador`
-    });
+    
+    // Toast según resultado de validación
+    if (validacion.valido) {
+      const stats = obtenerEstadisticasPlan(plan);
+      toast.success('✅ Plan Anual creado exitosamente', {
+        description: `Plan ${plan.año} guardado como borrador. Cumple con Decreto 648/2017 (${stats.totalActividades} actividades)`,
+        duration: 5000
+      });
+    } else {
+      toast.warning('⚠️ Plan guardado con advertencias', {
+        description: `Plan ${plan.año} guardado, pero NO cumple con Decreto 648/2017. Revise antes de aprobar.`,
+        duration: 6000
+      });
+      
+      // Mostrar advertencias específicas
+      if (validacion.errores.length > 0) {
+        setTimeout(() => {
+          toast.error('Errores encontrados', {
+            description: `${validacion.errores.length} error${validacion.errores.length !== 1 ? 'es' : ''} debe${validacion.errores.length !== 1 ? 'n' : ''} corregirse antes de aprobar`,
+            duration: 5000
+          });
+        }, 1000);
+      }
+    }
+    
     setVistaActiva('lista');
   };
 
@@ -280,6 +327,39 @@ export function PlanAnualModule() {
   };
 
   const handleAprobar = (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar antes de mostrar modal de aprobación
+    const validacion = validarAntesDeAprobar(plan);
+    
+    if (!validacion.valido) {
+      // Mostrar errores en toast
+      const mensaje = generarMensajeToast(validacion);
+      
+      toast.error(mensaje.titulo, {
+        description: mensaje.descripcion,
+        duration: 8000,
+      });
+      
+      // Mostrar detalles en consola para debugging
+      console.error('❌ Validación Decreto 648/2017 falló:', validacion);
+      
+      // Mostrar errores específicos
+      if (validacion.errores.length > 0) {
+        setTimeout(() => {
+          validacion.errores.forEach((error, idx) => {
+            setTimeout(() => {
+              toast.error(`Error ${idx + 1}`, {
+                description: error,
+                duration: 6000
+              });
+            }, idx * 500);
+          });
+        }, 1000);
+      }
+      
+      return; // Bloquear aprobación
+    }
+    
+    // Si pasa validación, mostrar modal
     setPlanActual(plan);
     setMostrarModalAprobacion(true);
   };
@@ -287,37 +367,79 @@ export function PlanAnualModule() {
   const handleConfirmarAprobacion = () => {
     if (!planActual) return;
 
+    // ✅ NUEVO: Re-validar antes de aprobar (doble verificación)
+    const validacion = validarAntesDeAprobar(planActual);
+    
+    if (!validacion.valido) {
+      toast.error('No se puede aprobar el plan', {
+        description: 'El plan no cumple con los requisitos del Decreto 648/2017'
+      });
+      setMostrarModalAprobacion(false);
+      return;
+    }
+
     const planAprobado: PlanAnual = {
       ...planActual,
       estado: 'Aprobado',
-      fechaAprobacion: new Date().toLocaleDateString()
+      fechaAprobacion: new Date().toISOString().split('T')[0] // Formato YYYY-MM-DD
     };
 
     setPlanes(prev => prev.map(p => p.id === planAprobado.id ? planAprobado : p));
     setPlanActual(planAprobado);
     setMostrarModalAprobacion(false);
 
-    toast.success('Plan Anual Aprobado', {
-      description: `El Plan ${planAprobado.año} ha sido aprobado exitosamente`
+    // ✅ NUEVO: Toast mejorado con estadísticas
+    const stats = obtenerEstadisticasPlan(planAprobado);
+    
+    toast.success('✅ Plan Anual Aprobado', {
+      description: `Plan ${planAprobado.año} aprobado con ${stats.totalActividades} actividades en 5 roles (Decreto 648/2017)`,
+      duration: 5000
     });
   };
 
-  const handleExportarPDF = (plan: PlanAnual) => {
-    toast.success('Generando PDF...', {
-      description: 'El documento se descargará en unos segundos'
+  const handleExportarPDF = async (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar datos antes de generar PDF
+    const validacionDatos = validarDatosParaPDF(plan);
+    
+    if (!validacionDatos.valido) {
+      toast.error('❌ No se puede generar el PDF', {
+        description: validacionDatos.errores[0],
+        duration: 5000
+      });
+      return;
+    }
+
+    // Mostrar toast de inicio
+    toast.info('📄 Generando PDF...', {
+      description: 'Por favor espera mientras se genera el documento'
     });
     
-    // Simular generación de PDF
-    setTimeout(() => {
-      toast.success('PDF generado correctamente', {
-        description: `Plan_Anual_${plan.año}.pdf`
+    try {
+      // ✅ NUEVO: Cargar configuración personalizada
+      const configuracion = cargarConfiguracionPDF();
+      
+      // ✅ NUEVO: Generar PDF real con configuración
+      await generarPDFPlanAnual(plan, configuracion);
+      
+      // Toast de éxito
+      const stats = obtenerEstadisticasPlan(plan);
+      toast.success('✅ PDF generado correctamente', {
+        description: `Plan Anual ${plan.año} - ${stats.totalActividades} actividades descargado`,
+        duration: 5000
       });
-    }, 2000);
+    } catch (error) {
+      console.error('Error al generar PDF:', error);
+      toast.error('❌ Error al generar PDF', {
+        description: 'Ocurrió un error al generar el documento. Intenta nuevamente.',
+        duration: 5000
+      });
+    }
   };
 
   return (
-    <div className="space-y-4">
-      <AnimatePresence mode="wait">
+    <Container4K>
+      <div className="space-y-4">
+        <AnimatePresence mode="wait">
         {vistaActiva === 'lista' && (
           <motion.div
             key="lista"
@@ -395,7 +517,8 @@ export function PlanAnualModule() {
           onAprobar={handleConfirmarAprobacion}
         />
       )}
-    </div>
+      </div>
+    </Container4K>
   );
 }
 
@@ -536,6 +659,11 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
                   <span className="text-gray-700">
                     {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades
                   </span>
+                </div>
+
+                {/* ✅ NUEVO: Badge de cumplimiento Decreto 648 */}
+                <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                  <BadgeDecreto648Simple plan={plan} />
                 </div>
               </div>
 
@@ -1413,6 +1541,9 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF }
           Aprobar
         </Button>
       </div>
+
+      {/* ✅ NUEVO: BADGE CUMPLIMIENTO DECRETO 648/2017 */}
+      <BadgeDecreto648Completo plan={plan} />
 
       {/* ESTADO Y JEFE OCI */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

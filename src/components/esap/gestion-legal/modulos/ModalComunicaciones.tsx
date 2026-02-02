@@ -23,53 +23,17 @@ interface ModalComunicacionesProps {
   expediente: ExpedienteJudicial;
 }
 
-// Datos mock de comunicaciones
+// Datos mock de comunicaciones (REDUCIDOS)
 const comunicacionesMock = [
   {
     id: 1,
-    usuario: 'Juan Pérez López',
-    rol: 'Abogado Defensor',
-    mensaje: 'Se recibió notificación del juzgado con auto admisorio. Procedemos a contestar la demanda en los próximos 10 días según el término legal.',
+    usuario: 'Usuario Ejemplo',
+    rol: 'Abogado',
+    mensaje: 'Mensaje de ejemplo para referencia',
     fecha: '22/12/2024 14:35',
-    avatar: 'JP',
+    avatar: 'UE',
     tipo: 'update'
   },
-  {
-    id: 2,
-    usuario: 'María González',
-    rol: 'Coordinadora Jurídica',
-    mensaje: '@Juan Pérez ¿Ya revisaste los precedentes jurisprudenciales? Necesitamos incluirlos en la contestación.',
-    fecha: '22/12/2024 10:20',
-    avatar: 'MG',
-    tipo: 'mention'
-  },
-  {
-    id: 3,
-    usuario: 'Carlos Ruiz',
-    rol: 'Director Jurídico',
-    mensaje: 'Aprobada la estrategia de defensa propuesta. Por favor proceder con la contestación y mantenerme informado del avance.',
-    fecha: '21/12/2024 16:45',
-    avatar: 'CR',
-    tipo: 'approval'
-  },
-  {
-    id: 4,
-    usuario: 'Sistema SIGL',
-    rol: 'Notificación Automática',
-    mensaje: '⚠️ ALERTA: Quedan 18 días para vencimiento del término de contestación de la demanda.',
-    fecha: '20/12/2024 09:00',
-    avatar: 'SI',
-    tipo: 'alert'
-  },
-  {
-    id: 5,
-    usuario: 'Ana López',
-    rol: 'Asistente Jurídica',
-    mensaje: 'Adjunto documentación de respaldo para la contestación: certificados laborales, contratos y actos administrativos. Todo listo para revisión.',
-    fecha: '19/12/2024 15:30',
-    avatar: 'AL',
-    tipo: 'attachment'
-  }
 ];
 
 export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComunicacionesProps) {

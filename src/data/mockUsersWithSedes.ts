@@ -1,245 +1,491 @@
 /**
- * STUB: Array vacío - Agregar datos reales cuando se requieran
+ * ============================================
+ * MOCK DATA - USUARIOS CON SEDES
+ * ============================================
  * 
- * ⚠️ DEPRECATED: Para pruebas de desarrollo, usar:
- * import { USUARIOS_EJEMPLO } from './usuarios-ejemplo';
+ * Datos de prueba para usuarios de la plataforma
+ * incluyendo asignación a sedes territoriales
+ * 
+ * ESTRUCTURA:
+ * - Usuarios persona (funcionarios, docentes, estudiantes)
+ * - Asignación a sedes territoriales
+ * - Roles y permisos
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 31 Enero 2026
  */
-export const MOCK_USERS_WITH_SEDES: UserWithSedes[] = [
-  // ========== ESTUDIANTE ==========
+
+export interface MockUserRole {
+  id: string;
+  name: string;
+  code?: string; // Código del rol (ej: 'DOCENTE', 'ESTUDIANTE')
+  permissions: string[];
+}
+
+export interface MockUserSede {
+  id: string;
+  codigo: string;
+  nombre: string;
+  tipo: 'Nacional' | 'Territorial' | 'CETAP';
+  nivel?: 'nacional' | 'territorial' | 'cetap';
+  ciudad?: string;
+  departamento?: string;
+}
+
+export interface MockUserWithSedes {
+  id: string;
+  personId: string; // ID de la persona en el módulo de Personas
+  documentNumber: string;
+  documentType: 'CC' | 'CE' | 'TI' | 'PEP';
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+  status: 'active' | 'inactive' | 'blocked';
+  roles: MockUserRole[];
+  sedes: MockUserSede[];
+  createdAt: string;
+  avatar?: string;
+}
+
+/**
+ * ============================================
+ * MOCK DATA - USUARIOS CON SEDES
+ * ============================================
+ */
+export const MOCK_USERS_WITH_SEDES: MockUserWithSedes[] = [
   {
-    id: 'usr-001',
-    personId: 'per-001',
-    firstName: 'María Camila',
-    lastName: 'González Rodríguez',
-    email: 'maria.gonzalez@estudiante.esap.edu.co',
-    phone: '+57 310 234 5678',
+    id: 'user-001',
+    personId: 'person-001',
+    documentNumber: '1234567890',
+    documentType: 'CC',
+    firstName: 'Mario Oswaldo',
+    lastName: 'Bernal Gutiérrez',
+    email: 'mario.bernal@esap.edu.co',
+    phone: '+57 310 123 4567',
+    location: 'Bogotá',
     status: 'active',
     roles: [
       {
-        id: 'rol-estudiante',
-        name: 'Estudiante',
-        code: 'EST',
-        alcance: 'territorial',
-        unidadOrganizacionalId: 'sede-bogota'
+        id: 'rol-jefe-oci',
+        name: 'Jefe OCI',
+        permissions: ['control-interno', 'auditoria', 'gestion-riesgos']
       }
     ],
-    location: 'Bogotá D.C.',
     sedes: [
       {
-        id: 'sede-bogota',
-        codigo: 'BOG-001',
-        nombre: 'Sede Bogotá',
-        nivel: 'sede-central',
-        esPrincipal: true
+        id: 'sede-nacional',
+        codigo: 'NACIONAL',
+        nombre: 'Sede Nacional',
+        tipo: 'Nacional',
+        nivel: 'nacional',
+        ciudad: 'Bogotá',
+        departamento: 'Cundinamarca'
       }
     ],
-    enrollmentMethod: 'qr',
-    enrollmentDate: '2024-08-15',
-    lastLogin: '2025-01-26T08:30:00',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    documentType: 'CC',
-    documentNumber: '1012345678',
-    documentIssueDate: '2018-03-15',
-    birthDate: '2000-05-20',
-    address: 'Calle 45 #23-10, Bogotá',
-    program: 'Administración Pública Territorial'
+    createdAt: '2024-01-15'
   },
-
-  // ========== DOCENTE ==========
   {
-    id: 'usr-002',
-    personId: 'per-002',
-    firstName: 'Carlos Alberto',
-    lastName: 'Martínez Pérez',
-    email: 'carlos.martinez@docente.esap.edu.co',
-    phone: '+57 315 987 6543',
+    id: 'user-002',
+    personId: 'person-002',
+    documentNumber: '9876543210',
+    documentType: 'CC',
+    firstName: 'María Fernanda',
+    lastName: 'López Rodríguez',
+    email: 'maria.lopez@esap.edu.co',
+    phone: '+57 320 234 5678',
+    location: 'Medellín',
     status: 'active',
     roles: [
       {
         id: 'rol-docente',
         name: 'Docente',
-        code: 'DOC',
-        alcance: 'territorial',
-        unidadOrganizacionalId: 'sede-medellin'
+        code: 'DOCENTE',
+        permissions: ['gestion-academica', 'calificaciones']
       }
     ],
-    location: 'Medellín',
     sedes: [
       {
-        id: 'sede-medellin',
-        codigo: 'MED-001',
-        nombre: 'Sede Medellín',
+        id: 'sede-antioquia',
+        codigo: 'ANTIOQUIA',
+        nombre: 'Territorial Antioquia',
+        tipo: 'Territorial',
         nivel: 'territorial',
-        esPrincipal: true
+        ciudad: 'Medellín',
+        departamento: 'Antioquia'
       }
     ],
-    enrollmentMethod: 'manual',
-    enrollmentDate: '2020-02-10',
-    lastLogin: '2025-01-26T09:15:00',
-    avatar: 'https://i.pravatar.cc/150?img=12',
-    documentType: 'CC',
-    documentNumber: '71234567',
-    documentIssueDate: '2005-06-20',
-    birthDate: '1985-11-10',
-    address: 'Carrera 50 #12-34, Medellín',
-    program: 'Gestión Pública'
+    createdAt: '2024-02-20'
   },
-
-  // ========== ADMINISTRATIVO ==========
   {
-    id: 'usr-003',
-    personId: 'per-003',
-    firstName: 'Ana Patricia',
-    lastName: 'Ramírez Silva',
-    email: 'ana.ramirez@esap.edu.co',
-    phone: '+57 312 456 7890',
-    status: 'active',
-    roles: [
-      {
-        id: 'rol-administrativo',
-        name: 'Administrativo',
-        code: 'ADM',
-        alcance: 'nacional',
-        unidadOrganizacionalId: 'sede-central'
-      }
-    ],
-    location: 'Bogotá D.C.',
-    sedes: [
-      {
-        id: 'sede-central',
-        codigo: 'BOG-CENTRAL',
-        nombre: 'Sede Central Nacional',
-        nivel: 'sede-central',
-        esPrincipal: true
-      }
-    ],
-    enrollmentMethod: 'manual',
-    enrollmentDate: '2019-03-01',
-    lastLogin: '2025-01-26T07:45:00',
-    avatar: 'https://i.pravatar.cc/150?img=5',
+    id: 'user-003',
+    personId: 'person-003',
+    documentNumber: '5555555555',
     documentType: 'CC',
-    documentNumber: '52345678',
-    documentIssueDate: '2008-09-12',
-    birthDate: '1988-07-15',
-    address: 'Calle 80 #45-67, Bogotá'
-  },
-
-  // ========== GRADUADO ==========
-  {
-    id: 'usr-004',
-    personId: 'per-004',
-    firstName: 'Diego Fernando',
-    lastName: 'López Torres',
-    email: 'diego.lopez@graduado.esap.edu.co',
-    phone: '+57 320 765 4321',
-    status: 'active',
-    roles: [
-      {
-        id: 'rol-graduado',
-        name: 'Graduado',
-        code: 'GRAD',
-        alcance: 'nacional'
-      }
-    ],
+    firstName: 'Carlos Alberto',
+    lastName: 'Gómez Pérez',
+    email: 'carlos.gomez@esap.edu.co',
+    phone: '+57 315 345 6789',
     location: 'Cali',
-    sedes: [
-      {
-        id: 'sede-cali',
-        codigo: 'CAL-001',
-        nombre: 'Sede Cali',
-        nivel: 'territorial',
-        esPrincipal: true
-      }
-    ],
-    enrollmentMethod: 'massive',
-    enrollmentDate: '2022-12-01',
-    lastLogin: '2025-01-20T14:30:00',
-    avatar: 'https://i.pravatar.cc/150?img=8',
-    documentType: 'CC',
-    documentNumber: '1098765432',
-    documentIssueDate: '2015-04-10',
-    birthDate: '1995-03-25',
-    address: 'Avenida 6N #25-50, Cali',
-    program: 'Administración Pública Territorial - Graduado 2022'
-  },
-
-  // ========== ASPIRANTE ==========
-  {
-    id: 'usr-005',
-    personId: 'per-005',
-    firstName: 'Laura Valentina',
-    lastName: 'Hernández Castro',
-    email: 'laura.hernandez@aspirante.esap.edu.co',
-    phone: '+57 318 234 5678',
-    status: 'pending',
-    roles: [
-      {
-        id: 'rol-aspirante',
-        name: 'Aspirante',
-        code: 'ASP',
-        alcance: 'territorial',
-        unidadOrganizacionalId: 'sede-barranquilla'
-      }
-    ],
-    location: 'Barranquilla',
-    sedes: [
-      {
-        id: 'sede-barranquilla',
-        codigo: 'BAQ-001',
-        nombre: 'Sede Barranquilla',
-        nivel: 'territorial',
-        esPrincipal: true
-      }
-    ],
-    enrollmentMethod: 'qr',
-    enrollmentDate: '2025-01-10',
-    avatar: 'https://i.pravatar.cc/150?img=9',
-    documentType: 'CC',
-    documentNumber: '1023456789',
-    documentIssueDate: '2020-02-15',
-    birthDate: '2002-09-08',
-    address: 'Calle 72 #45-23, Barranquilla',
-    program: 'Pendiente de admisión'
-  },
-
-  // ========== SUPER ADMINISTRADOR ==========
-  {
-    id: 'usr-006',
-    personId: 'per-006',
-    firstName: 'Roberto',
-    lastName: 'Sánchez Morales',
-    email: 'roberto.sanchez@esap.edu.co',
-    phone: '+57 311 555 0001',
     status: 'active',
     roles: [
       {
-        id: 'rol-superadmin',
-        name: 'Super Administrador',
-        code: 'SADM',
-        alcance: 'nacional'
+        id: 'rol-estudiante',
+        name: 'Estudiante',
+        code: 'ESTUDIANTE',
+        permissions: ['ver-contenidos', 'subir-tareas']
       }
     ],
-    location: 'Bogotá D.C.',
     sedes: [
       {
-        id: 'sede-central',
-        codigo: 'BOG-CENTRAL',
-        nombre: 'Sede Central Nacional',
-        nivel: 'sede-central',
-        esPrincipal: true
+        id: 'sede-valle',
+        codigo: 'VALLE',
+        nombre: 'Territorial Valle del Cauca',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Cali',
+        departamento: 'Valle del Cauca'
       }
     ],
-    enrollmentMethod: 'manual',
-    enrollmentDate: '2018-01-15',
-    lastLogin: '2025-01-26T06:00:00',
-    avatar: 'https://i.pravatar.cc/150?img=13',
+    createdAt: '2024-03-10'
+  },
+  {
+    id: 'user-004',
+    personId: 'person-004',
+    documentNumber: '7777777777',
     documentType: 'CC',
-    documentNumber: '79876543',
-    documentIssueDate: '2000-05-20',
-    birthDate: '1980-12-05',
-    address: 'Carrera 15 #100-45, Bogotá'
+    firstName: 'Ana Patricia',
+    lastName: 'Martínez Silva',
+    email: 'ana.martinez@esap.edu.co',
+    phone: '+57 318 456 7890',
+    location: 'Cartagena',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-coordinador',
+        name: 'Coordinador Académico',
+        permissions: ['gestion-academica', 'gestion-usuarios', 'reportes']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-bolivar',
+        codigo: 'BOLIVAR',
+        nombre: 'Territorial Bolívar',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Cartagena',
+        departamento: 'Bolívar'
+      }
+    ],
+    createdAt: '2024-01-25'
+  },
+  {
+    id: 'user-005',
+    personId: 'person-005',
+    documentNumber: '3333333333',
+    documentType: 'CC',
+    firstName: 'Diego Alejandro',
+    lastName: 'Ramírez Torres',
+    email: 'diego.ramirez@esap.edu.co',
+    phone: '+57 311 567 8901',
+    location: 'Barranquilla',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-director-territorial',
+        name: 'Director Territorial',
+        permissions: ['gestion-sede', 'gestion-usuarios', 'reportes', 'presupuesto']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-atlantico',
+        codigo: 'ATLANTICO',
+        nombre: 'Territorial Atlántico',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Barranquilla',
+        departamento: 'Atlántico'
+      }
+    ],
+    createdAt: '2023-11-05'
+  },
+  {
+    id: 'user-006',
+    personId: 'person-006',
+    documentNumber: '4444444444',
+    documentType: 'CC',
+    firstName: 'Laura Cristina',
+    lastName: 'Hernández Vargas',
+    email: 'laura.hernandez@esap.edu.co',
+    phone: '+57 312 678 9012',
+    location: 'Bucaramanga',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-docente',
+        name: 'Docente',
+        code: 'DOCENTE',
+        permissions: ['gestion-academica', 'calificaciones']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-santander',
+        codigo: 'SANTANDER',
+        nombre: 'Territorial Santander',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Bucaramanga',
+        departamento: 'Santander'
+      }
+    ],
+    createdAt: '2024-02-14'
+  },
+  {
+    id: 'user-007',
+    personId: 'person-007',
+    documentNumber: '6666666666',
+    documentType: 'CC',
+    firstName: 'Andrés Felipe',
+    lastName: 'Castro Mendoza',
+    email: 'andres.castro@esap.edu.co',
+    phone: '+57 313 789 0123',
+    location: 'Pereira',
+    status: 'inactive',
+    roles: [
+      {
+        id: 'rol-estudiante',
+        name: 'Estudiante',
+        code: 'ESTUDIANTE',
+        permissions: ['ver-contenidos', 'subir-tareas']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-risaralda',
+        codigo: 'RISARALDA',
+        nombre: 'Territorial Risaralda',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Pereira',
+        departamento: 'Risaralda'
+      }
+    ],
+    createdAt: '2024-04-01'
+  },
+  {
+    id: 'user-008',
+    personId: 'person-008',
+    documentNumber: '8888888888',
+    documentType: 'CC',
+    firstName: 'Sandra Milena',
+    lastName: 'Rojas Delgado',
+    email: 'sandra.rojas@esap.edu.co',
+    phone: '+57 314 890 1234',
+    location: 'Manizales',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-funcionario',
+        name: 'Funcionario Administrativo',
+        permissions: ['gestion-administrativa', 'documentos']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-caldas',
+        codigo: 'CALDAS',
+        nombre: 'Territorial Caldas',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Manizales',
+        departamento: 'Caldas'
+      }
+    ],
+    createdAt: '2023-12-20'
+  },
+  {
+    id: 'user-009',
+    personId: 'person-009',
+    documentNumber: '2222222222',
+    documentType: 'CC',
+    firstName: 'Jorge Luis',
+    lastName: 'Quintero Sánchez',
+    email: 'jorge.quintero@esap.edu.co',
+    phone: '+57 316 901 2345',
+    location: 'Pasto',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-docente',
+        name: 'Docente',
+        code: 'DOCENTE',
+        permissions: ['gestion-academica', 'calificaciones']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-narino',
+        codigo: 'NARINO',
+        nombre: 'Territorial Nariño',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Pasto',
+        departamento: 'Nariño'
+      }
+    ],
+    createdAt: '2024-01-30'
+  },
+  {
+    id: 'user-010',
+    personId: 'person-010',
+    documentNumber: '1111111111',
+    documentType: 'CC',
+    firstName: 'Patricia Elena',
+    lastName: 'Morales Ríos',
+    email: 'patricia.morales@esap.edu.co',
+    phone: '+57 317 012 3456',
+    location: 'Neiva',
+    status: 'blocked',
+    roles: [
+      {
+        id: 'rol-estudiante',
+        name: 'Estudiante',
+        code: 'ESTUDIANTE',
+        permissions: ['ver-contenidos', 'subir-tareas']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-huila',
+        codigo: 'HUILA',
+        nombre: 'Territorial Huila',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Neiva',
+        departamento: 'Huila'
+      }
+    ],
+    createdAt: '2024-03-15'
+  },
+  {
+    id: 'user-011',
+    personId: 'person-011',
+    documentNumber: '9999999999',
+    documentType: 'CC',
+    firstName: 'Roberto Carlos',
+    lastName: 'Valencia Ortiz',
+    email: 'roberto.valencia@esap.edu.co',
+    phone: '+57 319 123 4567',
+    location: 'Ibagué',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-coordinador',
+        name: 'Coordinador Académico',
+        permissions: ['gestion-academica', 'gestion-usuarios', 'reportes']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-tolima',
+        codigo: 'TOLIMA',
+        nombre: 'Territorial Tolima',
+        tipo: 'Territorial',
+        nivel: 'territorial',
+        ciudad: 'Ibagué',
+        departamento: 'Tolima'
+      }
+    ],
+    createdAt: '2023-10-10'
+  },
+  {
+    id: 'user-012',
+    personId: 'person-012',
+    documentNumber: '1010101010',
+    documentType: 'CC',
+    firstName: 'Liliana Andrea',
+    lastName: 'Suárez Campos',
+    email: 'liliana.suarez@esap.edu.co',
+    phone: '+57 321 234 5678',
+    location: 'Bogotá',
+    status: 'active',
+    roles: [
+      {
+        id: 'rol-docente',
+        name: 'Docente',
+        code: 'DOCENTE',
+        permissions: ['gestion-academica', 'calificaciones']
+      },
+      {
+        id: 'rol-investigador',
+        name: 'Investigador',
+        permissions: ['gestion-investigacion', 'publicaciones']
+      }
+    ],
+    sedes: [
+      {
+        id: 'sede-nacional',
+        codigo: 'NACIONAL',
+        nombre: 'Sede Nacional',
+        tipo: 'Nacional',
+        nivel: 'nacional',
+        ciudad: 'Bogotá',
+        departamento: 'Cundinamarca'
+      }
+    ],
+    createdAt: '2024-01-05'
   }
 ];
 
-// Re-exportar usuarios de ejemplo para compatibilidad
-export { USUARIOS_EJEMPLO, obtenerUsuarioPorRol, obtenerUsuarioPorEmail } from './usuarios-ejemplo';
+/**
+ * ============================================
+ * HELPERS
+ * ============================================
+ */
+
+/**
+ * Obtener usuario por ID
+ */
+export const getUserById = (id: string): MockUserWithSedes | undefined => {
+  return MOCK_USERS_WITH_SEDES.find(user => user.id === id);
+};
+
+/**
+ * Obtener usuarios por sede
+ */
+export const getUsersBySede = (sedeId: string): MockUserWithSedes[] => {
+  return MOCK_USERS_WITH_SEDES.filter(user => 
+    user.sedes.some(sede => sede.id === sedeId)
+  );
+};
+
+/**
+ * Obtener usuarios por rol
+ */
+export const getUsersByRole = (roleName: string): MockUserWithSedes[] => {
+  return MOCK_USERS_WITH_SEDES.filter(user => 
+    user.roles.some(role => role.name === roleName)
+  );
+};
+
+/**
+ * Obtener usuarios activos
+ */
+export const getActiveUsers = (): MockUserWithSedes[] => {
+  return MOCK_USERS_WITH_SEDES.filter(user => user.status === 'active');
+};
+
+/**
+ * Obtener estadísticas de usuarios
+ */
+export const getUserStats = () => {
+  return {
+    total: MOCK_USERS_WITH_SEDES.length,
+    active: MOCK_USERS_WITH_SEDES.filter(u => u.status === 'active').length,
+    inactive: MOCK_USERS_WITH_SEDES.filter(u => u.status === 'inactive').length,
+    blocked: MOCK_USERS_WITH_SEDES.filter(u => u.status === 'blocked').length,
+  };
+};

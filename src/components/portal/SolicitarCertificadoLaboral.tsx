@@ -1,41 +1,29 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  ArrowLeft, FileText, Download, CheckCircle2, AlertCircle,
+  Send, Loader2, User, CreditCard, Building2, Calendar,
+  Mail, Phone, MapPin, Search, ChevronDown, Printer,
+  Shield, Clock, FileCheck, Sparkles, TrendingUp, Star
+} from 'lucide-react';
 import { Button } from '../ui/button';
-import { Card, CardContent } from '../ui/card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { PublicNavbar } from './PublicNavbar';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  FileText,
-  Download,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Calendar,
-  Building,
-  User,
-  Shield,
-  ArrowLeft,
-  Loader2,
-  QrCode,
-  Mail,
-  Lock,
-  Send,
-  Eye,
-  Printer,
-  Clock,
-  MapPin,
-  Phone
-} from 'lucide-react';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '../ui/select';
+import { Card, CardContent } from '../ui/card';
 import { toast } from 'sonner@2.0.3';
-import { Badge } from '../ui/badge';
-import { simularEnvioCorreo } from '../../utils/emailTemplates';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { PublicNavbar } from './PublicNavbar';
+import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
-  onLoginClick: () => void;
+  onNavigateToHome?: () => void;
 }
 
 interface EmpleadoData {
@@ -144,7 +132,7 @@ const BASE_DATOS_EMPLEADOS: EmpleadoData[] = [
 
 type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
-export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarCertificadoLaboralProps) {
+export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: SolicitarCertificadoLaboralProps) {
   // Estados del flujo
   const [pasoActual, setPasoActual] = useState<Paso>('ingreso-documento');
   
@@ -403,7 +391,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Navbar Público Flotante */}
-      <PublicNavbar onLoginClick={onLoginClick} onNavigateToHome={onBack} />
+      <PublicNavbar onNavigateToHome={onNavigateToHome} />
 
       {/* Main Content */}
       <div className="pt-24 sm:pt-28 pb-20">
@@ -452,7 +440,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     ? 'bg-[#003DA5] text-white scale-110 shadow-lg' 
                     : 'bg-green-500 text-white'
                 }`}>
-                  {pasoActual !== 'ingreso-documento' ? <CheckCircle className="w-5 h-5" /> : '1'}
+                  {pasoActual !== 'ingreso-documento' ? <CheckCircle2 className="w-5 h-5" /> : '1'}
                 </div>
                 <span className={`ml-2 text-sm font-semibold hidden sm:inline ${
                   pasoActual === 'ingreso-documento' ? 'text-[#003DA5]' : 'text-gray-500'
@@ -472,7 +460,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-300 text-gray-600'
                 }`}>
-                  {pasoActual === 'certificado-generado' ? <CheckCircle className="w-5 h-5" /> : '2'}
+                  {pasoActual === 'certificado-generado' ? <CheckCircle2 className="w-5 h-5" /> : '2'}
                 </div>
                 <span className={`ml-2 text-sm font-semibold hidden sm:inline ${
                   pasoActual === 'validacion-codigo' ? 'text-[#003DA5]' : 'text-gray-500'
@@ -650,7 +638,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                     {/* Datos del empleado */}
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
                       <div className="flex items-start gap-3">
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-green-900 mb-2">¡Registro encontrado!</p>
                           <div className="space-y-1 text-sm text-green-800">
@@ -732,7 +720,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </>
                         ) : (
                           <>
-                            <CheckCircle className="w-5 h-5 mr-2" />
+                            <CheckCircle2 className="w-5 h-5 mr-2" />
                             Validar y Generar Certificado
                           </>
                         )}
@@ -797,7 +785,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                   <CardContent className="p-6">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <CheckCircle className="w-6 h-6 text-white" />
+                        <CheckCircle2 className="w-6 h-6 text-white" />
                       </div>
                       <div className="flex-1">
                         <h3 className="text-xl font-bold text-green-900 mb-2">
@@ -836,7 +824,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       </p>
                       <div className="mt-4 inline-flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-700 border-green-300">
-                          <CheckCircle className="w-3 h-3 mr-1" />
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
                           Firmado Digitalmente
                         </Badge>
                         <Badge variant="outline" className="border-blue-300 text-blue-700">
@@ -977,7 +965,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <img src={esapLogoWhite} alt="ESAP" className="h-14" />
+              <img src={LOGO_ESAP_BLUE_SVG} alt="ESAP" className="h-14" />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>
@@ -1016,7 +1004,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 mb-8">
             {/* INSTITUCIONAL */}
             <div>
-              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛��� Institucional</h4>
+              <h4 className="font-bold mb-4 text-sm uppercase tracking-wider">🏛 Institucional</h4>
               <ul className="space-y-2 text-sm text-blue-100">
                 <li><a href="#" className="hover:text-white transition-colors">Acerca de ESAP</a></li>
                 <li><a href="#" className="hover:text-white transition-colors">Misión y Visión</a></li>

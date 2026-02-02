@@ -35,6 +35,7 @@ export function ModalNuevoProcesoDisciplinario({
     tipoFalta: 'LEVE',
     descripcionHechos: '',
     investigador: '',
+    abogadoAsignado: '',
     documentosAdjuntos: [] as File[]
   });
 
@@ -92,7 +93,13 @@ export function ModalNuevoProcesoDisciplinario({
         etapa: 'E1_AVOCAMIENTO',
         diasRestantes: 90,
         diasTotales: 90,
-        ultimaActuacion: 'Auto de apertura de investigación',
+        ultimaActuacion: {
+          fecha: new Date().toISOString(),
+          tipo: 'Auto de apertura',
+          descripcion: 'Auto de apertura de investigación',
+          responsable: formData.abogadoAsignado || 'Control Interno',
+          estado: 'ACTIVO'
+        },
         fechaUltimaActuacion: new Date(),
         fechaActualizacion: new Date(),
         documentos: formData.documentosAdjuntos
@@ -116,6 +123,7 @@ export function ModalNuevoProcesoDisciplinario({
         tipoFalta: 'LEVE',
         descripcionHechos: '',
         investigador: '',
+        abogadoAsignado: '',
         documentosAdjuntos: []
       });
       setErrores({});

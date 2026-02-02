@@ -24,6 +24,7 @@ import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
 import type { ProcesoDisciplinario } from '../core/types';
+import { procesosDisciplinariosMock } from '../data/datosProcesosDisciplinarios';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -46,190 +47,6 @@ import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 const ItemTypes = {
   PROCESO: 'proceso_disciplinario'
 };
-
-// DATOS MOCK INLINE (temporales para demo)
-const procesosDisciplinariosMock: any[] = [
-  {
-    id: 'PD-2025-001',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'Juan Carlos Pérez López',
-    cargo: 'Coordinador Académico',
-    dependencia: 'Dirección Académica',
-    falta: 'Grave',
-    descripcionHechos: 'Irregularidad en selección de docentes',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 65,
-    diasTotales: 90,
-    documentosAdjuntos: 3,
-    ultimaActuacion: 'Solicitud de informes a RRHH',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Grave',
-    disciplinado: 'Juan Carlos Pérez',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2025-002',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'María Fernanda González',
-    cargo: 'Secretaria Ejecutiva',
-    dependencia: 'Rectoría Nacional',
-    falta: 'Leve',
-    descripcionHechos: 'Ausencia injustificada',
-    investigador: 'Dra. Patricia Ruiz',
-    diasRestantes: 72,
-    diasTotales: 90,
-    documentosAdjuntos: 2,
-    ultimaActuacion: 'Citación para versión libre',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Patricia Ruiz',
-    tipoFalta: 'Leve',
-    disciplinado: 'María Fernanda González',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2025-003',
-    etapa: 'E1_AVOCAMIENTO',
-    investigado: 'Pedro Antonio Martínez',
-    cargo: 'Director Financiero',
-    dependencia: 'Dirección Financiera',
-    falta: 'Gravísima',
-    descripcionHechos: 'Uso indebido de recursos',
-    investigador: 'Dr. Roberto Castro',
-    diasRestantes: 55,
-    diasTotales: 90,
-    documentosAdjuntos: 8,
-    ultimaActuacion: 'URGENTE: Análisis contable',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Roberto Castro',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Pedro Antonio Martínez',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-046',
-    etapa: 'E2_DESCARGOS',
-    investigado: 'Carmen Elena Torres',
-    cargo: 'Jefa de Contratación',
-    dependencia: 'Dirección Administrativa',
-    falta: 'Gravísima',
-    descripcionHechos: 'Violación transparencia',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 60,
-    diasTotales: 180,
-    documentosAdjuntos: 12,
-    ultimaActuacion: 'Descargos en evaluación',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Carmen Elena Torres',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-047',
-    etapa: 'E2_DESCARGOS',
-    investigado: 'Roberto Carlos Díaz',
-    cargo: 'Coordinador de Sistemas',
-    dependencia: 'Dirección TI',
-    falta: 'Grave',
-    descripcionHechos: 'Acceso no autorizado a BD',
-    investigador: 'Dra. Sandra Cruz',
-    diasRestantes: 70,
-    diasTotales: 180,
-    documentosAdjuntos: 6,
-    ultimaActuacion: 'Análisis de descargos',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Sandra Cruz',
-    tipoFalta: 'Grave',
-    disciplinado: 'Roberto Carlos Díaz',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-025',
-    etapa: 'E3_PRUEBAS',
-    investigado: 'Luis Alberto Castro',
-    cargo: 'Conductor',
-    dependencia: 'Servicios Generales',
-    falta: 'Grave',
-    descripcionHechos: 'Uso indebido vehículo oficial',
-    investigador: 'Dr. Roberto Castro',
-    diasRestantes: 70,
-    diasTotales: 270,
-    documentosAdjuntos: 4,
-    ultimaActuacion: 'Pruebas testimoniales',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Roberto Castro',
-    tipoFalta: 'Grave',
-    disciplinado: 'Luis Alberto Castro',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-026',
-    etapa: 'E3_PRUEBAS',
-    investigado: 'Sandra Milena Ruiz',
-    cargo: 'Profesional de Planeación',
-    dependencia: 'Oficina de Planeación',
-    falta: 'Grave',
-    descripcionHechos: 'Filtración de información',
-    investigador: 'Dra. Ana López',
-    diasRestantes: 95,
-    diasTotales: 270,
-    documentosAdjuntos: 7,
-    ultimaActuacion: 'Rastreo forense',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Ana López',
-    tipoFalta: 'Grave',
-    disciplinado: 'Sandra Milena Ruiz',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2024-012',
-    etapa: 'E4_ALEGATOS',
-    investigado: 'Diana Carolina Vega',
-    cargo: 'Secretaria Académica',
-    dependencia: 'Facultad de Posgrados',
-    falta: 'Grave',
-    descripcionHechos: 'Alteración de actas',
-    investigador: 'Dra. Sandra Cruz',
-    diasRestantes: 95,
-    diasTotales: 360,
-    documentosAdjuntos: 9,
-    ultimaActuacion: 'Alegatos presentados',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dra. Sandra Cruz',
-    tipoFalta: 'Grave',
-    disciplinado: 'Diana Carolina Vega',
-    documentos: [],
-    fechaActualizacion: new Date()
-  },
-  {
-    id: 'PD-2023-089',
-    etapa: 'E4_ALEGATOS',
-    investigado: 'Carlos Andrés Herrera',
-    cargo: 'Director Territorial',
-    dependencia: 'Sede Cali',
-    falta: 'Gravísima',
-    descripcionHechos: 'Conflicto de intereses',
-    investigador: 'Dr. Carlos Mendoza',
-    diasRestantes: 140,
-    diasTotales: 450,
-    documentosAdjuntos: 18,
-    ultimaActuacion: 'Fase de alegatos',
-    fechaUltimaActuacion: new Date(),
-    abogadoAsignado: 'Dr. Carlos Mendoza',
-    tipoFalta: 'Gravísima',
-    disciplinado: 'Carlos Andrés Herrera',
-    documentos: [],
-    fechaActualizacion: new Date()
-  }
-];
 
 export function ModuloJuzgamientoDisciplinarioV3() {
   // ✅ Obtener configuraciones desde el Context API
@@ -647,7 +464,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
 
   const semaforo = getSemaforoColor(proceso.diasRestantes);
   const porcentajeTiempo = Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100);
-  const ultimaActuacion = proceso.ultimaActuacion || `Proceso en etapa de ${proceso.etapa}`;
+  const ultimaActuacion = proceso.ultimaActuacion?.descripcion || proceso.hechos || `Proceso en etapa de ${proceso.etapa}`;
 
   // Convertir ProcesoDisciplinario a ExpedienteJudicial para compatibilidad con modales
   const expedienteParaModales = {

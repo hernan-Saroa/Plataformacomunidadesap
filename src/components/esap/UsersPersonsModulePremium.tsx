@@ -81,6 +81,10 @@ import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPassword
 import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
 import React from "react";
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
+
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] =
@@ -561,119 +565,27 @@ export function UsersPersonsModulePremium() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header - Según especificaciones Figma */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background:
-                  "linear-gradient(135deg, #003DA5 0%, #0052CC 100%)",
-                boxShadow: "0 4px 12px rgba(0, 61, 165, 0.15)",
-              }}
-            >
-              <Users
-                className="w-6 h-6 text-white"
-                strokeWidth={2.5}
-              />
-            </div>
-            {/* H1: 32px Bold, line-height 40px, letter-spacing -0.25px */}
-            <h1
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: "32px",
-                lineHeight: "40px",
-                letterSpacing: "-0.25px",
-                color: "#1F2937",
-              }}
-            >
-              Gestión Personas
-            </h1>
-          </div>
-          {/* Body: 14px Regular, line-height 20px */}
-          <p
-            className="font-normal"
-            style={{
-              fontSize: "14px",
-              lineHeight: "20px",
-              color: "#6B7280",
-            }}
-          >
-            Gestión integral de personas con asignación de roles
-            múltiples simultáneos
-          </p>
-        </div>
-
-        {/* Botones de Acción */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* ✅ Botón Exportar por Sede */}
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#10B981",
-              border: "2px solid #10B981",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#ECFDF5";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar por Sede</span>
-          </button>
-
-          {/* Botón Primario - Crear Usuario */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#003DA5",
-              color: "#FFFFFF",
-              borderRadius: "8px",
-              padding: "12px 24px",
-              fontSize: "14px",
-              fontWeight: 500,
-              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#002D7A";
-              e.currentTarget.style.boxShadow =
-                "0 4px 8px rgba(0, 61, 165, 0.15)";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#003DA5";
-              e.currentTarget.style.boxShadow =
-                "0 1px 2px rgba(0, 0, 0, 0.05)";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <UserPlus className="w-5 h-5" strokeWidth={2} />
-            <span>Crear Usuario</span>
-          </button>
-        </div>
-      </motion.div>
+    <Container4K className="space-y-6">
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Gestión Personas"
+        description="Gestión integral de personas con asignación de roles múltiples simultáneos"
+        icon={Users}
+        primaryAction={{
+          label: "Crear Usuario",
+          icon: UserPlus,
+          onClick: () => setShowCreateModal(true),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Exportar por Sede",
+            icon: Download,
+            onClick: () => setShowExportModal(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
@@ -1928,6 +1840,6 @@ export function UsersPersonsModulePremium() {
           mode="admin-reset"
         />
       )}
-    </div>
+    </Container4K>
   );
 }

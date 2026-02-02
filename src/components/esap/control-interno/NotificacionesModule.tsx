@@ -1,4 +1,3 @@
-import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Bell,
@@ -15,6 +14,9 @@ import {
   CheckCheck
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
 
 // ====================================
 // TIPOS
@@ -181,7 +183,7 @@ export const NotificacionesModule: React.FC = () => {
   };
 
   return (
-    <div className="mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px]">
+    <Container4K>
       <div className="space-y-6">
         
         {/* HEADER WORLD CLASS */}
@@ -475,7 +477,7 @@ export const NotificacionesModule: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
+    </Container4K>
   );
 };
 

@@ -41,51 +41,22 @@ const tiposAuto = [
   'Auto de Sustanciacin'
 ];
 
-// Datos mock de autos
+// Datos mock de autos (REDUCIDOS)
 const autosMock = [
   {
     id: 1,
     tipo: 'Auto Admisorio',
     numero: 'AUTO-001-2024',
     fecha: '10/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admite demanda presentada por el actor contra ESAP. Se ordena notificar al demandado y dar traslado para contestación en término de 30 días.',
+    juzgado: 'Juzgado Administrativo',
+    resumen: 'Auto de ejemplo para referencia',
     estado: 'Notificado',
     estadoColor: 'green',
-    archivo: 'auto_admisorio_001.pdf',
+    archivo: 'auto_ejemplo.pdf',
     tamaño: '1.2 MB',
     cumplimiento: 'Completado',
     fechaNotificacion: '12/12/2024'
   },
-  {
-    id: 2,
-    tipo: 'Auto de Traslado',
-    numero: 'AUTO-002-2024',
-    fecha: '15/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se concede traslado de la demanda por el término de ley (30 días calendario) para que la parte demandada presente su contestación y excepciones.',
-    estado: 'En Término',
-    estadoColor: 'blue',
-    archivo: 'auto_traslado_002.pdf',
-    tamaño: '890 KB',
-    cumplimiento: 'En Curso',
-    fechaNotificacion: '16/12/2024',
-    diasRestantes: 22
-  },
-  {
-    id: 3,
-    tipo: 'Auto de Pruebas',
-    numero: 'AUTO-003-2024',
-    fecha: '20/12/2024',
-    juzgado: 'Juzgado 1° Administrativo',
-    resumen: 'Se admiten las pruebas solicitadas por ambas partes. Se ordena practicar inspección judicial y tomar declaración de testigos.',
-    estado: 'Pendiente',
-    estadoColor: 'orange',
-    archivo: 'auto_pruebas_003.pdf',
-    tamaño: '1.5 MB',
-    cumplimiento: 'Pendiente',
-    fechaNotificacion: null
-  }
 ];
 
 export function ModalAutos({ isOpen, onClose, expediente }: ModalAutosProps) {

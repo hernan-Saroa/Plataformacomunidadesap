@@ -26,6 +26,9 @@ import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -352,7 +355,7 @@ function VistaEquipo() {
   };
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       {/* Header con Título y Botón */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between">
@@ -429,7 +432,7 @@ function VistaEquipo() {
           }}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -626,7 +629,7 @@ function VistaPermisos() {
   const acciones = ['Leer', 'Crear', 'Editar', 'Eliminar', 'Aprobar'];
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex-1">
@@ -704,7 +707,7 @@ function VistaPermisos() {
           </div>
         ))}
       </div>
-    </div>
+    </Container4K>
   );
 }
 

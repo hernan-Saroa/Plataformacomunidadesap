@@ -3,23 +3,25 @@
  * Diseño consistente con el Landing Page
  */
 
-import { motion } from 'motion/react';
-import { ArrowRight, Menu, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/button';
-import { useState } from 'react';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { Menu, X, LogIn, Home, FileCheck, Award, Mail, ChevronDown, ArrowRight } from 'lucide-react';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface PublicNavbarProps {
-  onLoginClick: () => void;
-  onNavigateToHome: () => void;
+  onLoginClick?: () => void;
+  onNavigateToHome?: () => void;
 }
 
 export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleNavigateToSection = (sectionId: string) => {
-    // Primero volver al home
-    onNavigateToHome();
+    // Primero volver al home si la función existe
+    if (onNavigateToHome) {
+      onNavigateToHome();
+    }
     // Luego hacer scroll a la sección (con un pequeño delay para que cargue el home)
     setTimeout(() => {
       const element = document.getElementById(sectionId);
@@ -27,6 +29,13 @@ export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarPro
         element.scrollIntoView({ behavior: 'smooth' });
       }
     }, 100);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleLogoClick = () => {
+    if (onNavigateToHome) {
+      onNavigateToHome();
+    }
     setIsMobileMenuOpen(false);
   };
 
@@ -43,13 +52,12 @@ export function PublicNavbar({ onLoginClick, onNavigateToHome }: PublicNavbarPro
           <div className="flex items-center justify-between">
             {/* Logo */}
             <button 
-              onClick={onNavigateToHome}
+              onClick={handleLogoClick}
               className="flex items-center gap-3 hover:opacity-90 transition-opacity"
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+              <ESAPLogo 
+                variant="white"
+                className="h-8 sm:h-10 w-auto"
               />
               <div className="hidden sm:block">
                 <p className="text-[9px] font-medium text-white/90 -mt-0.5">ComUNIdad</p>

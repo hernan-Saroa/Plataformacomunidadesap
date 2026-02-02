@@ -48,7 +48,7 @@ interface Requerimiento {
   documentos?: number;
 }
 
-// Datos mock
+// Datos mock - REDUCIDO
 const MOCK_DATA: Requerimiento[] = [
   {
     id: 'REQ-CGR-2024-001',
@@ -63,49 +63,7 @@ const MOCK_DATA: Requerimiento[] = [
     etapa: 'RESPUESTA',
     ultimaActuacion: 'Proyecto de respuesta en revisión',
     documentos: 8
-  },
-  {
-    id: 'REQ-PROC-2024-002',
-    numeroOficio: 'PROC-2024-00589',
-    organismo: 'PROCURADURIA',
-    asunto: 'Verificación cumplimiento sentencias tutelas',
-    responsable: 'Dr. Carlos Méndez',
-    fechaRadicacion: new Date('2024-12-15'),
-    fechaVencimiento: new Date('2025-01-05'),
-    diasRestantes: 11,
-    diasTotales: 21,
-    etapa: 'ANALISIS',
-    ultimaActuacion: 'Recopilación de información',
-    documentos: 5
-  },
-  {
-    id: 'REQ-CTR-2024-003',
-    numeroOficio: 'CTR-ANT-2024-045',
-    organismo: 'CONTRALORIA',
-    asunto: 'Auditoría gestión recursos públicos Q4',
-    responsable: 'Dra. Laura González',
-    fechaRadicacion: new Date('2024-12-01'),
-    fechaVencimiento: new Date('2024-12-25'),
-    diasRestantes: 0,
-    diasTotales: 24,
-    etapa: 'ENVIADO',
-    ultimaActuacion: 'Respuesta enviada el 24/12/2024',
-    documentos: 15
-  },
-  {
-    id: 'REQ-FISC-2024-004',
-    numeroOficio: 'FISC-2024-00789',
-    organismo: 'FISCALIA',
-    asunto: 'Información sobre proceso disciplinario',
-    responsable: 'Dr. Juan Pérez',
-    fechaRadicacion: new Date('2024-12-20'),
-    fechaVencimiento: new Date('2025-01-10'),
-    diasRestantes: 16,
-    diasTotales: 21,
-    etapa: 'RECIBIDO',
-    ultimaActuacion: 'Pendiente asignación',
-    documentos: 1
-  },
+  }
 ];
 
 // Función auxiliar para colores de semáforo
@@ -950,8 +908,8 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
   const [etapa, setEtapa] = useState('RECIBIDO');
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 pt-20">
-      <Card className="w-[90vw] !max-w-[380px] max-h-[85vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-[95vw] max-w-[900px] max-h-[90vh] overflow-y-auto">
         <ModalHeaderClean
           titulo="Nuevo Requerimiento"
           subtitulo="Registro de requerimiento de órgano de control"
@@ -960,69 +918,79 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
           onClose={onClose}
         />
 
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Número de Oficio</label>
-            <Input
-              value={numeroOficio}
-              onChange={(e) => setNumeroOficio(e.target.value)}
-              placeholder="Ej. CGR-OF-2024-00125"
-            />
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Organismo</label>
-            <Input
-              value={organismo}
-              onChange={(e) => setOrganismo(e.target.value)}
-              placeholder="Ej. CGR"
-            />
+        <div className="p-6 lg:p-8 space-y-5 lg:space-y-6">
+          {/* Grid de 2 columnas en pantallas grandes */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Número de Oficio</label>
+              <Input
+                value={numeroOficio}
+                onChange={(e) => setNumeroOficio(e.target.value)}
+                placeholder="Ej. CGR-OF-2024-00125"
+                className="text-base"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Organismo</label>
+              <Input
+                value={organismo}
+                onChange={(e) => setOrganismo(e.target.value)}
+                placeholder="Ej. CGR"
+                className="text-base"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Asunto</label>
             <Textarea
               value={asunto}
               onChange={(e) => setAsunto(e.target.value)}
               placeholder="Ej. Solicitud de información sobre contratación 2024"
-              rows={3}
-              className="w-full"
+              rows={4}
+              className="w-full text-base"
             />
           </div>
           
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Responsable</label>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Responsable</label>
             <Input
               value={responsable}
               onChange={(e) => setResponsable(e.target.value)}
               placeholder="Ej. Dra. María Fernández"
+              className="text-base"
             />
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Radicación</label>
-            <Input
-              type="date"
-              value={fechaRadicacion}
-              onChange={(e) => setFechaRadicacion(e.target.value)}
-            />
-          </div>
-          
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Fecha Vencimiento</label>
-            <Input
-              type="date"
-              value={fechaVencimiento}
-              onChange={(e) => setFechaVencimiento(e.target.value)}
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Radicación</label>
+              <Input
+                type="date"
+                value={fechaRadicacion}
+                onChange={(e) => setFechaRadicacion(e.target.value)}
+                className="text-base"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Vencimiento</label>
+              <Input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(e.target.value)}
+                className="text-base"
+              />
+            </div>
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Etapa</label>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Etapa</label>
             <select
               value={etapa}
               onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="RECIBIDO">Recibido</option>
               <option value="ANALISIS">Análisis</option>
@@ -1032,10 +1000,13 @@ function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cancelar</Button>
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 lg:p-6 flex gap-3 justify-end">
+          <Button onClick={onClose} variant="outline" className="px-6 py-3 text-base">
+            Cancelar
+          </Button>
           <Button 
             style={{ background: '#003DA5', color: '#FFFFFF' }}
+            className="px-6 py-3 text-base"
             onClick={() => {
               toast.success('Requerimiento creado correctamente');
               onClose();

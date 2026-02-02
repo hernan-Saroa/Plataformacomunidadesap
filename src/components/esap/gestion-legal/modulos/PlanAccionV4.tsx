@@ -62,7 +62,7 @@ type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz';
 
 // ==================== DATOS MOCK ====================
 const indicadoresMock: Indicador[] = [
-  // GESTIÓN INSTITUCIONAL
+  // Ejemplo 1 - GESTIÓN INSTITUCIONAL
   {
     id: 'IND-2025-001',
     codigo: 'GI-001',
@@ -72,7 +72,7 @@ const indicadoresMock: Indicador[] = [
     responsable: 'Dr. Carlos Mendoza Torres',
     meta: 80,
     valorActual: 75,
-    avance: 94, // (75/80) * 100
+    avance: 94,
     fechaInicio: new Date('2025-01-01'),
     fechaFin: new Date('2025-12-31'),
     estado: 'EN_TIEMPO',
@@ -82,67 +82,7 @@ const indicadoresMock: Indicador[] = [
     unidadMedida: '%',
     ultimaActualizacion: new Date('2025-12-28')
   },
-  {
-    id: 'IND-2025-002',
-    codigo: 'GI-002',
-    nombre: 'Digitalización de expedientes judiciales activos',
-    descripcion: 'Digitalizar el 90% de los expedientes judiciales activos',
-    ejeEstrategico: 'GESTION_INSTITUCIONAL',
-    responsable: 'Dra. Patricia Ruiz Gómez',
-    meta: 90,
-    valorActual: 62,
-    avance: 69, // (62/90) * 100
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_RIESGO',
-    prioridad: 'ALTA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-15')
-  },
-
-  // TALENTO HUMANO
-  {
-    id: 'IND-2025-003',
-    codigo: 'TH-001',
-    nombre: 'Capacitación en normativa jurídica actualizada',
-    descripcion: 'Capacitar al 100% del equipo jurídico en nuevas leyes 2025',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dra. Ana María López',
-    meta: 100,
-    valorActual: 45,
-    avance: 45,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-06-30'),
-    estado: 'EN_RIESGO',
-    prioridad: 'MEDIA',
-    periodicidad: 'SEMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-20')
-  },
-  {
-    id: 'IND-2025-004',
-    codigo: 'TH-002',
-    nombre: 'Certificación en competencias jurídicas especializadas',
-    descripcion: 'Lograr que el 80% del equipo obtenga certificación profesional',
-    ejeEstrategico: 'TALENTO_HUMANO',
-    responsable: 'Dr. Roberto Silva',
-    meta: 80,
-    valorActual: 28,
-    avance: 35,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-11-30'),
-    estado: 'VENCIDO',
-    prioridad: 'ALTA',
-    periodicidad: 'ANUAL',
-    tipoIndicador: 'EFICACIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-01')
-  },
-
-  // TRANSPARENCIA
+  // Ejemplo 2 - TRANSPARENCIA
   {
     id: 'IND-2025-005',
     codigo: 'TR-001',
@@ -161,65 +101,6 @@ const indicadoresMock: Indicador[] = [
     tipoIndicador: 'TRANSPARENCIA',
     unidadMedida: '%',
     ultimaActualizacion: new Date('2025-12-27')
-  },
-  {
-    id: 'IND-2025-006',
-    codigo: 'TR-002',
-    nombre: 'Atención oportuna a derechos de petición',
-    descripcion: 'Responder el 95% de derechos de petición dentro del término legal',
-    ejeEstrategico: 'TRANSPARENCIA',
-    responsable: 'Dr. Miguel Ángel Vargas',
-    meta: 95,
-    valorActual: 88,
-    avance: 93,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_TIEMPO',
-    prioridad: 'ALTA',
-    periodicidad: 'MENSUAL',
-    tipoIndicador: 'EFICIENCIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-26')
-  },
-
-  // TECNOLOGÍA
-  {
-    id: 'IND-2025-007',
-    codigo: 'TEC-001',
-    nombre: 'Automatización de alertas de términos procesales',
-    descripcion: 'Implementar sistema de alertas automáticas en el 100% de procesos',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Ing. Andrés Jiménez',
-    meta: 100,
-    valorActual: 78,
-    avance: 78,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-09-30'),
-    estado: 'EN_RIESGO',
-    prioridad: 'ALTA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'GESTION',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-22')
-  },
-  {
-    id: 'IND-2025-008',
-    codigo: 'TEC-002',
-    nombre: 'Adopción de firma electrónica avanzada',
-    descripcion: 'Lograr que el 90% de documentos se firmen electrónicamente',
-    ejeEstrategico: 'TECNOLOGIA',
-    responsable: 'Dra. Carolina Pérez',
-    meta: 90,
-    valorActual: 55,
-    avance: 61,
-    fechaInicio: new Date('2025-01-01'),
-    fechaFin: new Date('2025-12-31'),
-    estado: 'EN_RIESGO',
-    prioridad: 'MEDIA',
-    periodicidad: 'TRIMESTRAL',
-    tipoIndicador: 'EFICACIA',
-    unidadMedida: '%',
-    ultimaActualizacion: new Date('2025-12-18')
   }
 ];
 

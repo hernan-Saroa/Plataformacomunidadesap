@@ -39,56 +39,16 @@ export function ModalComentariosOrgano({
   const [tipoComentario, setTipoComentario] = useState<'actuacion' | 'comentario' | 'alerta'>('comentario');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
 
-  // Mock data de comentarios
+  // Mock data de comentarios (REDUCIDOS)
   const comentariosMock: Comentario[] = [
     {
       id: 'com-001',
-      usuario: 'Dra. María Fernández',
+      usuario: 'Dra. Responsable',
       cargo: 'Jefa Área Jurídica',
-      contenido: 'Requerimiento recibido y revisado. Se solicita información a las áreas de Contratación y Financiera para consolidar respuesta.',
+      contenido: 'Comentario de ejemplo para referencia',
       fecha: new Date('2024-12-11T09:30:00'),
       tipo: 'actuacion'
     },
-    {
-      id: 'com-002',
-      usuario: 'Área de Contratación',
-      cargo: 'Coordinador',
-      contenido: 'Se envía certificación de contratos suscritos en 2024. Total: 45 contratos por valor de $2.300 millones. Adjunto Excel consolidado.',
-      fecha: new Date('2024-12-12T14:15:00'),
-      tipo: 'comentario'
-    },
-    {
-      id: 'com-003',
-      usuario: 'Área Financiera',
-      cargo: 'Contador',
-      contenido: 'Se remite certificación presupuestal del cuarto trimestre 2024. Todos los compromisos están debidamente respaldados presupuestalmente.',
-      fecha: new Date('2024-12-13T10:45:00'),
-      tipo: 'comentario'
-    },
-    {
-      id: 'com-004',
-      usuario: 'Sistema SIGL',
-      cargo: 'Automatización',
-      contenido: '⚠️ ALERTA: Quedan 5 días hábiles para vencimiento del término legal de respuesta. Se recomienda priorizar este requerimiento.',
-      fecha: new Date('2024-12-15T08:00:00'),
-      tipo: 'alerta'
-    },
-    {
-      id: 'com-005',
-      usuario: 'Dra. María Fernández',
-      cargo: 'Jefa Área Jurídica',
-      contenido: 'Información consolidada. Se inicia redacción de proyecto de respuesta. Fecha estimada de finalización: 18 de diciembre.',
-      fecha: new Date('2024-12-15T16:30:00'),
-      tipo: 'actuacion'
-    },
-    {
-      id: 'com-006',
-      usuario: 'Dr. Carlos Méndez',
-      cargo: 'Asesor Jurídico',
-      contenido: 'Revisé el proyecto de respuesta. Incluye toda la información solicitada y está técnicamente bien fundamentado. Listo para firma del Director Jurídico.',
-      fecha: new Date('2024-12-16T11:20:00'),
-      tipo: 'comentario'
-    }
   ];
 
   // Filtrar comentarios

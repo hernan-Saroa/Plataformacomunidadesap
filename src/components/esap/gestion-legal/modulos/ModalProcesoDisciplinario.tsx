@@ -23,6 +23,8 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { ModalNuevaActuacion, type NuevaActuacionData } from './ModalNuevaActuacion';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 
 // Tipo para Proceso Disciplinario
 interface ProcesoDisciplinario {
@@ -35,7 +37,13 @@ interface ProcesoDisciplinario {
   dependencia?: string;
   diasRestantes: number;
   diasTotales: number;
-  ultimaActuacion?: string;
+  ultimaActuacion?: {
+    fecha: string;
+    tipo: string;
+    descripcion: string;
+    responsable: string;
+    estado: string;
+  };
   fechaActualizacion: Date;
   descripcionHechos?: string;
 }
@@ -47,6 +55,9 @@ interface ModalProcesoDisciplinarioProps {
 }
 
 export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalProcesoDisciplinarioProps) {
+  // ✅ Obtener configuraciones desde Context API
+  const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
+  
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
   const [mostrarModalNotificar, setMostrarModalNotificar] = useState(false);
@@ -55,6 +66,45 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [enlaceCompartir, setEnlaceCompartir] = useState('');
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
   const [decisiones, setDecisiones] = useState<any[]>([]);
+  
+  // ✅ Estado para excepciones procesales
+  const [excepciones, setExcepciones] = useState<any[]>([]);
+  const [modalNuevaExcepcion, setModalNuevaExcepcion] = useState(false);
+  
+  // ✅ Estado para el modal de nueva actuación
+  const [modalNuevaActuacionOpen, setModalNuevaActuacionOpen] = useState(false);
+  
+  // ✅ Estado para actuaciones con datos iniciales
+  const [actuaciones, setActuaciones] = useState([
+    { 
+      id: 1,
+      fecha: '26/12/2024', 
+      tipo: 'Solicitud de Informes',
+      descripcion: proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH', 
+      responsable: 'Oficina Control Disciplinario',
+      estado: 'COMPLETADA',
+      colorBorde: '#003DA5'
+    },
+    { 
+      id: 2,
+      fecha: '20/12/2024', 
+      tipo: 'Auto de Apertura',
+      descripcion: 'Auto de apertura de investigación disciplinaria', 
+      responsable: 'Jefe de Control Interno',
+      estado: 'COMPLETADA',
+      colorBorde: '#F59E0B'
+    },
+    { 
+      id: 3,
+      fecha: '15/12/2024', 
+      tipo: 'Recepción de Queja',
+      descripcion: 'Recepción de queja por irregularidades', 
+      responsable: 'Secretaría General',
+      estado: 'COMPLETADA',
+      colorBorde: '#003DA5'
+    }
+  ]);
+  
   const [pruebas, setPruebas] = useState([
     { id: 1, nombre: 'Prueba Documental #1', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_001.pdf', tamaño: '2.4 MB' },
     { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
@@ -334,6 +384,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     } else {
       onClose();
     }
+  };
+
+  // ==================== FUNCIONES PARA ACTUACIONES ====================
+  
+  const handleGuardarActuacion = (nuevaActuacion: NuevaActuacionData) => {
+    const actuacion = {
+      id: actuaciones.length + 1,
+      fecha: nuevaActuacion.fecha,
+      tipo: nuevaActuacion.tipo,
+      descripcion: nuevaActuacion.descripcion,
+      responsable: nuevaActuacion.responsable,
+      estado: nuevaActuacion.estado,
+      colorBorde: nuevaActuacion.estado === 'COMPLETADA' ? '#10B981' : '#F59E0B'
+    };
+
+    setActuaciones([actuacion, ...actuaciones]);
+    setHasChanges(true);
   };
 
   // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
@@ -886,7 +953,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
               <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
                 <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
                 <p className="font-black text-lg text-gray-900">
-                  {proceso.ultimaActuacion || 'Solicitud de informes a RRHH'}
+                  {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
                 </p>
                 <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
                   <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
@@ -1009,26 +1076,92 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
           {/* ==================== TAB: ACTUACIONES ==================== */}
           <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
-            <h3 className="font-black text-xl mb-4" style={{ color: '#003DA5' }}>
-              Historial de Actuaciones
-            </h3>
-            <div className="space-y-3">
-              {[
-                { fecha: '26/12/2024', actuacion: proceso.ultimaActuacion || 'Solicitud de informes a RRHH', tipo: 'info' },
-                { fecha: '20/12/2024', actuacion: 'Auto de apertura de investigación disciplinaria', tipo: 'alert' },
-                { fecha: '15/12/2024', actuacion: 'Recepción de queja por irregularidades', tipo: 'start' }
-              ].map((act, idx) => (
-                <Card key={idx} className="p-4 border-l-4" style={{ borderLeftColor: act.tipo === 'alert' ? '#F59E0B' : '#003DA5' }}>
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-gray-500 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-bold text-sm text-gray-900">{act.actuacion}</p>
-                      <p className="text-xs text-gray-500 mt-1">📅 {act.fecha}</p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
+                Historial de Actuaciones
+              </h3>
+              
+              {/* ✅ BOTÓN AGREGAR ACTUACIÓN */}
+              <Button
+                onClick={() => setModalNuevaActuacionOpen(true)}
+                className="font-bold flex items-center gap-2"
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Plus className="w-4 h-4" />
+                Agregar Actuación
+              </Button>
             </div>
+
+            {/* Lista de actuaciones con estado dinámico */}
+            {actuaciones.length === 0 ? (
+              <Card className="p-8 text-center border-2 border-dashed border-gray-300">
+                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h4 className="font-bold text-lg text-gray-600 mb-2">
+                  Sin actuaciones registradas
+                </h4>
+                <p className="text-sm text-gray-500 mb-4">
+                  Aún no se han registrado actuaciones en este proceso disciplinario
+                </p>
+                <Button
+                  onClick={() => setModalNuevaActuacionOpen(true)}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Registrar Primera Actuación
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {actuaciones.map((act) => (
+                  <Card 
+                    key={act.id} 
+                    className="p-4 border-l-4 hover:shadow-md transition-all" 
+                    style={{ borderLeftColor: act.colorBorde }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg" style={{ background: `${act.colorBorde}15` }}>
+                        <Clock className="w-5 h-5" style={{ color: act.colorBorde }} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span 
+                                className="px-2 py-0.5 text-xs font-bold rounded-full"
+                                style={{ 
+                                  background: `${act.colorBorde}20`,
+                                  color: act.colorBorde
+                                }}
+                              >
+                                {act.tipo}
+                              </span>
+                              <span className="text-xs text-gray-500">📅 {act.fecha}</span>
+                            </div>
+                            <p className="font-bold text-sm text-gray-900 mb-1">{act.descripcion}</p>
+                            <p className="text-xs text-gray-600">
+                              👤 <span className="font-semibold">{act.responsable}</span>
+                            </p>
+                          </div>
+                          <span 
+                            className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap ${
+                              act.estado === 'COMPLETADA' 
+                                ? 'bg-green-100 text-green-800' 
+                                : act.estado === 'EN_REVISION'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-orange-100 text-orange-800'
+                            }`}
+                          >
+                            {act.estado === 'COMPLETADA' ? '✅ Completada' : 
+                             act.estado === 'EN_REVISION' ? '🔍 En Revisión' : '⏳ Pendiente'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
 
             {/* ==================== ACCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
             <div className="mt-6 flex gap-2">
@@ -1179,6 +1312,96 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 ))}
               </div>
             )}
+
+            {/* ==================== SECCIÓN: EXCEPCIONES PROCESALES ==================== */}
+            <div className="mt-8 pt-6 border-t-2 border-gray-200">
+              <Card className="p-5 border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-orange-600" />
+                    <h3 className="font-black text-lg text-orange-900">
+                      Excepciones Procesales ({excepciones.length})
+                    </h3>
+                  </div>
+                  <Button 
+                    onClick={() => {
+                      setModalNuevaExcepcion(true);
+                      setHasChanges(true);
+                    }}
+                    className="bg-orange-600 hover:bg-orange-700 text-white font-semibold"
+                    size="sm"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Nueva Excepción
+                  </Button>
+                </div>
+
+                {excepciones.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-orange-700 font-medium">
+                      No hay excepciones procesales registradas en este expediente
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mt-4">
+                    {excepciones.map((excepcion, index) => (
+                      <Card key={index} className="p-4 border-2 border-orange-300 bg-white">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-bold text-base text-orange-900">
+                                {excepcion.tipo}
+                              </h4>
+                              <Badge 
+                                variant="outline"
+                                className="text-xs font-semibold border-orange-400 text-orange-700"
+                              >
+                                {excepcion.estado}
+                              </Badge>
+                            </div>
+                            
+                            {/* Descripción */}
+                            <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                              <p className="text-xs font-bold text-gray-700 mb-1">📋 Descripción:</p>
+                              <p className="text-sm text-gray-700 leading-relaxed">
+                                {excepcion.descripcion}
+                              </p>
+                            </div>
+
+                            {/* Fundamento Legal */}
+                            {excepcion.fundamento && (
+                              <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                <p className="text-xs font-bold text-orange-900 mb-1">⚖️ Fundamento Legal:</p>
+                                <p className="text-sm text-gray-700 leading-relaxed">
+                                  {excepcion.fundamento}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Metadata */}
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-gray-600">Fecha:</span>
+                                <span className="font-semibold ml-1">{excepcion.fecha}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">Presentada por:</span>
+                                <span className="font-semibold ml-1">{excepcion.responsable}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 ml-3">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ==================== TAB: DOCUMENTOS ==================== */}
@@ -1458,6 +1681,206 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         procesoId={proceso.id}
       />
 
+      {/* ==================== MODAL: NUEVA EXCEPCIÓN PROCESAL ==================== */}
+      {modalNuevaExcepcion && (
+        <Dialog open={modalNuevaExcepcion} onOpenChange={setModalNuevaExcepcion}>
+          <DialogContent hideCloseButton className="w-[90vw] max-w-[420px] p-0">
+            <DialogTitle className="sr-only">Nueva Excepción Procesal</DialogTitle>
+            <DialogDescription className="sr-only">
+              Registrar nueva excepción procesal en el proceso {proceso.id}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Nueva Excepción Procesal"
+              subtitulo={`Proceso ${proceso.id}`}
+              icono={AlertTriangle}
+              colorIcono="orange"
+              onClose={() => setModalNuevaExcepcion(false)}
+            />
+
+            <div className="p-6 space-y-5">
+              {/* SECCIÓN: Tipo de Excepción (Radio Buttons) - Parametrizable desde Configuraciones */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                  Tipo de Excepción Procesal *
+                </label>
+                <div className="space-y-3">
+                  {tiposExcepcionesActivos && tiposExcepcionesActivos.length > 0 ? (
+                    tiposExcepcionesActivos.map((tipo) => (
+                      <label key={tipo.id} className="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
+                        <input
+                          type="radio"
+                          name="tipo-excepcion"
+                          value={tipo.nombre}
+                          className="mt-1 w-4 h-4 text-orange-600 focus:ring-orange-500"
+                          id={`radio-${tipo.id}`}
+                        />
+                        <div className="flex-1">
+                          <div className="font-bold text-gray-900">{tipo.icono} {tipo.nombre}</div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {tipo.descripcion}
+                          </div>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                      <p className="text-sm text-gray-600">
+                        No hay tipos de excepciones configurados. <br />
+                        <span className="text-xs">Configure los tipos en <strong>Configuraciones del Sistema</strong></span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECCIÓN: Causal Específica (Dropdown) - Parametrizable desde Configuraciones */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Causal Específica (Opcional)
+                </label>
+                <select 
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  id="impedimento-excepcion"
+                >
+                  <option value="">Seleccione una causal...</option>
+                  {causalesEspecificasActivas && causalesEspecificasActivas.length > 0 ? (
+                    causalesEspecificasActivas.map((causal) => (
+                      <option key={causal.id} value={causal.nombre}>
+                        {causal.icono} {causal.nombre} {causal.descripcion && `(${causal.descripcion})`}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay causales configuradas</option>
+                  )}
+                </select>
+              </div>
+
+              {/* SECCIÓN: Descripción de la Excepción */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  📋 Descripción de la Excepción *
+                </label>
+                <textarea
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                  rows={5}
+                  placeholder="Describa detalladamente la excepción procesal. Indíquelas los hechos que la fundamentan o la excepción..."
+                  id="descripcion-excepcion"
+                />
+              </div>
+
+              {/* SECCIÓN: Fundamento Legal */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  ⚖️ Fundamento Legal *
+                </label>
+                <textarea
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                  rows={3}
+                  placeholder="Indique las normas aplicables o jurisprudencia que fundamenta la excepción (Ej: Art. 100 CGP, Ley 734 de 2002...)"
+                  id="fundamento-excepcion"
+                />
+              </div>
+
+              {/* SECCIÓN: Presentada Por (Opcional) */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  👤 Presentada Por (Opcional)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  placeholder="Nombre de quien presenta la excepción"
+                  id="responsable-excepcion"
+                />
+              </div>
+
+              {/* ALERTA INFORMATIVA */}
+              <Card className="p-3 bg-orange-50 border-2 border-orange-200">
+                <p className="text-sm text-orange-800">
+                  <AlertTriangle className="w-4 h-4 inline mr-1" />
+                  Las excepciones procesales deben ser fundamentadas jurídicamente y presentadas dentro de los términos legales establecidos.
+                </p>
+              </Card>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t-2 px-6 py-4 flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setModalNuevaExcepcion(false)}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                onClick={() => {
+                  // Obtener valores de radio buttons
+                  const radioSeleccionado = document.querySelector('input[name="tipo-excepcion"]:checked') as HTMLInputElement;
+                  const impedimentoSelect = document.getElementById('impedimento-excepcion') as HTMLSelectElement;
+                  const descripcionTextarea = document.getElementById('descripcion-excepcion') as HTMLTextAreaElement;
+                  const fundamentoTextarea = document.getElementById('fundamento-excepcion') as HTMLTextAreaElement;
+                  const responsableInput = document.getElementById('responsable-excepcion') as HTMLInputElement;
+
+                  const tipoExcepcion = radioSeleccionado?.value;
+                  const impedimento = impedimentoSelect?.value;
+                  const descripcion = descripcionTextarea?.value;
+                  const fundamento = fundamentoTextarea?.value;
+                  const responsable = responsableInput?.value || 'Sin especificar';
+
+                  // Validaciones
+                  if (!tipoExcepcion) {
+                    toast.error('⚠️ Tipo de excepción requerido', {
+                      description: 'Debe seleccionar un tipo de excepción procesal'
+                    });
+                    return;
+                  }
+
+                  if (!descripcion) {
+                    toast.error('⚠️ Descripción requerida', {
+                      description: 'Debe describir la excepción procesal'
+                    });
+                    return;
+                  }
+
+                  if (!fundamento) {
+                    toast.error('⚠️ Fundamento legal requerido', {
+                      description: 'Debe indicar el fundamento legal de la excepción'
+                    });
+                    return;
+                  }
+
+                  // Construir tipo completo
+                  let tipoCompleto = tipoExcepcion;
+                  if (impedimento) {
+                    tipoCompleto += ` - ${impedimento}`;
+                  }
+
+                  const nuevaExcepcion = {
+                    tipo: tipoCompleto,
+                    descripcion,
+                    fundamento,
+                    responsable,
+                    fecha: new Date().toLocaleDateString('es-CO'),
+                    estado: 'Pendiente de Resolución'
+                  };
+
+                  setExcepciones([...excepciones, nuevaExcepcion]);
+                  setModalNuevaExcepcion(false);
+                  
+                  toast.success('✅ Excepción registrada', {
+                    description: `${tipoCompleto} agregada al proceso`,
+                    duration: 3000
+                  });
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Registrar Excepción
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
       {pruebaSeleccionada && (
         <VisorDocumentoModal
@@ -1479,6 +1902,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           asunto={`Documento del proceso ${proceso.id}`}
         />
       )}
+
+      {/* ==================== MODAL: NUEVA ACTUACIÓN ==================== */}
+      <ModalNuevaActuacion
+        isOpen={modalNuevaActuacionOpen}
+        onClose={() => setModalNuevaActuacionOpen(false)}
+        onSave={handleGuardarActuacion}
+        procesoId={proceso.id}
+      />
     </Dialog>
   );
 }
