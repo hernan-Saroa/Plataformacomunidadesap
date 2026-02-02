@@ -11,7 +11,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for building)
-RUN --mount=type=cache,target=/root/.npm npm install
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -36,7 +36,7 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 COPY package*.json ./
 
 # Install only production dependencies
-RUN --mount=type=cache,target=/root/.npm npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

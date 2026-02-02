@@ -8,10 +8,6 @@
 
 set -e  # Exit on error
 
-# Asegurar BuildKit para cachés de dependencias y builds más rápidos
-export DOCKER_BUILDKIT=1
-export COMPOSE_DOCKER_CLI_BUILD=1
-
 # Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -103,6 +99,11 @@ cmd_restart() {
 cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios PRE...${NC}"
     docker compose -f docker-compose.pre.yml down
+
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+
     # Construir imagenes
     docker compose -f docker-compose.pre.yml --env-file .env.pre build
     docker compose -f docker-compose.pre.yml --env-file .env.pre up -d
