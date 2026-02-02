@@ -8,6 +8,10 @@
 
 set -e  # Exit on error
 
+# Asegurar BuildKit para cachés de dependencias y builds más rápidos
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+
 # Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
