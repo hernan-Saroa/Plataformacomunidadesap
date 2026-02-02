@@ -19,7 +19,7 @@ import { apiClient } from './apiClient';
 import { getServiceUrl, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
 
 // Base URL del servicio de Control Interno usando variables de entorno
-// En modo gateway: http://localhost:3000 o http://4.156.71.181:3000
+// En modo gateway: http://localhost:3000 o http://4.156.71.181/services
 // En modo direct: http://localhost:3007
 const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 
@@ -163,7 +163,7 @@ class ControlInternoAPIClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // En modo gateway: http://4.156.71.181:3000/control-institucional/api/v1/plan-anual-5-roles
+    // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
     // En modo direct: http://localhost:3007/plan-anual-5-roles
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     

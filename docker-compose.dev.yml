@@ -13,7 +13,7 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://4.156.71.181:3000"
+        VITE_API_URL: "http://4.156.71.181/services"
         VITE_ONLYOFFICE_URL: "http://4.156.71.181:9000"
     container_name: superapp-frontend
     ports:

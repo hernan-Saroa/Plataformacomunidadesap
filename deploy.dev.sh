@@ -78,7 +78,7 @@ cmd_up() {
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
     echo "  Frontend:    http://4.156.71.181"
-    echo "  API Gateway: http://4.156.71.181:3000"
+    echo "  API Gateway: http://4.156.71.181/services"
     echo ""
 }
 

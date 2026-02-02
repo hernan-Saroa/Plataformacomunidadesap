@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 COPY . .
 
 # Argumento para la URL del API (se pasa en build time)
-ARG VITE_API_URL=http://172.16.202.169:3000
+ARG VITE_API_URL=http://172.16.202.169/services
 
 # Exportar como variable de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar la variable correctamente

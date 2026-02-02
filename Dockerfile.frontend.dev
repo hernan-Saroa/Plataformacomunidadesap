@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --legacy-peer-deps
 COPY . .
 
 # Argumentos para las URLs (se pasan en build time)
-ARG VITE_API_URL=http://4.156.71.181:3000
+ARG VITE_API_URL=http://4.156.71.181/services
 ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:9000
 
 # Exportar como variables de entorno Y crear .env.production
