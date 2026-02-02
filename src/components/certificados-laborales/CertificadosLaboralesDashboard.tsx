@@ -49,6 +49,8 @@ interface CertificadoLaboral {
   department_son?: string;
   campus?: string;
   technical_bonus?: number;
+  templateSnapshot?: any;
+  templateType?: 'docente' | 'administrador';
   empleado: {
     nombre: string;
     documento: string;
@@ -220,6 +222,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           department_son: cert.department_son || cert.departmentSon,
           campus: cert.campus,
           technical_bonus: cert.technical_bonus,
+          templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
+          templateType:
+            cert.template_type ||
+            cert.templateType ||
+            cert.template_snapshot?.templateType ||
+            cert.template_snapshot?.template_type ||
+            undefined,
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
