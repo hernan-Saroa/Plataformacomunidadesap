@@ -650,15 +650,16 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                Lista de Autos
              </button>
              <button
-               className={`px-4 py-2 rounded-t-lg font-bold text-sm text-gray-600 hover:bg-gray-100`}
-               onClick={(e) => {
-                 e.stopPropagation();
-                 window.open('/editor-plantillas', '_blank');
-               }}
-             >
-               <Edit2 className="w-4 h-4 inline mr-2" />
-               Editor de Plantillas
-             </button>
+              onClick={() => setVistaActual('crear')}
+              className={`px-4 py-2 rounded-t-lg font-bold text-sm ${
+                vistaActual === 'crear'
+                  ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Plus className="w-4 h-4 inline mr-2" />
+              Crear Nuevo Auto
+            </button>
            </div>
          </div>
 
@@ -838,26 +839,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        {auto.estado === 'BORRADOR' && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEnviarRevision(auto.id, auto.numero);
-                            }}
-                            disabled={autoEnviandoRevision === auto.id}
-                            title="Enviar a revisión del jefe"
-                            style={{ borderColor: '#0EA5E9', color: '#0EA5E9' }}
-                          >
-                            {autoEnviandoRevision === auto.id ? (
-                              <Clock className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Send className="w-3.5 h-3.5" />
-                            )}
-                          </Button>
-                        )}
                         <Button
                           type="button"
                           size="sm"
@@ -888,39 +869,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         >
                           <Download className="w-3.5 h-3.5" />
                         </Button>
-                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_EDIT) && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditarAuto(auto);
-                          }}
-                          title="Editar auto"
-                          style={{ borderColor: '#059669', color: '#059669' }}
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAbrirVisorAuto(auto, true);
-                          }}
-                          title="Ver plantilla BD"
-                          disabled={cargandoProceso}
-                          style={{ borderColor: '#10B981', color: '#10B981' }}
-                        >
-                          {cargandoProceso ? (
-                            <div className="animate-spin rounded-full h-3.5 w-3.5 border border-current border-t-transparent" />
-                          ) : (
-                            <FileText className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
                         {/* Botón para editar archivos Word en OnlyOffice */}
                         {auto.documentUrl &&
                          (auto.documentName?.endsWith('.doc') ||
@@ -938,21 +886,6 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
-                        )}
-                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_DELETE) && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAutoParaEliminar(auto);
-                          }}
-                          title="Eliminar auto"
-                          style={{ borderColor: '#DC2626', color: '#DC2626' }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
                         )}
                       </div>
                     </div>
@@ -1110,13 +1043,21 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
-          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) ? (
             <Button
               onClick={() => setVistaActual('crear')}
               style={{ background: '#8B5CF6', color: '#FFFFFF' }}
             >
               <Plus className="w-4 h-4 mr-2" />
               Crear Nuevo Auto
+            </Button>
+          ) : (
+            <Button
+              onClick={() => setVistaActual('lista')}
+              variant="outline"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Ver Lista de Autos
             </Button>
           )}
         </div>

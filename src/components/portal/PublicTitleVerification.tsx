@@ -10,12 +10,13 @@ import { motion } from 'motion/react';
 import { VerificationCertificateDisplay } from './VerificationCertificateDisplay';
 import { VerificationCertificate } from '../../types/index';
 import { PublicNavbar } from './PublicNavbar';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+// import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogoSVG } from '../assets/ESAPLogoSVG';
 import graduadosService, { type CertificadoGraduado } from '../../services/api/graduados.service';
 import { ESAPLogo } from '../assets/ESAPLogo';
-import { simularEnvioCorreo } from '../../utils/emailTemplates';
-import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
-import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
+// import { simularEnvioCorreo } from '../../utils/emailTemplates';
+// import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
+// import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';
 
 // Helper function to normalize text (remove accents and convert to lowercase)
 const normalizeText = (text: string): string => {
@@ -286,15 +287,15 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       // Enviar correo de confirmación de solicitud de revisión
       const numeroSolicitud = 'REV-2025-' + Math.floor(1000 + Math.random() * 9000);
       const reviewRequesterName = requesterType === 'graduado' ? graduateLastName : requesterName;
-      simularEnvioCorreo('verificacion-titulo-revision', {
-        nombreCompleto: reviewRequesterName,
-        correoDestino: requesterEmail,
-        consecutivoCertificado: numeroSolicitud,
-        datosAdicionales: {
-          nombreGraduado: graduateLastName,
-          documentoGraduado: graduateDocumentNumber
-        }
-      });
+      // simularEnvioCorreo('verificacion-titulo-revision', {
+      //   nombreCompleto: reviewRequesterName,
+      //   correoDestino: requesterEmail,
+      //   consecutivoCertificado: numeroSolicitud,
+      //   datosAdicionales: {
+      //     nombreGraduado: graduateLastName,
+      //     documentoGraduado: graduateDocumentNumber
+      //   }
+      // });
 
       if (!response.certificado) {
         throw new Error('No se pudo generar el certificado. Intenta nuevamente.');
@@ -502,7 +503,10 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
             <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
               {/* Logo y Descripción */}
               <div className="mb-6 md:mb-0 flex items-start gap-4">
-                <img src={esapLogoWhite} alt="ESAP" className="h-14" />
+                {/* <img src={esapLogoWhite} alt="ESAP" className="h-14" /> */}
+                <ESAPLogoSVG
+                  variant="white"
+                />
                 <div>
                   <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                   <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>

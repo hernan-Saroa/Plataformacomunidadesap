@@ -544,7 +544,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
           <Card className="border-4 border-[#1e5da8] shadow-2xl bg-white">
             {/* Official Header with Logo */}
-            <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6">
+            {/* <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6"> */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
                 <div className="bg-white rounded-xl p-3 shadow-lg">

@@ -3100,6 +3100,15 @@ export function GestionAuditoriasKanbanSimple() {
       )
     );
 
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado, 
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
+    );
+
     try {
       // Actualizar estado en la base de datos usando el valor mapeado
       await controlInternoService.updateAuditoria(item.id, {
@@ -4266,7 +4275,6 @@ export function GestionAuditoriasKanbanSimple() {
               })}
             </div>
           </div>
-          </>
         )}
 
         {/* VISTA LISTA */}
@@ -4937,13 +4945,13 @@ export function GestionAuditoriasKanbanSimple() {
             estadoActual={'Planeación' as any}
             onCambiar={(nuevoEstado) => {
               console.log('Estado cambiado:', nuevoEstado);
-              handleGuardarCambioEstado(nuevoEstado);
+              handleGuardarCambioEstado(auditoriaSeleccionada.id, nuevoEstado);
             }}
           />
         )}
 
         {/* MODAL DE CONFIRMACIÓN (ARCHIVAR / ELIMINAR) */}
-        <ModalConfirmacionAccion
+        {/* <ModalConfirmacionAccion
           isOpen={modalConfirmacionOpen}
           onClose={() => {
             setModalConfirmacionOpen(false);
@@ -4952,7 +4960,7 @@ export function GestionAuditoriasKanbanSimple() {
           auditoria={auditoriaSeleccionada}
           tipoAccion={tipoAccionConfirmacion}
           onConfirmar={handleConfirmarAccion}
-        />
+        /> */}
 
         {/* MODAL SOLICITAR AMPLIACIÓN DE PLAZO */}
         <ModalSolicitarAmpliacionPlazo

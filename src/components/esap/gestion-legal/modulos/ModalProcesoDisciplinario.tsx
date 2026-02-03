@@ -70,21 +70,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Single source of truth for process actions/documents
-  const [actuaciones, setActuaciones] = useState<any[]>([]);
-
-  const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
-  const [decisiones, setDecisiones] = useState<any[]>([]);
-  const [decisionSeleccionada, setDecisionSeleccionada] = useState<any>(null);
-  
-  // ✅ Estado para excepciones procesales
-  const [excepciones, setExcepciones] = useState<any[]>([]);
-  const [modalNuevaExcepcion, setModalNuevaExcepcion] = useState(false);
-  
-  // ✅ Estado para el modal de nueva actuación
-  const [modalNuevaActuacionOpen, setModalNuevaActuacionOpen] = useState(false);
-  
-  // ✅ Estado para actuaciones con datos iniciales
+  // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
   const [actuaciones, setActuaciones] = useState([
     { 
       id: 1,
@@ -114,28 +100,28 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       colorBorde: '#003DA5'
     }
   ]);
+
+  const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
+  const [decisiones, setDecisiones] = useState<any[]>([]);
+  const [decisionSeleccionada, setDecisionSeleccionada] = useState<any>(null);
   
-  const [pruebas, setPruebas] = useState([
-    { id: 1, nombre: 'Prueba Documental #1', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_001.pdf', tamaño: '2.4 MB' },
-    { id: 2, nombre: 'Prueba Documental #2', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_002.pdf', tamaño: '1.8 MB' },
-    { id: 3, nombre: 'Prueba Documental #3', descripcion: 'Documento probatorio relacionado con el proceso disciplinario', archivo: 'prueba_003.pdf', tamaño: '3.1 MB' }
-  ]);
+  // ✅ Estado para excepciones procesales
+  const [excepciones, setExcepciones] = useState<any[]>([]);
+  const [modalNuevaExcepcion, setModalNuevaExcepcion] = useState(false);
+  const [mostrarFormularioExcepcion, setMostrarFormularioExcepcion] = useState(false);
+  
+  // ✅ Estado para el modal de nueva actuación
+  const [modalNuevaActuacionOpen, setModalNuevaActuacionOpen] = useState(false);
   
   // Estado para el visor de documentos
   const [visorAbierto, setVisorAbierto] = useState(false);
   const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
-
-  // Excepciones Procesales
-  const [excepciones, setExcepciones] = useState<any[]>([]);
-  const [mostrarFormularioExcepcion, setMostrarFormularioExcepcion] = useState(false);
+  const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
   const documentos = actuaciones.filter(a => a.tipoActuacion === 'DOCUMENTO');
 
-  const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
-  const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
-  const [visorAbierto, setVisorAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fecha inicial para asegurar persistencia
@@ -1815,4 +1801,3 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     </Dialog>
   );
 }
-

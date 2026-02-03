@@ -7,9 +7,11 @@
 
 import React from 'react';
 
-// Importar logos oficiales usando el esquema figma:asset
-import logoColorOnWhite from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import logoWhiteOnColor from 'figma:asset/bf33c0f2d5f03ef0d7baf88a705a5a66362cd8c4.png';
+// Logos locales; reemplazamos el recurso faltante por la versión SVG existente
+import logoColorOnWhite from '../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+// import logoWhiteOnColor from '../../assets/esap-logo-white.svg';
+// import logoColorOnWhite from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+// import logoWhiteOnColor from 'figma:asset/bf33c0f2d5f03ef0d7baf88a705a5a66362cd8c4.png';
 
 interface ESAPLogoProps {
   variant?: 'color' | 'white' | 'dark';
@@ -28,7 +30,8 @@ export function ESAPLogo({
   // Seleccionar logo según variante
   // 'color' y 'dark' usan el logo azul sobre blanco
   // 'white' usa el logo blanco sobre color
-  const logoSrc = variant === 'white' ? logoWhiteOnColor : logoColorOnWhite;
+  // const logoSrc = variant === 'white' ? logoWhiteOnColor : logoColorOnWhite;
+  const logoSrc = logoColorOnWhite;
   
   // Construir estilo inline si se especifican dimensiones
   const style: React.CSSProperties = {};

@@ -224,9 +224,6 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
 
-  // ✅ Obtener tipos de procesos desde configuración centralizada
-  const { tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
-
   // ✅ Auto-calcular fecha de vencimiento cuando cambia tipoProceso o fechaNotificacion
   useEffect(() => {
     if (formData.tipoProceso && formData.fechaNotificacion) {

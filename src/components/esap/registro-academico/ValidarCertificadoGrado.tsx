@@ -24,6 +24,7 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogoSVG } from '../../assets/ESAPLogoSVG';
 import graduadosService, { CertificadoGraduado } from '../../../services/api/graduados.service';
 
 interface ValidacionResult {
@@ -183,10 +184,13 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
                 <div className="flex items-center justify-between">
                   {/* Logo */}
                   <div className="flex items-center gap-3">
-                    <img 
+                    {/* <img 
                       src={esapLogoWhite} 
                       alt="ESAP Logo" 
                       className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+                    /> */}
+                    <ESAPLogoSVG
+                      variant="color"
                     />
                     <div className="hidden sm:block">
                       <p className="text-xs font-semibold text-white">Validador de Certificados</p>

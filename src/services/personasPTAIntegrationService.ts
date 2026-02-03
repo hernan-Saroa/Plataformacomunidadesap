@@ -19,7 +19,18 @@ import {
   MAPEO_ESTADOS,
   esDocente,
   puedeAprobarPTA,
-  obtenerNivelAprobacion
+  obtenerNivelAprobacion,
+  obtenerSedePrincipal,
+  obtenerNombreCompleto,
+  type DocentePTA,
+  type UserWithSedes,
+  type BusquedaDocente,
+  type RutaAprobacion,
+  type NivelAprobacion,
+  type AprobadorPTA,
+  type ResultadoSincronizacion,
+  type AuditoriaIntegracion,
+  type NotificacionPersonasPTA
 } from '../types/integracion-personas-pta';
 import { MOCK_USERS_WITH_SEDES } from '../data/mockUsersWithSedes';
 import { periodParametersService } from './periodParametersService';

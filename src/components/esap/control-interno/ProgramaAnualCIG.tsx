@@ -1331,7 +1331,7 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* ✅ NUEVO: Botón Aprobar Programa */}
-          {!programaAprobado && (
+          {/* {!programaAprobado && (
             <ButtonSIGL
               variant="primary"
               icon={<Send className="w-4 h-4" />}
@@ -1340,14 +1340,14 @@ export function ProgramaAnualCIG({ filtros: filtrosExternos }: ProgramaAnualCIGP
             >
               Aprobar Programa
             </ButtonSIGL>
-          )}
+          )} */}
 
-          {programaAprobado && (
+          {/* {programaAprobado && (
             <div className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-800 rounded-lg border border-green-300">
               <Check className="w-4 h-4" />
               <span className="text-sm">Programa Aprobado</span>
             </div>
-          )}
+          )} */}
 
           <ButtonSIGL
             variant="outline"

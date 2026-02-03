@@ -20,15 +20,16 @@ import { Card, CardContent } from '../ui/card';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { Checkbox } from '../ui/checkbox';
-import { simularEnvioCorreo } from '../../utils/emailTemplates';
+// import { simularEnvioCorreo } from '../../utils/emailTemplates';
 import { certificadosService } from '../../services/api/certificados.service';
 import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertificado';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
 import { useIsMobile } from '../ui/use-mobile';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+// import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { PublicNavbar } from './PublicNavbar';
-import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
+// import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
+import { ESAPLogoSVG } from '../assets/ESAPLogoSVG';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
@@ -1497,7 +1498,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              <img src={LOGO_ESAP_BLUE_SVG} alt="ESAP" className="h-14" />
+              {/* <img src={LOGO_ESAP_BLUE_SVG} alt="ESAP" className="h-14" /> */}
+              <ESAPLogoSVG
+                variant="white"
+              />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>

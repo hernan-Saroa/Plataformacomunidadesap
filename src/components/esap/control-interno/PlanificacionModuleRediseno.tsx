@@ -224,20 +224,6 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa' }: Pla
       setLoadingEstadisticas(false);
     }
   }
-  // Handler para crear auditoría
-  const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
-    console.log('📝 Nueva auditoría OCIG desde Planeación Operativa:', data);
-    
-    // Simulación de delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    toast.success('✅ Auditoría OCIG creada exitosamente', {
-      description: `"${data.titulo}" ha sido agregada al Plan Operativo ${data.planAnualAño || 2025}`
-    });
-    
-    setModalNuevaAuditoriaOpen(false);
-  };
-
   // Cargar estadísticas desde la BD
   useEffect(() => {
     cargarEstadisticas();
