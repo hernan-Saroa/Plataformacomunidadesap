@@ -703,6 +703,21 @@ export class GraduationCertificatesService {
       .replace(/[\u0300-\u036f]/g, '');
   }
 
+  private splitFullName(fullName?: string): { firstName: string; lastName: string } {
+    const safeName = (fullName || '').trim();
+    if (!safeName) {
+      return { firstName: '', lastName: '' };
+    }
+    const parts = safeName.split(/\s+/);
+    if (parts.length === 1) {
+      return { firstName: parts[0], lastName: '' };
+    }
+    return {
+      firstName: parts.slice(0, -1).join(' '),
+      lastName: parts.slice(-1).join(' '),
+    };
+  }
+
   private async findGraduateMatch(
     where: Record<string, any>,
     options: {
@@ -1385,10 +1400,21 @@ export class GraduationCertificatesService {
         payload.seccionalName.trim();
     }
 
-    const graduate =
+    const normalizedIdNumber = (request.idNumber || '').replace(/\D+/g, '');
+    const graduateWhere = normalizedIdNumber
+      ? {
+        idNumber: Raw(
+          (alias) =>
+            `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+          { idNumber: normalizedIdNumber },
+        ),
+      }
+      : { idNumber: request.idNumber.trim() };
+
+    let graduate =
       request.graduate ||
       (await this.graduateRepository.findOne({
-        where: { idNumber: request.idNumber, status: 'ACTIVE' },
+        where: graduateWhere,
       }));
 
     if (graduate) {
@@ -1414,6 +1440,49 @@ export class GraduationCertificatesService {
         await this.graduateRepository.save(graduate);
       }
 
+      request.graduate = graduate;
+      request.graduateId = graduate.id;
+    } else {
+      const fullName = (payload?.fullName || request.fullName || '').trim();
+      const { firstName, lastName } = this.splitFullName(fullName);
+      const programName = payload?.programName || request.programName || 'No disponible';
+      const programType =
+        payload?.programType ||
+        (request as { programType?: string }).programType ||
+        'Pregrado';
+      const degreeTitle =
+        payload?.degreeTitle ||
+        (request as { degreeTitle?: string }).degreeTitle ||
+        programName;
+      const graduationDate =
+        this.parseDate(payload?.graduationDate) ?? request.graduationDate ?? new Date();
+      const campus =
+        payload?.campus || (request as { campus?: string }).campus || undefined;
+      const seccionalName =
+        payload?.seccionalName || (request as { seccionalName?: string }).seccionalName;
+
+      const createdGraduate = this.graduateRepository.create({
+        personId: randomUUID(),
+        programId: randomUUID(),
+        fullName: fullName || request.fullName,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        idNumber: request.idNumber,
+        idIssueDate: request.idIssueDate,
+        email: payload?.email?.trim() || request.graduateEmail,
+        phone: payload?.phone?.trim() || request.graduatePhone,
+        programName,
+        programType,
+        graduationDate,
+        degreeTitle,
+        campus,
+        seccionalName: seccionalName?.trim() || undefined,
+        status: 'ACTIVE',
+        isVerified: true,
+        createdBy: payload?.reviewerName || request.reviewerName || 'manual_review',
+      });
+
+      graduate = await this.graduateRepository.save(createdGraduate);
       request.graduate = graduate;
       request.graduateId = graduate.id;
     }

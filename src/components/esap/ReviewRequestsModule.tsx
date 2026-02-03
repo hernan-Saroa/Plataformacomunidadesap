@@ -1428,7 +1428,7 @@ export function ReviewRequestsModule() {
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
         <DialogContent
-          className={`w-[92vw] my-10 max-h-[88vh] overflow-y-auto p-0 pb-8 ${reviewAction === 'reject' ? 'max-w-3xl' : 'max-w-3xl'}`}
+          className={`w-[92vw] max-w-3xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-2rem)] !overflow-hidden !flex !flex-col`}
         >
           <DialogHeader className="px-6 pt-4 pb-2">
             <DialogTitle className="flex items-center gap-2">
@@ -1440,7 +1440,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 pt-2 pb-8 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-2 pb-8 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
