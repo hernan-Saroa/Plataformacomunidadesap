@@ -19,7 +19,10 @@ import { Notificacion } from '../core/types';
 import { toast } from 'sonner@2.0.3';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
+import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleFilters } from '../design-system/ModuleFilters';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // DATOS MOCK INLINE (temporales para demo)
 const notificacionesMock: any[] = [
@@ -178,6 +181,12 @@ const notificacionesMock: any[] = [
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 
 export function ModuloBuzonNotificacionesV3() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
+  
   const [tabActiva, setTabActiva] = useState<TabBandejaType>('pendientes');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
@@ -189,6 +198,42 @@ export function ModuloBuzonNotificacionesV3() {
   // ✨ Estados para paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const ITEMS_POR_PAGINA = 50;
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'NOT-999',
+      codigo: 'NOT-2024-999',
+      nombre: 'Notificación judicial - Sentencia favorable proceso DJ-2023-045',
+      tipo: 'Notificación',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-28T17:45:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Proceso finalizado con sentencia favorable definitiva. Archivo de expediente completo según procedimiento',
+      metadatos: {
+        'Radicado': 'DJ-2023-045',
+        'Juzgado': 'Juzgado 5 Administrativo Bogotá',
+        'Tipo Proceso': 'Reparación Directa',
+        'Resultado': 'Sentencia Favorable a ESAP',
+        'Fecha Sentencia': '15/12/2024',
+        'Responsable': 'Dr. Carlos Mendoza García'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar una notificación archivada
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando notificación:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Notificación restaurada exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente una notificación
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente notificación:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Notificación eliminada permanentemente');
+  };
 
   const notificacionesFiltradas = useMemo(() => {
     let resultado = [...notificacionesMock];
@@ -278,254 +323,292 @@ export function ModuloBuzonNotificacionesV3() {
 
   return (
     <div className="space-y-4">
-      {/* Header con ModuleHeader - SIN toggleView */}
-      <ModuleHeader
-        title={isMobile ? 'Buzón Notificaciones' : 'Buzón de Notificaciones Judiciales'}
-        subtitle="Gestión de notificaciones y comunicaciones oficiales"
-        buttons={[
-          {
-            label: 'Registrar Notificación',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => toast.info('Registrar Nueva Notificación'),
-            variant: 'primary'
-          }
-        ]}
-      />
-
-      {/* Métricas */}
-      <ModuleMetrics
-        metrics={[
-          {
-            icon: <Mail className="w-5 h-5 text-blue-600" />,
-            value: totalPendientes,
-            label: 'No Leídas'
-          },
-          {
-            icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
-            value: totalUrgentes,
-            label: 'Urgentes'
-          },
-          {
-            icon: <Archive className="w-5 h-5 text-gray-600" />,
-            value: totalArchivadas,
-            label: 'Archivadas'
-          }
-        ]}
-      />
-
-      {/* Layout tipo Gmail */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Panel izquierdo: Tabs y Lista */}
-        <div className="lg:col-span-2 space-y-3">
-          {/* Tabs */}
-          <Card className="bg-white border border-gray-200">
-            <div className="flex items-center gap-2 p-3 border-b border-gray-200">
-              <button
-                onClick={() => setTabActiva('pendientes')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-                  tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <Inbox className="w-4 h-4" />
-                Pendientes
-                <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>
-              </button>
-
-              <button
-                onClick={() => setTabActiva('leidas')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-                  tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <MailOpen className="w-4 h-4" />
-                Leídas
-              </button>
-
-              <button
-                onClick={() => setTabActiva('archivadas')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-                  tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <Archive className="w-4 h-4" />
-                Archivadas
-              </button>
-
-              <button
-                onClick={() => setTabActiva('urgentes')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
-                  tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Urgentes
-                {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
-              </button>
-            </div>
-
-            {/* Búsqueda y acciones masivas */}
-            <div className="p-3 space-y-2 border-b border-gray-200">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar notificaciones..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-9"
-                />
+      {/* ✅ SI ESTÁ EN VISTA DE ARCHIVADOS, MOSTRAR COMPONENTE */}
+      {vistaActual === 'archivados' ? (
+        <VistaArchivados
+          items={itemsArchivados}
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+          onVolver={() => setVistaActual('activos')}
+        />
+      ) : (
+        <>
+          {/* Header - Custom con botón de archivados */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                  {isMobile ? 'Buzón Notificaciones' : 'Buzón de Notificaciones Judiciales'}
+                </h1>
+                <p className="text-sm sm:text-base text-gray-500 mt-1">
+                  Gestión de notificaciones y comunicaciones oficiales
+                </p>
               </div>
+              <div className="flex items-center gap-2">
+                {/* ✅ BOTÓN PARA IR A ARCHIVADOS */}
+                <button
+                  onClick={() => setVistaActual('archivados')}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+                  title="Ver archivados y eliminados"
+                >
+                  <Archive className="w-4 h-4" />
+                  {!isMobile && 'Archivados'}
+                  {itemsArchivados.length > 0 && (
+                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {itemsArchivados.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => toast.info('Registrar Nueva Notificación')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  {!isMobile && 'Registrar Notificación'}
+                </button>
+              </div>
+            </div>
+          </div>
 
-              {seleccionadas.size > 0 && (
-                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
-                  <span className="text-sm font-semibold text-blue-700">
-                    {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
-                  </span>
-                  <Button
-                    onClick={marcarComoLeidas}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
+          {/* Métricas */}
+          <ModuleMetrics
+            metrics={[
+              {
+                icon: <Mail className="w-5 h-5 text-blue-600" />,
+                value: totalPendientes,
+                label: 'No Leídas'
+              },
+              {
+                icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+                value: totalUrgentes,
+                label: 'Urgentes'
+              },
+              {
+                icon: <Archive className="w-5 h-5 text-gray-600" />,
+                value: totalArchivadas,
+                label: 'Archivadas'
+              }
+            ]}
+          />
+
+          {/* Layout tipo Gmail */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Panel izquierdo: Tabs y Lista */}
+            <div className="lg:col-span-2 space-y-3">
+              {/* Tabs */}
+              <Card className="bg-white border border-gray-200">
+                <div className="flex items-center gap-2 p-3 border-b border-gray-200">
+                  <button
+                    onClick={() => setTabActiva('pendientes')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+                      tabActiva === 'pendientes' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
                   >
-                    <Check className="w-3 h-3 mr-1" />
-                    Marcar como leídas
-                  </Button>
-                  <Button
-                    onClick={archivarSeleccionadas}
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
+                    <Inbox className="w-4 h-4" />
+                    Pendientes
+                    <Badge className="ml-1 bg-blue-100 text-blue-700">{totalPendientes}</Badge>
+                  </button>
+
+                  <button
+                    onClick={() => setTabActiva('leidas')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+                      tabActiva === 'leidas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
                   >
-                    <Archive className="w-3 h-3 mr-1" />
-                    Archivar
-                  </Button>
+                    <MailOpen className="w-4 h-4" />
+                    Leídas
+                  </button>
+
+                  <button
+                    onClick={() => setTabActiva('archivadas')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+                      tabActiva === 'archivadas' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Archive className="w-4 h-4" />
+                    Archivadas
+                  </button>
+
+                  <button
+                    onClick={() => setTabActiva('urgentes')}
+                    className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+                      tabActiva === 'urgentes' ? 'bg-red-50 text-red-700' : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    Urgentes
+                    {totalUrgentes > 0 && <Badge className="ml-1 bg-red-100 text-red-700">{totalUrgentes}</Badge>}
+                  </button>
                 </div>
-              )}
+
+                {/* Búsqueda y acciones masivas */}
+                <div className="p-3 space-y-2 border-b border-gray-200">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      placeholder="Buscar notificaciones..."
+                      value={busqueda}
+                      onChange={(e) => setBusqueda(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {seleccionadas.size > 0 && (
+                    <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
+                      <span className="text-sm font-semibold text-blue-700">
+                        {seleccionadas.size} seleccionada{seleccionadas.size > 1 ? 's' : ''}
+                      </span>
+                      <Button
+                        onClick={marcarComoLeidas}
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                      >
+                        <Check className="w-3 h-3 mr-1" />
+                        Marcar como leídas
+                      </Button>
+                      <Button
+                        onClick={archivarSeleccionadas}
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                      >
+                        <Archive className="w-3 h-3 mr-1" />
+                        Archivar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Filtros */}
+                <ModuleFilters
+                  filters={[
+                    {
+                      label: 'Estado',
+                      options: [
+                        { value: 'TODOS', label: 'Todos' },
+                        { value: 'PENDIENTE_VERIFICACIÓN', label: 'Pendientes' },
+                        { value: 'DISTRIBUIDA', label: 'Leídas' },
+                        { value: 'ARCHIVADA', label: 'Archivadas' }
+                      ],
+                      selected: filtroEstado,
+                      onChange: setFiltroEstado
+                    },
+                    {
+                      label: 'Urgencia',
+                      options: [
+                        { value: 'TODOS', label: 'Todos' },
+                        { value: 'URGENTE', label: 'Urgentes' }
+                      ],
+                      selected: filtroUrgencia,
+                      onChange: setFiltroUrgencia
+                    }
+                  ]}
+                />
+
+                {/* Lista de notificaciones */}
+                <div className="divide-y divide-gray-200">
+                  {notificacionesPaginadas.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm font-semibold">No hay notificaciones</p>
+                    </div>
+                  ) : (
+                    notificacionesPaginadas.map((notif) => (
+                      <ItemNotificacion
+                        key={notif.id}
+                        notificacion={notif}
+                        seleccionada={seleccionadas.has(notif.id)}
+                        onToggleSeleccion={toggleSeleccion}
+                        onSeleccionar={() => setNotificacionSeleccionada(notif)}
+                        activa={notificacionSeleccionada?.id === notif.id}
+                      />
+                    ))
+                  )}
+                </div>
+              </Card>
             </div>
 
-            {/* Filtros */}
-            <ModuleFilters
-              filters={[
-                {
-                  label: 'Estado',
-                  options: [
-                    { value: 'TODOS', label: 'Todos' },
-                    { value: 'PENDIENTE_VERIFICACIÓN', label: 'Pendientes' },
-                    { value: 'DISTRIBUIDA', label: 'Leídas' },
-                    { value: 'ARCHIVADA', label: 'Archivadas' }
-                  ],
-                  selected: filtroEstado,
-                  onChange: setFiltroEstado
-                },
-                {
-                  label: 'Urgencia',
-                  options: [
-                    { value: 'TODOS', label: 'Todos' },
-                    { value: 'URGENTE', label: 'Urgentes' }
-                  ],
-                  selected: filtroUrgencia,
-                  onChange: setFiltroUrgencia
-                }
-              ]}
-            />
-
-            {/* Lista de notificaciones */}
-            <div className="divide-y divide-gray-200">
-              {notificacionesPaginadas.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <Inbox className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-semibold">No hay notificaciones</p>
-                </div>
+            {/* Panel derecho: Vista previa */}
+            <div className="lg:col-span-1">
+              {notificacionSeleccionada ? (
+                <VistaPreviaNotificacion notificacion={notificacionSeleccionada} />
               ) : (
-                notificacionesPaginadas.map((notif) => (
-                  <ItemNotificacion
-                    key={notif.id}
-                    notificacion={notif}
-                    seleccionada={seleccionadas.has(notif.id)}
-                    onToggleSeleccion={toggleSeleccion}
-                    onSeleccionar={() => setNotificacionSeleccionada(notif)}
-                    activa={notificacionSeleccionada?.id === notif.id}
-                  />
-                ))
+                <Card className="bg-white border border-gray-200 p-6">
+                  <div className="text-center text-gray-400">
+                    <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-semibold">Selecciona una notificación</p>
+                    <p className="text-xs mt-1">para ver los detalles</p>
+                  </div>
+                </Card>
               )}
             </div>
-          </Card>
-        </div>
+          </div>
 
-        {/* Panel derecho: Vista previa */}
-        <div className="lg:col-span-1">
-          {notificacionSeleccionada ? (
-            <VistaPreviaNotificacion notificacion={notificacionSeleccionada} />
-          ) : (
-            <Card className="bg-white border border-gray-200 p-6">
-              <div className="text-center text-gray-400">
-                <Mail className="w-16 h-16 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-semibold">Selecciona una notificación</p>
-                <p className="text-xs mt-1">para ver los detalles</p>
+          {/* Controles de Paginación */}
+          {notificacionesFiltradas.length > 0 && (
+            <Card className="p-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-sm text-gray-600">
+                  Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, notificacionesFiltradas.length)} de {notificacionesFiltradas.length} notificaciones
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                    disabled={paginaActual === 1 || totalPaginas <= 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                      let pageNum;
+                      if (totalPaginas <= 5) {
+                        pageNum = i + 1;
+                      } else if (paginaActual <= 3) {
+                        pageNum = i + 1;
+                      } else if (paginaActual >= totalPaginas - 2) {
+                        pageNum = totalPaginas - 4 + i;
+                      } else {
+                        pageNum = paginaActual - 2 + i;
+                      }
+                      
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={paginaActual === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setPaginaActual(pageNum)}
+                          className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                          disabled={totalPaginas <= 1}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                    disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </Card>
           )}
-        </div>
-      </div>
-
-      {/* Controles de Paginación */}
-      {notificacionesFiltradas.length > 0 && (
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-gray-600">
-              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, notificacionesFiltradas.length)} de {notificacionesFiltradas.length} notificaciones
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
-                disabled={paginaActual === 1 || totalPaginas <= 1}
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Anterior
-              </Button>
-              
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
-                  let pageNum;
-                  if (totalPaginas <= 5) {
-                    pageNum = i + 1;
-                  } else if (paginaActual <= 3) {
-                    pageNum = i + 1;
-                  } else if (paginaActual >= totalPaginas - 2) {
-                    pageNum = totalPaginas - 4 + i;
-                  } else {
-                    pageNum = paginaActual - 2 + i;
-                  }
-                  
-                  return (
-                    <Button
-                      key={pageNum}
-                      variant={paginaActual === pageNum ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setPaginaActual(pageNum)}
-                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
-                      disabled={totalPaginas <= 1}
-                    >
-                      {pageNum}
-                    </Button>
-                  );
-                })}
-              </div>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
-                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
-              >
-                Siguiente
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </Card>
+        </>
       )}
     </div>
   );

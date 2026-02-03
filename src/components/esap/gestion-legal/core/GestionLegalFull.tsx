@@ -25,6 +25,7 @@ import { ModuleLayout, MenuItem } from '../../shared/ModuleLayout';
 
 // ✅ Context API para Configuraciones Centralizadas
 import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
+import { PermisosProvider } from '../config/PermisosContext';
 
 // Componentes de módulos V3 - DISEÑO UNIFICADO
 import { ModuloDefensaJudicialV3 } from '../modulos/ModuloDefensaJudicialV3';
@@ -186,18 +187,20 @@ export function GestionLegalFull() {
 
   return (
     <ConfiguracionesSIGLProvider>
-      <ModuleLayout
-        moduleName="GESTIÓN LEGAL"
-        moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
-        moduleIcon={<Briefcase className="w-6 h-6" />}
-        moduleColor="#003DA5"
-        menuItems={menuItems}
-        activeSection={vistaActual}
-        onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-        initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
-      >
-        {renderVistaActual()}
-      </ModuleLayout>
+      <PermisosProvider>
+        <ModuleLayout
+          moduleName="GESTIÓN LEGAL"
+          moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
+          moduleIcon={<Briefcase className="w-6 h-6" />}
+          moduleColor="#003DA5"
+          menuItems={menuItems}
+          activeSection={vistaActual}
+          onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
+          initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
+        >
+          {renderVistaActual()}
+        </ModuleLayout>
+      </PermisosProvider>
     </ConfiguracionesSIGLProvider>
   );
 }

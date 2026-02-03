@@ -1202,37 +1202,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={contentTransition}
-              className="px-4 pb-4 pt-4"
+              className="px-4 py-3"
             >
-              {/* COPYRIGHT FOOTER ESAP */}
-              <div className="mb-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 flex-shrink-0">
-                    <ESAPLogo variant="white" className="w-full h-full object-contain" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold leading-tight truncate text-white">
-                      ESAP
-                    </p>
-                    <p className="text-[9px] leading-tight text-white/60 truncate">
-                      Escuela Superior
-                    </p>
-                  </div>
-                </div>
-                <div className="text-[9px] text-white/70 leading-relaxed">
-                  <p className="mb-1">© {new Date().getFullYear()} Todos los derechos reservados</p>
-                  <p className="font-semibold text-white/90">
-                    Titularidad: Escuela Superior de Administración Pública - ESAP
-                  </p>
-                </div>
-              </div>
-
-              {/* Keyboard hint */}
-              <div className="bg-white/5 backdrop-blur-sm rounded-lg p-2 border border-white/10">
-                <div className="flex items-center gap-2 text-white/60 text-xs">
-                  <kbd className="px-2 py-1 bg-white/10 rounded text-[10px] font-mono">⌘B</kbd>
-                  <span className="text-[10px]">Toggle sidebar</span>
-                </div>
+              {/* COPYRIGHT FOOTER ESAP - SIMPLIFICADO */}
+              <div className="text-center">
+                <p className="text-[10px] text-white/70 leading-relaxed">
+                  @Esap 2026 - Todos los derechos reservados
+                </p>
               </div>
             </motion.div>
           ) : (
@@ -1244,7 +1220,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
               transition={contentTransition}
               className="p-2 flex items-center justify-center"
             >
-              <div className="w-8 h-8" title={`© ${new Date().getFullYear()} ESAP - Todos los derechos reservados`}>
+              <div className="w-8 h-8" title="@Esap 2026 - Todos los derechos reservados">
                 <ESAPLogo variant="white" className="w-full h-full object-contain drop-shadow-lg" />
               </div>
             </motion.div>

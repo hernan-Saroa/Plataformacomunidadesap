@@ -24,9 +24,11 @@ import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { toast } from 'sonner@2.0.3';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipos necesarios
-type VistaModulo = 'timeline' | 'calendario' | 'lista';
+type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 
 interface NuevaSolicitudData {
   asunto: string;
@@ -38,6 +40,9 @@ interface NuevaSolicitudData {
 }
 
 export function ModuloTerminosInformesV3() {
+  // ========== PERMISOS ==========
+  const { usuario } = usePermisos();
+  
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
   const [vistaActual, setVistaActual] = useState<VistaModulo>('timeline');
@@ -52,6 +57,180 @@ export function ModuloTerminosInformesV3() {
   const [modalNuevaSolicitudOpen, setModalNuevaSolicitudOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
+  
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'SI-2024-999',
+      codigo: 'SI-2024-999',
+      nombre: 'Informe Gestión Jurídica Vigencia 2024 - Contraloría General de la República',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-15T16:30:00'),
+      usuarioArchivo: 'Dra. Ana María Rodríguez',
+      motivoArchivo: 'Informe entregado exitosamente a la Contraloría. Oficio de recibido CGR-REC-2024-5678. Término cumplido dentro del plazo legal',
+      metadatos: {
+        'Tipo Informe': 'Gestión Jurídica Anual',
+        'Solicitante': 'Contraloría General de la República',
+        'Radicado': 'CGR-REQ-2024-1234',
+        'Responsable': 'Dra. Ana María Rodríguez',
+        'Fecha Solicitud': '10/11/2024',
+        'Fecha Entrega': '15/12/2024',
+        'Término': '35 días',
+        'Cumplimiento': 'Dentro del término legal'
+      }
+    },
+    {
+      id: 'SI-2024-888',
+      codigo: 'SI-2024-888',
+      nombre: 'Respuesta Derecho de Petición sobre contratos 2023-2024 - Ciudadano Juan Pérez',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-20T14:15:00'),
+      usuarioArchivo: 'Dr. Carlos Méndez',
+      motivoArchivo: 'Derecho de petición respondido dentro del término legal de 15 días. Notificación enviada por correo certificado y correo electrónico',
+      metadatos: {
+        'Tipo Informe': 'Derecho de Petición',
+        'Solicitante': 'Juan Pérez González',
+        'Radicado': 'DP-2024-0456',
+        'Responsable': 'Dr. Carlos Méndez',
+        'Fecha Solicitud': '10/11/2024',
+        'Fecha Respuesta': '20/11/2024',
+        'Término Legal': '15 días hábiles',
+        'Estado': 'Respondido en término'
+      }
+    },
+    {
+      id: 'SI-2024-777',
+      codigo: 'SI-2024-777',
+      nombre: 'Informe Procesos Disciplinarios Trimestre III 2024 - Procuraduría General',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-28T10:45:00'),
+      usuarioArchivo: 'Dr. Jorge Silva',
+      motivoArchivo: 'Informe trimestral entregado a Procuraduría. Oficio PGN-REC-2024-3456. Incluye estadísticas y estado de 12 procesos disciplinarios activos',
+      metadatos: {
+        'Tipo Informe': 'Trimestral Procesos Disciplinarios',
+        'Solicitante': 'Procuraduría General de la Nación',
+        'Radicado': 'PGN-REQ-2024-0789',
+        'Responsable': 'Dr. Jorge Silva',
+        'Período': 'Julio - Septiembre 2024',
+        'Fecha Entrega': '28/10/2024',
+        'Total Procesos': '12',
+        'Estado': 'Entregado'
+      }
+    },
+    {
+      id: 'SI-2024-666',
+      codigo: 'SI-2024-666',
+      nombre: 'Concepto Jurídico sobre licitación pública obra civil - Dirección Administrativa',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-15T15:20:00'),
+      usuarioArchivo: 'Dra. Patricia Ruiz',
+      motivoArchivo: 'Concepto jurídico emitido y aprobado por el Director Administrativo. Proceso licitatorio ajustado conforme a las recomendaciones jurídicas',
+      metadatos: {
+        'Tipo Informe': 'Concepto Jurídico',
+        'Solicitante': 'Dirección Administrativa y Financiera',
+        'Radicado Interno': 'CJ-2024-045',
+        'Responsable': 'Dra. Patricia Ruiz',
+        'Tema': 'Licitación Pública - Obra Civil',
+        'Fecha Concepto': '15/09/2024',
+        'Recomendación': 'Favorable con ajustes',
+        'Estado': 'Implementado'
+      }
+    },
+    {
+      id: 'SI-2023-555',
+      codigo: 'SI-2023-555',
+      nombre: 'Informe Estado Procesos Judiciales 2023 - Consejo Superior ESAP',
+      tipo: 'Solicitud de Informe',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-10T11:30:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Informe duplicado. El informe oficial fue radicado bajo código SI-2023-556. Error en el proceso de radicación inicial',
+      metadatos: {
+        'Tipo Informe': 'Estado Procesos Judiciales',
+        'Motivo Eliminación': 'Registro duplicado',
+        'Informe Oficial': 'SI-2023-556',
+        'Fecha Detección': '10/08/2024'
+      }
+    },
+    {
+      id: 'SI-2024-444',
+      codigo: 'SI-2024-444',
+      nombre: 'Respuesta Tutela radicada por docente sobre evaluación docente - Juzgado Laboral',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-22T09:00:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Respuesta a tutela entregada dentro del término de 2 días. Juzgado 5° Laboral de Bogotá. Fallo favorable a la ESAP',
+      metadatos: {
+        'Tipo Informe': 'Respuesta Tutela',
+        'Solicitante': 'Juzgado 5° Laboral del Circuito de Bogotá',
+        'Radicado Judicial': 'T-2024-0123',
+        'Responsable': 'Dr. Luis Gómez',
+        'Fecha Notificación': '20/07/2024',
+        'Fecha Respuesta': '22/07/2024',
+        'Término': '2 días hábiles',
+        'Fallo': 'Favorable a ESAP'
+      }
+    },
+    {
+      id: 'SI-2024-333',
+      codigo: 'SI-2024-333',
+      nombre: 'Certificado de antecedentes disciplinarios para licitación - Empresa ABC S.A.S.',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-18T13:45:00'),
+      usuarioArchivo: 'Dra. Carolina Pérez',
+      motivoArchivo: 'Certificado expedido y enviado al solicitante por correo electrónico. Término de 5 días hábiles cumplido',
+      metadatos: {
+        'Tipo Informe': 'Certificado Antecedentes Disciplinarios',
+        'Solicitante': 'Empresa ABC S.A.S.',
+        'Radicado': 'CERT-2024-089',
+        'Responsable': 'Dra. Carolina Pérez',
+        'Fecha Solicitud': '13/06/2024',
+        'Fecha Expedición': '18/06/2024',
+        'Resultado': 'Sin antecedentes',
+        'Medio Notificación': 'Correo electrónico'
+      }
+    },
+    {
+      id: 'SI-2024-222',
+      codigo: 'SI-2024-222',
+      nombre: 'Informe Cumplimiento Normativa Contratación - Auditoría Externa',
+      tipo: 'Solicitud de Informe',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-05-25T16:10:00'),
+      usuarioArchivo: 'Dr. Roberto Vargas',
+      motivoArchivo: 'Informe de cumplimiento entregado a Auditoría Externa. Evaluación favorable sin hallazgos críticos. Proceso de auditoría cerrado',
+      metadatos: {
+        'Tipo Informe': 'Cumplimiento Normativa Contratación',
+        'Solicitante': 'Revisoría Fiscal - Auditoría Externa',
+        'Radicado': 'AE-2024-012',
+        'Responsable': 'Dr. Roberto Vargas',
+        'Período Evaluado': 'Enero - Abril 2024',
+        'Fecha Entrega': '25/05/2024',
+        'Resultado': 'Favorable sin hallazgos',
+        'Estado Auditoría': 'Cerrada'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar una solicitud archivada
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando solicitud de informe:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Solicitud restaurada exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente una solicitud
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente solicitud:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Solicitud eliminada permanentemente');
+  };
   
   const handleNuevaSolicitud = (data: NuevaSolicitudData) => {
     console.log('📝 Nueva solicitud registrada:', data);
@@ -170,7 +349,8 @@ export function ModuloTerminosInformesV3() {
           options: [
             { label: 'Timeline', icon: <TrendingUp className="w-4 h-4" />, value: 'timeline' },
             { label: 'Calendario', icon: <CalendarDays className="w-4 h-4" />, value: 'calendario' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={[
@@ -318,6 +498,14 @@ export function ModuloTerminosInformesV3() {
       {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} />}
       {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
       {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} />}
+      {vistaActual === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Términos e Informes"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
+      )}
       
       {/* Modal Nueva Solicitud */}
       <ModalNuevaSolicitudInforme

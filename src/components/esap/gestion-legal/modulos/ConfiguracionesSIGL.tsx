@@ -912,7 +912,7 @@ export function ConfiguracionesSIGL() {
                               setEjeAEliminar(eje);
                               setShowModalEliminarEje(true);
                             }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1069,7 +1069,7 @@ export function ConfiguracionesSIGL() {
                               setIndicadorAEliminar(tipo);
                               setShowModalEliminarIndicador(true);
                             }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1212,7 +1212,7 @@ export function ConfiguracionesSIGL() {
                               setRequerimientoAEliminar(tipo);
                               setShowModalEliminarRequerimiento(true);
                             }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1399,7 +1399,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoProceso(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1513,7 +1513,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => eliminarMedioControl(medio.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1595,7 +1595,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoAuto(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1692,7 +1692,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1797,7 +1797,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoExcepcion(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1901,7 +1901,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarCausalEspecifica(causal.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -3075,7 +3075,7 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: { estado: EstadoK
             e.stopPropagation();
             onDelete(estado.id);
           }}
-          className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+          className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
         >
           <Trash2 className="w-4 h-4" />
         </button>

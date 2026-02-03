@@ -35,6 +35,8 @@ import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // TIPOS UNIFICADOS
 type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
@@ -438,6 +440,9 @@ type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
   console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
+  
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
   
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
@@ -1373,7 +1378,7 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]">
                       <Eye className="w-4 h-4" />
                     </Button>
                     {!com.leida && (

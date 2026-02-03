@@ -26,6 +26,8 @@ import { Textarea } from '../../../ui/textarea';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -74,7 +76,10 @@ const getSemaforoColor = (dias: number) => {
 };
 
 export function OrganosControl() {
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('');
@@ -95,6 +100,90 @@ export function OrganosControl() {
   const [modalRespuestaOpen, setModalRespuestaOpen] = useState(false);
   const [modalComentariosOpen, setModalComentariosOpen] = useState(false);
   const [requerimientoSeleccionado, setRequerimientoSeleccionado] = useState<Requerimiento | null>(null);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'REQ-PGN-2023-999',
+      codigo: 'PGN-OF-2023-08765',
+      nombre: 'Solicitud información procesos disciplinarios 2020-2023 - Procuraduría General',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-10T14:30:00'),
+      usuarioArchivo: 'Dra. María Fernández',
+      motivoArchivo: 'Requerimiento respondido completamente y aceptado por el órgano de control. Oficio de respuesta radicado PGN-RESP-2024-001',
+      metadatos: {
+        'Organismo': 'Procuraduría General de la Nación',
+        'Número Oficio': 'PGN-OF-2023-08765',
+        'Responsable': 'Dra. María Fernández',
+        'Fecha Radicación': '15/10/2023',
+        'Fecha Respuesta': '05/12/2024',
+        'Resultado': 'Respondido satisfactoriamente'
+      }
+    },
+    {
+      id: 'REQ-CGR-2023-888',
+      codigo: 'CGR-OF-2023-05432',
+      nombre: 'Auditoría contratos de prestación de servicios 2022-2023 - Contraloría',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-25T10:15:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Auditoría culminada. Informe final de Contraloría recibido sin observaciones ni hallazgos',
+      metadatos: {
+        'Organismo': 'Contraloría General de la República',
+        'Número Oficio': 'CGR-OF-2023-05432',
+        'Responsable': 'Dr. Juan Carlos Pérez',
+        'Tipo Auditoría': 'Contratos',
+        'Fecha Radicación': '20/08/2023',
+        'Resultado': 'Sin hallazgos'
+      }
+    },
+    {
+      id: 'REQ-FGN-2023-777',
+      codigo: 'FGN-OF-2023-09876',
+      nombre: 'Investigación preliminar caso denunciado - Fiscalía',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-10-18T16:45:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Requerimiento duplicado - El caso real está bajo radicado FGN-OF-2023-09877. Error en radicación múltiple',
+      metadatos: {
+        'Organismo': 'Fiscalía General de la Nación',
+        'Número Oficio': 'FGN-OF-2023-09876',
+        'Motivo Eliminación': 'Duplicado'
+      }
+    },
+    {
+      id: 'REQ-PGN-2023-666',
+      codigo: 'PGN-OF-2023-07654',
+      nombre: 'Requerimiento información selección directivos académicos - Procuraduría',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-30T11:20:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Proceso de vigilancia superior cerrado por la Procuraduría. Oficio de cierre recibido el 28/09/2024',
+      metadatos: {
+        'Organismo': 'Procuraduría General de la Nación',
+        'Número Oficio': 'PGN-OF-2023-07654',
+        'Responsable': 'Dra. Ana María López',
+        'Fecha Radicación': '05/06/2023',
+        'Resultado': 'Proceso cerrado - Sin irregularidades'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un requerimiento archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando requerimiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  // ✅ Función para eliminar permanentemente un requerimiento
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente requerimiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // Handler para mover requerimientos entre etapas
   const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
@@ -180,10 +269,11 @@ export function OrganosControl() {
         subtitle="Gestión de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
           options: [
             { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={[
@@ -278,6 +368,16 @@ export function OrganosControl() {
           onDocumentos={handleDocumentos}
           onRespuesta={handleRespuesta}
           onComentarios={handleComentarios}
+        />
+      )}
+
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Órganos de Control"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 

@@ -28,6 +28,9 @@ import {
   BarChart3
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { ModalSIGL } from '../design-system/ModalSIGL';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -199,7 +202,46 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModuloSIGL() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'EXP-999',
+      codigo: 'EXP-DJ-2024-999',
+      nombre: 'Expediente Demanda Laboral - Juan Pérez vs ESAP',
+      tipo: 'Expediente',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-01T16:30:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Proceso finalizado con sentencia favorable. Todos los documentos digitalizados y respaldados en sistema central',
+      metadatos: {
+        'Radicado': 'PJ-2023-045',
+        'Tipo Proceso': 'Defensa Judicial - Laboral',
+        'Total Documentos': '47',
+        'Sentencia': 'Favorable a ESAP',
+        'Fecha Finalización': '01/12/2024',
+        'Responsable': 'Dr. Carlos Mendoza García'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un expediente archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un expediente
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente eliminado permanentemente');
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">

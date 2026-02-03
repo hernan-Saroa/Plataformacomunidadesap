@@ -1,19 +1,31 @@
 /**
- * ModalNuevoProcesoDisciplinario - Modal para crear nuevo proceso disciplinario
- * ✅ Diseño limpio ESAP 2025
- * ✅ Formulario completo con validación
+ * ModalNuevoProcesoDisciplinario - VERSIÓN MEJORADA CON VALIDACIÓN EN TIEMPO REAL
+ * ✅ Hook useFormValidation para validaciones reactivas
+ * ✅ FormField components con indicadores visuales
+ * ✅ Progreso del formulario visible
+ * ✅ Mensajes inline específicos
+ * ✅ Tooltips explicativos
  */
 
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Badge } from '../../../ui/badge';
+import { Card } from '../../../ui/card';
 import { toast } from 'sonner@2.0.3';
 import { 
   Gavel, User, FileText, AlertTriangle, Calendar, 
-  Save, X, Upload, Plus, Building
+  Save, X, Building, Info, CheckCircle
 } from 'lucide-react';
+
+// ✅ Importar sistema de validación
+import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
+import { FormField, FormSection, FormProgress } from '../design-system/FormField';
 import { ModalHeaderClean } from './ModalHeaderClean';
+
+// ✅ Importar hooks responsive
+import { useIsMobile } from '../../../../hooks/useIsMobile';
+import { useKeyboardVisible } from '../../../../hooks/useKeyboardVisible';
 
 interface ModalNuevoProcesoDisciplinarioProps {
   isOpen: boolean;
@@ -27,64 +39,116 @@ export function ModalNuevoProcesoDisciplinario({
   onSubmit 
 }: ModalNuevoProcesoDisciplinarioProps) {
   
-  // Estados del formulario
-  const [formData, setFormData] = useState({
+  // ========== DATOS INICIALES ==========
+  const initialData = {
     investigado: '',
+    identificacion: '',
     cargo: '',
     dependencia: '',
     tipoFalta: 'LEVE',
     descripcionHechos: '',
     investigador: '',
     abogadoAsignado: '',
-    documentosAdjuntos: [] as File[]
-  });
-
-  const [errores, setErrores] = useState<Record<string, string>>({});
-  const [guardando, setGuardando] = useState(false);
-
-  // Validar formulario
-  const validarFormulario = (): boolean => {
-    const nuevosErrores: Record<string, string> = {};
-
-    if (!formData.investigado.trim()) {
-      nuevosErrores.investigado = 'El nombre del investigado es obligatorio';
-    }
-
-    if (!formData.cargo.trim()) {
-      nuevosErrores.cargo = 'El cargo es obligatorio';
-    }
-
-    if (!formData.dependencia.trim()) {
-      nuevosErrores.dependencia = 'La dependencia es obligatoria';
-    }
-
-    if (!formData.descripcionHechos.trim()) {
-      nuevosErrores.descripcionHechos = 'La descripción de hechos es obligatoria';
-    } else if (formData.descripcionHechos.trim().length < 20) {
-      nuevosErrores.descripcionHechos = 'La descripción debe tener al menos 20 caracteres';
-    }
-
-    if (!formData.investigador.trim()) {
-      nuevosErrores.investigador = 'El investigador asignado es obligatorio';
-    }
-
-    setErrores(nuevosErrores);
-    return Object.keys(nuevosErrores).length === 0;
+    fechaApertura: '',
+    observaciones: ''
   };
 
-  // Manejar envío
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ========== REGLAS DE VALIDACIÓN ==========
+  const validationRules = {
+    investigado: [
+      CommonValidations.required('El nombre del investigado es obligatorio'),
+      CommonValidations.minLength(3, 'Ingrese el nombre completo')
+    ],
+    identificacion: [
+      CommonValidations.required('La identificación es obligatoria'),
+      {
+        pattern: /^[0-9]{5,10}$/,
+        message: 'Identificación inválida (5-10 dígitos)'
+      }
+    ],
+    cargo: [
+      CommonValidations.required('El cargo es obligatorio'),
+      CommonValidations.minLength(3, 'Ingrese el cargo completo')
+    ],
+    dependencia: [
+      CommonValidations.required('La dependencia es obligatoria')
+    ],
+    descripcionHechos: [
+      CommonValidations.required('La descripción de hechos es obligatoria'),
+      CommonValidations.minLength(50, 'Describa los hechos con al menos 50 caracteres para un contexto completo')
+    ],
+    investigador: [
+      CommonValidations.required('El investigador asignado es obligatorio')
+    ],
+    fechaApertura: [
+      CommonValidations.required('La fecha de apertura es obligatoria'),
+      CommonValidations.pastDate('La fecha debe ser pasada o actual')
+    ]
+  };
 
-    if (!validarFormulario()) {
-      toast.error('Por favor, complete todos los campos obligatorios');
+  // ========== HOOK DE VALIDACIÓN ==========
+  const {
+    formData,
+    errors,
+    updateField,
+    touchField,
+    validateForm,
+    isFormValid,
+    getFieldState,
+    completedFields,
+    totalFields,
+    resetForm
+  } = useFormValidation(initialData, validationRules);
+
+  const [guardando, setGuardando] = useState(false);
+
+  // ========== OPCIONES DE SELECTS ==========
+  const tiposFalta = [
+    { value: 'LEVE', label: '🟢 Leve - Sanción amonestación' },
+    { value: 'GRAVE', label: '🟡 Grave - Suspensión hasta 30 días' },
+    { value: 'GRAVISIMA', label: '🔴 Gravísima - Destitución' }
+  ];
+
+  const dependenciasESAP = [
+    { value: 'DIRECCION_GENERAL', label: 'Dirección General' },
+    { value: 'SECRETARIA_GENERAL', label: 'Secretaría General' },
+    { value: 'DIR_ADMINISTRATIVA', label: 'Dirección Administrativa y Financiera' },
+    { value: 'DIR_DOCENCIA', label: 'Dirección de Docencia' },
+    { value: 'DIR_INVESTIGACION', label: 'Dirección de Investigación' },
+    { value: 'OFICINA_JURIDICA', label: 'Oficina Jurídica' },
+    { value: 'CONTROL_INTERNO', label: 'Control Interno' },
+    { value: 'TALENTO_HUMANO', label: 'Talento Humano' },
+    { value: 'OTRA', label: 'Otra Dependencia' }
+  ];
+
+  const investigadoresDisponibles = [
+    { value: 'CARLOS_MENDEZ', label: 'Dr. Carlos Méndez Ruiz' },
+    { value: 'ANA_LOPEZ', label: 'Dra. Ana López Sánchez' },
+    { value: 'ROBERTO_GARCIA', label: 'Dr. Roberto García Soto' },
+    { value: 'CONTROL_INTERNO', label: 'Jefe de Control Interno' }
+  ];
+
+  const abogadosDisponibles = [
+    { value: 'DR_CARLOS', label: 'Dr. Carlos Méndez' },
+    { value: 'DRA_ANA', label: 'Dra. Ana María López' },
+    { value: 'DR_ROBERTO', label: 'Dr. Roberto García' }
+  ];
+
+  // ========== HANDLERS ==========
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error('⚠️ Formulario incompleto', {
+        description: 'Revise los campos marcados en rojo',
+        duration: 4000
+      });
       return;
     }
 
     setGuardando(true);
 
     try {
-      // Simular creación
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       const nuevoProceso = {
@@ -93,287 +157,388 @@ export function ModalNuevoProcesoDisciplinario({
         etapa: 'E1_AVOCAMIENTO',
         diasRestantes: 90,
         diasTotales: 90,
+        fechaInicio: formData.fechaApertura || new Date().toISOString().split('T')[0],
         ultimaActuacion: {
           fecha: new Date().toISOString(),
           tipo: 'Auto de apertura',
-          descripcion: 'Auto de apertura de investigación',
-          responsable: formData.abogadoAsignado || 'Control Interno',
+          descripcion: 'Auto de apertura de investigación disciplinaria',
+          responsable: formData.investigador,
           estado: 'ACTIVO'
-        },
-        fechaUltimaActuacion: new Date(),
-        fechaActualizacion: new Date(),
-        documentos: formData.documentosAdjuntos
+        }
       };
 
       if (onSubmit) {
         onSubmit(nuevoProceso);
       }
 
-      toast.success('Proceso disciplinario creado exitosamente', {
-        description: `Proceso ${nuevoProceso.id} en etapa de Avocamiento`
+      toast.success('✅ Proceso disciplinario creado', {
+        description: `Radicado: ${nuevoProceso.id}`,
+        duration: 4000
       });
 
+      resetForm();
       onClose();
-      
-      // Resetear formulario
-      setFormData({
-        investigado: '',
-        cargo: '',
-        dependencia: '',
-        tipoFalta: 'LEVE',
-        descripcionHechos: '',
-        investigador: '',
-        abogadoAsignado: '',
-        documentosAdjuntos: []
-      });
-      setErrores({});
-
     } catch (error) {
-      toast.error('Error al crear el proceso disciplinario');
+      toast.error('❌ Error al guardar', {
+        description: 'Intente nuevamente'
+      });
     } finally {
       setGuardando(false);
     }
   };
 
-  // Manejar cambio en inputs
-  const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    // Limpiar error del campo
-    if (errores[field]) {
-      setErrores(prev => {
-        const nuevos = { ...prev };
-        delete nuevos[field];
-        return nuevos;
-      });
+  const handleCancel = () => {
+    if (completedFields > 0) {
+      if (confirm('¿Desea cancelar? Se perderán los datos ingresados.')) {
+        resetForm();
+        onClose();
+      }
+    } else {
+      onClose();
     }
   };
 
+  // ✅ Hooks responsive
+  const isMobile = useIsMobile();
+  const keyboardVisible = useKeyboardVisible();
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[75vh] overflow-hidden flex flex-col p-0 gap-0">
+    <Dialog open={isOpen} onOpenChange={handleCancel}>
+      <DialogContent 
+        hideCloseButton 
+        className={`
+          w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[900px]
+          ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
+          flex flex-col p-0 gap-0
+          transition-all duration-200
+        `}
+      >
         <DialogTitle className="sr-only">
-          Nuevo Proceso Disciplinario
+          Nuevo Proceso Disciplinario - Validación Mejorada
         </DialogTitle>
         <DialogDescription className="sr-only">
-          Formulario para crear un nuevo proceso disciplinario contra un funcionario
+          Formulario para registrar un nuevo proceso disciplinario con validación en tiempo real
         </DialogDescription>
 
-        {/* Header Limpio ESAP 2025 */}
+        {/* ==================== HEADER ==================== */}
         <ModalHeaderClean
           icono={Gavel}
+          colorIcono="red"
           titulo="Nuevo Proceso Disciplinario"
-          subtitulo="Complete la información del funcionario investigado"
-          colorIcono="blue"
-          onClose={onClose}
+          subtitulo="Registro de investigación disciplinaria con validación en tiempo real"
+          badgePrincipal="AVOCAMIENTO"
+          badges={
+            <Badge className="bg-green-100 text-green-700 font-semibold text-xs">
+              ✅ Validación Reactiva
+            </Badge>
+          }
+          onClose={handleCancel}
         />
 
-        {/* Formulario */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-6">
+        {/* ==================== CONTENIDO CON SCROLL ==================== */}
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
+          <div className="space-y-4 sm:space-y-6">
             
-            {/* SECCIÓN 1: Datos del Investigado */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <User className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-gray-900">Datos del Investigado</h3>
-              </div>
+            {/* ✅ PROGRESO DEL FORMULARIO */}
+            <FormProgress completed={completedFields} total={totalFields} />
 
-              {/* Nombre completo */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Nombre Completo <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.investigado}
-                  onChange={(e) => handleChange('investigado', e.target.value)}
-                  placeholder="Ej: Juan Carlos Pérez López"
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errores.investigado ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                />
-                {errores.investigado && (
-                  <p className="text-sm text-red-600 mt-1">{errores.investigado}</p>
-                )}
+            {/* ✅ BANNER DE PREREQUISITOS */}
+            <Card className="p-4 bg-blue-50 border-blue-300">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-bold mb-2">📋 Antes de continuar, asegúrese de tener:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Datos completos del funcionario investigado (nombre, cargo, dependencia)</li>
+                    <li>Descripción detallada de los hechos que motivan la investigación</li>
+                    <li>Investigador asignado conforme al Decreto 648/2017</li>
+                    <li>Fecha del auto de apertura</li>
+                  </ul>
+                </div>
               </div>
+            </Card>
 
-              {/* Cargo y Dependencia */}
+            {/* ✅ SECCIÓN 1: DATOS DEL INVESTIGADO */}
+            <FormSection
+              title="Datos del Funcionario Investigado"
+              description="Información del servidor público sujeto a investigación"
+              icon={<User />}
+              color="blue"
+            >
+              <FormField
+                name="investigado"
+                label="Nombre Completo del Investigado"
+                type="text"
+                value={formData.investigado}
+                onChange={(val) => updateField('investigado', val)}
+                onBlur={() => touchField('investigado')}
+                required
+                error={errors.investigado}
+                state={getFieldState('investigado')}
+                placeholder="Ej: Juan Carlos Pérez Rodríguez"
+                tooltip="Nombres y apellidos completos del funcionario investigado"
+                icon={<User className="w-4 h-4" />}
+              />
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Cargo <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.cargo}
-                    onChange={(e) => handleChange('cargo', e.target.value)}
-                    placeholder="Ej: Coordinador Académico"
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errores.cargo ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  />
-                  {errores.cargo && (
-                    <p className="text-sm text-red-600 mt-1">{errores.cargo}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Dependencia <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.dependencia}
-                    onChange={(e) => handleChange('dependencia', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errores.dependencia ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">Seleccione...</option>
-                    <option value="Rectoría Nacional">Rectoría Nacional</option>
-                    <option value="Dirección Académica">Dirección Académica</option>
-                    <option value="Dirección Financiera">Dirección Financiera</option>
-                    <option value="Dirección Administrativa">Dirección Administrativa</option>
-                    <option value="Talento Humano">Talento Humano</option>
-                    <option value="Planeación Estratégica">Planeación Estratégica</option>
-                    <option value="Territorial Bogotá">Territorial Bogotá</option>
-                    <option value="Territorial Medellín">Territorial Medellín</option>
-                    <option value="Territorial Cali">Territorial Cali</option>
-                  </select>
-                  {errores.dependencia && (
-                    <p className="text-sm text-red-600 mt-1">{errores.dependencia}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* SECCIÓN 2: Tipo de Falta */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <AlertTriangle className="w-5 h-5 text-orange-600" />
-                <h3 className="font-bold text-gray-900">Tipo de Falta</h3>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Clasificación de la Falta <span className="text-red-500">*</span>
-                </label>
-                <div className="flex gap-3 flex-wrap">
-                  {['LEVE', 'GRAVE', 'GRAVÍSIMA'].map((tipo) => (
-                    <button
-                      key={tipo}
-                      type="button"
-                      onClick={() => handleChange('tipoFalta', tipo)}
-                      className={`px-4 py-2 rounded-lg border-2 font-semibold transition-all ${
-                        formData.tipoFalta === tipo
-                          ? tipo === 'LEVE' 
-                            ? 'bg-green-100 border-green-500 text-green-700'
-                            : tipo === 'GRAVE'
-                            ? 'bg-orange-100 border-orange-500 text-orange-700'
-                            : 'bg-red-100 border-red-500 text-red-700'
-                          : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
-                      }`}
-                    >
-                      {tipo}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* SECCIÓN 3: Descripción de Hechos */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <FileText className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-gray-900">Descripción de los Hechos</h3>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Descripción Detallada <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={formData.descripcionHechos}
-                  onChange={(e) => handleChange('descripcionHechos', e.target.value)}
-                  placeholder="Describa los hechos que motivan el inicio del proceso disciplinario (mínimo 20 caracteres)"
-                  rows={6}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
-                    errores.descripcionHechos ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                <FormField
+                  name="identificacion"
+                  label="Cédula de Ciudadanía"
+                  type="text"
+                  value={formData.identificacion}
+                  onChange={(val) => updateField('identificacion', val)}
+                  onBlur={() => touchField('identificacion')}
+                  required
+                  error={errors.identificacion}
+                  state={getFieldState('identificacion')}
+                  placeholder="Ej: 1234567890"
+                  tooltip="Número de cédula sin puntos ni espacios"
+                  maxLength={10}
+                  showCharCount
                 />
-                <div className="flex justify-between items-center mt-1">
-                  {errores.descripcionHechos && (
-                    <p className="text-sm text-red-600">{errores.descripcionHechos}</p>
-                  )}
-                  <p className="text-xs text-gray-500 ml-auto">
-                    {formData.descripcionHechos.length} caracteres
-                  </p>
+
+                <FormField
+                  name="cargo"
+                  label="Cargo del Investigado"
+                  type="text"
+                  value={formData.cargo}
+                  onChange={(val) => updateField('cargo', val)}
+                  onBlur={() => touchField('cargo')}
+                  required
+                  error={errors.cargo}
+                  state={getFieldState('cargo')}
+                  placeholder="Ej: Director Administrativo"
+                  tooltip="Cargo que desempeña o desempeñaba al momento de los hechos"
+                />
+              </div>
+
+              <FormField
+                name="dependencia"
+                label="Dependencia"
+                type="select"
+                value={formData.dependencia}
+                onChange={(val) => updateField('dependencia', val)}
+                onBlur={() => touchField('dependencia')}
+                required
+                error={errors.dependencia}
+                state={getFieldState('dependencia')}
+                options={dependenciasESAP.map(dep => ({
+                  value: dep.value,
+                  label: dep.label,
+                  icon: <Building className="w-4 h-4" />
+                }))}
+                tooltip="Dependencia a la que pertenece el funcionario"
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 2: TIPO DE FALTA Y HECHOS */}
+            <FormSection
+              title="Tipo de Falta y Descripción de Hechos"
+              description="Clasificación de la conducta y narración de los hechos investigados"
+              icon={<FileText />}
+              color="orange"
+            >
+              <FormField
+                name="tipoFalta"
+                label="Tipo de Falta (Preliminar)"
+                type="select"
+                value={formData.tipoFalta}
+                onChange={(val) => updateField('tipoFalta', val)}
+                onBlur={() => touchField('tipoFalta')}
+                options={tiposFalta.map(tf => ({
+                  value: tf.value,
+                  label: tf.label
+                }))}
+                helpText="Clasificación preliminar según Ley 734/2002. Puede modificarse durante la investigación"
+                icon={<AlertTriangle className="w-4 h-4" />}
+              />
+
+              <FormField
+                name="descripcionHechos"
+                label="Descripción de los Hechos"
+                type="textarea"
+                value={formData.descripcionHechos}
+                onChange={(val) => updateField('descripcionHechos', val)}
+                onBlur={() => touchField('descripcionHechos')}
+                required
+                error={errors.descripcionHechos}
+                state={getFieldState('descripcionHechos')}
+                placeholder="Describa de manera clara y detallada los hechos que motivan la apertura de la investigación disciplinaria, incluyendo fechas, lugares y circunstancias..."
+                tooltip="Narración completa de los hechos presuntamente constitutivos de falta disciplinaria"
+                rows={8}
+                maxLength={3000}
+                showCharCount
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 3: ASIGNACIÓN DE INVESTIGADOR */}
+            <FormSection
+              title="Asignación de Investigador y Abogado"
+              description="Funcionarios responsables de la investigación disciplinaria"
+              icon={<Gavel />}
+              color="purple"
+            >
+              <FormField
+                name="investigador"
+                label="Investigador Asignado"
+                type="select"
+                value={formData.investigador}
+                onChange={(val) => updateField('investigador', val)}
+                onBlur={() => touchField('investigador')}
+                required
+                error={errors.investigador}
+                state={getFieldState('investigador')}
+                options={investigadoresDisponibles.map(inv => ({
+                  value: inv.value,
+                  label: inv.label
+                }))}
+                tooltip="Funcionario designado para adelantar la investigación según Decreto 648/2017"
+              />
+
+              <FormField
+                name="abogadoAsignado"
+                label="Abogado de Apoyo (Opcional)"
+                type="select"
+                value={formData.abogadoAsignado}
+                onChange={(val) => updateField('abogadoAsignado', val)}
+                options={abogadosDisponibles.map(abg => ({
+                  value: abg.value,
+                  label: abg.label
+                }))}
+                helpText="Abogado que brindará apoyo jurídico durante el proceso"
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 4: FECHAS */}
+            <FormSection
+              title="Fechas del Proceso"
+              description="Fechas relevantes para el cómputo de términos"
+              icon={<Calendar />}
+              color="green"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  name="fechaApertura"
+                  label="Fecha de Auto de Apertura"
+                  type="date"
+                  value={formData.fechaApertura}
+                  onChange={(val) => updateField('fechaApertura', val)}
+                  onBlur={() => touchField('fechaApertura')}
+                  required
+                  error={errors.fechaApertura}
+                  state={getFieldState('fechaApertura')}
+                  tooltip="Fecha de expedición del auto que ordena la apertura de la investigación"
+                  icon={<Calendar className="w-4 h-4" />}
+                />
+
+                <div className="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Info className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
+                  <div className="text-xs text-blue-900">
+                    <p className="font-bold">Término inicial: 90 días</p>
+                    <p>Según Ley 734/2002 para etapa de indagación</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            </FormSection>
 
-            {/* SECCIÓN 4: Investigador Asignado */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <Building className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-gray-900">Asignación</h3>
-              </div>
+            {/* ✅ SECCIÓN 5: OBSERVACIONES */}
+            <FormSection
+              title="Observaciones Adicionales"
+              description="Notas internas sobre el proceso disciplinario"
+              icon={<FileText />}
+              color="blue"
+            >
+              <FormField
+                name="observaciones"
+                label="Observaciones"
+                type="textarea"
+                value={formData.observaciones}
+                onChange={(val) => updateField('observaciones', val)}
+                placeholder="Notas internas, antecedentes disciplinarios, recomendaciones del equipo..."
+                helpText="Opcional: Información complementaria visible solo para el equipo de Control Interno"
+                rows={5}
+                maxLength={1500}
+                showCharCount
+              />
+            </FormSection>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Investigador Asignado <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.investigador}
-                  onChange={(e) => handleChange('investigador', e.target.value)}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    errores.investigador ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Seleccione un investigador...</option>
-                  <option value="Dr. Carlos Mendoza">Dr. Carlos Mendoza</option>
-                  <option value="Dra. Patricia Ruiz">Dra. Patricia Ruiz</option>
-                  <option value="Dr. Roberto Castro">Dr. Roberto Castro</option>
-                  <option value="Dra. Sandra Cruz">Dra. Sandra Cruz</option>
-                  <option value="Dr. Ana López">Dr. Ana López</option>
-                  <option value="Dra. Elena Morales">Dra. Elena Morales</option>
-                </select>
-                {errores.investigador && (
-                  <p className="text-sm text-red-600 mt-1">{errores.investigador}</p>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </form>
-
-        {/* Footer con Botones */}
-        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 flex-shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={guardando}
-          >
-            <X className="w-4 h-4 mr-2" />
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={guardando}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {guardando ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Crear Proceso
-              </>
+            {/* ✅ ADVERTENCIA SI FORMULARIO INCOMPLETO */}
+            {!isFormValid && completedFields > 0 && (
+              <Card className="p-4 bg-yellow-50 border-yellow-300">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-900">
+                    <p className="font-bold mb-1">⚠️ Faltan campos obligatorios</p>
+                    <p>Complete los campos marcados con asterisco (*) y resuelva los errores antes de guardar.</p>
+                  </div>
+                </div>
+              </Card>
             )}
-          </Button>
+
+            {/* ✅ CONFIRMACIÓN SI FORMULARIO VÁLIDO */}
+            {isFormValid && (
+              <Card className="p-4 bg-green-50 border-green-300">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-green-900">
+                    <p className="font-bold">✅ Formulario completo y válido</p>
+                    <p>Puede crear el proceso disciplinario ahora.</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* ==================== FOOTER STICKY ==================== */}
+        <div className="flex-shrink-0 px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-white border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="text-xs text-gray-600 text-center sm:text-left">
+            <span className="text-red-500 font-bold">*</span> Campos obligatorios
+            <span className="mx-2">•</span>
+            <span className={isFormValid ? 'text-green-600 font-bold' : 'text-orange-600'}>
+              {completedFields}/{totalFields} completados
+            </span>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={guardando}
+              className="w-full sm:w-auto"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancelar
+            </Button>
+            
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isFormValid || guardando}
+              style={isFormValid && !guardando ? { 
+                background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)' 
+              } : {}}
+              className={`w-full sm:w-auto ${!isFormValid || guardando ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {guardando ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Guardando...
+                </>
+              ) : !isFormValid ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Complete los campos requeridos
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Crear Proceso Disciplinario
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

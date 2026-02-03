@@ -29,13 +29,20 @@ import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-type VistaModulo = 'tabla' | 'tarjetas';
+type VistaModulo = 'tabla' | 'tarjetas' | 'archivados';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema';
 
 export function ModuloAsesoriaJuridicaV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
   
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
@@ -50,12 +57,123 @@ export function ModuloAsesoriaJuridicaV3() {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
   const [consultaSeleccionada, setConsultaSeleccionada] = useState<ConsultaJuridica | null>(null);
 
-  // ✅ Log de configuraciones cargadas
-  useEffect(() => {
-    console.log('🎯 ASESORÍA JURÍDICA - Configuraciones centralizadas cargadas:');
-    console.log('   📊 Estados activos:', estadosActivos.length);
-    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
-  }, [estadosActivos]);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'CJ-2024-999',
+      codigo: 'CJ-2024-999',
+      nombre: 'Concepto Jurídico sobre procedimiento licitación pública obra civil - Dirección Administrativa',
+      tipo: 'Consulta Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-10T15:20:00'),
+      usuarioArchivo: 'Dra. Patricia Ruiz',
+      motivoArchivo: 'Concepto emitido y entregado al área solicitante. Proceso licitatorio ejecutado conforme a las recomendaciones jurídicas. Consulta cerrada satisfactoriamente',
+      metadatos: {
+        'Tema Jurídico': 'Contratación Pública',
+        'Área Solicitante': 'Dirección Administrativa y Financiera',
+        'Funcionario': 'Dr. Carlos Méndez - Director Administrativo',
+        'Abogado': 'Dra. Patricia Ruiz',
+        'Radicado': 'CJ-2024-0345',
+        'Fecha Solicitud': '25/11/2024',
+        'Fecha Concepto': '10/12/2024',
+        'Término': '15 días',
+        'Estado': 'Concepto Emitido'
+      }
+    },
+    {
+      id: 'CJ-2024-888',
+      codigo: 'CJ-2024-888',
+      nombre: 'Consulta sobre terminación contrato docente cátedra por bajo rendimiento - Decanatura',
+      tipo: 'Consulta Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-15T11:30:00'),
+      usuarioArchivo: 'Dr. Jorge Silva',
+      motivoArchivo: 'Concepto jurídico laboral emitido. Procedimiento de terminación ejecutado conforme al concepto. Sin observaciones ni conflictos laborales',
+      metadatos: {
+        'Tema Jurídico': 'Derecho Laboral - Docentes',
+        'Área Solicitante': 'Decanatura Facultad de Administración',
+        'Funcionario': 'Dra. Ana López - Decana',
+        'Abogado': 'Dr. Jorge Silva',
+        'Radicado': 'CJ-2024-0278',
+        'Fecha Solicitud': '05/11/2024',
+        'Fecha Concepto': '15/11/2024',
+        'Término': '10 días',
+        'Normativa': 'Decreto 1279/2002, Estatuto Docente ESAP'
+      }
+    },
+    {
+      id: 'CJ-2024-777',
+      codigo: 'CJ-2024-777',
+      nombre: 'Concepto sobre responsabilidad fiscal por pérdida activos fijos - Control Interno',
+      tipo: 'Consulta Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-20T14:45:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Concepto sobre procedimiento de responsabilidad fiscal emitido. OCI inició proceso administrativo conforme al concepto jurídico',
+      metadatos: {
+        'Tema Jurídico': 'Responsabilidad Fiscal',
+        'Área Solicitante': 'Oficina de Control Interno',
+        'Funcionario': 'Dr. Roberto Vargas - Jefe OCI',
+        'Abogado': 'Dr. Luis Gómez',
+        'Radicado': 'CJ-2024-0234',
+        'Fecha Solicitud': '10/10/2024',
+        'Fecha Concepto': '20/10/2024',
+        'Término': '10 días',
+        'Normativa': 'Ley 610/2000, Ley 1474/2011'
+      }
+    },
+    {
+      id: 'CJ-2024-666',
+      codigo: 'CJ-2024-666',
+      nombre: 'Consulta sobre reintegro funcionario con incapacidad médica prolongada - Talento Humano',
+      tipo: 'Consulta Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-25T10:15:00'),
+      usuarioArchivo: 'Dra. Carolina Pérez',
+      motivoArchivo: 'Concepto laboral emitido. Procedimiento de reintegro ejecutado sin novedades. Funcionario reintegrado con restricciones médicas',
+      metadatos: {
+        'Tema Jurídico': 'Derecho Laboral - Incapacidades',
+        'Área Solicitante': 'Dirección de Talento Humano',
+        'Funcionario': 'Dra. María Rodríguez - Directora TH',
+        'Abogado': 'Dra. Carolina Pérez',
+        'Radicado': 'CJ-2024-0189',
+        'Fecha Solicitud': '15/09/2024',
+        'Fecha Concepto': '25/09/2024',
+        'Término': '10 días',
+        'Normativa': 'Ley 100/1993, Decreto 2463/2001'
+      }
+    },
+    {
+      id: 'CJ-2023-555',
+      codigo: 'CJ-2023-555',
+      nombre: 'Concepto sobre derechos patrimoniales software desarrollado por funcionarios - Sistemas',
+      tipo: 'Consulta Jurídica',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-10T09:00:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Consulta duplicada. El concepto definitivo fue emitido bajo radicado CJ-2023-556. Error en el proceso de radicación inicial',
+      metadatos: {
+        'Tema Jurídico': 'Propiedad Intelectual',
+        'Motivo Eliminación': 'Registro duplicado',
+        'Concepto Oficial': 'CJ-2023-556',
+        'Fecha Detección': '10/08/2024'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar una consulta archivada
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando consulta jurídica:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Consulta restaurada exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente una consulta
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente consulta:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Consulta eliminada permanentemente');
+  };
 
   const consultasFiltradas = useMemo(() => {
     let resultado = [...consultasJuridicasMock];
@@ -133,6 +251,15 @@ export function ModuloAsesoriaJuridicaV3() {
       <ModuleHeader
         title="Asesoría Jurídica"
         subtitle="Seguimiento a consultas y términos de respuesta"
+        toggleView={{
+          current: tipoVista,
+          onChange: (view) => setTipoVista(view as VistaModulo),
+          options: [
+            { label: 'Tabla', icon: <Columns3 className="w-4 h-4" />, value: 'tabla' },
+            { label: 'Tarjetas', icon: <List className="w-4 h-4" />, value: 'tarjetas' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
+          ]
+        }}
         buttons={[
           {
             label: 'Nueva Consulta',
@@ -259,7 +386,7 @@ export function ModuloAsesoriaJuridicaV3() {
       />
 
       {/* Tabla o Tarjetas */}
-      {tipoVista === 'tabla' ? (
+      {tipoVista === 'tabla' && (
         <TablaConsultas 
           consultas={consultasFiltradas}
           orden={orden}
@@ -267,10 +394,19 @@ export function ModuloAsesoriaJuridicaV3() {
           onOrdenar={handleOrdenar}
           onAbrirExpediente={handleAbrirExpediente}
         />
-      ) : (
+      )}
+      {tipoVista === 'tarjetas' && (
         <TarjetasConsultas 
           consultas={consultasFiltradas}
           onAbrirExpediente={handleAbrirExpediente}
+        />
+      )}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Asesoría Jurídica"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 
