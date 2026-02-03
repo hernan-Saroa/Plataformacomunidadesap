@@ -23,7 +23,18 @@ interface ModalComunicacionesProps {
   expediente: ExpedienteJudicial;
 }
 
-// Mocks eliminados - Datos se cargarán desde API cuando esté disponible
+// Datos mock de comunicaciones (REDUCIDOS)
+const comunicacionesMock = [
+  {
+    id: 1,
+    usuario: 'Usuario Ejemplo',
+    rol: 'Abogado',
+    mensaje: 'Mensaje de ejemplo para referencia',
+    fecha: '22/12/2024 14:35',
+    avatar: 'UE',
+    tipo: 'update'
+  },
+];
 
 export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');

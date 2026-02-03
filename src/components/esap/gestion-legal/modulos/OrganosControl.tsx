@@ -66,6 +66,24 @@ export interface Requerimiento {
   docInternos?: number;
 }
 
+// Datos mock - REDUCIDO
+const MOCK_DATA: Requerimiento[] = [
+  {
+    id: 'REQ-CGR-2024-001',
+    numeroOficio: 'CGR-OF-2024-00125',
+    organismo: 'CGR',
+    asunto: 'Solicitud de información sobre contratación 2024',
+    responsable: 'Dra. María Fernández',
+    fechaRadicacion: new Date('2024-12-10'),
+    fechaVencimiento: new Date('2024-12-30'),
+    diasRestantes: 5,
+    diasTotales: 20,
+    etapa: 'RESPUESTA',
+    ultimaActuacion: 'Proyecto de respuesta en revisión',
+    documentos: 8
+  }
+];
+
 // Función auxiliar para colores de semáforo
 const getSemaforoColor = (dias: number) => {
   if (dias < 0) return '#DC2626';
@@ -945,11 +963,313 @@ function VistaLista({
               onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
               disabled={paginaActual === totalPaginas}
             >
-              <ChevronRight className="w-4 h-4" />
+              <FileCheck className="w-4 h-4 text-gray-600" />
+              <span>Documentos</span>
+            </button>
+
+            <button
+              onClick={() => {
+                onRespuesta(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <Send className="w-4 h-4 text-gray-600" />
+              <span>Redactar Respuesta</span>
+            </button>
+
+            <div className="border-t border-gray-100 my-1" />
+
+            <button
+              onClick={() => {
+                onComentarios(req);
+                setIsOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 transition-colors"
+            >
+              <MessageSquare className="w-4 h-4 text-gray-600" />
+              <span>Comentarios</span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Modal Nuevo Requerimiento
+function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
+  const [numeroOficio, setNumeroOficio] = useState('');
+  const [organismo, setOrganismo] = useState('');
+  const [asunto, setAsunto] = useState('');
+  const [responsable, setResponsable] = useState('');
+  const [fechaRadicacion, setFechaRadicacion] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [etapa, setEtapa] = useState('RECIBIDO');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-[95vw] max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Nuevo Requerimiento"
+          subtitulo="Registro de requerimiento de órgano de control"
+          icono={Building2}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 lg:p-8 space-y-5 lg:space-y-6">
+          {/* Grid de 2 columnas en pantallas grandes */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Número de Oficio</label>
+              <Input
+                value={numeroOficio}
+                onChange={(e) => setNumeroOficio(e.target.value)}
+                placeholder="Ej. CGR-OF-2024-00125"
+                className="text-base"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Organismo</label>
+              <Input
+                value={organismo}
+                onChange={(e) => setOrganismo(e.target.value)}
+                placeholder="Ej. CGR"
+                className="text-base"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Asunto</label>
+            <Textarea
+              value={asunto}
+              onChange={(e) => setAsunto(e.target.value)}
+              placeholder="Ej. Solicitud de información sobre contratación 2024"
+              rows={4}
+              className="w-full text-base"
+            />
+          </div>
+          
+          <div>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Responsable</label>
+            <Input
+              value={responsable}
+              onChange={(e) => setResponsable(e.target.value)}
+              placeholder="Ej. Dra. María Fernández"
+              className="text-base"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Radicación</label>
+              <Input
+                type="date"
+                value={fechaRadicacion}
+                onChange={(e) => setFechaRadicacion(e.target.value)}
+                className="text-base"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Vencimiento</label>
+              <Input
+                type="date"
+                value={fechaVencimiento}
+                onChange={(e) => setFechaVencimiento(e.target.value)}
+                className="text-base"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-bold text-gray-700 block mb-2">Etapa</label>
+            <select
+              value={etapa}
+              onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
+              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="RECIBIDO">Recibido</option>
+              <option value="ANALISIS">Análisis</option>
+              <option value="RESPUESTA">Respuesta</option>
+              <option value="ENVIADO">Enviado</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 lg:p-6 flex gap-3 justify-end">
+          <Button onClick={onClose} variant="outline" className="px-6 py-3 text-base">
+            Cancelar
+          </Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            className="px-6 py-3 text-base"
+            onClick={() => {
+              toast.success('Requerimiento creado correctamente');
+              onClose();
+            }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Crear Requerimiento
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Ver Requerimiento
+function ModalVerRequerimiento({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo={requerimiento.id}
+          subtitulo={`${requerimiento.organismo} • ${requerimiento.numeroOficio}`}
+          icono={Eye}
+          colorIcono="blue"
+          badgePrincipal={requerimiento.etapa}
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">ID Requerimiento</label>
+              <p className="text-sm font-bold mt-1" style={{ color: '#003DA5' }}>{requerimiento.id}</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Número de Oficio</label>
+              <p className="text-sm font-bold mt-1">{requerimiento.numeroOficio}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Organismo</label>
+              <Badge className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
+                {requerimiento.organismo}
+              </Badge>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Etapa</label>
+              <Badge className="mt-1" variant="outline">
+                {requerimiento.etapa}
+              </Badge>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Asunto</label>
+            <p className="text-sm mt-1 font-medium">{requerimiento.asunto}</p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Responsable</label>
+            <div className="flex items-center gap-2 mt-1">
+              <Avatar className="w-8 h-8">
+                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                  {requerimiento.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-medium">{requerimiento.responsable}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Radicación</label>
+              <p className="text-sm mt-1">{requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Vencimiento</label>
+              <p className="text-sm mt-1">{requerimiento.fechaVencimiento.toLocaleDateString('es-CO')}</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Días Restantes</label>
+            <Badge className="mt-1 text-sm flex items-center gap-2 w-fit" style={{ 
+              color: getSemaforoColor(requerimiento.diasRestantes),
+              backgroundColor: `${getSemaforoColor(requerimiento.diasRestantes)}20`,
+              border: `1px solid ${getSemaforoColor(requerimiento.diasRestantes)}`
+            }}>
+              <div className="w-3 h-3 rounded-full" style={{ background: getSemaforoColor(requerimiento.diasRestantes) }} />
+              {Math.abs(requerimiento.diasRestantes)} días {requerimiento.diasRestantes < 0 ? 'vencido' : 'restantes'}
+            </Badge>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase">Última Actuación</label>
+            <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
+              <p className="text-sm">{requerimiento.ultimaActuacion || 'Sin actuaciones'}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">{requerimiento.documentos || 0}</p>
+              <p className="text-xs text-gray-500 mt-1">Documentos</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">{requerimiento.diasTotales - requerimiento.diasRestantes}</p>
+              <p className="text-xs text-gray-500 mt-1">Días transcurridos</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gray-50 border">
+              <p className="text-2xl font-bold text-gray-700">
+                {Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100)}%
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Progreso</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+          <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar PDF
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Documentos
+function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const documentosMock = [
+    { nombre: 'Oficio Original CGR-OF-2024-00125.pdf', fecha: new Date(), tipo: 'PDF', tamaño: '2.4 MB' },
+    { nombre: 'Anexo 1 - Contratos 2024.xlsx', fecha: new Date(), tipo: 'EXCEL', tamaño: '1.1 MB' },
+    { nombre: 'Respuesta Preliminar.docx', fecha: new Date(), tipo: 'WORD', tamaño: '850 KB' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Documentos del Requerimiento"
+          subtitulo={`${requerimiento.id} • ${requerimiento.documentos || 0} archivos`}
+          icono={FileText}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Total de documentos: <span className="font-bold">{requerimiento.documentos || 0}</span>
+            </p>
+            <Button size="sm" style={{ background: '#003DA5', color: '#FFFFFF' }}>
+              <Upload className="w-4 h-4 mr-2" />
+              Cargar Documento
             </Button>
           </div>
         </div>
-      )}
-    </Card>
+      </Card>
+    </div>
   );
 }

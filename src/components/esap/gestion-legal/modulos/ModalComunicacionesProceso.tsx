@@ -234,6 +234,9 @@ export function ModalComunicacionesProceso({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">
+          Comunicaciones del Expediente {expedienteId}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Feed de comunicaciones del expediente {expedienteId} con timeline de mensajes enviados y recibidos
         </DialogDescription>

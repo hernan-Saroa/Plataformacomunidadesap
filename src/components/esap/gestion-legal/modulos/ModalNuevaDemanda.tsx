@@ -8,9 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Scale, Users, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Phone, Mail, Briefcase } from 'lucide-react';
-import { Card } from '../../../ui/card';
-import { Badge } from '../../../ui/badge';
+import { Scale, Users, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Phone, Mail, Briefcase, Clock } from 'lucide-react';
 import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -67,7 +65,10 @@ export interface NuevaDemandaData {
   ciudad: string;
   departamento: string;
   fechaNotificacion: string;
+  horaNotificacion: string; // ✅ NUEVO: Hora de notificación (HH:mm)
   fechaVencimiento: string;
+  horaVencimiento: string; // ✅ NUEVO: Hora de vencimiento (HH:mm)
+  tipoDias: 'habiles' | 'calendario'; // ✅ NUEVO: Tipo de conteo de días
   abogadoAsignado: string;
   etapa: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
   pretensiones: string;
@@ -100,6 +101,7 @@ const MEDIOS_CONTROL = [
 ];
 
 // Tipos de Procesos Judiciales ahora vienen de ConfiguracionesSIGLContext
+// Tipos de Procesos Judiciales y Medios de Control configurables desde Configuraciones SIGL
 const TIPOS_PROCESOS_JUDICIALES = [
   { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
   { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
@@ -157,6 +159,9 @@ const DEPARTAMENTOS = [
 
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
   // const [formData, setFormData] = useState<NuevaDemandaData>(INITIAL_FORM_DATA);
+  // ✅ Obtener Medios de Control y Tipos de Procesos desde Context API
+  const { mediosControlActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+  
   const [formData, setFormData] = useState<NuevaDemandaData>({
     numeroRadicado: '',
     medioControl: '',
@@ -169,7 +174,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     ciudad: '',
     departamento: '',
     fechaNotificacion: '',
+    horaNotificacion: '08:00', // ✅ Hora por defecto: 8:00 AM
     fechaVencimiento: '',
+    horaVencimiento: '17:00', // ✅ Hora por defecto: 5:00 PM
+    tipoDias: 'habiles', // ✅ Predefinido: días hábiles
     abogadoAsignado: '',
     etapa: 'NOTIFICADA',
     pretensiones: '',
@@ -569,7 +577,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       ciudad: '',
       departamento: '',
       fechaNotificacion: '',
+      horaNotificacion: '08:00',
       fechaVencimiento: '',
+      horaVencimiento: '17:00',
+      tipoDias: 'habiles',
       abogadoAsignado: '',
       etapa: 'NOTIFICADA',
       pretensiones: '',
@@ -681,9 +692,13 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                       }`}
                   >
                     <option value="">Seleccione...</option>
-                    {MEDIOS_CONTROL.map(medio => (
-                      <option key={medio} value={medio}>{medio}</option>
-                    ))}
+                    {mediosControlActivos && mediosControlActivos.length > 0 ? (
+                      mediosControlActivos.map(medio => (
+                        <option key={medio.id} value={medio.nombre}>{medio.nombre}</option>
+                      ))
+                    ) : (
+                      <option value="" disabled>No hay medios de control configurados</option>
+                    )}
                   </select>
                   {errors.medioControl && (
                     <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -1500,8 +1515,8 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                 <Calendar className="w-5 h-5 text-green-600" />
                 FECHAS Y ASIGNACIÓN
               </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Fecha Notificación */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -1524,6 +1539,27 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   )}
                 </div>
 
+                {/* ✅ NUEVO: Hora de Notificación */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-green-600" />
+                    Hora de Notificación <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.horaNotificacion}
+                    onChange={(e) => handleInputChange('horaNotificacion', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                      errors.horaNotificacion 
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50' 
+                        : 'border-gray-300 focus:ring-blue-500'
+                    }`}
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    ⚖️ Los plazos legales consideran fecha <strong>Y hora</strong>
+                  </p>
+                </div>
+
                 {/* Fecha Vencimiento */}
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
@@ -1539,8 +1575,81 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
                   />
                 </div>
 
+                {/* ✅ NUEVO: Hora de Vencimiento */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-green-600" />
+                    Hora de Vencimiento
+                  </label>
+                  <input
+                    type="time"
+                    value={formData.horaVencimiento}
+                    onChange={(e) => handleInputChange('horaVencimiento', e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    ⏰ Ej: Si notificación fue a las 14:30, vencimiento será a las 14:30
+                  </p>
+                </div>
+
+                {/* ✅ NUEVO: Tipo de Días (Hábiles o Calendario) */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4" style={{ color: '#003DA5' }} />
+                    Conteo de Términos Procesales
+                  </label>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex gap-8">
+                      <label className="flex items-center gap-2.5 cursor-pointer hover:bg-white px-3 py-2 rounded-lg transition-colors">
+                        <input
+                          type="radio"
+                          name="tipoDias"
+                          value="habiles"
+                          checked={formData.tipoDias === 'habiles'}
+                          onChange={(e) => handleInputChange('tipoDias', 'habiles')}
+                          className="w-4 h-4"
+                          style={{ accentColor: '#003DA5' }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">📅</span>
+                          <div>
+                            <span className="text-sm font-bold text-gray-900 block">Días Hábiles</span>
+                            <span className="text-xs text-gray-600">Excluye sábados, domingos y festivos</span>
+                          </div>
+                        </div>
+                      </label>
+                      <label className="flex items-center gap-2.5 cursor-pointer hover:bg-white px-3 py-2 rounded-lg transition-colors">
+                        <input
+                          type="radio"
+                          name="tipoDias"
+                          value="calendario"
+                          checked={formData.tipoDias === 'calendario'}
+                          onChange={(e) => handleInputChange('tipoDias', 'calendario')}
+                          className="w-4 h-4"
+                          style={{ accentColor: '#003DA5' }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">📆</span>
+                          <div>
+                            <span className="text-sm font-bold text-gray-900 block">Días Calendario</span>
+                            <span className="text-xs text-gray-600">Conteo continuo todos los días</span>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1.5">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>
+                      {formData.tipoDias === 'habiles' 
+                        ? 'Predefinido: Los términos procesales en Colombia se cuentan generalmente en días hábiles (Art. 121 CPACA)' 
+                        : 'Los términos en días calendario son de uso excepcional, verificar norma aplicable'}
+                    </span>
+                  </p>
+                </div>
+
                 {/* Abogado Asignado */}
-                <div className="lg:col-span-1">
+                <div className="md:col-span-2">{/* Ocupa toda la fila */}
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     Abogado Responsable <span className="text-red-600">*</span>
                   </label>

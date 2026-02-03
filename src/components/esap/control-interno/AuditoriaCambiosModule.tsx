@@ -38,6 +38,9 @@ import { Button } from '../../ui/button';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ============ TIPOS ============
 
 interface Auditoria {
@@ -768,7 +771,7 @@ function AuditoriaCambiosModule() {
   }, [auditorias]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6">
+    <Container4K>
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* HEADER */}
@@ -860,7 +863,7 @@ function AuditoriaCambiosModule() {
           />
         )}
       </div>
-    </div>
+    </Container4K>
   );
 }
 

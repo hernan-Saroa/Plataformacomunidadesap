@@ -1,21 +1,25 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PLANIFICACIÓN - MÓDULO PREMIUM V3.0
+ * PLANIFICACIÓN OCIG - MÓDULOS SEPARADOS V4.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Módulo corporativo premium para gestión del ciclo de planificación de auditorías
+ * 🎯 ESTRUCTURA MODULAR:
+ * Este componente se divide en DOS módulos independientes:
  * 
- * CARACTERÍSTICAS PREMIUM:
- * - HeaderModuloCIG unificado
- * - Dashboard con 6 KPIs analíticos
- * - Filtros avanzados por año, estado, área
- * - 3 Tabs: Plan Anual, Universo Auditable, Programa Anual
- * - Diseño corporativo ESAP
- * - Mobile-first responsive
- * - Animaciones suaves
+ * 1. **UNIVERSO AUDITABLE** (con Programa Anual):
+ *    - Tab 1: Universo Auditable - DÓNDE se puede auditar (45 procesos)
+ *    - Tab 2: Programa Anual - CUÁNDO auditar (16 calendarizadas)
  * 
- * ESTÁNDAR: Nivel Premium - Igual a todos los módulos CIG
- * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
+ * 2. **PLAN OPERATIVO** (independiente):
+ *    - Plan Operativo - QUÉ procesos se auditarán (24 auditorías)
+ * 
+ * 🔄 INTEGRACIÓN CON OTROS MÓDULOS:
+ *    - Kanban de Auditorías (ejecución)
+ *    - Planes de Mejoramiento (hallazgos y acciones)
+ *    - Expedientes (archivo documental)
+ *    - Listas de Chequeo (requisitos digitales)
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -27,7 +31,7 @@ import {
 } from 'lucide-react';
 
 // Componentes del sistema
-import { PlanAnualModule } from './PlanAnualModule';
+import { PlanAnualModuleMejorado } from './PlanAnualModuleMejorado';
 import { UniversoAuditorias } from './UniversoAuditorias';
 import { ProgramaAnualCIG } from './ProgramaAnualCIG';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
@@ -43,8 +47,13 @@ import { Permissions } from '../../../enums/permissions';
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
+type VistaModulo = 'universo-programa' | 'plan-operativo';
 type TabActiva = 'plan-anual' | 'universo' | 'programa';
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'PUBLICADO';
+
+interface PlanificacionModuleProps {
+  vista?: VistaModulo; // 'universo-programa' o 'plan-operativo'
+}
 
 interface FiltrosAvanzados {
   año: number;
@@ -86,11 +95,13 @@ const ESTADISTICAS_MOCK: EstadisticasGlobales = {
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-export function PlanificacionModuleRediseno() {
+export function PlanificacionModuleRediseno({ vista = 'universo-programa' }: PlanificacionModuleProps) {
   // Hooks para notificaciones (las notificaciones de auditoría creada se manejan automáticamente en el backend)
   const { user } = useAuth();
+  // Determinar tab inicial según la vista
+  const tabInicial: TabActiva = vista === 'plan-operativo' ? 'plan-anual' : 'universo';
   
-  const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
+  const [tabActiva, setTabActiva] = useState<TabActiva>(tabInicial);
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [modalNuevaAuditoriaOpen, setModalNuevaAuditoriaOpen] = useState(false);
   const [estadisticas, setEstadisticas] = useState<EstadisticasGlobales>(ESTADISTICAS_MOCK);
@@ -212,6 +223,19 @@ export function PlanificacionModuleRediseno() {
     } finally {
       setLoadingEstadisticas(false);
     }
+  }
+  // Handler para crear auditoría
+  const handleCrearAuditoria = async (data: AuditoriaUnificadaFormData) => {
+    console.log('📝 Nueva auditoría OCIG desde Planeación Operativa:', data);
+    
+    // Simulación de delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    toast.success('✅ Auditoría OCIG creada exitosamente', {
+      description: `"${data.titulo}" ha sido agregada al Plan Operativo ${data.planAnualAño || 2025}`
+    });
+    
+    setModalNuevaAuditoriaOpen(false);
   };
 
   // Cargar estadísticas desde la BD
@@ -533,7 +557,7 @@ export function PlanificacionModuleRediseno() {
     },
     {
       id: 'plan-anual' as TabActiva,
-      label: 'Plan Anual',
+      label: 'Plan Operativo',
       icon: <ClipboardList className="w-4 h-4" />,
       descripcion: 'Define QUÉ procesos se auditarán - Selección de auditorías a ejecutar',
       badge: estadisticas.totalPlanesAnuales
@@ -547,7 +571,21 @@ export function PlanificacionModuleRediseno() {
     }
   ];
 
-  const tabActual = tabs.find(t => t.id === tabActiva);
+  // Filtrar tabs según la vista del módulo
+  const tabsVisibles = vista === 'plan-operativo' 
+    ? tabs.filter(t => t.id === 'plan-anual') // Solo Plan Operativo
+    : tabs.filter(t => t.id === 'universo' || t.id === 'programa'); // Universo + Programa
+
+  const tabActual = tabsVisibles.find(t => t.id === tabActiva);
+
+  // Determinar título y subtítulo según la vista
+  const tituloModulo = vista === 'plan-operativo' 
+    ? 'Plan Operativo OCIG' 
+    : 'Universo Auditable';
+  
+  const subtituloModulo = vista === 'plan-operativo'
+    ? 'Gestión del Plan Operativo - QUÉ procesos se auditarán'
+    : 'Identificación del Universo Auditable y Programación Anual';
 
   return (
     <div className="flex flex-col bg-gray-50">
@@ -557,8 +595,8 @@ export function PlanificacionModuleRediseno() {
       <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <HeaderModuloCIG
-            titulo="Planificación de Auditorías"
-            subtitulo="Gestión del ciclo completo de planificación anual de auditorías"
+            titulo={tituloModulo}
+            subtitulo={subtituloModulo}
           />
         </div>
 
@@ -687,7 +725,7 @@ export function PlanificacionModuleRediseno() {
       <div className="shrink-0 bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6">
           <div className="flex gap-1 overflow-x-auto scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'thin' }}>
-            {tabs.map((tab) => (
+            {tabsVisibles.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setTabActiva(tab.id)}
@@ -738,22 +776,9 @@ export function PlanificacionModuleRediseno() {
             transition={{ duration: 0.2 }}
             className="min-h-full"
           >
-            {tabActiva === 'plan-anual' && (
-              <PlanAnualModule 
-                onPlanChange={cargarEstadisticas}
-                filtros={filtros}
-              />
-            )}
-            {tabActiva === 'universo' && (
-              <UniversoAuditorias 
-                filtros={filtros}
-              />
-            )}
-            {tabActiva === 'programa' && (
-              <ProgramaAnualCIG 
-                filtros={filtros}
-              />
-            )}
+            {tabActiva === 'plan-anual' && <PlanAnualModuleMejorado />}
+            {tabActiva === 'universo' && <UniversoAuditorias />}
+            {tabActiva === 'programa' && <ProgramaAnualCIG />}
           </motion.div>
         </AnimatePresence>
       </div>

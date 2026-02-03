@@ -22,8 +22,6 @@ import {
   GripVertical, Eye, EyeOff, Settings, TrendingUp, Bell,
   ArrowRight, CheckCircle2, Info, Palette, Hash, Timer
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import {
   cargarTablerosKanban,
   crearEtapa,
@@ -36,6 +34,42 @@ import {
 } from '@/services/tableros-kanban.service';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { toast } from 'sonner@2.0.3';
+import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { ResponsiveHeader } from '@/components/ui';
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIPOS
+// ════════════════════════════════════════════════════════════════════════════
+
+interface EtapaKanban {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  orden: number;
+  color: string;
+  tiempoSLA: number; // días
+  limiteWIP: number | null; // null = sin límite
+  visible: boolean;
+  notificarVencimiento: boolean;
+  diasAnticipacionAlerta: number;
+  estado: 'inicial' | 'intermedia' | 'final';
+  permitirRetroceso: boolean;
+}
+
+interface ConfiguracionTablero {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  tipo: 'auditorias' | 'planes_mejoramiento';
+  etapas: EtapaKanban[];
+  activo: boolean;
+}
 
 type VistaConfig = 'etapas' | 'tiempos' | 'limites' | 'transiciones';
 
@@ -94,7 +128,7 @@ export function ConfiguracionKanbanModule() {
   }
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K>
       {/* Header con selector de tablero */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -212,7 +246,7 @@ export function ConfiguracionKanbanModule() {
           }}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 

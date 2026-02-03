@@ -28,6 +28,7 @@ import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
 import { Input } from '../../../ui/input';
 import type { ProcesoDisciplinario } from '../core/types';
+import { procesosDisciplinariosMock } from '../data/datosProcesosDisciplinarios';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
@@ -668,9 +669,10 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa }: T
   };
   const semaforo = getSemaforo(proceso.diasRestantes);
 
-  const porcentajeTiempo = Math.min(100, Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100));
+  // const semaforo = getSemaforoColor(proceso.diasRestantes);
+  const porcentajeTiempo = Math.round(((proceso.diasTotales - proceso.diasRestantes) / proceso.diasTotales) * 100);
+  const ultimaActuacion = proceso.ultimaActuacion?.descripcion || proceso.hechos || `Proceso en etapa de ${proceso.etapa}`;
 
-  const ultimaActuacion = proceso.ultimaActuacion || 'Sin actuaciones registradas';
 
   // Adaptador para modales de gestión legal que esperan "ExpedienteJudicial"
   const expedienteParaModales = {

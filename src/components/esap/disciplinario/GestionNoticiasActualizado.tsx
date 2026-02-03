@@ -59,11 +59,9 @@ interface NoticiaDisciplinaria {
   historialAuditoria: AccionAuditoria[];
 }
 
-// ==================== MOCK DATA ====================
+// ==================== MOCK DATA - REDUCIDO ====================
 const PROFESIONALES_MOCK: Profesional[] = [
-  { id: '1', nombre: 'Juan Carlos Pérez', cargo: 'Profesional Especializado', email: 'juan.perez@esap.edu.co', procesosAsignados: 8, capacidadMaxima: 12 },
-  { id: '2', nombre: 'María Torres Silva', cargo: 'Profesional Universitario', email: 'maria.torres@esap.edu.co', procesosAsignados: 6, capacidadMaxima: 10 },
-  { id: '3', nombre: 'Carlos Mendoza López', cargo: 'Profesional Senior', email: 'carlos.mendoza@esap.edu.co', procesosAsignados: 10, capacidadMaxima: 15 },
+  { id: '1', nombre: 'Juan Carlos Pérez', cargo: 'Profesional Especializado', email: 'juan.perez@esap.edu.co', procesosAsignados: 8, capacidadMaxima: 12 }
 ];
 
 const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
@@ -96,52 +94,6 @@ const MOCK_NOTICIAS: NoticiaDisciplinaria[] = [
         observaciones: 'Noticia radicada inicialmente'
       }
     ]
-  },
-  {
-    id: '2',
-    numeroRadicado: 'ND-2025-0018',
-    origen: 'De oficio',
-    fechaQueja: '2024-12-20',
-    territorial: 'Territorial Antioquia',
-    denunciado: {
-      nombre: 'Roberto Sánchez Cruz',
-      identificacion: '71.234.567',
-      cargo: 'Coordinador Académico',
-      dependencia: 'Territorial Antioquia'
-    },
-    estado: 'convertido-proceso',
-    estadoLabel: 'Convertido a Proceso',
-    etapa: 'Convertido a PD-2025-0018',
-    diasTranscurridos: 48,
-    radicador: 'Carlos Ramírez',
-    fechaRegistro: '2024-12-20T14:15:00',
-    conductas: ['Irregularidades en contratación'],
-    descripcion: 'Irregularidades en manejo de calificaciones de estudiantes',
-    profesionalAsignado: 'Juan Carlos Pérez',
-    procesoAsociado: 'PD-2025-0018',
-    historialAuditoria: []
-  },
-  {
-    id: '3',
-    numeroRadicado: 'ND-2024-0156',
-    origen: 'Informante',
-    fechaQueja: '2024-11-10',
-    territorial: 'Dirección Nacional',
-    denunciado: {
-      nombre: 'Patricia Herrera Gómez',
-      identificacion: '39.876.543',
-      cargo: 'Jefe de Talento Humano',
-      dependencia: 'Dirección Nacional'
-    },
-    estado: 'pendiente',
-    estadoLabel: 'Pendiente',
-    etapa: 'Pendiente de Revisión',
-    diasTranscurridos: 12,
-    radicador: 'Ana Torres',
-    fechaRegistro: '2024-11-10T11:00:00',
-    conductas: ['Conflicto de intereses', 'Mal uso de recursos públicos'],
-    descripcion: 'Presunto favorecimiento en procesos de selección',
-    historialAuditoria: []
   }
 ];
 

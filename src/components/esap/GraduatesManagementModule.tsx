@@ -94,6 +94,10 @@ type GraduateRow = {
   certificatesCount: number;
 };
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
+
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -845,118 +849,33 @@ export function GraduatesManagementModule() {
     : undefined;
 
   return (
-    <div className="space-y-6">
+    <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
       <ValidarCertificadoGrado 
         isOpen={mostrarValidador} 
         onClose={() => setMostrarValidador(false)} 
       />
 
-      {/* Header - Según especificaciones Figma */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
-              }}
-            >
-              <GraduationCap className="w-6 h-6 text-white" strokeWidth={2.5} />
-            </div>
-            <h1 
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: '32px',
-                lineHeight: '40px',
-                letterSpacing: '-0.25px',
-                color: '#1F2937'
-              }}
-            >
-              Gestión de Graduados
-            </h1>
-          </div>
-          <p 
-            className="font-normal"
-            style={{
-              fontSize: '14px',
-              lineHeight: '20px',
-              color: '#6B7280'
-            }}
-          >
-            Administra graduados y genera certificados de verificación de títulos
-          </p>
-        </div>
-
-        {/* Botones de Acción */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {authService.hasPermission(Permissions.GRADUATES_EXPORT) && (
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: '#FFFFFF',
-              color: '#003DA5',
-              border: '2px solid #003DA5',
-              borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F0F6FF';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar</span>
-          </button>
-          )}
-          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
-          <button
-            // onClick={() => {
-            //   window.location.href = '/verificar-certificado-graduado';
-            // }}
-            onClick={() => handleVerifyTitle()}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: '#003DA5',
-              color: '#FFFFFF',
-              borderRadius: '8px',
-              padding: '12px 24px',
-              fontSize: '14px',
-              fontWeight: 500,
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#002D7A';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 61, 165, 0.15)';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#003DA5';
-              e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <BadgeCheck className="w-5 h-5" strokeWidth={2} />
-            <span>Verificar Certificado</span>
-          </button>
-          )}
-        </div>
-      </motion.div>
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Gestión de Graduados"
+        description="Administra graduados y genera certificados de verificación de títulos"
+        icon={GraduationCap}
+        primaryAction={{
+          label: "Verificar Certificado",
+          icon: BadgeCheck,
+          onClick: () => handleVerifyTitle(),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Exportar",
+            icon: Download,
+            onClick: () => setIsExportModalOpen(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Búsqueda y Filtros */}
       <motion.div
@@ -2161,6 +2080,6 @@ export function GraduatesManagementModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Container4K>
   );
 }

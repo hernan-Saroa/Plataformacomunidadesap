@@ -43,6 +43,7 @@ import { Input } from '../ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
 import { Separator } from '../ui/separator';
 import { toast } from 'sonner@2.0.3';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface Convocatoria {
   id: string;
@@ -917,9 +918,7 @@ export function DocentesSection() {
             
             {/* Brand */}
             <div>
-              <div className="h-12 w-12 mb-6 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white font-black text-lg tracking-tight">
-                ESAP
-              </div>
+              <ESAPLogo variant="white" className="h-12 mb-6" />
               <p className="text-gray-400 mb-6 leading-relaxed">
                 Transformando la educación pública en Colombia con tecnología de clase mundial.
               </p>

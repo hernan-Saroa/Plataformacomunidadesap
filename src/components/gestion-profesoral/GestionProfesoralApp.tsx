@@ -10,10 +10,11 @@
  */
 
 import { useState, useEffect } from 'react';
+import { PTAProvider } from '../../contexts/PTAContext';
 import { VisualizadorPTAAjustes } from './VisualizadorPTAAjustes';
 import { WizardCrearPTA } from './WizardCrearPTA';
 import { DashboardDocente } from './DashboardDocente';
-import { DashboardAprobador } from './DashboardAprobador';
+import { DashboardAprobadorIntegrado } from './DashboardAprobadorIntegrado';
 import { VistaDetallePTA } from './VistaDetallePTA';
 import { ModalAprobacion, type AccionAprobacion } from './ModalAprobacion';
 import { NotificationCenter } from '../notifications/NotificationCenter';
@@ -197,29 +198,33 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   if (usuario.rol === 'docente') {
     if (vistaActual === 'crear-pta') {
       return (
-        <WizardCrearPTA
-          docenteInfo={DOCENTE_MOCK}
-          onGuardar={handleGuardarPTA}
-          onEnviar={handleEnviarPTA}
-          onCancelar={handleCancelarCreacion}
-        />
+        <PTAProvider>
+          <WizardCrearPTA
+            docenteInfo={DOCENTE_MOCK}
+            onGuardar={handleGuardarPTA}
+            onEnviar={handleEnviarPTA}
+            onCancelar={handleCancelarCreacion}
+          />
+        </PTAProvider>
       );
     }
 
     // Dashboard del docente (mis PTAs)
     return (
-      <DashboardDocente
-        docente={{
-          cedula: DOCENTE_MOCK.cedula,
-          nombreCompleto: DOCENTE_MOCK.nombreCompleto,
-          email: usuario.email
-        }}
-        onCrearNuevo={handleCrearNuevoPTA}
-        onVerDetalle={handleVerDetallePTA}
-        onEditar={handleEditarPTA}
-        onDuplicar={handleDuplicarPTA}
-        onEliminar={handleEliminarPTA}
-      />
+      <PTAProvider>
+        <DashboardDocente
+          docente={{
+            cedula: DOCENTE_MOCK.cedula,
+            nombreCompleto: DOCENTE_MOCK.nombreCompleto,
+            email: usuario.email
+          }}
+          onCrearNuevo={handleCrearNuevoPTA}
+          onVerDetalle={handleVerDetallePTA}
+          onEditar={handleEditarPTA}
+          onDuplicar={handleDuplicarPTA}
+          onEliminar={handleEliminarPTA}
+        />
+      </PTAProvider>
     );
   }
 
@@ -235,7 +240,7 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
   // Si estamos viendo detalle de un PTA
   if (vistaActual === 'detalle-pta' && ptaSeleccionado) {
     return (
-      <>
+      <PTAProvider>
         <VistaDetallePTA
           ptaId={ptaSeleccionado}
           onClose={() => setVistaActual('dashboard')}
@@ -263,29 +268,17 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
             }}
           />
         )}
-      </>
+      </PTAProvider>
     );
   }
 
   // Dashboard de aprobadores
   return (
-    <>
-      <DashboardAprobador
-        aprobador={{
-          id: usuario.cedula || '000000',
-          nombre: usuario.nombre,
-          cargo: {
-            coordinador: 'Coordinador de Programa',
-            director: 'Director de Escuela',
-            subdirector: 'Subdirector Académico',
-            admin: 'Administrador'
-          }[usuario.rol],
-          nivel: nivelAprobador,
-          email: usuario.email
-        }}
-        onVerDetallePTA={handleVerDetallePTA}
-        onAprobarPTA={(ptaId) => handleAbrirModalAprobacion(ptaId, 'aprobar')}
-        onRechazarPTA={(ptaId) => handleAbrirModalAprobacion(ptaId, 'rechazar')}
+    <PTAProvider>
+      <DashboardAprobadorIntegrado
+        onVerDetalle={handleVerDetallePTA}
+        onAprobar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'aprobar')}
+        onRechazar={(ptaId) => handleAbrirModalAprobacion(ptaId, 'rechazar')}
       />
 
       {modalAprobacionVisible && accionAprobacion && ptaSeleccionado && (
@@ -318,6 +311,6 @@ export function GestionProfesoralApp({ usuario, onLogout }: GestionProfesoralApp
           onClickNotificacion={handleClickNotificacion}
         />
       </div>
-    </>
+    </PTAProvider>
   );
 }

@@ -39,6 +39,8 @@ import { LoadingSpinner } from '../../ui/loading-spinner';
 import { EmptyState } from '../../ui/empty-state';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+// ✅ FASE 1 DÍA 3: Componentes responsive
+import { Container4K, ResponsiveGrid } from '@/components/ui';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -419,7 +421,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
   }, [expedientes]);
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       {/* Dashboard */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-6">
@@ -430,7 +432,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-5 gap-4">
+        <ResponsiveGrid cols="5" gap="4">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Expedientes</div>
             <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
@@ -460,7 +462,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
             <div className="text-2xl font-semibold text-purple-900">{estadisticas.totalDocs}</div>
             <div className="text-xs text-purple-600 mt-1">Total archivados</div>
           </div>
-        </div>
+        </ResponsiveGrid>
       </div>
 
       {/* Búsqueda y Filtros */}
@@ -537,7 +539,7 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
           ))}
         </div>
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -924,11 +926,11 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
   }, [expedientes]);
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <h2 className="text-xl text-gray-900 font-medium mb-6">Estadísticas de Expedientes</h2>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <ResponsiveGrid cols="3" gap="4" className="mb-6">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Documentos</div>
             <div className="text-2xl font-semibold text-blue-900">{stats.totalDocs}</div>
@@ -943,7 +945,7 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
               {expedientes.length > 0 ? Math.round(stats.totalDocs / expedientes.length) : 0}
             </div>
           </div>
-        </div>
+        </ResponsiveGrid>
 
         <h3 className="text-sm font-medium text-gray-900 mb-4">Documentos por Fase</h3>
         <div className="space-y-3">
@@ -966,7 +968,7 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
           })}
         </div>
       </div>
-    </div>
+    </Container4K>
   );
 }
 

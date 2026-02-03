@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
 
@@ -206,12 +206,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-10 w-auto object-contain"
-                style={{ filter: 'brightness(0) saturate(100%) invert(28%) sepia(91%) saturate(1448%) hue-rotate(197deg) brightness(91%) contrast(101%)' }}
-              />
+              <ESAPLogo variant="color" className="h-10 w-auto" />
             </div>
 
             {/* Back to Home Button */}
@@ -541,11 +536,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               transition={{ delay: 0.3 }}
               className="flex items-start"
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-16 w-auto object-contain drop-shadow-2xl"
-              />
+              <ESAPLogo variant="white" className="h-16 w-auto" />
             </motion.div>
 
             {/* Main Content */}

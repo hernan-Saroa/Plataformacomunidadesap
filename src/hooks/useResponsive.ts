@@ -1,273 +1,285 @@
 /**
- * Responsive Hooks
- * Utilidades para detectar tamaño de pantalla, dispositivo y orientación
+ * ═══════════════════════════════════════════════════════════════════════════
+ * USE RESPONSIVE HOOK - DETECCIÓN DE BREAKPOINT Y DISPOSITIVO
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Hook para detectar el breakpoint actual y tipo de dispositivo en tiempo real.
+ * Se actualiza automáticamente cuando cambia el tamaño de la ventana.
+ * 
+ * BREAKPOINTS:
+ * - mobile:  < 640px  (sm en Tailwind)
+ * - tablet:  640px - 1024px (sm a lg)
+ * - desktop: 1024px - 2560px (lg a 4k)
+ * - 4k:      ≥ 2560px
+ * 
+ * HELPERS:
+ * - isMobile: true si < 640px
+ * - isTablet: true si 640-1024px
+ * - isDesktop: true si 1024-2560px
+ * - is4K: true si ≥ 2560px
+ * - isTouchDevice: true si mobile o tablet
+ * 
+ * USO:
+ * ```tsx
+ * const { isMobile, breakpoint } = useResponsive();
+ * 
+ * return (
+ *   <input
+ *     placeholder={isMobile ? "Buscar..." : "Buscar por código..."}
+ *   />
+ * );
+ * ```
+ * 
+ * CREADO: 30 Enero 2026 - FASE 1 DÍA 1
+ * REF: PLAN_IMPLEMENTACION_OPCION_B.md - Tarea 1.2
  */
 
 import { useState, useEffect } from 'react';
 
-// Breakpoints matching Tailwind defaults
-const breakpoints = {
-  sm: 640,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-  '2xl': 1536,
-} as const;
+/** Tipos de breakpoint disponibles */
+export type Breakpoint = 'mobile' | 'tablet' | 'desktop' | '4k';
 
-type Breakpoint = keyof typeof breakpoints;
-
-/**
- * Hook para detectar breakpoint actual
- * @example
- * const { isMobile, isTablet, isDesktop } = useBreakpoint();
- */
-export function useBreakpoint() {
-  const [windowSize, setWindowSize] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : 0,
-    height: typeof window !== 'undefined' ? window.innerHeight : 0,
-  });
-
-  useEffect(() => {
-    function handleResize() {
-      setWindowSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    }
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  return {
-    // Specific breakpoints
-    isMobile: windowSize.width < breakpoints.md,
-    isTablet: windowSize.width >= breakpoints.md && windowSize.width < breakpoints.lg,
-    isDesktop: windowSize.width >= breakpoints.lg,
-    
-    // Detailed breakpoints
-    isSmallMobile: windowSize.width < breakpoints.sm,
-    isMediumDevice: windowSize.width >= breakpoints.sm && windowSize.width < breakpoints.md,
-    isLargeTablet: windowSize.width >= breakpoints.md && windowSize.width < breakpoints.lg,
-    isSmallDesktop: windowSize.width >= breakpoints.lg && windowSize.width < breakpoints.xl,
-    isLargeDesktop: windowSize.width >= breakpoints.xl,
-    is4K: windowSize.width >= breakpoints['2xl'],
-    
-    // Exact values
-    width: windowSize.width,
-    height: windowSize.height,
-  };
+/** Valores retornados por el hook */
+export interface UseResponsiveReturn {
+  /** Breakpoint actual: 'mobile' | 'tablet' | 'desktop' | '4k' */
+  breakpoint: Breakpoint;
+  
+  /** true si ancho < 640px */
+  isMobile: boolean;
+  
+  /** true si ancho entre 640px y 1024px */
+  isTablet: boolean;
+  
+  /** true si ancho entre 1024px y 2560px */
+  isDesktop: boolean;
+  
+  /** true si ancho ≥ 2560px */
+  is4K: boolean;
+  
+  /** true si mobile o tablet (dispositivos táctiles típicamente) */
+  isTouchDevice: boolean;
 }
 
 /**
- * Hook para media query personalizada
+ * Hook para detectar breakpoint actual y tipo de dispositivo
+ * 
+ * @returns Objeto con breakpoint actual y helpers booleanos
+ * 
  * @example
- * const isLandscape = useMediaQuery('(orientation: landscape)');
+ * // Placeholder responsive
+ * function SearchInput() {
+ *   const { isMobile } = useResponsive();
+ *   
+ *   return (
+ *     <input
+ *       type="text"
+ *       placeholder={isMobile 
+ *         ? "Buscar..." 
+ *         : "Buscar por código, auditoría, área o responsable..."
+ *       }
+ *     />
+ *   );
+ * }
+ * 
+ * @example
+ * // Contenido condicional
+ * function Dashboard() {
+ *   const { isDesktop, isTouchDevice } = useResponsive();
+ *   
+ *   return (
+ *     <div>
+ *       {isDesktop && (
+ *         <div className="sidebar">
+ *           Sidebar solo desktop
+ *         </div>
+ *       )}
+ *       
+ *       {isTouchDevice && (
+ *         <p className="text-sm text-gray-600">
+ *           💡 Desliza para ver más opciones
+ *         </p>
+ *       )}
+ *     </div>
+ *   );
+ * }
+ * 
+ * @example
+ * // Lógica de comportamiento
+ * function DataTable() {
+ *   const { breakpoint } = useResponsive();
+ *   
+ *   const itemsPerPage = 
+ *     breakpoint === 'mobile' ? 5 :
+ *     breakpoint === 'tablet' ? 10 :
+ *     breakpoint === 'desktop' ? 20 :
+ *     50; // 4K
+ *   
+ *   return <Table items={data} perPage={itemsPerPage} />;
+ * }
+ * 
+ * @example
+ * // Labels adaptativos
+ * function ActionButton() {
+ *   const { isMobile } = useResponsive();
+ *   
+ *   return (
+ *     <TouchButton icon={<Download />}>
+ *       {isMobile ? "Exportar" : "Exportar a Excel"}
+ *     </TouchButton>
+ *   );
+ * }
  */
-export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false);
-
+export function useResponsive(): UseResponsiveReturn {
+  // Estado inicial: desktop como fallback (SSR safe)
+  const [breakpoint, setBreakpoint] = useState<Breakpoint>('desktop');
+  
   useEffect(() => {
-    const media = window.matchMedia(query);
-    
-    if (media.matches !== matches) {
-      setMatches(media.matches);
-    }
-
-    const listener = (e: MediaQueryListEvent) => setMatches(e.matches);
-    
-    // Modern browsers
-    if (media.addEventListener) {
-      media.addEventListener('change', listener);
-      return () => media.removeEventListener('change', listener);
-    } else {
-      // Fallback for older browsers
-      media.addListener(listener);
-      return () => media.removeListener(listener);
-    }
-  }, [matches, query]);
-
-  return matches;
-}
-
-/**
- * Hook para detectar orientación del dispositivo
- * @example
- * const { isPortrait, isLandscape } = useOrientation();
- */
-export function useOrientation() {
-  const isPortrait = useMediaQuery('(orientation: portrait)');
-  const isLandscape = useMediaQuery('(orientation: landscape)');
-
-  return {
-    isPortrait,
-    isLandscape,
-    orientation: isPortrait ? 'portrait' : 'landscape',
-  };
-}
-
-/**
- * Hook para detectar tipo de dispositivo
- * @example
- * const { isMobileDevice, isTabletDevice, isTouchDevice } = useDeviceDetect();
- */
-export function useDeviceDetect() {
-  const [deviceInfo, setDeviceInfo] = useState({
-    isMobileDevice: false,
-    isTabletDevice: false,
-    isDesktopDevice: false,
-    isTouchDevice: false,
-    isIOS: false,
-    isAndroid: false,
-    isSafari: false,
-    isChrome: false,
-    isEdge: false,
-    isFirefox: false,
-  });
-
-  useEffect(() => {
-    const ua = navigator.userAgent;
-
-    setDeviceInfo({
-      // Device type
-      isMobileDevice: /iPhone|iPod|Android.*Mobile/i.test(ua),
-      isTabletDevice: /iPad|Android(?!.*Mobile)/i.test(ua),
-      isDesktopDevice: !/iPhone|iPod|iPad|Android/i.test(ua),
+    /**
+     * Función que determina el breakpoint actual basado en window.innerWidth
+     */
+    const checkBreakpoint = () => {
+      const width = window.innerWidth;
       
-      // Touch capability
-      isTouchDevice: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
-      
-      // Operating system
-      isIOS: /iPhone|iPad|iPod/i.test(ua),
-      isAndroid: /Android/i.test(ua),
-      
-      // Browser
-      isSafari: /Safari/i.test(ua) && !/Chrome/i.test(ua),
-      isChrome: /Chrome/i.test(ua) && !/Edge/i.test(ua),
-      isEdge: /Edg/i.test(ua),
-      isFirefox: /Firefox/i.test(ua),
-    });
-  }, []);
-
-  return deviceInfo;
-}
-
-/**
- * Hook para detectar viewport height (útil para mobile con/sin barra de navegación)
- * @example
- * const { vh, fullHeight } = useViewportHeight();
- */
-export function useViewportHeight() {
-  const [vh, setVh] = useState(
-    typeof window !== 'undefined' ? window.innerHeight * 0.01 : 0
-  );
-
-  useEffect(() => {
-    function handleResize() {
-      const newVh = window.innerHeight * 0.01;
-      setVh(newVh);
-      document.documentElement.style.setProperty('--vh', `${newVh}px`);
-    }
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('orientationchange', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('orientationchange', handleResize);
-    };
-  }, []);
-
-  return {
-    vh,
-    fullHeight: `${vh * 100}px`, // Use this for full viewport height
-  };
-}
-
-/**
- * Hook para detectar scroll direction
- * @example
- * const { scrollDirection, isScrollingDown } = useScrollDirection();
- */
-export function useScrollDirection() {
-  const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
-  const [lastScrollY, setLastScrollY] = useState(0);
-
-  useEffect(() => {
-    let ticking = false;
-
-    const updateScrollDirection = () => {
-      const scrollY = window.scrollY;
-
-      if (Math.abs(scrollY - lastScrollY) < 5) {
-        ticking = false;
-        return;
-      }
-
-      setScrollDirection(scrollY > lastScrollY ? 'down' : 'up');
-      setLastScrollY(scrollY);
-      ticking = false;
-    };
-
-    const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateScrollDirection);
-        ticking = true;
+      if (width < 640) {
+        setBreakpoint('mobile');
+      } else if (width < 1024) {
+        setBreakpoint('tablet');
+      } else if (width < 2560) {
+        setBreakpoint('desktop');
+      } else {
+        setBreakpoint('4k');
       }
     };
-
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [lastScrollY]);
-
-  return {
-    scrollDirection,
-    isScrollingDown: scrollDirection === 'down',
-    isScrollingUp: scrollDirection === 'up',
-  };
-}
-
-/**
- * Hook para detectar si estamos en modo standalone (PWA)
- * @example
- * const isStandalone = useStandalone();
- */
-export function useStandalone(): boolean {
-  const [isStandalone, setIsStandalone] = useState(false);
-
-  useEffect(() => {
-    const isPWA = 
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
     
-    setIsStandalone(isPWA);
+    // Ejecutar inmediatamente al montar
+    checkBreakpoint();
+    
+    // Escuchar cambios de tamaño
+    window.addEventListener('resize', checkBreakpoint);
+    
+    // Cleanup al desmontar
+    return () => window.removeEventListener('resize', checkBreakpoint);
   }, []);
-
-  return isStandalone;
+  
+  // Calcular helpers booleanos
+  const isMobile = breakpoint === 'mobile';
+  const isTablet = breakpoint === 'tablet';
+  const isDesktop = breakpoint === 'desktop';
+  const is4K = breakpoint === '4k';
+  const isTouchDevice = isMobile || isTablet;
+  
+  return {
+    breakpoint,
+    isMobile,
+    isTablet,
+    isDesktop,
+    is4K,
+    isTouchDevice
+  };
 }
 
 /**
- * Hook combinado para toda la info responsive
- * @example
- * const responsive = useResponsive();
+ * NOTAS DE IMPLEMENTACIÓN:
+ * 
+ * 1. CASOS DE USO PRINCIPALES:
+ * 
+ *    A) Placeholders responsive:
+ *    const { isMobile } = useResponsive();
+ *    placeholder={isMobile ? "Buscar..." : "Buscar por código, nombre, área..."}
+ * 
+ *    B) Labels de botones:
+ *    {isMobile ? "Exportar" : "Exportar a Excel"}
+ * 
+ *    C) Contenido condicional:
+ *    {isDesktop && <Sidebar />}
+ *    {isTouchDevice && <TouchHint />}
+ * 
+ *    D) Lógica de paginación:
+ *    const itemsPerPage = isMobile ? 5 : isTablet ? 10 : 20;
+ * 
+ *    E) Comportamiento de modales:
+ *    const modalSize = isMobile ? 'full' : 'lg';
+ * 
+ * 2. VENTAJAS:
+ *    - Detección automática en tiempo real
+ *    - No necesita media queries CSS
+ *    - Funciona con lógica JavaScript
+ *    - Helpers semánticos (isMobile, isTablet)
+ *    - Re-render solo cuando cambia breakpoint
+ * 
+ * 3. CUÁNDO USAR vs CSS:
+ * 
+ *    USAR HOOK:
+ *    - Lógica condicional (if/else)
+ *    - Diferentes componentes por breakpoint
+ *    - Diferentes datos por breakpoint
+ *    - Placeholders, labels, mensajes
+ * 
+ *    USAR CSS (Tailwind):
+ *    - Estilos visuales (colores, tamaños)
+ *    - Layout (flex, grid)
+ *    - Spacing (padding, margin)
+ *    - Visibilidad simple (hidden sm:block)
+ * 
+ * 4. PERFORMANCE:
+ *    - useState previene re-renders innecesarios
+ *    - addEventListener limpiado en cleanup
+ *    - checkBreakpoint es ligero (solo calcula width)
+ *    - No causa layout thrashing
+ * 
+ * 5. SSR/SSG COMPATIBILITY:
+ *    - Estado inicial: 'desktop' (fallback seguro)
+ *    - useEffect se ejecuta solo en cliente
+ *    - No causa hydration mismatch
+ * 
+ * 6. TESTING:
+ *    - Mock window.innerWidth en tests:
+ *      Object.defineProperty(window, 'innerWidth', { value: 320 });
+ *    - Simular resize event:
+ *      window.dispatchEvent(new Event('resize'));
+ *    - Verificar breakpoint correcto para cada width
+ * 
+ * 7. BREAKPOINTS ALINEADOS CON TAILWIND:
+ *    - mobile:  < 640px   (Tailwind: default, sin prefijo)
+ *    - tablet:  640-1024  (Tailwind: sm: a lg:)
+ *    - desktop: 1024-2560 (Tailwind: lg: a ~4xl:)
+ *    - 4k:      ≥ 2560px  (Tailwind: custom)
+ * 
+ * 8. ALTERNATIVAS:
+ *    - window.matchMedia(): Más preciso, más complejo
+ *    - react-responsive: Librería externa, más features
+ *    - CSS only: No permite lógica JS
+ * 
+ * 9. EJEMPLO COMPLETO:
+ * 
+ * function ModuleHeader() {
+ *   const { isMobile, isTablet, breakpoint } = useResponsive();
+ *   
+ *   return (
+ *     <ResponsiveHeader>
+ *       <div>
+ *         <h1 className="text-xl sm:text-2xl font-bold">
+ *           {isMobile ? "Auditorías" : "Gestión de Auditorías"}
+ *         </h1>
+ *         {!isMobile && (
+ *           <p className="text-sm text-gray-600">
+ *             Administra el ciclo completo de auditorías OCIG
+ *           </p>
+ *         )}
+ *       </div>
+ *       
+ *       <div className="flex gap-2">
+ *         <TouchButton variant="primary" icon={<Plus />}>
+ *           {isMobile ? "Crear" : "Crear Auditoría"}
+ *         </TouchButton>
+ *         
+ *         {(isTablet || breakpoint === 'desktop' || breakpoint === '4k') && (
+ *           <TouchButton variant="outline" icon={<Download />}>
+ *             Exportar
+ *           </TouchButton>
+ *         )}
+ *       </div>
+ *     </ResponsiveHeader>
+ *   );
+ * }
  */
-export function useResponsive() {
-  const breakpoint = useBreakpoint();
-  const orientation = useOrientation();
-  const device = useDeviceDetect();
-  const viewport = useViewportHeight();
-  const scroll = useScrollDirection();
-  const isStandalone = useStandalone();
-
-  return {
-    ...breakpoint,
-    ...orientation,
-    ...device,
-    ...viewport,
-    ...scroll,
-    isStandalone,
-  };
-}

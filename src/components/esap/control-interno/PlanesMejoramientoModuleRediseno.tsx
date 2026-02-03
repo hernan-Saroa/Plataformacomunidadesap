@@ -54,6 +54,8 @@ import { useCrearNotificacion } from './hooks/useCrearNotificacion';
 import { useAuth } from '../../../hooks/useAuth';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+// ✅ FASE 1 DÍA 2: Componentes responsive
+import { useResponsive } from '@/hooks/useResponsive';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -1713,9 +1715,9 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
     return (
       <motion.div
         ref={drop}
-        className="flex-shrink-0 h-full"
-        initial={{ width: 64 }}
-        animate={{ width: 64 }}
+        className="w-full lg:w-16 flex-shrink-0 lg:h-full"
+        initial={{ width: '100%' }}
+        animate={{ width: '100%' }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         <Card 
@@ -1791,7 +1793,7 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
 
   // Versión expandida
   return (
-    <div className="flex-shrink-0" style={{ width: '320px' }}>
+    <div className="w-full lg:w-80 flex-shrink-0">
       {/* Header Columna */}
       <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 rounded-t-xl">
         <div className="flex items-center justify-between mb-2">

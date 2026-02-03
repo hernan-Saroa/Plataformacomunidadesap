@@ -639,7 +639,7 @@ export function ModuloPlanesMejoramientoV4() {
 
       {/* Modal Nuevo Plan */}
       <Dialog open={modalNuevoPlanAbierto} onOpenChange={setModalNuevoPlanAbierto}>
-        <DialogContent hideCloseButton className="w-[95vw] max-w-[600px] sm:max-w-[700px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
+        <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
           {/* Componentes de accesibilidad requeridos */}
           <DialogTitle className="sr-only">Crear Nuevo Plan de Mejoramiento</DialogTitle>
           <DialogDescription className="sr-only">

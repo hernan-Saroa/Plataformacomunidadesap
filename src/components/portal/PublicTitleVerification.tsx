@@ -8,10 +8,11 @@ import { ArrowLeft, AlertCircle, Award, Calendar, User, Loader2, Building2, User
 import { toast } from 'sonner@2.0.3';
 import { motion } from 'motion/react';
 import { VerificationCertificateDisplay } from './VerificationCertificateDisplay';
-import { VerificationCertificate } from '../../types';
+import { VerificationCertificate } from '../../types/index';
 import { PublicNavbar } from './PublicNavbar';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService, { type CertificadoGraduado } from '../../services/api/graduados.service';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { simularEnvioCorreo } from '../../utils/emailTemplates';
 import { validateGraduateForPublicService, type Graduate } from '../../data/graduatesSync';  // ✅ IMPORTAR FUNCIÓN DE VALIDACIÓN
 import { sendGraduateNotificationEmail } from '../../utils/graduateNotificationEmail';

@@ -162,6 +162,9 @@ export function FormularioRegistrarDecision({
         <DialogTitle className="sr-only">
           Formulario para registrar una nueva decisión en el proceso disciplinario {procesoId}
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          Registrar nueva decisión o fallo en el proceso disciplinario {procesoId}
+        </DialogDescription>
 
         {/* Header Limpio y Usable - ESAP 2025 */}
         <ModalHeaderClean

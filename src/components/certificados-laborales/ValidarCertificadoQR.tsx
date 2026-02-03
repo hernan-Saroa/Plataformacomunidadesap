@@ -24,8 +24,7 @@ import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
 import { FooterWorldClass } from '../FooterWorldClass';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import logoESAP from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -200,10 +199,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
             <div className="flex items-center justify-between">
               {/* Logo */}
               <div className="flex items-center gap-2 sm:gap-3">
-                <img 
-                  src={esapLogoWhite} 
-                  alt="ESAP Logo" 
-                  className="h-7 sm:h-10 w-auto object-contain brightness-0 invert"
+                <ESAPLogo 
+                  variant="white"
+                  className="h-7 sm:h-10 w-auto"
                 />
                 <div className="hidden sm:block">
                   <p className="text-xs font-semibold text-white">Validador de Certificados</p>
@@ -374,11 +372,10 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 {validationResult.isValid && validationResult.certificado ? (
                   <>
                     {/* Logo ESAP en Header del Certificado */}
-                    <div className="flex justify-center pt-4 pb-2" style={{display:'none'}}>
-                      <img 
-                        src={logoESAP} 
-                        alt="ESAP Logo" 
-                        className="h-16 sm:h-20 w-auto object-contain"
+                    <div className="flex justify-center pt-4 pb-2">
+                      <ESAPLogo 
+                        variant="color"
+                        className="h-16 sm:h-20 w-auto"
                       />
                     </div>
 

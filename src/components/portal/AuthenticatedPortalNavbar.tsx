@@ -1,8 +1,8 @@
-import image_1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 import React, { useState } from 'react';
 import { Search, Bell, ChevronDown, User, Settings, HelpCircle, LogOut, Menu } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
 import { Input } from '../ui/input';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -65,7 +65,7 @@ export function AuthenticatedPortalNavbar({
           <div className="flex items-center gap-3">
             {/* Logo ESAP */}
             <div className="flex items-center gap-2">
-              <img src={image_1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba} alt="ESAP Logo" className="h-10 w-auto object-contain ml-[150px]" />
+              <ESAPLogo variant="color" className="h-10 w-auto ml-[150px]" />
             </div>
           </div>
 

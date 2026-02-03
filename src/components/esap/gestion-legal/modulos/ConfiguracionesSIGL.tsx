@@ -38,11 +38,15 @@ import {
   ConfiguracionModulo,
   TipoProcesoJudicial,
   TipoAuto,
+  TipoActuacion,
+  MedioControl,
   ConfiguracionTiempo,
   EjeEstrategico,
   TipoIndicador,
   TipoRequerimiento,
-  OrganismoControl
+  OrganismoControl,
+  TipoExcepcionProcesal,
+  CausalEspecifica
 } from '../config/ConfiguracionesSIGLContext';
 
 // ✅ Importar componente de configuración de plantillas
@@ -105,6 +109,20 @@ export function ConfiguracionesSIGL() {
   const [showModalAgregarOrganismo, setShowModalAgregarOrganismo] = useState(false);
   const [showModalEliminarOrganismo, setShowModalEliminarOrganismo] = useState(false);
   const [organismoAEliminar, setOrganismoAEliminar] = useState<OrganismoControl | null>(null);
+  // Estados para Tipos de Actuaciones
+  const [showModalAgregarActuacion, setShowModalAgregarActuacion] = useState(false);
+  const [showModalEliminarActuacion, setShowModalEliminarActuacion] = useState(false);
+  const [actuacionAEliminar, setActuacionAEliminar] = useState<TipoActuacion | null>(null);
+
+  // Estados para Tipos de Excepciones Procesales
+  const [showModalAgregarExcepcion, setShowModalAgregarExcepcion] = useState(false);
+  const [showModalEliminarExcepcion, setShowModalEliminarExcepcion] = useState(false);
+  const [excepcionAEliminar, setExcepcionAEliminar] = useState<TipoExcepcionProcesal | null>(null);
+
+  // Estados para Causales Específicas
+  const [showModalAgregarCausal, setShowModalAgregarCausal] = useState(false);
+  const [showModalEliminarCausal, setShowModalEliminarCausal] = useState(false);
+  const [causalAEliminar, setCausalAEliminar] = useState<CausalEspecifica | null>(null);
 
   const moduloActual = configuraciones.find(m => m.id === moduloActivo);
 
@@ -351,6 +369,63 @@ export function ConfiguracionesSIGL() {
     ));
   };
 
+  // ============ FUNCIONES DE MEDIOS DE CONTROL ============
+
+  const agregarMedioControl = () => {
+    if (!moduloActual || !moduloActual.mediosControl) return;
+    
+    const nuevoMedio: MedioControl = {
+      id: `medio-${Date.now()}`,
+      nombre: 'Nuevo Medio de Control',
+      descripcion: 'Descripción del nuevo medio de control',
+      activo: true,
+      orden: (moduloActual.mediosControl?.length || 0) + 1,
+    };
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, mediosControl: [...(m.mediosControl || []), nuevoMedio] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    
+    toast.success('Medio de control agregado correctamente', {
+      description: 'Se ha agregado un nuevo medio de control',
+      duration: 3000
+    });
+  };
+
+  const eliminarMedioControl = (medioId: string) => {
+    const medio = moduloActual?.mediosControl?.find(m => m.id === medioId);
+    if (!medio) return;
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, mediosControl: (m.mediosControl || []).filter(mc => mc.id !== medioId) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    
+    toast.success('Medio de control eliminado correctamente', {
+      description: `"${medio.nombre}" ha sido eliminado de los medios de control`,
+      duration: 3000
+    });
+  };
+
+  const actualizarMedioControl = (medioId: string, cambios: Partial<MedioControl>) => {
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            mediosControl: (m.mediosControl || []).map(mc => 
+              mc.id === medioId ? { ...mc, ...cambios } : mc
+            )
+          }
+        : m
+    ));
+    setCambiosPendientes(true);
+  };
+
   // ============ FUNCIONES DE TIPOS DE AUTOS ============
 
   const agregarTipoAuto = () => {
@@ -417,6 +492,230 @@ export function ConfiguracionesSIGL() {
             t.id === tipoId ? { ...t, ...cambios } : t
           )
         }
+        : m
+    ));
+    setCambiosPendientes(true);
+  };
+
+  // ============ FUNCIONES DE TIPOS DE ACTUACIONES ============
+
+  const agregarTipoActuacion = () => {
+    setShowModalAgregarActuacion(true);
+  };
+
+  const confirmarAgregarTipoActuacion = () => {
+    if (!moduloActual || !moduloActual.tiposActuaciones) return;
+    
+    const maxOrden = Math.max(0, ...moduloActual.tiposActuaciones.map(t => t.orden || 0));
+    
+    const nuevoTipo: TipoActuacion = {
+      id: `actuacion-${Date.now()}`,
+      nombre: 'Nuevo Tipo de Actuación',
+      descripcion: 'Descripción del nuevo tipo de actuación disciplinaria',
+      activo: true,
+      orden: maxOrden + 1,
+    };
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposActuaciones: [...(m.tiposActuaciones || []), nuevoTipo] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalAgregarActuacion(false);
+    
+    toast.success('Tipo de actuación agregado correctamente', {
+      description: 'Se ha agregado un nuevo tipo de actuación disciplinaria',
+      duration: 3000
+    });
+  };
+
+  const solicitarEliminarTipoActuacion = (tipoId: string) => {
+    const tipo = moduloActual?.tiposActuaciones?.find(t => t.id === tipoId);
+    if (tipo) {
+      setActuacionAEliminar(tipo);
+      setShowModalEliminarActuacion(true);
+    }
+  };
+
+  const confirmarEliminarTipoActuacion = () => {
+    if (!actuacionAEliminar) return;
+
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposActuaciones: (m.tiposActuaciones || []).filter(t => t.id !== actuacionAEliminar.id) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalEliminarActuacion(false);
+    
+    toast.success('Tipo de actuación eliminado correctamente', {
+      description: `"${actuacionAEliminar.nombre}" ha sido eliminado de los tipos de actuaciones`,
+      duration: 3000
+    });
+    
+    setActuacionAEliminar(null);
+  };
+
+  const actualizarTipoActuacion = (tipoId: string, cambios: Partial<TipoActuacion>) => {
+    setConfiguraciones(prev => prev.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            tiposActuaciones: (m.tiposActuaciones || []).map(t => 
+              t.id === tipoId ? { ...t, ...cambios } : t
+            )
+          }
+        : m
+    ));
+    setCambiosPendientes(true);
+  };
+
+  // ============ FUNCIONES DE TIPOS DE EXCEPCIONES PROCESALES ============
+
+  const agregarTipoExcepcion = () => {
+    setShowModalAgregarExcepcion(true);
+  };
+
+  const confirmarAgregarTipoExcepcion = () => {
+    if (!moduloActual || !moduloActual.tiposExcepcionesProcesal) return;
+    
+    const maxOrden = Math.max(0, ...moduloActual.tiposExcepcionesProcesal.map(t => t.orden || 0));
+    
+    const nuevoTipo: TipoExcepcionProcesal = {
+      id: `excepcion-${Date.now()}`,
+      nombre: 'Nueva Excepción Procesal',
+      descripcion: 'Descripción de la excepción procesal',
+      icono: '⚖️',
+      activo: true,
+      orden: maxOrden + 1,
+    };
+
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposExcepcionesProcesal: [...(m.tiposExcepcionesProcesal || []), nuevoTipo] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalAgregarExcepcion(false);
+    
+    toast.success('Tipo de excepción agregado correctamente', {
+      description: 'Se ha agregado un nuevo tipo de excepción procesal',
+      duration: 3000
+    });
+  };
+
+  const solicitarEliminarTipoExcepcion = (tipoId: string) => {
+    const tipo = moduloActual?.tiposExcepcionesProcesal?.find(t => t.id === tipoId);
+    if (tipo) {
+      setExcepcionAEliminar(tipo);
+      setShowModalEliminarExcepcion(true);
+    }
+  };
+
+  const confirmarEliminarTipoExcepcion = () => {
+    if (!excepcionAEliminar) return;
+
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, tiposExcepcionesProcesal: (m.tiposExcepcionesProcesal || []).filter(t => t.id !== excepcionAEliminar.id) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalEliminarExcepcion(false);
+    
+    toast.success('Tipo de excepción eliminado correctamente', {
+      description: `"${excepcionAEliminar.nombre}" ha sido eliminado`,
+      duration: 3000
+    });
+    
+    setExcepcionAEliminar(null);
+  };
+
+  const actualizarTipoExcepcion = (tipoId: string, cambios: Partial<TipoExcepcionProcesal>) => {
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            tiposExcepcionesProcesal: (m.tiposExcepcionesProcesal || []).map(t => 
+              t.id === tipoId ? { ...t, ...cambios } : t
+            )
+          }
+        : m
+    ));
+    setCambiosPendientes(true);
+  };
+
+  // ============ FUNCIONES DE CAUSALES ESPECÍFICAS ============
+
+  const agregarCausalEspecifica = () => {
+    setShowModalAgregarCausal(true);
+  };
+
+  const confirmarAgregarCausalEspecifica = () => {
+    if (!moduloActual || !moduloActual.causalesEspecificas) return;
+    
+    const maxOrden = Math.max(0, ...moduloActual.causalesEspecificas.map(c => c.orden || 0));
+    
+    const nuevaCausal: CausalEspecifica = {
+      id: `causal-${Date.now()}`,
+      nombre: 'Nueva Causal Específica',
+      descripcion: 'Descripción de la causal',
+      icono: '📋',
+      activo: true,
+      orden: maxOrden + 1,
+    };
+
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, causalesEspecificas: [...(m.causalesEspecificas || []), nuevaCausal] }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalAgregarCausal(false);
+    
+    toast.success('Causal específica agregada correctamente', {
+      description: 'Se ha agregado una nueva causal específica',
+      duration: 3000
+    });
+  };
+
+  const solicitarEliminarCausalEspecifica = (causalId: string) => {
+    const causal = moduloActual?.causalesEspecificas?.find(c => c.id === causalId);
+    if (causal) {
+      setCausalAEliminar(causal);
+      setShowModalEliminarCausal(true);
+    }
+  };
+
+  const confirmarEliminarCausalEspecifica = () => {
+    if (!causalAEliminar) return;
+
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { ...m, causalesEspecificas: (m.causalesEspecificas || []).filter(c => c.id !== causalAEliminar.id) }
+        : m
+    ));
+    setCambiosPendientes(true);
+    setShowModalEliminarCausal(false);
+    
+    toast.success('Causal específica eliminada correctamente', {
+      description: `"${causalAEliminar.nombre}" ha sido eliminada`,
+      duration: 3000
+    });
+    
+    setCausalAEliminar(null);
+  };
+
+  const actualizarCausalEspecifica = (causalId: string, cambios: Partial<CausalEspecifica>) => {
+    actualizarConfiguraciones(configuraciones.map(m => 
+      m.id === moduloActivo 
+        ? { 
+            ...m, 
+            causalesEspecificas: (m.causalesEspecificas || []).map(c => 
+              c.id === causalId ? { ...c, ...cambios } : c
+            )
+          }
         : m
     ));
     setCambiosPendientes(true);
@@ -588,6 +887,25 @@ export function ConfiguracionesSIGL() {
                   ? 'bg-blue-50 text-blue-900 font-semibold'
                   : 'text-gray-700 hover:bg-gray-50'
                   }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Plantillas de Oficios</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-6">
+                  <span className="text-xs text-gray-500">
+                    Logo y diseño de documentos
+                  </span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setModuloActivo('plantillas-oficios')}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
+                  moduloActivo === 'plantillas-oficios'
+                    ? 'bg-blue-50 text-blue-900 font-semibold'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
@@ -1321,6 +1639,88 @@ export function ConfiguracionesSIGL() {
                 </div>
               )}
 
+              {/* Configuración de Medios de Control - SOLO PARA DEFENSA JUDICIAL */}
+              {moduloActual.mediosControl && moduloActual.mediosControl.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Scale className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Medios de Control
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los medios de control que estarán disponibles en el formulario de Nueva Demanda
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarMedioControl}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Medio</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.mediosControl.map((medio) => (
+                        <div 
+                          key={medio.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
+                        >
+                          {/* Fila 1: Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={medio.nombre}
+                              onChange={(e) => actualizarMedioControl(medio.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Nombre del medio de control"
+                            />
+                            <button
+                              onClick={() => eliminarMedioControl(medio.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={medio.descripcion}
+                              onChange={(e) => actualizarMedioControl(medio.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              placeholder="Descripción del medio de control..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Toggle Activo */}
+                          <div className="flex items-center justify-end">
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={medio.activo}
+                                onChange={(e) => actualizarMedioControl(medio.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Configuración de Tipos de Autos - SOLO PARA DEFENSA JUDICIAL */}
               {moduloActual.tiposAutos && moduloActual.tiposAutos.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1391,6 +1791,311 @@ export function ConfiguracionesSIGL() {
                                 checked={tipo.activo}
                                 onChange={(e) => actualizarTipoAuto(tipo.id, { activo: e.target.checked })}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Tipos de Actuaciones - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
+              {moduloActual.tiposActuaciones && moduloActual.tiposActuaciones.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Gavel className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                          Tipos de Actuaciones Disciplinarias
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de actuaciones que estarán disponibles en el formulario de Agregar Actuación
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarTipoActuacion}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                          boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Tipo</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.tiposActuaciones
+                        .sort((a, b) => a.orden - b.orden)
+                        .map((tipo) => (
+                        <div 
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-200"
+                        >
+                          {/* Fila 1: Orden + Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                #
+                              </label>
+                              <input
+                                type="number"
+                                value={tipo.orden}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
+                                min="1"
+                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              placeholder="Nombre del tipo de actuación"
+                            />
+                            <button
+                              onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={tipo.descripcion}
+                              onChange={(e) => actualizarTipoActuacion(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                              placeholder="Descripción de la actuación disciplinaria..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            {/* Toggle Activo */}
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Tipos de Excepciones Procesales - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
+              {moduloActual.tiposExcepcionesProcesal && moduloActual.tiposExcepcionesProcesal.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
+                          Tipos de Excepciones Procesales
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define los tipos de excepciones procesales disponibles en el formulario de Nueva Excepción
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarTipoExcepcion}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Tipo</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.tiposExcepcionesProcesal
+                        .sort((a, b) => a.orden - b.orden)
+                        .map((tipo) => (
+                        <div 
+                          key={tipo.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
+                        >
+                          {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                #
+                              </label>
+                              <input
+                                type="number"
+                                value={tipo.orden}
+                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
+                                min="1"
+                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              value={tipo.icono}
+                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { icono: e.target.value })}
+                              className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder="📋"
+                              maxLength={2}
+                            />
+                            <input
+                              type="text"
+                              value={tipo.nombre}
+                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder="Nombre de la excepción"
+                            />
+                            <button
+                              onClick={() => solicitarEliminarTipoExcepcion(tipo.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={tipo.descripcion}
+                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                              placeholder="Descripción de la excepción procesal..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                type="checkbox"
+                                checked={tipo.activo}
+                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              />
+                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                Activo
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración de Causales Específicas - SOLO PARA JUZGAMIENTO DISCIPLINARIO */}
+              {moduloActual.causalesEspecificas && moduloActual.causalesEspecificas.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="p-3 sm:p-4 lg:p-6">
+                    <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                      <div>
+                        <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Target className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F57C00' }} />
+                          Causales Específicas
+                        </h2>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                          Define las causales específicas disponibles en el formulario de Nueva Excepción
+                        </p>
+                      </div>
+                      <button
+                        onClick={agregarCausalEspecifica}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                        style={{ 
+                          background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                          boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Agregar Causal</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {moduloActual.causalesEspecificas
+                        .sort((a, b) => a.orden - b.orden)
+                        .map((causal) => (
+                        <div 
+                          key={causal.id}
+                          className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
+                        >
+                          {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                #
+                              </label>
+                              <input
+                                type="number"
+                                value={causal.orden}
+                                onChange={(e) => actualizarCausalEspecifica(causal.id, { orden: parseInt(e.target.value) || 1 })}
+                                min="1"
+                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              value={causal.icono}
+                              onChange={(e) => actualizarCausalEspecifica(causal.id, { icono: e.target.value })}
+                              className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder="📋"
+                              maxLength={2}
+                            />
+                            <input
+                              type="text"
+                              value={causal.nombre}
+                              onChange={(e) => actualizarCausalEspecifica(causal.id, { nombre: e.target.value })}
+                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder="Nombre de la causal"
+                            />
+                            <button
+                              onClick={() => solicitarEliminarCausalEspecifica(causal.id)}
+                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Fila 2: Descripción */}
+                          <div className="mb-3">
+                            <textarea
+                              value={causal.descripcion}
+                              onChange={(e) => actualizarCausalEspecifica(causal.id, { descripcion: e.target.value })}
+                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                              placeholder="Descripción de la causal específica..."
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Fila 3: Activo */}
+                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                              <input
+                                type="checkbox"
+                                checked={causal.activo}
+                                onChange={(e) => actualizarCausalEspecifica(causal.id, { activo: e.target.checked })}
+                                className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
                               />
                               <span className="text-xs sm:text-sm text-gray-700 font-medium">
                                 Activo
@@ -1793,6 +2498,306 @@ export function ConfiguracionesSIGL() {
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
                 >
                   Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Agregar Tipo de Actuación */}
+      {showModalAgregarActuacion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Tipo de Actuación</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de actuación disciplinaria?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarActuacion(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-purple-800">
+                  Se creará un nuevo tipo de actuación con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Agregar Actuación del expediente disciplinario.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarActuacion(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarTipoActuacion}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Eliminar Tipo de Actuación */}
+      {showModalEliminarActuacion && actuacionAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Actuación</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar el siguiente tipo de actuación?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarActuacion(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Tipo: "{actuacionAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {actuacionAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de agregar actuación en los expedientes disciplinarios.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarActuacion(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarTipoActuacion}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Agregar Tipo de Excepción Procesal */}
+      {showModalAgregarExcepcion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nuevo Tipo de Excepción</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar un nuevo tipo de excepción procesal?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarExcepcion(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-orange-800">
+                  Se creará un nuevo tipo de excepción procesal con valores predeterminados que podrá personalizar posteriormente.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarExcepcion(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarTipoExcepcion}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                    boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                  }}
+                >
+                  Agregar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Eliminar Tipo de Excepción */}
+      {showModalEliminarExcepcion && excepcionAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Tipo de Excepción</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar este tipo de excepción procesal?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarExcepcion(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Tipo: "{excepcionAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {excepcionAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de excepciones en los expedientes disciplinarios.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarExcepcion(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarTipoExcepcion}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Tipo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Agregar Causal Específica */}
+      {showModalAgregarCausal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Agregar Nueva Causal Específica</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Desea agregar una nueva causal específica?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalAgregarCausal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-orange-800">
+                  Se creará una nueva causal específica con valores predeterminados que podrá personalizar posteriormente.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalAgregarCausal(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarAgregarCausalEspecifica}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
+                    boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
+                  }}
+                >
+                  Agregar Causal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🆕 Modal: Eliminar Causal Específica */}
+      {showModalEliminarCausal && causalAEliminar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Eliminar Causal Específica</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    ¿Está seguro de eliminar esta causal específica?
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowModalEliminarCausal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Causal: "{causalAEliminar.nombre}"
+                </p>
+                <p className="text-xs text-red-700 mb-3">
+                  {causalAEliminar.descripcion}
+                </p>
+                <p className="text-sm text-red-800">
+                  Esta acción no se puede deshacer y afectará los formularios de excepciones en los expedientes disciplinarios.
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowModalEliminarCausal(false)}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmarEliminarCausalEspecifica}
+                  className="px-4 py-2 rounded-lg font-semibold text-sm text-white bg-red-600 hover:bg-red-700 transition-all"
+                >
+                  Eliminar Causal
                 </button>
               </div>
             </div>

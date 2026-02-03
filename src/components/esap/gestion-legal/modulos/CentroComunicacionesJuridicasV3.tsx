@@ -66,194 +66,374 @@ interface ComunicacionUnificada {
   };
 }
 
-
-// DATOS MOCK UNIFICADOS
+// DATOS MOCK UNIFICADOS (REDUCIDOS PARA OPTIMIZACIÓN)
 const comunicacionesUnificadas: ComunicacionUnificada[] = [
-  // ============= JUDICIALES (Notificaciones oficiales) =============
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📬 COMUNICACIONES JUDICIALES
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     id: 'JUD-2025-001',
     tipo: 'JUDICIAL',
-    tipoProceso: 'Acción Popular',
-    asunto: 'Nueva demanda radicada - Acción Popular',
-    descripcion: 'Se ha radicado nueva demanda por acción popular contra ESAP',
-    remitente: 'Juzgado 10 Administrativo Bogotá',
-    despachoOrigen: 'Juzgado 10 Admin. Bogotá',
-    radicadoExterno: '25000-33-10-001-2024-00234-00',
-    fechaRadicacion: new Date('2024-12-24'),
+    tipoProceso: 'Acción de Tutela',
+    asunto: 'Notificación de admisión de tutela - Derecho a la educación',
+    descripcion: 'El Juzgado 33 Administrativo de Bogotá admite tutela interpuesta por estudiante en contra de ESAP por presunta vulneración al derecho fundamental a la educación.',
+    remitente: 'Juzgado 33 Administrativo del Circuito de Bogotá',
+    despachoOrigen: 'Juzgado 33 Administrativo',
+    radicadoExterno: '25000-33-10-001-2025-00123-00',
+    fechaRadicacion: new Date('2025-01-28'),
     urgente: true,
     leida: false,
     estado: 'PENDIENTE',
-    documentosAdjuntos: ['demanda.pdf', 'anexos.pdf']
+    documentosAdjuntos: ['admision_tutela.pdf', 'demanda.pdf']
   },
   {
     id: 'JUD-2025-002',
     tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Término cercano - Contestación demanda DJ-2024-089',
-    descripcion: 'Quedan 3 días para contestar demanda DJ-2024-089',
-    remitente: 'Juzgado 3 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 3 Laboral Bogotá',
-    radicadoExterno: '11001-31-03-002-2024-00567-00',
-    fechaRadicacion: new Date('2024-12-24'),
+    tipoProceso: 'Acción Popular',
+    asunto: 'Auto admisorio de demanda - Moralidad administrativa',
+    descripcion: 'Juzgado admite acción popular por presuntas irregularidades en proceso de contratación. Se requiere respuesta en término de 10 días.',
+    remitente: 'Juzgado 5 Administrativo de Cundinamarca',
+    despachoOrigen: 'Juzgado 5 Administrativo',
+    radicadoExterno: '25000-05-23-001-2025-00045-00',
+    fechaRadicacion: new Date('2025-01-30'),
     urgente: true,
     leida: false,
     estado: 'PENDIENTE',
-    documentosAdjuntos: ['notificacion.pdf']
+    documentosAdjuntos: ['auto_admisorio.pdf', 'accion_popular.pdf', 'anexos.pdf']
   },
   {
-    id: 'JUD-2024-156',
+    id: 'JUD-2025-003',
     tipo: 'JUDICIAL',
-    tipoProceso: 'NRD',
-    asunto: 'Audiencia programada - Proceso DJ-2024-045',
-    descripcion: 'Audiencia de conciliación el 15 de enero de 2025',
+    tipoProceso: 'Nulidad y Restablecimiento',
+    asunto: 'Citación a audiencia inicial - Proceso laboral',
+    descripcion: 'Se fija fecha para audiencia inicial del 15 de febrero de 2025 a las 9:00 AM. Se requiere presencia del representante legal o apoderado.',
     remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Admin. Cundinamarca',
-    radicadoExterno: '25000-23-42-000-2024-01234-01',
-    fechaRadicacion: new Date('2024-12-23'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['citacion_audiencia.pdf']
-  },
-  {
-    id: 'JUD-2024-155',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Laboral',
-    asunto: 'Auto admisorio notificado - DJ-2024-102',
-    descripcion: 'Se notificó auto admisorio de demanda laboral',
-    remitente: 'Juzgado 5 Laboral Circuito Bogotá',
-    despachoOrigen: 'Juzgado 5 Laboral Bogotá',
-    radicadoExterno: '11001-31-05-001-2024-00789-00',
-    fechaRadicacion: new Date('2024-12-22'),
+    despachoOrigen: 'Tribunal Administrativo',
+    radicadoExterno: '25000-23-33-001-2024-00789-01',
+    fechaRadicacion: new Date('2025-01-25'),
     urgente: false,
     leida: true,
     estado: 'LEIDA',
-    documentosAdjuntos: ['auto_admisorio.pdf']
+    documentosAdjuntos: ['citacion_audiencia.pdf']
   },
-  // ============= Generar más datos judiciales para demostrar paginación =============
-  ...Array.from({ length: 30 }, (_, i) => ({
-    id: `JUD-2024-${100 + i}`,
-    tipo: 'JUDICIAL' as const,
-    tipoProceso: ['Laboral', 'NRD', 'Acción Popular', 'Ejecutivo'][i % 4],
-    asunto: `Notificación judicial ${100 + i} - ${['Auto', 'Sentencia', 'Audiencia', 'Requerimiento'][i % 4]}`,
-    descripcion: `Descripción de la comunicación judicial número ${100 + i}`,
-    remitente: `Juzgado ${(i % 10) + 1} ${['Laboral', 'Administrativo', 'Civil'][i % 3]} Bogotá`,
-    despachoOrigen: `Juzgado ${(i % 10) + 1}`,
-    radicadoExterno: `11001-31-${String(i + 1).padStart(2, '0')}-${2024}-${String(i + 500).padStart(5, '0')}-00`,
-    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
-    urgente: i % 5 === 0,
-    leida: i % 3 === 0,
-    estado: (i % 3 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
-    documentosAdjuntos: [`documento_${i + 1}.pdf`]
-  })),
-
-  // ============= CORREOS (Emails con clasificación IA) =============
   {
-    id: 'EMAIL-2025-001',
-    tipo: 'CORREO',
-    asunto: 'Consulta urgente sobre licitación pública - Requiere concepto jurídico',
-    descripcion: 'Dirección de Contratación solicita concepto sobre posible inhabilidad de proponente',
-    remitente: 'contratacion@esap.edu.co',
-    fechaRadicacion: new Date('2024-12-24'),
+    id: 'JUD-2025-004',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción de Cumplimiento',
+    asunto: 'Requerimiento de información - Cumplimiento de normativa',
+    descripcion: 'Solicitud del juzgado para aportar información sobre cumplimiento de normas en materia de transparencia y acceso a la información pública.',
+    remitente: 'Juzgado 18 Administrativo de Bogotá',
+    despachoOrigen: 'Juzgado 18 Administrativo',
+    radicadoExterno: '25000-18-10-001-2025-00234-00',
+    fechaRadicacion: new Date('2025-01-22'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['requerimiento.pdf']
+  },
+  {
+    id: 'JUD-2025-005',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Ejecutivo Singular',
+    asunto: 'Mandamiento de pago - Cobro obligaciones fiscales',
+    descripcion: 'Se libra mandamiento de pago dentro del proceso ejecutivo por obligaciones fiscales pendientes. Monto: $125.000.000',
+    remitente: 'Juzgado 2 Civil del Circuito',
+    despachoOrigen: 'Juzgado 2 Civil',
+    radicadoExterno: '11001-02-31-002-2024-00567-00',
+    fechaRadicacion: new Date('2025-01-20'),
     urgente: true,
     leida: false,
     estado: 'PENDIENTE',
-    documentosAdjuntos: ['documentos_licitacion.pdf', 'anexo_tecnico.xlsx'],
+    documentosAdjuntos: ['mandamiento_pago.pdf', 'liquidacion.pdf']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📧 CORREOS ELECTRÓNICOS (Con Clasificación IA)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'CORREO-2025-001',
+    tipo: 'CORREO',
+    asunto: 'Consulta sobre requisitos para inscripción de título',
+    descripcion: 'Ciudadano solicita información sobre procedimiento y documentos necesarios para inscribir título profesional obtenido en ESAP.',
+    remitente: 'ciudadano@gmail.com',
+    fechaRadicacion: new Date('2025-01-29'),
+    urgente: false,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: [],
     clasificacionIA: {
-      tipoDetectado: 'Consulta Jurídica Interna',
-      moduloSugerido: 'MOD-03: Asesoría Jurídica',
-      confianza: 98
+      tipoDetectado: 'Derecho de Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.92
     }
   },
   {
-    id: 'EMAIL-2025-002',
+    id: 'CORREO-2025-002',
     tipo: 'CORREO',
-    asunto: 'Notificación Contraloría - Solicitud de información proceso DJ-2024-023',
-    descripcion: 'Contraloría General solicita información sobre proceso de defensa judicial',
-    remitente: 'notificaciones@contraloria.gov.co',
-    fechaRadicacion: new Date('2024-12-23'),
+    asunto: 'Solicitud de certificado laboral urgente',
+    descripcion: 'Ex funcionario requiere certificado laboral para trámite pensional ante fondo de pensiones. Solicita respuesta en máximo 5 días.',
+    remitente: 'exfuncionario@outlook.com',
+    fechaRadicacion: new Date('2025-01-28'),
     urgente: true,
     leida: false,
     estado: 'PENDIENTE',
-    documentosAdjuntos: ['oficio_contraloria.pdf'],
+    documentosAdjuntos: ['cedula.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'PQRS - Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.88
+    }
+  },
+  {
+    id: 'CORREO-2025-003',
+    tipo: 'CORREO',
+    asunto: 'Queja por demora en trámite de grado',
+    descripcion: 'Estudiante manifiesta inconformidad por demora de más de 6 meses en la expedición de su diploma de grado. Solicita solución inmediata.',
+    remitente: 'estudiante.esap@gmail.com',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: true,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['recibo_grado.pdf', 'comunicaciones_previas.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'PQRS - Queja',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.95
+    }
+  },
+  {
+    id: 'CORREO-2025-004',
+    tipo: 'CORREO',
+    asunto: 'Requerimiento Contraloría - Información presupuestal',
+    descripcion: 'La Contraloría General solicita información detallada sobre ejecución presupuestal del último trimestre 2024.',
+    remitente: 'contraloria@contraloria.gov.co',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['requerimiento_oficial.pdf'],
     clasificacionIA: {
       tipoDetectado: 'Órgano de Control',
-      moduloSugerido: 'MOD-07: Órganos de Control',
-      confianza: 99
+      moduloSugerido: 'Órganos de Control',
+      confianza: 0.98
     }
   },
-  // ============= Generar más correos =============
-  ...Array.from({ length: 25 }, (_, i) => ({
-    id: `EMAIL-2024-${200 + i}`,
-    tipo: 'CORREO' as const,
-    asunto: `Correo electrónico ${200 + i} - ${['Consulta', 'Solicitud', 'Notificación', 'Información'][i % 4]}`,
-    descripcion: `Contenido del correo número ${200 + i}`,
-    remitente: ['contratacion@esap.edu.co', 'juridica@esap.edu.co', 'admin@esap.edu.co', 'externo@gobierno.co'][i % 4],
-    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
-    urgente: i % 7 === 0,
-    leida: i % 4 === 0,
-    estado: (i % 4 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
-    documentosAdjuntos: [`correo_${i + 1}.pdf`],
+  {
+    id: 'CORREO-2025-005',
+    tipo: 'CORREO',
+    asunto: 'Solicitud de información pública - Transparencia',
+    descripcion: 'ONG solicita información sobre contratos suscritos en 2024 mayores a $100 millones, en cumplimiento de Ley de Transparencia.',
+    remitente: 'transparencia.colombia@ong.org',
+    fechaRadicacion: new Date('2025-01-25'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: [],
     clasificacionIA: {
-      tipoDetectado: ['Consulta Interna', 'Órgano Control', 'PQRS', 'Solicitud Info'][i % 4],
-      moduloSugerido: ['MOD-03: Asesoría', 'MOD-07: Control', 'MOD-04: Notif.', 'MOD-01: Defensa'][i % 4],
-      confianza: 85 + (i % 15)
+      tipoDetectado: 'Derecho de Petición - Información Pública',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.91
     }
-  })),
+  },
+  {
+    id: 'CORREO-2025-006',
+    tipo: 'CORREO',
+    asunto: 'Propuesta de cooperación interinstitucional',
+    descripcion: 'Universidad Externado propone convenio de cooperación académica para maestría en Gestión Pública.',
+    remitente: 'convenios@uexternado.edu.co',
+    fechaRadicacion: new Date('2025-01-24'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['propuesta_convenio.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'Oficio Externo',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.85
+    }
+  },
 
-  // ============= OFICIOS (Comunicaciones formales) =============
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📄 OFICIOS INTERNOS/EXTERNOS
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     id: 'OFICIO-2025-001',
     tipo: 'OFICIO',
-    asunto: 'Oficio Procuraduría - Solicitud de información sobre proceso disciplinario',
-    descripcion: 'Procuraduría General solicita información de proceso disciplinario interno',
-    remitente: 'Procuraduría General de la Nación',
-    fechaRadicacion: new Date('2024-12-23'),
+    asunto: 'Concepto jurídico sobre modificación contractual',
+    descripcion: 'La Subdirección Financiera solicita concepto jurídico sobre viabilidad de modificación del contrato 045-2024.',
+    remitente: 'Subdirección Financiera - ESAP',
+    fechaRadicacion: new Date('2025-01-30'),
+    urgente: false,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['contrato_045.pdf', 'solicitud_modificacion.pdf']
+  },
+  {
+    id: 'OFICIO-2025-002',
+    tipo: 'OFICIO',
+    asunto: 'Solicitud de revisión de pliegos de condiciones',
+    descripcion: 'Dirección de Contratación solicita revisión jurídica de pliegos para licitación pública de infraestructura.',
+    remitente: 'Dirección de Contratación',
+    fechaRadicacion: new Date('2025-01-29'),
     urgente: true,
     leida: false,
     estado: 'PENDIENTE',
+    documentosAdjuntos: ['pliegos_borrador.pdf', 'estudios_previos.pdf']
+  },
+  {
+    id: 'OFICIO-2025-003',
+    tipo: 'OFICIO',
+    asunto: 'Procuraduría solicita información disciplinaria',
+    descripcion: 'La Procuraduría General de la Nación solicita información sobre procesos disciplinarios en curso contra funcionarios de ESAP.',
+    remitente: 'Procuraduría General de la Nación',
+    radicadoExterno: 'PGN-2025-0123',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: true,
+    leida: true,
+    estado: 'LEIDA',
     documentosAdjuntos: ['oficio_procuraduria.pdf']
   },
-  // ============= Generar más oficios =============
-  ...Array.from({ length: 20 }, (_, i) => ({
-    id: `OFICIO-2024-${300 + i}`,
-    tipo: 'OFICIO' as const,
-    asunto: `Oficio ${300 + i} - ${['Solicitud', 'Requerimiento', 'Información', 'Respuesta'][i % 4]}`,
-    descripcion: `Contenido del oficio número ${300 + i}`,
-    remitente: ['Contraloría', 'Procuraduría', 'Ministerio Público', 'Ente Territorial'][i % 4],
-    fechaRadicacion: new Date(2024, 11 - (i % 12), 20 - (i % 20)),
-    urgente: i % 6 === 0,
-    leida: i % 5 === 0,
-    estado: (i % 5 === 0 ? 'LEIDA' : 'PENDIENTE') as 'LEIDA' | 'PENDIENTE',
-    documentosAdjuntos: [`oficio_${i + 1}.pdf`]
-  })),
+  {
+    id: 'OFICIO-2025-004',
+    tipo: 'OFICIO',
+    asunto: 'Concepto sobre licencia de maternidad',
+    descripcion: 'Gestión Humana solicita concepto sobre procedimiento de licencia de maternidad para madre adoptante.',
+    remitente: 'Gestión Humana',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['solicitud_concepto.pdf']
+  },
+  {
+    id: 'OFICIO-2025-005',
+    tipo: 'OFICIO',
+    asunto: 'Ministerio de Educación - Solicitud de estadísticas',
+    descripcion: 'El Ministerio de Educación Nacional solicita estadísticas de graduados 2024 para consolidado nacional.',
+    remitente: 'Ministerio de Educación Nacional',
+    radicadoExterno: 'MINEDU-2025-0456',
+    fechaRadicacion: new Date('2025-01-23'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['oficio_mineducacion.pdf']
+  },
 
-  // ============= ENVIADOS (Comunicaciones enviadas) =============
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📤 COMUNICACIONES ENVIADAS
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     id: 'ENV-2025-001',
     tipo: 'ENVIADO',
-    asunto: 'Respuesta a demanda DJ-2024-089',
-    descripcion: 'Respuesta a demanda laboral presentada por Juan Pérez',
-    remitente: 'Oficina Asesora Jurídica',
-    destinatario: 'Juzgado 3 Laboral Circuito Bogotá',
-    fechaRadicacion: new Date('2024-12-24'),
+    asunto: 'Respuesta a derecho de petición - Certificado laboral',
+    descripcion: 'Se da respuesta a solicitud de certificado laboral remitiendo documento solicitado.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Juan Carlos Rodríguez',
+    fechaRadicacion: new Date('2025-01-29'),
     urgente: false,
     leida: true,
     estado: 'ENVIADA',
-    documentosAdjuntos: ['respuesta_demandajudicial.pdf']
+    documentosAdjuntos: ['respuesta_peticion.pdf', 'certificado_laboral.pdf']
   },
   {
     id: 'ENV-2025-002',
     tipo: 'ENVIADO',
-    asunto: 'Circular Jurídica - Actualización normativa Ley 2294 de 2023',
-    descripcion: 'Circular sobre aplicación de nueva ley anticorrupción en contratación',
-    remitente: 'Oficina Asesora Jurídica',
-    destinatario: 'Todas las áreas',
-    fechaRadicacion: new Date('2024-12-20'),
+    asunto: 'Contestación de tutela - Derecho a la educación',
+    descripcion: 'Se presenta contestación a acción de tutela radicada bajo número 25000-33-10-001-2025-00045-00.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Juzgado 33 Administrativo de Bogotá',
+    fechaRadicacion: new Date('2025-01-28'),
     urgente: false,
     leida: true,
     estado: 'ENVIADA',
-    documentosAdjuntos: ['circular_juridica_089.pdf', 'ley_2294.pdf']
+    documentosAdjuntos: ['contestacion_tutela.pdf', 'pruebas.pdf']
+  },
+  {
+    id: 'ENV-2025-003',
+    tipo: 'ENVIADO',
+    asunto: 'Concepto jurídico sobre contratación',
+    descripcion: 'Se emite concepto jurídico favorable sobre modificación de contrato 045-2024.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Subdirección Financiera',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['concepto_juridico_045.pdf']
+  },
+  {
+    id: 'ENV-2025-004',
+    tipo: 'ENVIADO',
+    asunto: 'Respuesta a requerimiento de Contraloría',
+    descripcion: 'Se da respuesta al requerimiento de información presupuestal con anexos solicitados.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Contraloría General de la República',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['respuesta_contraloria.pdf', 'anexo_presupuestal.xlsx']
+  },
+  {
+    id: 'ENV-2025-005',
+    tipo: 'ENVIADO',
+    asunto: 'Notificación de decisión disciplinaria',
+    descripcion: 'Se notifica decisión de archivo de investigación disciplinaria por atipicidad.',
+    remitente: 'Control Interno Disciplinario',
+    destinatario: 'Funcionario Investigado',
+    fechaRadicacion: new Date('2025-01-25'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['auto_archivo.pdf']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📦 COMUNICACIONES ARCHIVADAS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'ARCH-2025-001',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción de Tutela',
+    asunto: 'Notificación de fallo de tutela (ARCHIVADA)',
+    descripcion: 'Fallo favorable a ESAP en acción de tutela. Caso cerrado.',
+    remitente: 'Juzgado 10 Administrativo',
+    despachoOrigen: 'Juzgado 10 Administrativo',
+    radicadoExterno: '25000-10-10-001-2024-00789-00',
+    fechaRadicacion: new Date('2024-12-15'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['fallo.pdf']
+  },
+  {
+    id: 'ARCH-2025-002',
+    tipo: 'CORREO',
+    asunto: 'Solicitud de información resuelta (ARCHIVADA)',
+    descripcion: 'Petición de información sobre concursos docentes - Respondida y archivada.',
+    remitente: 'ciudadano123@gmail.com',
+    fechaRadicacion: new Date('2024-12-10'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['respuesta.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'Derecho de Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.89
+    }
+  },
+  {
+    id: 'ARCH-2025-003',
+    tipo: 'OFICIO',
+    asunto: 'Concepto jurídico emitido (ARCHIVADO)',
+    descripcion: 'Concepto sobre validez de acto administrativo - Emitido y archivado.',
+    remitente: 'Dirección Administrativa',
+    fechaRadicacion: new Date('2024-12-05'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['concepto.pdf']
   }
 ];
 

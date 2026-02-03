@@ -2956,38 +2956,36 @@ function ModalNuevaAuditoria({ onClose, onAuditoriaCreada }: { onClose: () => vo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[9999] overflow-y-auto">
-      <div className="min-h-screen w-full flex items-start justify-center p-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl relative"
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] overflow-y-auto p-6">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto relative my-auto"
+      >
+        {/* Botón Cerrar Moderno */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:scale-110 active:scale-95 shadow-md"
+          aria-label="Cerrar"
         >
-          {/* Botón Cerrar Moderno */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 z-10 p-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:scale-110 active:scale-95 shadow-md"
-            aria-label="Cerrar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <X className="w-5 h-5" />
+        </button>
 
-          {/* Contenido del formulario sin padding extra */}
-          <FormularioNuevaAuditoria 
-            onClose={onClose} 
-            onGuardar={handleGuardarAuditoria}
-          />
-          {guardando && (
-            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 rounded-2xl">
-              <div className="flex flex-col items-center gap-4">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-                <p className="text-gray-700 font-medium">Guardando auditoría en la base de datos...</p>
-              </div>
+        {/* Contenido del formulario sin padding extra */}
+        <FormularioNuevaAuditoria 
+          onClose={onClose} 
+          onGuardar={handleGuardarAuditoria}
+        />
+        {guardando && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-50 rounded-2xl">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <p className="text-gray-700 font-medium">Guardando auditoría en la base de datos...</p>
             </div>
-          )}
-        </motion.div>
-      </div>
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }

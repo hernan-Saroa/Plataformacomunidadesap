@@ -702,73 +702,113 @@ export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }
           </TabsContent>
 
           {/* ==================== TAB: VISTA PREVIA ==================== */}
-          <TabsContent value="vista-previa" className="flex-1 overflow-y-auto px-6 py-4 m-0">
-            <Card className="max-w-4xl mx-auto">
+          <TabsContent value="vista-previa" className="flex-1 overflow-y-auto px-6 py-4 m-0 bg-gray-100">
+            <Card className="max-w-4xl mx-auto bg-white shadow-2xl border-4 border-gray-200">
               {/* Encabezado oficial */}
-              <div className="p-8 border-b-4 border-blue-600 bg-gradient-to-b from-white to-blue-50">
-                <div className="text-center">
-                  <h1 className="text-2xl font-black text-blue-900 mb-1">
+              <div className="relative p-8 border-b-8 border-[#003DA5] bg-gradient-to-b from-white via-blue-50 to-white">
+                {/* Logo ESAP (simulado) */}
+                <div className="absolute top-4 left-6 w-16 h-16 bg-[#003DA5] rounded-full flex items-center justify-center text-white font-black text-xl">
+                  ESAP
+                </div>
+                
+                <div className="text-center pt-4">
+                  <h1 className="text-3xl font-black text-[#003DA5] mb-2 tracking-tight">
                     ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
                   </h1>
-                  <p className="text-sm text-gray-600 font-bold">ESAP - República de Colombia</p>
-                  <p className="text-xs text-gray-500 mt-1">Oficina Jurídica</p>
+                  <p className="text-base text-gray-700 font-bold mb-1">ESAP - República de Colombia</p>
+                  <p className="text-sm text-gray-600 font-semibold">Oficina Jurídica</p>
+                  <div className="mt-3 pt-3 border-t-2 border-[#F57C00] max-w-md mx-auto">
+                    <p className="text-xs text-gray-500">
+                      Calle 44 No. 53-37, Bogotá D.C. • Tel: (601) 220-2790 • juridica@esap.edu.co
+                    </p>
+                  </div>
                 </div>
               </div>
 
               {/* Contenido del oficio */}
-              <div className="p-8 space-y-6">
-                {/* Metadatos */}
-                <div className="grid grid-cols-2 gap-4 text-sm pb-4 border-b">
-                  <div>
-                    <p className="text-gray-600 font-bold">OFICIO No:</p>
-                    <p className="text-gray-900 font-black">{numero || '[NÚMERO PENDIENTE]'}</p>
+              <div className="p-10 space-y-6 bg-white" style={{ minHeight: '500px' }}>
+                {/* Metadatos del oficio */}
+                <div className="grid grid-cols-2 gap-6 pb-6 border-b-2 border-gray-300">
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Oficio No:</span>
+                      <span className={`text-base font-black ${numero ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                        {numero || '[NÚMERO PENDIENTE]'}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Expediente:</span>
+                      <span className="text-base font-bold text-gray-900">{expedienteId}</span>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-600 font-bold">FECHA:</p>
-                    <p className="text-gray-900 font-black">
-                      {new Date().toLocaleDateString('es-CO', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}
-                    </p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-600 font-bold">PARA:</p>
-                    <p className="text-gray-900">{destinatario || '[DESTINATARIO PENDIENTE]'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-600 font-bold">ASUNTO:</p>
-                    <p className="text-gray-900">{asunto || '[ASUNTO PENDIENTE]'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-600 font-bold">EXPEDIENTE:</p>
-                    <p className="text-gray-900">{expedienteId}</p>
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-black text-[#003DA5] uppercase">Fecha:</span>
+                      <span className="text-base font-bold text-gray-900">
+                        {new Date().toLocaleDateString('es-CO', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Contenido */}
-                <div className="text-sm leading-relaxed whitespace-pre-wrap text-justify">
-                  {contenido || '[CONTENIDO PENDIENTE]'}
-                </div>
-
-                {/* Firma */}
-                <div className="pt-8 mt-8 border-t">
-                  <p className="font-bold text-gray-900">{firma}</p>
-                  <p className="text-sm text-gray-600 mt-1">Oficina Jurídica</p>
-                  <p className="text-sm text-gray-600">
-                    Escuela Superior de Administración Pública - ESAP
+                {/* Destinatario */}
+                <div className="space-y-1">
+                  <p className="text-sm font-black text-[#003DA5] uppercase">Para:</p>
+                  <p className={`text-base font-bold ${destinatario ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                    {destinatario || '[DESTINATARIO PENDIENTE]'}
                   </p>
                 </div>
 
-                {/* Anexos */}
+                {/* Asunto */}
+                <div className="space-y-1">
+                  <p className="text-sm font-black text-[#003DA5] uppercase">Asunto:</p>
+                  <p className={`text-base font-bold ${asunto ? 'text-gray-900' : 'text-orange-500 italic'}`}>
+                    {asunto || '[ASUNTO PENDIENTE]'}
+                  </p>
+                </div>
+
+                {/* Contenido */}
+                <div className="pt-4 border-t border-gray-200">
+                  {contenido ? (
+                    <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap font-serif">
+                      {contenido}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-orange-500 italic bg-orange-50 p-6 rounded-lg border-2 border-dashed border-orange-300">
+                      <p className="text-center">
+                        [CONTENIDO PENDIENTE]
+                        <br />
+                        <span className="text-xs">Escribe el contenido en la pestaña "Redactar" para verlo aquí</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Firma */}
+                {firma && (
+                  <div className="pt-8 mt-8 border-t-2 border-gray-300">
+                    <p className="text-sm text-gray-700 mb-3">Cordialmente,</p>
+                    <div className="mt-6 pt-12 border-t border-gray-400 max-w-xs">
+                      <p className="text-sm font-black text-gray-900">{firma}</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Escuela Superior de Administración Pública - ESAP
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Adjuntos */}
                 {archivos.length > 0 && (
-                  <div className="pt-4 border-t">
-                    <p className="text-sm font-bold text-gray-700 mb-2">ANEXOS:</p>
-                    <ul className="text-sm text-gray-600 space-y-1">
+                  <div className="pt-4 border-t border-gray-200">
+                    <p className="text-sm font-black text-[#003DA5] mb-2">ANEXOS:</p>
+                    <ul className="space-y-1">
                       {archivos.map((archivo, index) => (
-                        <li key={index}>
-                          {index + 1}. {archivo.name} ({(archivo.size / 1024).toFixed(0)} KB)
+                        <li key={index} className="text-sm text-gray-700">
+                          {index + 1}. {archivo.name} ({(archivo.size / (1024 * 1024)).toFixed(2)} MB)
                         </li>
                       ))}
                     </ul>
@@ -776,11 +816,26 @@ export function ModalRedactarOficio({ isOpen, onClose, onGuardar, expedienteId }
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="p-4 bg-gray-50 border-t text-center text-xs text-gray-500">
-                <p>Este es un documento oficial generado por el Sistema de Gestión Legal ESAP</p>
+              {/* Pie de página oficial */}
+              <div className="p-6 bg-gradient-to-r from-[#003DA5] to-[#0051C9] border-t-4 border-[#F57C00]">
+                <p className="text-xs text-center text-white font-semibold">
+                  Este es un documento oficial generado por el Sistema Integrado de Gestión Legal (SIGL) de ESAP
+                  <br />
+                  Documento digital con validez legal • Generado el {new Date().toLocaleDateString('es-CO')} a las {new Date().toLocaleTimeString('es-CO')}
+                </p>
               </div>
             </Card>
+
+            {/* Indicador de sincronización en tiempo real */}
+            <div className="mt-4 text-center">
+              <Card className="inline-block p-3 bg-green-50 border-green-300">
+                <p className="text-xs text-green-700 font-bold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  ✅ Vista previa sincronizada en tiempo real
+                  <span className="text-gray-500">• Los cambios se reflejan automáticamente</span>
+                </p>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
 
