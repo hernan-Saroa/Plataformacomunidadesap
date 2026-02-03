@@ -402,8 +402,8 @@ export class LegalService {
     // Duplicates removed
 
 
-    async updateEstadoConsulta(id: string, estado: string, usuario?: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario });
+    async updateEstadoConsulta(id: string, estado: string, usuario?: string, estadoNombre?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario, estadoNombre });
     }
 
     async responderConsulta(id: string, respuestaData: any): Promise<any> {
@@ -556,6 +556,10 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
     }
 
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
+    }
+
     async createRequerimientoOC(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc`, data);
     }
@@ -670,6 +674,11 @@ class OCService {
     // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    // Catálogo de tipos de requerimiento
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
     }
 
     // Requerimientos OC
@@ -928,6 +937,9 @@ export interface CorreoJuridico {
     categoria: string | null;
     moduloSugerido: string | null;
     confianzaClasificacion: number | null;
+    aiSuggestedCategory?: string;
+    isTrained?: boolean;
+    expedienteId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -1056,6 +1068,20 @@ export class CorreosJuridicosService {
     async exportCorreoZip(id: string): Promise<string> {
         const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
         return window.URL.createObjectURL(blob);
+    }
+
+    /**
+     * Update classification manually (AI Feedback Loop)
+     */
+    async updateClasificacion(id: string, category: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/classify`, { category });
+    }
+
+    /**
+     * Link email to legal process
+     */
+    async vincularProceso(id: string, expedienteId: string, targetModule?: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/link-process`, { expedienteId, targetModule });
     }
 
 

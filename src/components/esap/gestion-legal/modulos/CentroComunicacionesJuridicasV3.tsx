@@ -591,6 +591,25 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return arrayBtns
   };
 
+  const linkProcess = async (id: string, expedienteId: string, targetModule?: string) => {
+    try {
+      const updated = await correosJuridicosService.vincularProceso(id, expedienteId, targetModule);
+
+      // Update local state
+      setComunicaciones(prev => prev.map(c => c.id === id ? { ...c, estado: 'ARCHIVADA' } : c));
+      if (comunicacionSeleccionada?.id === id) setComunicacionSeleccionada(null);
+      if (comunicacionParaExpediente?.id === id) setComunicacionParaExpediente(null); // Close if open
+
+      toast.success('Correo vinculado al proceso correctamente');
+      setModalExpedienteOpen(false); // Close modal on success
+      return updated;
+    } catch (err: any) {
+      console.error('Error linking process:', err);
+      toast.error('Error al vincular proceso');
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -810,7 +829,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
                 <ChevronLeft className="w-4 h-4" />
                 Anterior
               </Button>
-              
+
               <div className="flex items-center gap-1">
                 {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                   let pageNum;
@@ -823,7 +842,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
                   } else {
                     pageNum = paginaActual - 2 + i;
                   }
-                  
+
                   return (
                     <Button
                       key={pageNum}
@@ -838,7 +857,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
                   );
                 })}
               </div>
-              
+
               <Button
                 variant="outline"
                 size="sm"
@@ -865,16 +884,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       />
 
       {/* Modal Expediente Comunicación */}
+
       {comunicacionParaExpediente && (
         <ModalExpedienteComunicacion
           isOpen={modalExpedienteOpen}
-          onClose={() => {
-            setModalExpedienteOpen(false);
-            setComunicacionParaExpediente(null);
-          }}
+          onClose={() => setModalExpedienteOpen(false)}
           comunicacion={comunicacionParaExpediente}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
+          onLink={linkProcess}
         />
       )}
     </div>
@@ -1247,14 +1265,14 @@ function VistaPreviaComunicacion({
           </Button>
         )}
         {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => onArchivar(comunicacion.id)}
-        >
-          <Archive className="w-4 h-4 mr-2" />
-          Archivar
-        </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => onArchivar(comunicacion.id)}
+          >
+            <Archive className="w-4 h-4 mr-2" />
+            Archivar
+          </Button>
         )}
       </div>
     </div>

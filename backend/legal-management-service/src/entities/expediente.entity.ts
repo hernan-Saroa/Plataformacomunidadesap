@@ -14,7 +14,7 @@ export class Expediente {
     @OneToMany(() => Actor, (actor) => actor.expediente, { cascade: true })
     actors: Actor[];
 
-    @OneToMany(() => Actuacion, (actuacion) => actuacion.expediente)
+    // Data populated manually by Service, no ORM relation
     actuaciones: Actuacion[];
 
     @OneToMany(() => DecisionDisciplinaria, (decision) => decision.expediente)

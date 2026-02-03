@@ -6,9 +6,7 @@ import {
   Download,
   Copy,
   Printer,
-  Share2,
   CheckCircle,
-  ExternalLink,
   Shield,
   Smartphone,
   Globe,
@@ -76,44 +74,6 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
         duration: 5000
       });
     }
-  };
-
-  const handleCompartir = async () => {
-    const canvas = qrRef.current?.querySelector('canvas');
-    const dataUrl = canvas?.toDataURL('image/png');
-
-    if (navigator.share) {
-      try {
-        const files: File[] = [];
-        if (dataUrl && navigator.canShare && typeof navigator.canShare === 'function') {
-          const res = await fetch(dataUrl);
-          const blob = await res.blob();
-          const file = new File([blob], `QR-${qrData}.png`, { type: 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
-            files.push(file);
-          }
-        }
-
-        await navigator.share({
-          title: 'Verificar Certificado Laboral ESAP',
-          text: `Verificar certificado ${certificado.consecutivo}`,
-          url: urlVerificacion,
-          files: files.length ? files : undefined
-        });
-        toast.success('Compartido exitosamente');
-        return;
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          await handleCopiarEnlace();
-          return;
-        }
-        return;
-      }
-    }
-
-    // Fallback: copiar enlace
-    await handleCopiarEnlace();
-    toast.info('Enlace copiado al portapapeles');
   };
 
   const handleImprimir = () => {
@@ -260,7 +220,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
               <div ref={qrRef} className="flex justify-center mb-4 sm:mb-6">
                 <div className="relative">
                   <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 sm:border-4 border-[#003DA5] shadow-xl">
-                      <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
+                    <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
                       <div className="w-52 h-52 sm:w-72 sm:h-72 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
                         <QRCodeCanvas
                           value={urlVerificacion}
@@ -313,36 +273,23 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                       <code className="flex-1 text-[10px] sm:text-xs bg-white px-2 sm:px-3 py-2 rounded-lg border border-gray-200 text-[#003DA5] font-mono truncate">
                         {urlVerificacion}
                       </code>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleCopiarEnlace}
-                          className="flex-1 sm:flex-initial p-2 hover:bg-gray-200 rounded-lg transition-colors min-h-[44px] flex items-center justify-center gap-2"
-                          title="Copiar enlace"
-                        >
-                          <Copy className="w-4 h-4 text-gray-600" />
-                          <span className="text-xs sm:hidden">Copiar</span>
-                        </button>
-                        <a
-                          href={urlVerificacion}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 sm:flex-initial p-2 hover:bg-gray-200 rounded-lg transition-colors min-h-[44px] flex items-center justify-center gap-2"
-                          title="Abrir en nueva pestaña"
-                        >
-                          <ExternalLink className="w-4 h-4 text-gray-600" />
-                          <span className="text-xs sm:hidden">Abrir</span>
-                        </a>
-                      </div>
+                      <button
+                        onClick={handleCopiarEnlace}
+                        className="flex-shrink-0 p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                        title="Copiar enlace"
+                      >
+                        <Copy className="w-4 h-4 text-gray-600" />
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Botones de acción - Mobile Grid */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-6">
+              {/* Botones de acción */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <button
                   onClick={handleDescargarQR}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Download className="w-4 h-4" />
                   <span className="hidden sm:inline">Descargar QR</span>
@@ -350,25 +297,18 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                 </button>
                 <button
                   onClick={handleImprimir}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md border border-gray-800"
                 >
                   <Printer className="w-4 h-4" />
                   Imprimir
                 </button>
                 <button
                   onClick={handleCopiarEnlace}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Copy className="w-4 h-4" />
                   <span className="hidden sm:inline">Copiar Enlace</span>
                   <span className="sm:hidden">Copiar</span>
-                </button>
-                <button
-                  onClick={handleCompartir}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Compartir
                 </button>
               </div>
 

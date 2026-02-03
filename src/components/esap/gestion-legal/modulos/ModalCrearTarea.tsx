@@ -80,7 +80,7 @@ export function ModalCrearTarea({
     }
   ];
 
-  const handleCrear = () => {
+  const handleCrear = async () => {
     // Validación
     if (!titulo.trim()) {
       toast.error('❌ Campo requerido', {
@@ -110,13 +110,10 @@ export function ModalCrearTarea({
       return;
     }
 
-    // Simular creación o edición
+    // Enviar datos reales
     setEnviandoTarea(true);
 
-    setTimeout(() => {
-      const responsable = usuariosDisponibles.find(u => u.id === responsableSeleccionado) ||
-        usuariosDisponibles.find(u => u.nombre === responsableSeleccionado);
-
+    try {
       const diasCalc = calcularDiasRestantes(fechaVencimiento);
 
       const tareaData = {
@@ -126,35 +123,38 @@ export function ModalCrearTarea({
         vencimiento: fechaVencimiento,
         diasRestantes: diasCalc || 0,
         prioridad,
-        responsable: responsable?.nombre || responsableSeleccionado,
+        responsable: responsableSeleccionado, // Usar valor directo del input text
         estado
       };
 
-      if (modoEdicion && onGuardar) {
-        // Modo edición
-        onGuardar(tareaData);
-      } else {
-        // Modo creación
-        toast.success('✅ Tarea creada exitosamente', {
-          description: `Se asignó a ${responsable?.nombre || responsableSeleccionado}`,
-          duration: 4000
-        });
-
-        // Limpiar formulario
-        setTitulo('');
-        setDescripcion('');
-        setFechaVencimiento('');
-        setPrioridad('Media');
-        setResponsableSeleccionado('');
-        setEstado('Pendiente');
-        setEnviandoTarea(false);
-
-        onClose();
+      if (onGuardar) {
+        await onGuardar(tareaData);
       }
 
-      setEnviandoTarea(false);
-    }, 1500);
+      // No necesitamos limpiar ni cerrar manualmente si el padre maneja el estado
+      // y cierra el modal al completar.
+      // Si el padre falla (throw), el catch atrapará el error y no cerraremos.
+
+    } catch (error) {
+      console.error('Error al guardar tarea', error);
+      // El padre ya debería haber mostrado toast de error si falló la API
+      // Pero por si acaso:
+      // toast.error('Error al guardar tarea'); 
+      // Mejor dejamos que el padre maneje errores de API.
+    } finally {
+      if (mounted) setEnviandoTarea(false);
+    }
   };
+
+  // Helper para manejar el estado de montaje y evitar updates en componente desmontado
+  // (Aunque si el padre cierra el modal, este componente se desmonta)
+  // Workaround simple
+  let mounted = true;
+  /* useEffect(() => { return () => { mounted = false; }; }, []); */
+  // En function component, usar useRef es mejor, pero aquí simplificamos dado que
+  // si se desmonta, el estado local ya no importa.
+
+
 
   const calcularDiasRestantes = (fecha: string) => {
     if (!fecha) return null;
@@ -394,7 +394,15 @@ export function ModalCrearTarea({
             <Label className="text-sm font-bold text-gray-700 mb-3 block">
               👤 Asignar responsable <span className="text-red-500">*</span>
             </Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="w-full">
+              <Input
+                value={responsableSeleccionado}
+                onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                placeholder="Escribe el nombre del responsable..."
+                className="text-sm"
+              />
+              {/*
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {usuariosDisponibles.map((usuario) => {
                 const isSelected = responsableSeleccionado === usuario.id;
                 return (
@@ -430,6 +438,8 @@ export function ModalCrearTarea({
                   </Card>
                 );
               })}
+            </div>
+            */}
             </div>
           </div>
 

@@ -786,8 +786,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const handleGuardarEdicionTarea = async (tareaData: any) => {
     try {
-      // Assuming updateTarea exists
-      await legalService.updateTarea(tareaData.id, tareaData);
+      // Mapear datos para el backend
+      const payload = {
+        titulo: tareaData.titulo,
+        descripcion: tareaData.descripcion,
+        fechaVencimiento: tareaData.vencimiento,
+        prioridad: tareaData.prioridad.toLowerCase(),
+        responsableNombre: tareaData.responsable,
+        estado: tareaData.estado === 'En proceso' ? 'en_proceso' :
+          tareaData.estado === 'Completado' ? 'completada' : 'pendiente'
+      };
+
+      await legalService.updateTarea(tareaData.id, payload);
+
       toast.success('✅ Tarea actualizada');
       setTareaParaEditar(null);
       setModalEditarTareaAbierto(false);

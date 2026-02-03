@@ -13,8 +13,9 @@ import {
   MessageSquare, X, Send, AlertCircle, CheckCircle,
   Clock, User, TrendingUp, Filter, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 
 interface Comentario {
   id: string;
@@ -29,12 +30,14 @@ interface ModalComentariosOrganoProps {
   isOpen: boolean;
   onClose: () => void;
   requerimientoId: string;
+  radicado?: string;
 }
 
 export function ModalComentariosOrgano({
   isOpen,
   onClose,
-  requerimientoId
+  requerimientoId,
+  radicado
 }: ModalComentariosOrganoProps) {
   const [nuevoComentario, setNuevoComentario] = useState('');
   const [tipoComentario, setTipoComentario] = useState<'ACTUACION' | 'COMENTARIO' | 'ALERTA'>('COMENTARIO');
@@ -123,7 +126,7 @@ export function ModalComentariosOrgano({
       await ocService.createComentario(requerimientoId, {
         contenido: nuevoComentario,
         tipo: tipoComentario,
-        autorNombre: 'Usuario Actual'
+        autorNombre: authService.getCurrentUser()?.fullName || 'Usuario'
       });
 
       toast.success(tipoComentario === 'ACTUACION' ? 'Actuación registrada' : 'Comentario agregado', {
@@ -142,7 +145,7 @@ export function ModalComentariosOrgano({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent hideCloseButton className="fixed !left-1/2 !top-1/2 !-translate-x-1/2 !-translate-y-1/2 w-[95vw] max-w-[750px] lg:max-w-3xl !max-h-[85vh] overflow-hidden flex flex-col p-0 !z-[9999]">
         <DialogTitle className="sr-only">
           Comentarios y Actuaciones del Requerimiento {requerimientoId}
         </DialogTitle>
@@ -158,7 +161,7 @@ export function ModalComentariosOrgano({
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900">Comentarios y Actuaciones</h2>
-              <p className="text-sm text-gray-600">{requerimientoId} • {comentariosFiltrados.length} registros</p>
+              <p className="text-sm text-gray-600">{radicado || requerimientoId} • {comentariosFiltrados.length} registros</p>
             </div>
           </div>
           <Button
@@ -172,7 +175,7 @@ export function ModalComentariosOrgano({
         </div>
 
         {/* Contenido */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* INFORMACIÓN */}
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -429,7 +432,7 @@ export function ModalComentariosOrgano({
         </div>
 
         {/* Footer */}
-        <div className="border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 z-10 border-t bg-gray-50 px-6 py-4 flex items-center justify-between gap-3">
           <Button
             variant="outline"
             onClick={onClose}
@@ -437,15 +440,6 @@ export function ModalComentariosOrgano({
             <X className="w-4 h-4 mr-2" />
             Cerrar
           </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => toast.info('Exportando historial...')}
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Exportar Historial
-            </Button>
-          </div>
         </div>
       </DialogContent >
     </Dialog >

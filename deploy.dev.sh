@@ -78,7 +78,7 @@ cmd_up() {
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
     echo "  Frontend:    http://4.156.71.181"
-    echo "  API Gateway: http://4.156.71.181:3000"
+    echo "  API Gateway: http://4.156.71.181/services"
     echo ""
 }
 
@@ -100,6 +100,11 @@ cmd_restart() {
 cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios...${NC}"
     docker compose -f docker-compose.dev.yml down
+
+    echo -e "${YELLOW}Limpiando node_modules/dist/build locales (frontend y backend) para reducir el contexto de build...${NC}"
+    rm -rf node_modules dist build
+    find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+
     # Construir imagenes
     docker compose -f docker-compose.dev.yml --env-file .env.dev build
     docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
