@@ -66,7 +66,8 @@ import {
   Database,
   Globe,
   Save,
-  History
+  History,
+  Menu
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../../ui/card';
@@ -87,6 +88,7 @@ import { PortalUsuarioAuditado } from './PortalUsuarioAuditado';
 import { ESAPLogo } from '../../assets/ESAPLogo';
 import { FooterWorldClass } from '../../FooterWorldClass';
 import { BreadcrumbNavegacion, StickyNavBar } from './BreadcrumbNavegacion';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -252,6 +254,9 @@ interface PortalTransaccionalUsuarioMD3Props {
 }
 
 export function PortalTransaccionalUsuarioMD3({ onLogout }: PortalTransaccionalUsuarioMD3Props) {
+  // ✅ Hook responsive mobile-first
+  const isMobile = useIsMobile(1024); // < 1024px = mobile/tablet
+  
   const [vistaActual, setVistaActual] = useState<'dashboard' | 'servicio' | 'perfil'>('dashboard');
   const [servicioActivo, setServicioActivo] = useState<ServicioPortal | null>(null);
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
@@ -261,6 +266,9 @@ export function PortalTransaccionalUsuarioMD3({ onLogout }: PortalTransaccionalU
   // Estados para foto de perfil
   const [fotoPerfil, setFotoPerfil] = useState<string | null>(null);
   const [previewFoto, setPreviewFoto] = useState<string | null>(null);
+  
+  // ✅ Estado para sidebar mobile
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
 
   const serviciosFiltrados = SERVICIOS_MOCK.filter(servicio => {
     const matchCategoria = categoriaActiva === 'Todos' || servicio.categoria === categoriaActiva;
@@ -355,31 +363,92 @@ export function PortalTransaccionalUsuarioMD3({ onLogout }: PortalTransaccionalU
         vistaActual={vistaActual}
       />
 
+      {/* ✅ BOTÓN HAMBURGER FLOTANTE - Solo visible en mobile */}
+      {isMobile && (
+        <motion.button
+          onClick={() => setSidebarMobileOpen(true)}
+          className="fixed bottom-6 left-6 z-50 w-14 h-14 bg-gradient-to-br from-[#2962FF] to-[#1E88E5] text-white rounded-full shadow-2xl hover:shadow-3xl flex items-center justify-center group transition-all hover:scale-110"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          title="Abrir menú"
+        >
+          <Menu className="w-6 h-6" />
+          
+          {/* Tooltip */}
+          <span className="absolute -top-12 left-0 bg-gray-900 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            Abrir menú
+            <span className="absolute bottom-0 left-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900"></span>
+          </span>
+        </motion.button>
+      )}
+
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* SIDEBAR MD3 - 3 columnas - SIEMPRE VISIBLE */}
-          <motion.div 
-            className="lg:col-span-3"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          >
-            {/* Todo el sidebar sticky con scroll interno */}
-            <div className="lg:sticky lg:top-24 space-y-6">
-              <SidebarMD3
-                usuario={USUARIO_MOCK}
-                fotoPerfil={fotoPerfil}
-                previewFoto={previewFoto}
-                modoEdicion={vistaActual === 'perfil'}
-                onVerPerfil={handleVerPerfil}
-                onSeleccionarFoto={handleSeleccionarFoto}
-              />
+          {/* ✅ SIDEBAR MD3 - Overlay en mobile, sticky en desktop */}
+          <AnimatePresence>
+            {(sidebarMobileOpen || !isMobile) && (
+              <>
+                {/* Overlay oscuro - Solo mobile */}
+                {isMobile && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 bg-black/50 z-40"
+                    onClick={() => setSidebarMobileOpen(false)}
+                  />
+                )}
+                
+                {/* Sidebar */}
+                <motion.div 
+                  className={`
+                    ${isMobile 
+                      ? 'fixed top-0 left-0 bottom-0 w-80 bg-white z-50 overflow-y-auto shadow-2xl' 
+                      : 'lg:col-span-3'
+                    }
+                  `}
+                  initial={{ x: isMobile ? -320 : -20, opacity: isMobile ? 1 : 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: isMobile ? -320 : 0, opacity: isMobile ? 1 : 0 }}
+                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  {/* Botón cerrar - Solo mobile */}
+                  {isMobile && (
+                    <button
+                      onClick={() => setSidebarMobileOpen(false)}
+                      className="absolute top-4 right-4 z-10 min-w-[44px] min-h-[44px] w-11 h-11 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-5 h-5 text-gray-600" />
+                    </button>
+                  )}
+                  
+                  {/* Contenido del sidebar */}
+                  <div className={`${isMobile ? 'p-4' : 'lg:sticky lg:top-24'} space-y-6`}>
+                    <SidebarMD3
+                      usuario={USUARIO_MOCK}
+                      fotoPerfil={fotoPerfil}
+                      previewFoto={previewFoto}
+                      modoEdicion={vistaActual === 'perfil'}
+                      onVerPerfil={() => {
+                        handleVerPerfil();
+                        if (isMobile) setSidebarMobileOpen(false);
+                      }}
+                      onSeleccionarFoto={handleSeleccionarFoto}
+                    />
 
-              {/* Accesos Rápidos MD3 */}
-              <AccesosRapidosMD3 />
-            </div>
-          </motion.div>
+                    {/* Accesos Rápidos MD3 */}
+                    <AccesosRapidosMD3 
+                      onClickAcceso={isMobile ? () => setSidebarMobileOpen(false) : undefined}
+                    />
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
           {/* CONTENIDO PRINCIPAL - 9 columnas */}
           <motion.div 
@@ -1503,7 +1572,7 @@ function CampoPerfilEditableMD3({
   );
 }
 
-function AccesosRapidosMD3() {
+function AccesosRapidosMD3({ onClickAcceso }: { onClickAcceso?: () => void }) {
   // Programas internos de ESAP para acceso rápido
   const accesos = [
     {
@@ -1539,6 +1608,9 @@ function AccesosRapidosMD3() {
   ];
 
   const handleClick = (acceso: typeof accesos[0]) => {
+    // Cerrar sidebar mobile si está abierto
+    onClickAcceso?.();
+    
     if (acceso.externo && acceso.url !== '#') {
       window.open(acceso.url, '_blank', 'noopener,noreferrer');
     } else if (acceso.url !== '#') {

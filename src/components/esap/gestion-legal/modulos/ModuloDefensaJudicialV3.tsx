@@ -46,8 +46,10 @@ import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-type VistaModulo = 'kanban' | 'lista';
+type VistaModulo = 'kanban' | 'lista' | 'archivados';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -57,7 +59,13 @@ const ItemTypes = {
 export function ModuloDefensaJudicialV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
-
+  
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
@@ -69,6 +77,114 @@ export function ModuloDefensaJudicialV3() {
 
   // Estado local para manejar drag and drop
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'DJ-999',
+      codigo: '25000-23-33-001-2023-00999-00',
+      nombre: 'Nulidad y Restablecimiento - Juan Pérez Gómez',
+      tipo: 'Proceso Judicial',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-15T10:30:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Desistimiento de la demanda por parte del actor mediante memorial radicado el 12/12/2024',
+      metadatos: {
+        'Tipo Acción': 'NULIDAD Y RESTABLECIMIENTO',
+        'Juzgado': 'Juzgado 12 Administrativo de Bogotá',
+        'Cuantía': '$85,000,000',
+        'Fecha Notificación': '15/01/2024',
+        'Abogado Responsable': 'Dra. Ana María López'
+      }
+    },
+    {
+      id: 'DJ-998',
+      codigo: '11001-03-25-000-2023-00888-00',
+      nombre: 'Reparación Directa - María Rodríguez Castro',
+      tipo: 'Proceso Judicial',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-20T14:15:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso terminado por sentencia favorable a ESAP en segunda instancia',
+      metadatos: {
+        'Tipo Acción': 'REPARACIÓN DIRECTA',
+        'Juzgado': 'Tribunal Administrativo de Cundinamarca',
+        'Cuantía': '$150,000,000',
+        'Resultado': 'Sentencia Favorable'
+      }
+    },
+    {
+      id: 'DJ-997',
+      codigo: '50001-23-31-000-2023-00777-00',
+      nombre: 'Nulidad Simple - Asociación Ciudadana',
+      tipo: 'Proceso Judicial',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-10-05T09:20:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso duplicado - Error en radicación. El proceso real está bajo radicado 50001-23-31-000-2023-00778-00',
+      metadatos: {
+        'Tipo Acción': 'NULIDAD SIMPLE',
+        'Juzgado': 'Juzgado Administrativo de Meta',
+        'Motivo Eliminación': 'Duplicado'
+      }
+    },
+    {
+      id: 'DJ-996',
+      codigo: '76001-23-33-002-2023-00666-00',
+      nombre: 'Acción de Grupo - Comunidad Indígena',
+      tipo: 'Proceso Judicial',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-18T16:45:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Conciliación extrajudicial exitosa. Acuerdo firmado el 15/09/2024',
+      metadatos: {
+        'Tipo Acción': 'ACCIÓN DE GRUPO',
+        'Juzgado': 'Tribunal Administrativo del Valle',
+        'Cuantía': '$320,000,000',
+        'Resultado': 'Conciliación'
+      }
+    },
+    {
+      id: 'DJ-995',
+      codigo: '13001-23-33-001-2022-00555-00',
+      nombre: 'Controversia Contractual - Consorcio ABC',
+      tipo: 'Proceso Judicial',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-22T11:10:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Registro erróneo - No corresponde a demanda contra ESAP',
+      metadatos: {
+        'Tipo Acción': 'CONTROVERSIA CONTRACTUAL',
+        'Juzgado': 'Juzgado Civil del Circuito',
+        'Motivo Eliminación': 'Error de registro'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un expediente archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando expediente:', itemId);
+    
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.restaurarExpediente(itemId);
+    
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    
+    // Aquí se agregaría de vuelta a los expedientes activos
+    // Por ahora solo mostramos el toast (la lógica completa se implementa con backend)
+  };
+
+  // ✅ Función para eliminar permanentemente un expediente
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente expediente:', itemId);
+    
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.eliminarPermanente(itemId);
+    
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // ✅ Datos mock para cada etapa del tablero Kanban
   const expedientesMockDefensaJudicial: any[] = [
@@ -652,7 +768,8 @@ export function ModuloDefensaJudicialV3() {
               onChange: (v: string) => setTipoVista(v as VistaModulo),
               options: [
                 { label: 'Kanban', icon: <Columns3 className="w-4 h-4" /> },
-                { label: 'Lista', icon: <List className="w-4 h-4" /> }
+                { label: 'Lista', icon: <List className="w-4 h-4" /> },
+                { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
               ]
             }}
           />
@@ -815,6 +932,16 @@ export function ModuloDefensaJudicialV3() {
           expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
           isTablet={isTablet}
+        />
+      )}
+
+      {/* Vista de Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Defensa Judicial"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 

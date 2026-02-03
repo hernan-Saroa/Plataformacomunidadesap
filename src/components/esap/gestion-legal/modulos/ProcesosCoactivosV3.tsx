@@ -4,13 +4,13 @@
  * Los procesos son creados manualmente por la oficina de gestión legal
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, FileText, AlertTriangle, Clock, Calendar,
   User, Eye, ChevronDown, DollarSign, TrendingUp, X,
   AlertCircle, CheckCircle, Search, Download, Upload,
   Edit, Trash2, Filter, MoreVertical, Phone, Mail as MailIcon,
-  MapPin, Building, CreditCard, FileCheck, Send, History
+  MapPin, Building, CreditCard, FileCheck, Send, History, Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Badge } from '../../../ui/badge';
@@ -30,6 +30,8 @@ import {
 } from '../../../../services/api/legal.service';
 import { ModalGestionarPagos } from '../procesos-coactivos/ModalGestionarPagos';
 import { ModalHistorialCoactivo } from '../procesos-coactivos/ModalHistorialCoactivo';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext'
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -98,6 +100,12 @@ export function ModuloProcesosCoactivosV3() {
   const [procesos, setProcesos] = useState<ProcesoCoactivo[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<ProcesoCoactivoStats>({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} });
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
+  
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [modalNuevoProceso, setModalNuevoProceso] = useState(false);
@@ -111,6 +119,58 @@ export function ModuloProcesosCoactivosV3() {
   const [modalHistorial, setModalHistorial] = useState(false);
   const [procesoParaPago, setProcesoParaPago] = useState<ProcesoCoactivo | null>(null);
   const [procesoParaHistorial, setProcesoParaHistorial] = useState<ProcesoCoactivo | null>(null);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PC-2024-999',
+      codigo: 'COA-2024-00099',
+      nombre: 'Cobro matrícula semestre 2023-2 - José Martínez (CC 1.001.001.001) - $2.800.000',
+      tipo: 'Proceso Coactivo',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-20T14:30:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Obligación cancelada en su totalidad con intereses moratorios. Proceso finalizado exitosamente mediante acuerdo de pago',
+      metadatos: {
+        'Deudor': 'José Martínez López',
+        'Identificación': '1.001.001.001',
+        'Concepto': 'Matrícula Semestre 2023-2',
+        'Valor': '$2.800.000',
+        'Estado Final': 'Finalizado - Pago completo',
+        'Responsable': 'Dr. Carlos Mendoza García',
+        'Fecha Finalización': '20/12/2024'
+      }
+    },
+    {
+      id: 'PC-2024-888',
+      codigo: 'COA-2024-00088',
+      nombre: 'Reintegro beca - María González (CC 1.002.002.002) - $8.500.000',
+      tipo: 'Proceso Coactivo',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-11-10T09:15:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Proceso duplicado por error del sistema. El proceso oficial es COA-2024-00089',
+      metadatos: {
+        'Deudor': 'María González Pérez',
+        'Motivo Eliminación': 'Registro duplicado',
+        'Proceso Oficial': 'COA-2024-00089',
+        'Fecha Detección': '10/11/2024'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un proceso archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando proceso coactivo:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Proceso restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un proceso
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente proceso:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Proceso eliminado permanentemente');
+  };
 
   // Detectar tamaño de pantalla
   const [isMobile, setIsMobile] = useState(false);
@@ -202,228 +262,151 @@ export function ModuloProcesosCoactivosV3() {
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Procesos Coactivos</h1>
-            <p className="text-sm sm:text-base text-gray-500 mt-1">
-              Gestión de cobro coactivo de obligaciones
-            </p>
-          </div>
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
-            <button
-              onClick={() => {
-                setProcesoEditar(null);
-                setModalNuevoProceso(true);
-              }}
-              className="flex-shrink-0 flex items-center gap-2 px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
-            >
-              <Plus className="w-5 h-5" />
-              {!isMobile && <span>Nuevo Proceso</span>}
-            </button>
-          )}
-        </div>
-
-        {/* Métricas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-blue-50 rounded-lg">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-[#003DA5]" />
-              </div>
+      {/* ✅ SI ESTÁ EN VISTA DE ARCHIVADOS, MOSTRAR COMPONENTE */}
+      {vistaActual === 'archivados' ? (
+        <VistaArchivados
+          items={itemsArchivados}
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+          onVolver={() => setVistaActual('activos')}
+        />
+      ) : (
+        <>
+          {/* Header */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-gray-500">Total Procesos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-amber-50 rounded-lg">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Activos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-red-50 rounded-lg">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Críticos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.criticos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-green-50 rounded-lg">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Saldo Pendiente</p>
-                <p className="text-base sm:text-lg font-bold text-gray-900">
-                  {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(stats.totalMonto)}
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Procesos Coactivos</h1>
+                <p className="text-sm sm:text-base text-gray-500 mt-1">
+                  Gestión de cobro coactivo de obligaciones
                 </p>
               </div>
+              <div className="flex items-center gap-2">
+                {/* ✅ BOTÓN PARA IR A ARCHIVADOS */}
+                <button
+                  onClick={() => setVistaActual('archivados')}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+                  title="Ver archivados y eliminados"
+                >
+                  <Archive className="w-4 h-4" />
+                  {!isMobile && 'Archivados'}
+                  {itemsArchivados.length > 0 && (
+                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {itemsArchivados.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setModalNuevoProceso(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  {!isMobile && 'Nuevo Proceso'}
+                </button>
+              </div>
             </div>
-          </CardSIGL>
-        </div>
 
-        {/* Filtros y búsqueda */}
-        <CardSIGL className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Búsqueda */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por nombre, identificación o radicado..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+            {/* Filtros y búsqueda */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                {/* Búsqueda */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, identificación o radicado..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Filtro Estado */}
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="TODOS">Todos los estados</option>
+                  <option value="IDENTIFICADO">Identificado</option>
+                  <option value="PERSUASIVO">Persuasivo</option>
+                  <option value="PREJURIDICO">Prejurídico</option>
+                  <option value="MANDAMIENTO">Mandamiento</option>
+                  <option value="EMBARGO">Embargo</option>
+                  <option value="FINALIZADO">Finalizado</option>
+                </select>
+
+                {/* Ordenamiento */}
+                <select
+                  value={ordenamiento}
+                  onChange={(e) => setOrdenamiento(e.target.value as any)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="reciente">Más recientes</option>
+                  <option value="antiguo">Más antiguos</option>
+                  <option value="monto-mayor">Monto mayor</option>
+                  <option value="monto-menor">Monto menor</option>
+                </select>
+              </div>
             </div>
-
-            {/* Filtro Estado */}
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="TODOS">Todos los estados</option>
-              <option value="IDENTIFICADO">Identificado</option>
-              <option value="PERSUASIVO">Persuasivo</option>
-              <option value="PREJURIDICO">Prejurídico</option>
-              <option value="MANDAMIENTO">Mandamiento</option>
-              <option value="EMBARGO">Embargo</option>
-              <option value="FINALIZADO">Finalizado</option>
-            </select>
-
-            {/* Ordenamiento */}
-            <select
-              value={ordenamiento}
-              onChange={(e) => setOrdenamiento(e.target.value as any)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="reciente">Más recientes</option>
-              <option value="antiguo">Más antiguos</option>
-              <option value="monto-mayor">Monto mayor</option>
-              <option value="monto-menor">Monto menor</option>
-            </select>
           </div>
-        </CardSIGL>
-      </div>
 
-      {/* Lista de Procesos */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {procesosFiltrados.map((proceso, index) => (
-            <motion.div
-              key={proceso.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <TarjetaProceso
-                proceso={proceso}
-                onVerDetalle={handleVerDetalle}
-                onEditar={handleEditarProceso}
-                onEliminar={handleEliminarProceso}
-                onGestionarPagos={(p) => {
-                  setProcesoParaPago(p);
-                  setModalPagos(true);
-                }}
-                onVerHistorial={(p) => {
-                  setProcesoParaHistorial(p);
-                  setModalHistorial(true);
-                }}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+          {/* Lista de Procesos */}
+          <div className="space-y-3">
+            <AnimatePresence mode="popLayout">
+              {procesosFiltrados.map((proceso, index) => (
+                <motion.div
+                  key={proceso.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <TarjetaProceso
+                    proceso={proceso}
+                    onVerDetalle={handleVerDetalle}
+                    onEliminar={handleEliminarProceso}
+                  />
+                </motion.div>
+              ))}\n        </AnimatePresence>
 
-        {procesosFiltrados.length === 0 && (
-          <CardSIGL className="p-12 text-center">
-            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">
-              No se encontraron procesos con los filtros seleccionados
-            </p>
-          </CardSIGL>
-        )}
-      </div>
+            {procesosFiltrados.length === 0 && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">
+                  No se encontraron procesos con los filtros seleccionados
+                </p>
+              </div>
+            )}
+          </div>
 
-      {/* Modal Nuevo Proceso */}
-      <ModalNuevoProceso
-        isOpen={modalNuevoProceso}
-        onClose={() => {
-          setModalNuevoProceso(false);
-          setProcesoEditar(null);
-        }}
-        onCrear={() => {
-          setModalNuevoProceso(false);
-          setProcesoEditar(null);
-          loadProcesos(); // Recargar lista y stats desde la API
-        }}
-        procesoEditar={procesoEditar}
-      />
+          {/* Modal Nuevo Proceso */}
+          <ModalNuevoProceso
+            isOpen={modalNuevoProceso}
+            onClose={() => setModalNuevoProceso(false)}
+            onCrear={(nuevoProceso) => {
+              setProcesos([nuevoProceso, ...procesos]);
+              setModalNuevoProceso(false);
+              toast.success('Proceso creado exitosamente');
+            }}
+          />
 
-      {/* Modal Detalle */}
-      {procesoSeleccionado && (
-        <ModalDetalleProceso
-          proceso={procesoSeleccionado}
-          isOpen={modalDetalle}
-          onClose={() => {
-            setModalDetalle(false);
-            setProcesoSeleccionado(null);
-          }}
-          onUpdate={loadProcesos}
-        />
-      )}
-
-      {/* Modal Gestionar Pagos (desde tarjeta) */}
-      {procesoParaPago && (
-        <ModalGestionarPagos
-          isOpen={modalPagos}
-          onClose={() => {
-            setModalPagos(false);
-            setProcesoParaPago(null);
-          }}
-          proceso={{
-            id: procesoParaPago.id,
-            radicado: procesoParaPago.radicado,
-            deudor: procesoParaPago.deudor.nombre,
-            valorTotal: procesoParaPago.obligacion.valor,
-            valorPagado: procesoParaPago.obligacion.valorPagado || 0
-          }}
-          onRegistrarPago={() => {
-            loadProcesos();
-            setModalPagos(false);
-            setProcesoParaPago(null);
-          }}
-        />
-      )}
-
-      {/* Modal Historial (desde tarjeta) */}
-      {procesoParaHistorial && (
-        <ModalHistorialCoactivo
-          isOpen={modalHistorial}
-          onClose={() => {
-            setModalHistorial(false);
-            setProcesoParaHistorial(null);
-          }}
-          procesoId={procesoParaHistorial.id}
-          radicado={procesoParaHistorial.radicado}
-        />
+          {/* Modal Detalle */}
+          {procesoSeleccionado && (
+            <ModalDetalleProceso
+              proceso={procesoSeleccionado}
+              isOpen={modalDetalle}
+              onClose={() => {
+                setModalDetalle(false);
+                setProcesoSeleccionado(null);
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );

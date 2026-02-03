@@ -997,7 +997,7 @@ export function ConfiguracionesSIGL() {
                               setEjeAEliminar(eje);
                               setShowModalEliminarEje(true);
                             }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1154,7 +1154,7 @@ export function ConfiguracionesSIGL() {
                               setIndicadorAEliminar(tipo);
                               setShowModalEliminarIndicador(true);
                             }}
-                            className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1397,23 +1397,39 @@ export function ConfiguracionesSIGL() {
                             placeholder="Nombre del tipo de requerimiento"
                           />
 
-                          <div className="flex items-center gap-2 ml-2">
-                            {/* Toggle Activo */}
-                            <label className="flex items-center gap-2 cursor-pointer bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm hover:bg-gray-50">
-                              <input
-                                type="checkbox"
-                                checked={tipo.activo}
-                                onChange={(e) => {
-                                  const nuevosRequerimientos = tiposRequerimientos.map(t =>
-                                    t.id === tipo.id ? { ...t, activo: e.target.checked } : t
-                                  );
-                                  actualizarTiposRequerimientos(nuevosRequerimientos);
-                                }}
-                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="text-xs font-medium text-gray-600 select-none">
-                                Activo
-                              </span>
+                          <button
+                            onClick={() => {
+                              setRequerimientoAEliminar(tipo);
+                              setShowModalEliminarRequerimiento(true);
+                            }}
+                            className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Fila 2: Descripción */}
+                        <div className="mb-3">
+                          <textarea
+                            value={tipo.descripcion}
+                            onChange={(e) => {
+                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                                t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
+                              );
+                              actualizarTiposRequerimientos(nuevosRequerimientos);
+                            }}
+                            className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            placeholder="Descripción del tipo de requerimiento..."
+                            rows={2}
+                          />
+                        </div>
+
+                        {/* Fila 3: Color + Activo */}
+                        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                          {/* Color */}
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                              Color:
                             </label>
 
                             <button
@@ -1683,7 +1699,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => eliminarMedioControl(medio.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1765,7 +1781,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoAuto(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1862,7 +1878,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1967,7 +1983,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarTipoExcepcion(tipo.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -2071,7 +2087,7 @@ export function ConfiguracionesSIGL() {
                             />
                             <button
                               onClick={() => solicitarEliminarCausalEspecifica(causal.id)}
-                              className="p-1.5 sm:p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>

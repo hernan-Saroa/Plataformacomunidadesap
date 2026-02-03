@@ -25,6 +25,8 @@ import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
+import { VistaArchivados, ItemArchivado } from '../design-system/VistaArchivados';
+import { usePermisos } from '../config/PermisosContext';
 
 type TabBandejaType = 'pendientes' | 'leidas' | 'archivadas' | 'urgentes';
 type VistaModulo = 'inbox' | 'lista';
@@ -43,6 +45,12 @@ const getClasificacionIA = (comunicacion: CorreoJuridico) => {
 export function ModuloBuzonOficinaJuridicaV3() {
 
   const { emails, loading, fetchEmails, updateClassification, linkProcess, sync } = useEmails();
+  // ✅ Permisos
+  const { usuario } = usePermisos();
+  
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
   const [tabActiva, setTabActiva] = useState<TabBandejaType>('pendientes');
   const [busqueda, setBusqueda] = useState('');
@@ -53,6 +61,87 @@ export function ModuloBuzonOficinaJuridicaV3() {
   useEffect(() => {
     fetchEmails();
   }, [fetchEmails]);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'OJ-2024-999',
+      codigo: 'EMAIL-OJ-2024-999',
+      nombre: 'Consulta sobre proceso de contratación directa - Dirección Administrativa',
+      tipo: 'Correo Oficina Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-18T14:30:00'),
+      usuarioArchivo: 'Dr. Carlos Méndez',
+      motivoArchivo: 'Consulta respondida exitosamente. Email clasificado y asignado a MOD-03 Asesoría Jurídica (CJ-2024-0345). Respuesta enviada el 18/12/2024',
+      metadatos: {
+        'Remitente': 'Dr. Roberto Vargas - Director Administrativo',
+        'Email': 'roberto.vargas@esap.edu.co',
+        'Asunto': 'Consulta urgente sobre licitación obra civil Sede Cali',
+        'Tipo Clasificación IA': 'CONSULTA_INTERNA',
+        'Módulo Sugerido': 'MOD-03: Asesoría Jurídica',
+        'Precisión IA': '98%',
+        'Fecha Recepción': '16/12/2024',
+        'Fecha Respuesta': '18/12/2024',
+        'Estado Final': 'RESPONDIDO'
+      }
+    },
+    {
+      id: 'OJ-2024-888',
+      codigo: 'EMAIL-OJ-2024-888',
+      nombre: 'Notificación demanda laboral - Juzgado 7 Laboral Bogotá',
+      tipo: 'Correo Oficina Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-25T10:15:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Notificación judicial clasificada y derivada a MOD-01 Defensa Judicial (DJ-2024-156). Expediente creado y abogado asignado',
+      metadatos: {
+        'Remitente': 'Juzgado 7 Laboral del Circuito de Bogotá',
+        'Email': 'notificaciones.j7laboral@cendoj.ramajudicial.gov.co',
+        'Asunto': 'Notificación demanda laboral 11001-31-07-001-2024-00456-00',
+        'Tipo Clasificación IA': 'NOT_JUDICIAL',
+        'Módulo Sugerido': 'MOD-01: Defensa Judicial',
+        'Precisión IA': '99%',
+        'Radicado Judicial': '11001-31-07-001-2024-00456-00',
+        'Fecha Recepción': '23/11/2024',
+        'Estado Final': 'ASIGNADO'
+      }
+    },
+    {
+      id: 'OJ-2024-777',
+      codigo: 'EMAIL-OJ-2024-777',
+      nombre: 'Requerimiento Contraloría - Informe de gestión vigencia 2024',
+      tipo: 'Correo Oficina Jurídica',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-30T16:20:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Requerimiento de órgano de control clasificado y derivado a MOD-06 Órganos de Control. Solicitud de informe radicada y en trámite',
+      metadatos: {
+        'Remitente': 'Contraloría General de la República',
+        'Email': 'requerimientos@contraloria.gov.co',
+        'Asunto': 'Requerimiento CGR-2024-5678 - Informe Gestión Jurídica',
+        'Tipo Clasificación IA': 'ORG_CONTROL',
+        'Módulo Sugerido': 'MOD-06: Órganos de Control',
+        'Precisión IA': '97%',
+        'Radicado Entidad': 'CGR-2024-5678',
+        'Fecha Recepción': '28/10/2024',
+        'Plazo Respuesta': '10 días hábiles',
+        'Estado Final': 'EN_PROCESO'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un correo archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando correo OJ:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Correo restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un correo
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente correo OJ:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Correo eliminado permanentemente');
+  };
 
   // Filtrar comunicaciones
   const comunicacionesFiltradas = useMemo(() => {
@@ -174,10 +263,104 @@ export function ModuloBuzonOficinaJuridicaV3() {
           updateClassification={updateClassification}
         />
       )}
+      {/* ✅ SI ESTÁ EN VISTA DE ARCHIVADOS, MOSTRAR COMPONENTE */}
+      {vistaActual === 'archivados' ? (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Buzón Oficina Jurídica"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+          onVolver={() => setVistaActual('activos')}
+        />
+      ) : (
+        <>
+          {/* Header con ModuleHeader + Botón Archivados */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                  {isMobile ? 'Buzón OJ' : 'Buzón Oficina Jurídica'}
+                </h1>
+                <p className="text-sm sm:text-base text-gray-500 mt-1">
+                  Gestión inteligente de correos con clasificación IA
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* ✅ BOTÓN PARA IR A ARCHIVADOS */}
+                <button
+                  onClick={() => setVistaActual('archivados')}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+                  title="Ver archivados y eliminados"
+                >
+                  <Archive className="w-4 h-4" />
+                  {!isMobile && 'Archivados'}
+                  {itemsArchivados.length > 0 && (
+                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {itemsArchivados.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => toast.info('Redactar Nuevo Correo')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  {!isMobile && 'Nuevo Correo'}
+                </button>
+              </div>
+            </div>
+          </div>
 
-      {/* Vista Lista */}
-      {tipoVista === 'lista' && (
-        <VistaLista comunicaciones={comunicacionesFiltradas} />
+          {/* Métricas Compactas - ESTILO DEFENSA JUDICIAL (3 COLUMNAS) */}
+          <ModuleMetrics
+            metrics={[
+              {
+                icon: <Mail className="w-5 h-5 text-blue-600" />,
+                value: totalPendientes,
+                label: 'Sin Clasificar'
+              },
+              {
+                icon: <AlertTriangle className="w-5 h-5 text-red-600" />,
+                value: totalUrgentes,
+                label: 'Urgentes'
+              },
+              {
+                icon: <Sparkles className="w-5 h-5 text-purple-600" />,
+                value: totalClasificadas > 0 ? 96 : 0,
+                label: 'Precisión IA',
+                suffix: '%'
+              }
+            ]}
+          />
+
+          {/* Vista Inbox */}
+          {tipoVista === 'inbox' && (
+            <VistaInbox
+              tabActiva={tabActiva}
+              setTabActiva={setTabActiva}
+              busqueda={busqueda}
+              setBusqueda={setBusqueda}
+              comunicacionesFiltradas={comunicacionesFiltradas}
+              comunicacionSeleccionada={comunicacionSeleccionada}
+              setComunicacionSeleccionada={setComunicacionSeleccionada}
+              seleccionadas={seleccionadas}
+              toggleSeleccion={toggleSeleccion}
+              marcarComoLeidas={marcarComoLeidas}
+              archivarSeleccionadas={archivarSeleccionadas}
+              totalPendientes={totalPendientes}
+              totalUrgentes={totalUrgentes}
+            />
+          )}
+
+          {/* Vista Lista */}
+          {tipoVista === 'lista' && (
+            <VistaLista comunicaciones={comunicacionesFiltradas} />
+          )}
+        </>
       )}
     </div>
   );
@@ -872,15 +1055,15 @@ function VistaLista({ comunicaciones }: VistaListaProps) {
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
+                        size="icon"
+                        className="min-h-[44px] min-w-[44px]"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0"
+                        size="icon"
+                        className="min-h-[44px] min-w-[44px]"
                       >
                         <CheckCircle className="w-4 h-4" />
                       </Button>

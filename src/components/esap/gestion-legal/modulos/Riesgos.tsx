@@ -37,6 +37,8 @@ import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
 import { riesgosService, RiesgoAPI } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -97,6 +99,9 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
 }
 
 export function Riesgos() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [vistaActual, setVistaActual] = useState<VistaModulo>('matriz');
   const [busqueda, setBusqueda] = useState('');
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
@@ -106,6 +111,47 @@ export function Riesgos() {
   // Estado para lista de riesgos (solo API, sin mocks)
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'RIESGO-999',
+      codigo: 'RIESGO-999',
+      nombre: 'Pérdida de información crítica por falla en sistema de backup - Gestión Documental',
+      tipo: 'Riesgo',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-15T10:00:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Riesgo mitigado completamente. Se implementaron controles redundantes de respaldo y sistema de nube híbrida. Probabilidad reducida a nivel mínimo',
+      metadatos: {
+        'Proceso': 'Gestión Documental',
+        'Tipo Riesgo': '🔒 Seguridad Digital',
+        'Zona Inicial': '🔴 Extremo',
+        'Zona Final': '🟢 Bajo',
+        'Responsable': 'Dr. Luis Gómez - Jefe Sistemas',
+        'Controles Implementados': '5',
+        'Fecha Mitigación': '15/12/2024'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un riesgo archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando riesgo:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Riesgo restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un riesgo
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente riesgo:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Riesgo eliminado permanentemente');
+  };
+
+  // Handlers
+  const handleNuevoRiesgo = () => {
+    setModalNuevoRiesgo(true);
+  };
 
   // Estado para el modal de nuevo riesgo (también usado para edición)
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
@@ -423,6 +469,13 @@ export function Riesgos() {
         riesgo={riesgoSeleccionado}
         onEdit={handleEditarRiesgo}
         onDelete={handleEliminarRiesgo}
+      />
+
+      {/* Vista de Archivados */}
+      <VistaArchivados
+        items={itemsArchivados}
+        onRestaurar={handleRestaurar}
+        onEliminarPermanente={handleEliminarPermanente}
       />
     </div>
   );

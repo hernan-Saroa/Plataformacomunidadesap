@@ -44,6 +44,8 @@ import {
 } from '../../../ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -92,7 +94,7 @@ interface PlanMejoramiento {
   ultimaActualizacion: Date;
 }
 
-type VistaModulo = 'dashboard' | 'lista' | 'timeline';
+type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'archivados';
 
 // ==================== HELPERS ====================
 const getEnteConfig = (ente: EnteControl) => {
@@ -222,6 +224,9 @@ const formatearFecha = (fecha: Date | string): string => {
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
   const { entesControl } = useConfiguracionesSIGL();
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEnte, setFiltroEnte] = useState<string>('TODOS');
@@ -324,6 +329,153 @@ export function ModuloPlanesMejoramientoV4() {
     }
   };
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PM-CGR-2023-999',
+      codigo: 'PM-CGR-2023-999',
+      nombre: 'Plan de Mejoramiento Auditoría Presupuestal Vigencia 2023 - Contraloría General',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-30T16:45:00'),
+      usuarioArchivo: 'Dra. Ana María Rodríguez',
+      motivoArchivo: 'Plan completado exitosamente. Todas las acciones ejecutadas y evidencias aprobadas por la Contraloría mediante Oficio CGR-OF-2024-9876. Cierre formal del proceso',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Documento Origen': 'Informe de Auditoría CGR No. 045-2023',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '5',
+        'Total Acciones': '12',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '28/11/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2023-888',
+      codigo: 'PM-PGN-2023-888',
+      nombre: 'Plan de Mejoramiento Función de Advertencia Procesos Disciplinarios 2023 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-15T14:20:00'),
+      usuarioArchivo: 'Dr. Jorge Silva',
+      motivoArchivo: 'Proceso de vigilancia cerrado por la Procuraduría. Auto de cierre PGN-IUS-2024-5432. Implementación exitosa del sistema de alertas de términos',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2023-0987',
+        'Área Responsable': 'Secretaría General - Oficina Jurídica',
+        'Total Hallazgos': '3',
+        'Total Acciones': '8',
+        'Cumplimiento': '100%',
+        'Resultado': 'Cierre con verificación favorable'
+      }
+    },
+    {
+      id: 'PM-OCI-2023-777',
+      codigo: 'PM-OCI-2023-777',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Gestión Contractual 2022-2023 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-20T11:30:00'),
+      usuarioArchivo: 'Dra. Carolina Pérez',
+      motivoArchivo: 'Auditoría de seguimiento realizada por OCI. Informe OCI-SEG-2024-012 confirma subsanación total de hallazgos. Plan cerrado formalmente',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2023-05',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '7',
+        'Total Acciones': '15',
+        'Cumplimiento': '100%',
+        'Fecha Seguimiento': '15/09/2024'
+      }
+    },
+    {
+      id: 'PM-CGR-2022-666',
+      codigo: 'PM-CGR-2022-666',
+      nombre: 'Plan de Mejoramiento Auditoría Tecnologías de la Información 2022 - Contraloría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-10T09:15:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Plan registrado duplicado. El plan real está bajo código PM-CGR-2022-667. Error en migración de datos del sistema anterior',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Motivo Eliminación': 'Registro duplicado - Plan activo bajo otro código',
+        'Plan Correcto': 'PM-CGR-2022-667'
+      }
+    },
+    {
+      id: 'PM-AE-2023-555',
+      codigo: 'PM-AE-2023-555',
+      nombre: 'Plan de Mejoramiento Auditoría Externa Estados Financieros 2022 - Revisoría Fiscal',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-25T15:50:00'),
+      usuarioArchivo: 'Dr. Roberto Vargas',
+      motivoArchivo: 'Hallazgos subsanados. Dictamen sin salvedades emitido por la Revisoría Fiscal para vigencia 2023. Cierre del plan de mejoramiento',
+      metadatos: {
+        'Ente de Control': 'Auditoría Externa - Revisoría Fiscal',
+        'Documento Origen': 'Informe de Revisoría Fiscal RF-2023-001',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '4',
+        'Total Acciones': '9',
+        'Cumplimiento': '100%',
+        'Dictamen': 'Sin salvedades'
+      }
+    },
+    {
+      id: 'PM-OCI-2022-444',
+      codigo: 'PM-OCI-2022-444',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Talento Humano 2022 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-18T13:40:00'),
+      usuarioArchivo: 'Dra. Patricia Ruiz',
+      motivoArchivo: 'Implementación exitosa de políticas de gestión del talento humano. Informe de verificación OCI-VER-2024-008 aprueba cierre del plan',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2022-11',
+        'Área Responsable': 'Dirección de Talento Humano',
+        'Total Hallazgos': '6',
+        'Total Acciones': '13',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '15/06/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2022-333',
+      codigo: 'PM-PGN-2022-333',
+      nombre: 'Plan de Mejoramiento Control Preventivo Contratación 2022 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-05-10T10:25:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Visita de verificación de la Procuraduría realizada. Acta de visita PGN-VIS-2024-0345 sin observaciones. Proceso cerrado satisfactoriamente',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2022-1234',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '4',
+        'Total Acciones': '10',
+        'Cumplimiento': '100%',
+        'Resultado': 'Verificación favorable'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un plan archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando plan de mejoramiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un plan
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente plan:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan eliminado permanentemente');
+  };
 
   // Filtrar planes
   const planesFiltrados = useMemo(() => {
@@ -493,7 +645,8 @@ export function ModuloPlanesMejoramientoV4() {
           options: [
             { label: 'Dashboard', icon: '📊', value: 'dashboard' },
             { label: 'Lista', icon: '📋', value: 'lista' },
-            { label: 'Timeline', icon: '📅', value: 'timeline' }
+            { label: 'Timeline', icon: '📅', value: 'timeline' },
+            { label: 'Archivados', icon: '📦', value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -634,6 +787,14 @@ export function ModuloPlanesMejoramientoV4() {
               <VistaTimeline planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
           </>
+        )}
+        {tipoVista === 'archivados' && (
+          <VistaArchivados
+            items={itemsArchivados}
+            moduloNombre="Planes de Mejoramiento"
+            onRestaurar={handleRestaurar}
+            onEliminarPermanente={handleEliminarPermanente}
+          />
         )}
       </motion.div>
 
