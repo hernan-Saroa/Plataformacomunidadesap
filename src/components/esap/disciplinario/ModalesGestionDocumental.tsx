@@ -1689,7 +1689,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
   const [evidenciaParaEliminar, setEvidenciaParaEliminar] = useState<any | null>(null);
   const [eliminandoEvidencia, setEliminandoEvidencia] = useState(false);
-  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB para evidencias
+  const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB para evidencias
 
 
   const cargarEvidencias = async (procId: string) => {
@@ -1750,7 +1750,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     setArchivoError(null);
 
     if (file.size > MAX_FILE_SIZE) {
-      setArchivoError('El archivo supera el maximo de 50 MB');
+      setArchivoError('El archivo supera el maximo de 10 GB');
       setArchivo(null);
       e.target.value = '';
       return;
@@ -2040,7 +2040,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                     {cargando ? 'Subiendo archivos...' : 'Subir Nueva Evidencia'}
                   </p>
                   <p className="text-sm text-gray-600">
-                    {archivo ? archivo.name : 'Click para seleccionar archivo (máx 50 MB)'}
+                    {archivo ? archivo.name : 'Click para seleccionar archivo (máx 10 GB)'}
                   </p>
                   {archivoError && (
                     <p className="text-xs text-red-600 mt-2">{archivoError}</p>

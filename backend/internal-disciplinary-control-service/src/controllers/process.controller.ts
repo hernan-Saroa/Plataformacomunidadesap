@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   Res,
   HttpException,
+  Inject,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -25,24 +26,30 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { ProcessService } from '../services/process.service';
+import { NewsService } from '../services/news.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
 import { ChangeStageDto } from '../dtos/change-stage.dto';
 import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-process.dto';
+import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { StorageService } from '../services/storage.service';
 import type { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
 export class ProcessController {
   constructor(
     private processService: ProcessService,
+    private newsService: NewsService,
     private storageService: StorageService,
+    private httpService: HttpService,
   ) { }
 
   /**
@@ -219,12 +226,17 @@ export class ProcessController {
         );
       }
 
-      // Validar tamaño del archivo si se proporciona
-      if (file && file.size > 50 * 1024 * 1024) {
-        throw new HttpException(
-          'El archivo excede el tamaño máximo permitido de 50MB',
-          HttpStatus.BAD_REQUEST,
-        );
+      // Validar tamaño del archivo si se proporciona (10GB para evidencias, 50MB para otros)
+      if (file) {
+        const isEvidencia = body.tipo?.toUpperCase() === 'EVIDENCIA';
+        const maxSize = isEvidencia ? 10 * 1024 * 1024 * 1024 : 50 * 1024 * 1024;
+        
+        if (file.size > maxSize) {
+          throw new HttpException(
+            `El archivo excede el tamaño máximo permitido de ${isEvidencia ? '10GB' : '50MB'}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
       // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
@@ -656,5 +668,106 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async delete(@Param('id') id: string): Promise<void> {
     return await this.processService.delete(id);
+  }
+
+  /**
+   * Remitir noticia por competencia a otra entidad
+   * Envía un correo con toda la información de la noticia a la entidad destinataria
+   */
+  @Post('remitir-competencia')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remitir por Competencia',
+    description: 'Envía la información de una noticia disciplinaria por correo a otra entidad por falta de competencia',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo enviado exitosamente',
+    type: RemisionPorCompetenciaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async remitirPorCompetencia(
+    @Body() dto: RemitirPorCompetenciaDto,
+  ): Promise<RemisionPorCompetenciaResponseDto> {
+    try {
+      console.log('📧 [RemitirCompetencia] Iniciando remisión por competencia...');
+      console.log('📧 [RemitirCompetencia] Datos recibidos:', JSON.stringify(dto, null, 2));
+
+      // 1. Obtener la noticia
+      const noticia = await this.newsService.findById(dto.newsId);
+      console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
+
+      // 2. Construir el contenido HTML del correo
+      const emailHtml = this.newsService.buildRemisionEmailContent(
+        noticia,
+        dto.entidadDestino,
+        dto.justificacion,
+      );
+      console.log('📧 [RemitirCompetencia] HTML del correo construido');
+
+      // 3. Enviar el correo usando el servicio de notificaciones
+      const notificationsServiceUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3003';
+      console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
+
+      const emailPayload = {
+        to: dto.emailDestinatario,
+        subject: `Remisión por Competencia - Noticia Disciplinaria ${noticia.radicado}`,
+        text: `Se remite la noticia disciplinaria ${noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+        html: emailHtml,
+      };
+
+      console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${notificationsServiceUrl}/emails/send`, emailPayload),
+      );
+
+      console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
+
+      // 4. Registrar la remisión en el historial de la noticia
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'remision_competencia',
+        usuario: dto.usuarioRemision || 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Justificación: ${dto.justificacion}`,
+        resultado: 'enviado',
+      };
+
+      // Actualizar el historial de la noticia
+      await this.newsService.updateHistory(dto.newsId, historyEntry);
+
+      return {
+        success: true,
+        message: 'Correo enviado exitosamente',
+        newsId: dto.newsId,
+        emailEnviado: dto.emailDestinatario,
+        fechaRemision: new Date(),
+      };
+    } catch (error) {
+      console.error('❌ [RemitirCompetencia] Error al enviar correo:', error);
+      console.error('❌ [RemitirCompetencia] Stack:', error.stack);
+
+      // Registrar el intento fallido
+      try {
+        const historyEntry = {
+          id: Date.now().toString(),
+          tipo: 'remision_competencia',
+          usuario: dto.usuarioRemision || 'Sistema',
+          fecha: new Date().toISOString(),
+          observaciones: `Intento de remisión a ${dto.entidadDestino} fallido. Error: ${error.message}`,
+          resultado: 'error',
+        };
+        await this.newsService.updateHistory(dto.newsId, historyEntry);
+      } catch (historyError) {
+        console.error('❌ [RemitirCompetencia] Error al registrar historial:', historyError);
+      }
+
+      throw new HttpException(
+        `Error al remitir por competencia: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
