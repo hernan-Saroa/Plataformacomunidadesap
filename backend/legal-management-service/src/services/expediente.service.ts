@@ -24,12 +24,7 @@ export class ExpedienteService {
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
         const expediente = await this.expedienteRepository.findOne({
             where: { radicado },
-            relations: ['actuaciones', 'evidencias', 'actors'],
-            order: {
-                actuaciones: {
-                    fechaActuacion: 'DESC'
-                }
-            }
+            relations: ['evidencias', 'actors']
         });
 
         if (expediente) {
@@ -217,12 +212,7 @@ export class ExpedienteService {
 
         const expediente = await this.expedienteRepository.findOne({
             where: { id },
-            relations: ['actuaciones', 'evidencias', 'actors'],
-            order: {
-                actuaciones: {
-                    fechaActuacion: 'DESC'
-                }
-            }
+            relations: ['evidencias', 'actors']
         });
 
         if (expediente) {
