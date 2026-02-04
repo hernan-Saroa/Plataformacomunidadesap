@@ -39,6 +39,7 @@ import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { ModalActas } from './ModalActas';
+import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -46,6 +47,8 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -59,13 +62,17 @@ import { legalService } from '../../../../services/api/legal.service';
 export function ModuloJuzgamientoDisciplinarioV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiempos } = useConfiguracionModulo('juzgamiento');
-
+  
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
+  const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
@@ -81,6 +88,154 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [justificacionCambio, setJustificacionCambio] = useState('');
   const [archivoCambio, setArchivoCambio] = useState<File | null>(null);
   const [guardandoCambio, setGuardandoCambio] = useState(false);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PD-999',
+      codigo: 'DISC-2023-999',
+      nombre: 'Falta Gravísima - Malversación de Fondos - Carlos Andrés Mora',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-20T15:30:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso terminado por prescripción de la acción disciplinaria (Art. 30 Ley 734/2002)',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Carlos Andrés Mora Gutiérrez',
+        'Cargo': 'Coordinador Administrativo',
+        'Investigador': 'Dr. Juan Carlos Pérez',
+        'Fecha Inicio': '15/03/2020',
+        'Motivo Archivo': 'Prescripción'
+      }
+    },
+    {
+      id: 'PD-998',
+      codigo: 'DISC-2023-888',
+      nombre: 'Falta Grave - Incumplimiento de Horario - Ana María Castro',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-18T11:20:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Archivo definitivo por ausencia de mérito para continuar la investigación disciplinaria',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Funcionario': 'Ana María Castro Pérez',
+        'Cargo': 'Asistente Administrativa',
+        'Investigador': 'Dra. Ana María López',
+        'Fecha Inicio': '10/08/2023',
+        'Resultado': 'Archivo por falta de mérito'
+      }
+    },
+    {
+      id: 'PD-997',
+      codigo: 'DISC-2023-777',
+      nombre: 'Falta Leve - Uso Indebido de Computador - Pedro Ramírez',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-10-25T09:45:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Proceso duplicado - El caso real está bajo radicado DISC-2023-778. Error de digitación en el sistema',
+      metadatos: {
+        'Tipo Falta': 'LEVE',
+        'Funcionario': 'Pedro Ramírez González',
+        'Motivo Eliminación': 'Registro Duplicado'
+      }
+    },
+    {
+      id: 'PD-996',
+      codigo: 'DISC-2022-666',
+      nombre: 'Falta Gravísima - Acoso Laboral - Luis Fernando Díaz',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-12T16:10:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Sanción ejecutoriada: Destitución e inhabilidad de 15 años. Resolución notificada y en firme',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Luis Fernando Díaz Parra',
+        'Cargo': 'Jefe de Departamento',
+        'Sanción': 'Destitución e Inhabilidad 15 años',
+        'Fecha Sanción': '05/09/2024',
+        'Estado': 'Ejecutoriada'
+      }
+    },
+    {
+      id: 'PD-995',
+      codigo: 'DISC-2024-555',
+      nombre: 'Falta Grave - Absentismo Laboral - María Fernanda Torres',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-08T14:30:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Registro erróneo - No corresponde a funcionario de ESAP. Persona externa a la institución',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Motivo Eliminación': 'Error de registro - No es funcionario ESAP'
+      }
+    },
+    {
+      id: 'PD-994',
+      codigo: 'DISC-2023-444',
+      nombre: 'Falta Gravísima - Cohecho - Roberto Sánchez Mora',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-15T10:00:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Remisión a Fiscalía General de la Nación por presunta conducta punible (Art. 406 C.P.). Se suspende proceso disciplinario',
+      metadatos: {
+        'Tipo Falta': 'GRAVÍSIMA',
+        'Funcionario': 'Roberto Sánchez Mora',
+        'Cargo': 'Supervisor de Contratos',
+        'Investigador': 'Dr. Juan Carlos Pérez',
+        'Motivo': 'Remisión a Fiscalía',
+        'Radicado Fiscalía': 'FGN-2024-00123'
+      }
+    },
+    {
+      id: 'PD-993',
+      codigo: 'DISC-2023-333',
+      nombre: 'Falta Grave - Negligencia en Funciones - Carmen Lucía Vega',
+      tipo: 'Proceso Disciplinario',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-20T13:45:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Sanción ejecutoriada: Suspensión de 30 días sin remuneración. Ya cumplida íntegramente',
+      metadatos: {
+        'Tipo Falta': 'GRAVE',
+        'Funcionario': 'Carmen Lucía Vega Ruiz',
+        'Cargo': 'Profesional Especializado',
+        'Sanción': 'Suspensión 30 días',
+        'Fecha Sanción': '01/06/2024',
+        'Fecha Cumplimiento': '18/06/2024',
+        'Estado': 'Sanción cumplida'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un proceso archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando proceso disciplinario:', itemId);
+    
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.restaurarProceso(itemId);
+    
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    
+    // Aquí se agregaría de vuelta a los procesos activos
+  };
+
+  // ✅ Función para eliminar permanentemente un proceso
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente proceso disciplinario:', itemId);
+    
+    // Simulación: En producción esto haría una llamada al backend
+    // await api.eliminarPermanente(itemId);
+    
+    // Remover de la lista de archivados
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // ✅ Log de configuraciones cargadas
   useEffect(() => {
@@ -273,13 +428,22 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         subtitle="Gestión visual de procesos disciplinarios"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
           options: [
             { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[]}
+        buttons={[
+           {
+            label: 'Nuevo Proceso',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => setModalNuevoProcesoOpen(true),
+            variant: 'primary'
+          }
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Juzgamiento Disciplinario"
@@ -533,6 +697,21 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         </DialogContent>
       </Dialog>
 
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Juzgamiento Disciplinario"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
+      )}
+
+      {/* Modal Nuevo Proceso */}
+      <ModalNuevoProcesoDisciplinario
+        isOpen={modalNuevoProcesoOpen}
+        onClose={() => setModalNuevoProcesoOpen(false)}
+      />
     </div>
   );
 }

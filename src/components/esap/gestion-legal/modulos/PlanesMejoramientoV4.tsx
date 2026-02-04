@@ -44,6 +44,8 @@ import {
 } from '../../../ui/dropdown-menu';
 import { add } from '@dnd-kit/utilities';
 import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -92,7 +94,7 @@ interface PlanMejoramiento {
   ultimaActualizacion: Date;
 }
 
-type VistaModulo = 'dashboard' | 'lista' | 'timeline';
+type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'archivados';
 
 // ==================== HELPERS ====================
 const getEnteConfig = (ente: EnteControl) => {
@@ -221,7 +223,10 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
-  const { entesControl } = useConfiguracionesSIGL();
+  // const { entesControl } = useConfiguracionesSIGL();
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEnte, setFiltroEnte] = useState<string>('TODOS');
@@ -324,6 +329,153 @@ export function ModuloPlanesMejoramientoV4() {
     }
   };
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PM-CGR-2023-999',
+      codigo: 'PM-CGR-2023-999',
+      nombre: 'Plan de Mejoramiento Auditoría Presupuestal Vigencia 2023 - Contraloría General',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-30T16:45:00'),
+      usuarioArchivo: 'Dra. Ana María Rodríguez',
+      motivoArchivo: 'Plan completado exitosamente. Todas las acciones ejecutadas y evidencias aprobadas por la Contraloría mediante Oficio CGR-OF-2024-9876. Cierre formal del proceso',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Documento Origen': 'Informe de Auditoría CGR No. 045-2023',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '5',
+        'Total Acciones': '12',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '28/11/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2023-888',
+      codigo: 'PM-PGN-2023-888',
+      nombre: 'Plan de Mejoramiento Función de Advertencia Procesos Disciplinarios 2023 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-15T14:20:00'),
+      usuarioArchivo: 'Dr. Jorge Silva',
+      motivoArchivo: 'Proceso de vigilancia cerrado por la Procuraduría. Auto de cierre PGN-IUS-2024-5432. Implementación exitosa del sistema de alertas de términos',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2023-0987',
+        'Área Responsable': 'Secretaría General - Oficina Jurídica',
+        'Total Hallazgos': '3',
+        'Total Acciones': '8',
+        'Cumplimiento': '100%',
+        'Resultado': 'Cierre con verificación favorable'
+      }
+    },
+    {
+      id: 'PM-OCI-2023-777',
+      codigo: 'PM-OCI-2023-777',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Gestión Contractual 2022-2023 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-20T11:30:00'),
+      usuarioArchivo: 'Dra. Carolina Pérez',
+      motivoArchivo: 'Auditoría de seguimiento realizada por OCI. Informe OCI-SEG-2024-012 confirma subsanación total de hallazgos. Plan cerrado formalmente',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2023-05',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '7',
+        'Total Acciones': '15',
+        'Cumplimiento': '100%',
+        'Fecha Seguimiento': '15/09/2024'
+      }
+    },
+    {
+      id: 'PM-CGR-2022-666',
+      codigo: 'PM-CGR-2022-666',
+      nombre: 'Plan de Mejoramiento Auditoría Tecnologías de la Información 2022 - Contraloría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-10T09:15:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Plan registrado duplicado. El plan real está bajo código PM-CGR-2022-667. Error en migración de datos del sistema anterior',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Motivo Eliminación': 'Registro duplicado - Plan activo bajo otro código',
+        'Plan Correcto': 'PM-CGR-2022-667'
+      }
+    },
+    {
+      id: 'PM-AE-2023-555',
+      codigo: 'PM-AE-2023-555',
+      nombre: 'Plan de Mejoramiento Auditoría Externa Estados Financieros 2022 - Revisoría Fiscal',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-25T15:50:00'),
+      usuarioArchivo: 'Dr. Roberto Vargas',
+      motivoArchivo: 'Hallazgos subsanados. Dictamen sin salvedades emitido por la Revisoría Fiscal para vigencia 2023. Cierre del plan de mejoramiento',
+      metadatos: {
+        'Ente de Control': 'Auditoría Externa - Revisoría Fiscal',
+        'Documento Origen': 'Informe de Revisoría Fiscal RF-2023-001',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '4',
+        'Total Acciones': '9',
+        'Cumplimiento': '100%',
+        'Dictamen': 'Sin salvedades'
+      }
+    },
+    {
+      id: 'PM-OCI-2022-444',
+      codigo: 'PM-OCI-2022-444',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Talento Humano 2022 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-18T13:40:00'),
+      usuarioArchivo: 'Dra. Patricia Ruiz',
+      motivoArchivo: 'Implementación exitosa de políticas de gestión del talento humano. Informe de verificación OCI-VER-2024-008 aprueba cierre del plan',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2022-11',
+        'Área Responsable': 'Dirección de Talento Humano',
+        'Total Hallazgos': '6',
+        'Total Acciones': '13',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '15/06/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2022-333',
+      codigo: 'PM-PGN-2022-333',
+      nombre: 'Plan de Mejoramiento Control Preventivo Contratación 2022 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-05-10T10:25:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Visita de verificación de la Procuraduría realizada. Acta de visita PGN-VIS-2024-0345 sin observaciones. Proceso cerrado satisfactoriamente',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2022-1234',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '4',
+        'Total Acciones': '10',
+        'Cumplimiento': '100%',
+        'Resultado': 'Verificación favorable'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un plan archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando plan de mejoramiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un plan
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente plan:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan eliminado permanentemente');
+  };
 
   // Filtrar planes
   const planesFiltrados = useMemo(() => {
@@ -493,7 +645,8 @@ export function ModuloPlanesMejoramientoV4() {
           options: [
             { label: 'Dashboard', icon: '📊', value: 'dashboard' },
             { label: 'Lista', icon: '📋', value: 'lista' },
-            { label: 'Timeline', icon: '📅', value: 'timeline' }
+            { label: 'Timeline', icon: '📅', value: 'timeline' },
+            { label: 'Archivados', icon: '📦', value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -586,10 +739,10 @@ export function ModuloPlanesMejoramientoV4() {
             onChange: setFiltroEnte,
             options: [
               { label: 'Todos', value: 'TODOS' },
-              ...entesControl.filter(e => e.activo).map(ente => ({
-                label: ente.nombre,
-                value: ente.id
-              }))
+              { label: '🏛️ Contraloría', value: 'CONTRALORIA' },
+              { label: '⚖️ Procuraduría', value: 'PROCURADURIA' },
+              { label: '🔍 OCI', value: 'OCI' },
+              { label: '📊 Auditoría Externa', value: 'AUDITORIA_EXTERNA' }
             ]
           },
           {
@@ -634,6 +787,14 @@ export function ModuloPlanesMejoramientoV4() {
               <VistaTimeline planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
           </>
+        )}
+        {tipoVista === 'archivados' && (
+          <VistaArchivados
+            items={itemsArchivados}
+            moduloNombre="Planes de Mejoramiento"
+            onRestaurar={handleRestaurar}
+            onEliminarPermanente={handleEliminarPermanente}
+          />
         )}
       </motion.div>
 
@@ -687,15 +848,11 @@ export function ModuloPlanesMejoramientoV4() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
-                      <SelectContent className="z-[9999]" align="start">
-                        {entesControl.filter(e => e.activo).map((ente) => (
-                          <SelectItem key={ente.id} value={ente.id}>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }} />
-                              {ente.nombre}
-                            </div>
-                          </SelectItem>
-                        ))}
+                      <SelectContent>
+                        <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
+                        <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
+                        <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
+                        <SelectItem value="AUDITORIA_EXTERNA">📊 Auditoría Externa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -982,32 +1139,18 @@ export function ModuloPlanesMejoramientoV4() {
 
 // ==================== VISTA: DASHBOARD ====================
 function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
-  const { entesControl } = useConfiguracionesSIGL();
+  // const { entesControl } = useConfiguracionesSIGL();
 
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
-    const grupos: Record<string, PlanMejoramiento[]> = {};
-
-    // Inicializar grupos con entes activos
-    entesControl.forEach(ente => {
-      grupos[ente.id] = [];
-    });
-
-    // Inicializar OTRO y RIESGO
-    if (!grupos['OTRO']) grupos['OTRO'] = [];
-    if (!grupos['RIESGO']) grupos['RIESGO'] = [];
-
-    planes.forEach(p => {
-      const key = p.enteControl;
-      if (grupos[key]) {
-        grupos[key].push(p);
-      } else {
-        grupos['OTRO'].push(p);
-      }
-    });
-
+    const grupos = {
+      CONTRALORIA: planes.filter(p => p.enteControl === 'CONTRALORIA'),
+      PROCURADURIA: planes.filter(p => p.enteControl === 'PROCURADURIA'),
+      OCI: planes.filter(p => p.enteControl === 'OCI'),
+      AUDITORIA_EXTERNA: planes.filter(p => p.enteControl === 'AUDITORIA_EXTERNA')
+    };
     return grupos;
-  }, [planes, entesControl]);
+  }, [planes]);
 
   // Estadísticas de severidad
   const estadisticasSeveridad = useMemo(() => {
@@ -1039,22 +1182,20 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
       <Card className="p-6">
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
-          {entesControl.filter(e => e.activo).map((ente) => {
-            const planesEnte = planesPorEnte[ente.id] || [];
-
+          {Object.entries(planesPorEnte).map(([ente, planesEnte]) => {
+            const config = getEnteConfig(ente as EnteControl);
             const avancePromedio = planesEnte.length > 0
-              ? Math.round(planesEnte.reduce((sum: number, p: any) => sum + p.avanceGeneral, 0) / planesEnte.length)
+              ? Math.round(planesEnte.reduce((sum, p) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
 
             return (
-              <div key={ente.id} className="border rounded-lg p-4">
+              <div key={ente} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {/* Icon removed, using name only */}
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }}></div>
-                    <span className="text-sm font-semibold text-gray-700">{ente.nombre}</span>
+                    <span className="text-lg">{config.icon}</span>
+                    <span className="text-sm font-semibold text-gray-700">{config.nombre}</span>
                   </div>
-                  <Badge className="text-white" style={{ backgroundColor: ente.color || '#3B82F6' }}>
+                  <Badge style={{ background: config.bgColor, color: config.color }}>
                     {planesEnte.length} planes
                   </Badge>
                 </div>
@@ -1063,15 +1204,6 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
               </div>
             );
           })}
-          {/* Show 'Otros' if exist */}
-          {planesPorEnte['OTRO'] && planesPorEnte['OTRO'].length > 0 && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700">Otros / Riesgos</span>
-                <Badge className="bg-gray-200 text-gray-700">{planesPorEnte['OTRO'].length}</Badge>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 

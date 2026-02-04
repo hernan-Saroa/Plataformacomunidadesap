@@ -31,12 +31,14 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 
 // Modales
-import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
-import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
-import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
-import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
-import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
+// import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
+// import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
+// import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
+// import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
+// import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
 import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -92,7 +94,10 @@ const getSemaforoColor = (dias: number) => {
 };
 
 export function OrganosControl() {
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('');
@@ -176,6 +181,104 @@ export function OrganosControl() {
       setLoading(false);
     }
   };
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'REQ-PGN-2023-999',
+      codigo: 'PGN-OF-2023-08765',
+      nombre: 'Solicitud información procesos disciplinarios 2020-2023 - Procuraduría General',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-10T14:30:00'),
+      usuarioArchivo: 'Dra. María Fernández',
+      motivoArchivo: 'Requerimiento respondido completamente y aceptado por el órgano de control. Oficio de respuesta radicado PGN-RESP-2024-001',
+      metadatos: {
+        'Organismo': 'Procuraduría General de la Nación',
+        'Número Oficio': 'PGN-OF-2023-08765',
+        'Responsable': 'Dra. María Fernández',
+        'Fecha Radicación': '15/10/2023',
+        'Fecha Respuesta': '05/12/2024',
+        'Resultado': 'Respondido satisfactoriamente'
+      }
+    },
+    {
+      id: 'REQ-CGR-2023-888',
+      codigo: 'CGR-OF-2023-05432',
+      nombre: 'Auditoría contratos de prestación de servicios 2022-2023 - Contraloría',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-25T10:15:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Auditoría culminada. Informe final de Contraloría recibido sin observaciones ni hallazgos',
+      metadatos: {
+        'Organismo': 'Contraloría General de la República',
+        'Número Oficio': 'CGR-OF-2023-05432',
+        'Responsable': 'Dr. Juan Carlos Pérez',
+        'Tipo Auditoría': 'Contratos',
+        'Fecha Radicación': '20/08/2023',
+        'Resultado': 'Sin hallazgos'
+      }
+    },
+    {
+      id: 'REQ-FGN-2023-777',
+      codigo: 'FGN-OF-2023-09876',
+      nombre: 'Investigación preliminar caso denunciado - Fiscalía',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-10-18T16:45:00'),
+      usuarioArchivo: 'Dr. Juan Carlos Pérez',
+      motivoArchivo: 'Requerimiento duplicado - El caso real está bajo radicado FGN-OF-2023-09877. Error en radicación múltiple',
+      metadatos: {
+        'Organismo': 'Fiscalía General de la Nación',
+        'Número Oficio': 'FGN-OF-2023-09876',
+        'Motivo Eliminación': 'Duplicado'
+      }
+    },
+    {
+      id: 'REQ-PGN-2023-666',
+      codigo: 'PGN-OF-2023-07654',
+      nombre: 'Requerimiento información selección directivos académicos - Procuraduría',
+      tipo: 'Requerimiento Órgano Control',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-30T11:20:00'),
+      usuarioArchivo: 'Dra. Ana María López',
+      motivoArchivo: 'Proceso de vigilancia superior cerrado por la Procuraduría. Oficio de cierre recibido el 28/09/2024',
+      metadatos: {
+        'Organismo': 'Procuraduría General de la Nación',
+        'Número Oficio': 'PGN-OF-2023-07654',
+        'Responsable': 'Dra. Ana María López',
+        'Fecha Radicación': '05/06/2023',
+        'Resultado': 'Proceso cerrado - Sin irregularidades'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un requerimiento archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando requerimiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  // ✅ Función para eliminar permanentemente un requerimiento
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente requerimiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+  };
+
+  // Handler para mover requerimientos entre etapas
+  // const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
+  //   setRequerimientos((prevRequerimientos) => 
+  //     prevRequerimientos.map((req) => 
+  //       req.id === requerimientoId 
+  //         ? { ...req, etapa: nuevaEtapa }
+  //         : req
+  //     )
+  //   );
+    
+  //   toast.success('Requerimiento movido exitosamente', {
+  //     description: `Cambiado a etapa: ${nuevaEtapa}`
+  //   });
+  // };
 
   useEffect(() => {
     fetchRequerimientos();
@@ -301,10 +404,11 @@ export function OrganosControl() {
         subtitle="Gestión de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
           options: [
             { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -396,54 +500,49 @@ export function OrganosControl() {
         />
       )}
 
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Órganos de Control"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
+      )}
+
       {/* Modales */}
       {modalNuevoOpen && (
         <ModalNuevoRequerimiento
-          isOpen={modalNuevoOpen}
           onClose={() => setModalNuevoOpen(false)}
-          onSuccess={fetchRequerimientos}
         />
       )}
 
       {modalVerOpen && requerimientoSeleccionado && (
         <ModalVerRequerimiento
-          isOpen={modalVerOpen}
           requerimiento={requerimientoSeleccionado}
           onClose={() => setModalVerOpen(false)}
-          onUpdate={fetchRequerimientos}
         />
       )}
 
       {/* TODO: Implementar integración en estos modales si es necesario */}
       {modalDocsOpen && requerimientoSeleccionado && (
         <ModalDocumentos
-          isOpen={modalDocsOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalDocsOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          tituloContexto="Gestión de Documentos"
-          nombreRequerimiento={`Requerimiento ${requerimientoSeleccionado.numeroOficio}`}
         />
       )}
 
       {modalRespuestaOpen && requerimientoSeleccionado && (
         <ModalRespuesta
-          isOpen={modalRespuestaOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalRespuestaOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          organismoNombre={requerimientoSeleccionado.organismo}
-          onSuccess={() => {
-            fetchRequerimientos();
-            setModalRespuestaOpen(false);
-          }}
         />
       )}
 
       {modalComentariosOpen && requerimientoSeleccionado && (
         <ModalComentarios
-          isOpen={modalComentariosOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalComentariosOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -668,7 +767,7 @@ function TarjetaRequerimiento({
               className="w-full text-xs font-bold"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Archive className="w-3 h-3 mr-1" />
               Ver Requerimiento
             </Button>
 
@@ -679,7 +778,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <FileCheck className="w-3 h-3" />
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
               </Button>
 
               <Button
@@ -688,7 +788,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <Send className="w-3 h-3" />
+                <Send className="w-3 h-3 mr-0.5" />
+                Respuesta
               </Button>
             </div>
 
@@ -1243,6 +1344,163 @@ function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimie
               Cargar Documento
             </Button>
           </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Respuesta
+function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [contenido, setContenido] = useState('');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Redactar Respuesta"
+          subtitulo={`${requerimiento.id} - ${requerimiento.organismo}`}
+          icono={Send}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Destinatario</label>
+              <Input value={requerimiento.organismo} readOnly />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Referencia</label>
+              <Input value={requerimiento.numeroOficio} readOnly />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+            <Input value={`Respuesta a: ${requerimiento.asunto}`} readOnly />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Contenido de la Respuesta</label>
+            <Textarea
+              placeholder="Redacte aquí la respuesta al requerimiento..."
+              value={contenido}
+              onChange={(e) => setContenido(e.target.value)}
+              rows={12}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Adjuntar Documentos</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-sm font-semibold text-gray-600">Haga clic o arrastre archivos aquí</p>
+              <p className="text-xs text-gray-500 mt-1">PDF, Word, Excel - Máx. 10MB</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cancelar</Button>
+          <Button variant="outline" onClick={() => toast.success('Guardado como borrador')}>
+            <Save className="w-4 h-4 mr-2" />
+            Guardar Borrador
+          </Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Respuesta enviada correctamente');
+              onClose();
+            }}
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Enviar Respuesta
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Comentarios
+function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [nuevoComentario, setNuevoComentario] = useState('');
+
+  const comentariosMock = [
+    {
+      autor: 'Dra. María Fernández',
+      fecha: new Date('2024-12-28 10:30'),
+      texto: 'Se está revisando la documentación solicitada. Falta el certificado de contratos.'
+    },
+    {
+      autor: 'Dr. Carlos Méndez',
+      fecha: new Date('2024-12-27 15:45'),
+      texto: 'Coordinado con el área de contratación para obtener la información requerida.'
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Comentarios y Seguimiento"
+          subtitulo={`${requerimiento.id} • ${comentariosMock.length} comentarios`}
+          icono={MessageSquare}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="space-y-3">
+            {comentariosMock.map((comentario, idx) => (
+              <Card key={idx} className="p-4 bg-gray-50">
+                <div className="flex items-start gap-3">
+                  <Avatar className="w-8 h-8">
+                    <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                      {comentario.autor.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="font-semibold text-sm">{comentario.autor}</p>
+                      <p className="text-xs text-gray-500">
+                        {comentario.fecha.toLocaleDateString('es-CO')} {comentario.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <p className="text-sm text-gray-700">{comentario.texto}</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Nuevo Comentario</label>
+            <Textarea
+              placeholder="Escriba su comentario..."
+              value={nuevoComentario}
+              onChange={(e) => setNuevoComentario(e.target.value)}
+              rows={4}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Comentario agregado');
+              setNuevoComentario('');
+            }}
+          >
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Agregar Comentario
+          </Button>
         </div>
       </Card>
     </div>

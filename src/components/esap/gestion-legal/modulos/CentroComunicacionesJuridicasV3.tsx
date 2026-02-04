@@ -20,7 +20,8 @@ import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight
+  Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
+  RefreshCw, Loader2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -36,9 +37,10 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
-import { RefreshCw, Loader2 } from 'lucide-react';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // TIPOS UNIFICADOS
 type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
@@ -442,7 +444,10 @@ type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
   console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
-
+  
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
@@ -1525,7 +1530,7 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]">
                       <Eye className="w-4 h-4" />
                     </Button>
                     {!com.leida && (
