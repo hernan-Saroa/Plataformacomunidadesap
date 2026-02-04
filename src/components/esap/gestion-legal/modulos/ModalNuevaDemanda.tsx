@@ -246,10 +246,10 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   // ========== HOOK DE VALIDACIÓN ==========
   const {
     formData,
-    errors,
+    // errors,
     updateField,
     touchField,
-    validateForm,
+    // validateForm,
     isFormValid,
     getFieldState,
     completedFields,
@@ -293,7 +293,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     apoderado: ''
   });
 
-  // const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
 

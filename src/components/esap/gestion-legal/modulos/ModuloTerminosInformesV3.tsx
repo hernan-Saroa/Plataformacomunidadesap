@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
 import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';
-
+import { ModalNuevaSolicitudInforme } from './ModalNuevaSolicitudInforme';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -55,6 +55,7 @@ export function ModuloTerminosInformesV3() {
   const [selectedSolicitud, setSelectedSolicitud] = useState<SolicitudInforme | null>(null);
 
   // Estados para modales
+  const [modalNuevaSolicitudOpen, setModalNuevaSolicitudOpen] = useState(false);
   const [modalDetalleOpen, setModalDetalleOpen] = useState(false);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudInforme | null>(null);
 
@@ -441,7 +442,15 @@ export function ModuloTerminosInformesV3() {
             { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[]}
+        buttons={[
+          {
+            label: 'Nueva Solicitud',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => setModalNuevaSolicitudOpen(true),
+            variant: 'primary'
+          }
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"

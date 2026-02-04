@@ -370,6 +370,7 @@ export function ModuloProcesosCoactivosV3() {
                     proceso={proceso}
                     onVerDetalle={handleVerDetalle}
                     onEliminar={handleEliminarProceso}
+                    onEditar={handleEditarProceso}
                   />
                 </motion.div>
               ))}\n        </AnimatePresence>
@@ -388,11 +389,12 @@ export function ModuloProcesosCoactivosV3() {
           <ModalNuevoProceso
             isOpen={modalNuevoProceso}
             onClose={() => setModalNuevoProceso(false)}
-            onCrear={(nuevoProceso) => {
-              setProcesos([nuevoProceso, ...procesos]);
+            onCrear={() => {
+              loadProcesos();
               setModalNuevoProceso(false);
               toast.success('Proceso creado exitosamente');
             }}
+            procesoEditar={procesoEditar}
           />
 
           {/* Modal Detalle */}
@@ -415,20 +417,16 @@ export function ModuloProcesosCoactivosV3() {
 // ============ COMPONENTES AUXILIARES ============
 
 // Tarjeta de Proceso
-function TarjetaProceso({
-  proceso,
+function TarjetaProceso({ 
+  proceso, 
   onVerDetalle,
-  onEditar,
   onEliminar,
-  onGestionarPagos,
-  onVerHistorial
-}: {
+  onEditar 
+}: { 
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
-  onEditar: (proceso: ProcesoCoactivo) => void;
   onEliminar: (id: string) => void;
-  onGestionarPagos: (proceso: ProcesoCoactivo) => void;
-  onVerHistorial: (proceso: ProcesoCoactivo) => void;
+  onEditar: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -446,7 +444,7 @@ function TarjetaProceso({
   const esCritico = proceso.obligacion.diasVencidos > 180;
 
   return (
-    <CardSIGL className="overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
       <div className="p-4 sm:p-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -462,7 +460,7 @@ function TarjetaProceso({
             <p className="text-sm text-gray-600 mb-1">{proceso.deudor.nombre}</p>
             <p className="text-xs text-gray-500">CC: {proceso.deudor.identificacion}</p>
           </div>
-
+          
           <div className="flex items-center gap-2">
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${estadoConfig.color}`}>
               {estadoConfig.label}
@@ -477,15 +475,9 @@ function TarjetaProceso({
             <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1">Valor Original</p>
-            <p className="text-sm font-semibold text-gray-700">
-              {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valor)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Saldo Pendiente</p>
+            <p className="text-xs text-gray-500 mb-1">Valor</p>
             <p className="text-lg font-bold text-[#003DA5]">
-              {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.saldoPendiente)}
+              ${proceso.obligacion.valor.toLocaleString('es-CO')}
             </p>
           </div>
           <div>
@@ -541,50 +533,32 @@ function TarjetaProceso({
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => onVerDetalle(proceso)}
-            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
           >
-            <Eye className="w-3.5 h-3.5" />
+            <Eye className="w-4 h-4" />
             Ver Detalle
           </button>
-
           <button
-            onClick={() => onGestionarPagos(proceso)}
-            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
+            onClick={() => onEditar(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
           >
-            <CreditCard className="w-3.5 h-3.5 text-green-600" />
-            Pagos
+            <Edit className="w-4 h-4" />
+            Editar
           </button>
-
           <button
-            onClick={() => onVerHistorial(proceso)}
-            className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
+            onClick={() => onEliminar(proceso.id)}
+            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
           >
-            <History className="w-3.5 h-3.5 text-purple-600" />
-            Historial
+            <Trash2 className="w-4 h-4" />
+            Eliminar
           </button>
-
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
-            <button
-              onClick={() => onEditar(proceso)}
-              className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium text-sm transition-all shadow-sm hover:shadow-md"
-            >
-              <Edit className="w-3.5 h-3.5 text-blue-600" />
-              Editar
-            </button>
-          )}
-
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-            <button
-              onClick={() => onEliminar(proceso.id)}
-              className="flex-none flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 font-medium text-sm transition-all shadow-sm hover:shadow-md"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Eliminar
-            </button>
-          )}
         </div>
       </div>
-    </CardSIGL>
+    </div>
   );
 }
 
@@ -799,243 +773,170 @@ function ModalNuevoProceso({
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title={procesoEditar ? `Editar Proceso ${procesoEditar.radicado}` : "Nuevo Proceso Coactivo"}
-      size="large"
-    >
-      <div className="space-y-6">
-        {/* Información del Deudor */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-blue-50 rounded-md text-blue-600">
-              <User className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Información del Deudor</h3>
-          </div>
+  if (!isOpen) return null;
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Nombre Completo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorNombre}
-                onChange={(e) => handleInputChange('deudorNombre', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                placeholder="Ej: Juan Carlos Pérez"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Identificación <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorIdentificacion}
-                onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                placeholder="Ej: 1012345678"
-                disabled={!!procesoEditar}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Teléfono</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header - 100% Estándar del Proyecto */}
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="text-xl font-bold text-gray-900">Nuevo Proceso Coactivo</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Contenido del Formulario */}
+        <div className="p-6 space-y-6">
+          {/* Información del Deudor */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3">Información del Deudor</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Nombre Completo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorNombre}
+                  onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Juan Carlos Pérez Gómez"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Identificación <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorIdentificacion}
+                  onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 1.012.345.678"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
                 <input
                   type="text"
                   value={formData.deudorTelefono}
-                  onChange={(e) => handleInputChange('deudorTelefono', e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="+57 300 123 4567"
+                  onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: +57 312 456 7890"
                 />
               </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Email</label>
-              <div className="relative">
-                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={formData.deudorEmail}
                   onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="correo@ejemplo.com"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: correo@ejemplo.com"
                 />
               </div>
-            </div>
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-medium text-gray-700">Dirección</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
                 <input
                   type="text"
                   value={formData.deudorDireccion}
                   onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="Dirección de residencia o notificaciones"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Calle 45 #12-34, Bogotá"
                 />
               </div>
             </div>
           </div>
-        </section>
 
-        {/* Información de la Obligación */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-green-50 rounded-md text-green-600">
-              <DollarSign className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Detalle de la Obligación</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Concepto de Cobro <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.concepto}
-                onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-                placeholder="Ej: Impuesto Predial 2024"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Valor Total (COP) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={formData.valor}
-                onChange={(e) => handleInputChange('valor', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-                placeholder="0"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Fecha Vencimiento <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.fechaVencimiento}
-                onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Documentos y Adicionales */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-purple-50 rounded-md text-purple-600">
-              <FileText className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Soportes y Anexos</h3>
-          </div>
-
-          <div className="space-y-4">
-            {/* Aréa de Carga de Archivos */}
-            <div
-              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center transition-colors ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <Upload className={`w-8 h-8 mb-2 ${dragActive ? 'text-blue-500' : 'text-gray-400'}`} />
-              <p className="text-sm font-medium text-gray-700">
-                Arrastra y suelta archivos aquí, o{' '}
-                <label className="text-blue-600 hover:text-blue-700 cursor-pointer hover:underline">
-                  examina
-                  <input
-                    type="file"
-                    className="hidden"
-                    multiple
-                    onChange={(e) => {
-                      if (e.target.files) {
-                        setSelectedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-                      }
-                    }}
-                  />
+          {/* Información de la Obligación */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información de la Obligación</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Concepto <span className="text-red-500">*</span>
                 </label>
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Soporta PDF, imágenes y documentos de Office
-              </p>
-            </div>
-
-            {/* Lista de archivos seleccionados */}
-            {selectedFiles.length > 0 && (
-              <div className="space-y-2">
-                {selectedFiles.map((file, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="p-1.5 bg-gray-100 rounded text-gray-500">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(idx)}
-                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                      title="Quitar archivo"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                <input
+                  type="text"
+                  value={formData.concepto}
+                  onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Matrícula Semestre 2024-2"
+                />
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Valor (COP) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={formData.valor}
+                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 3250000"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fecha Vencimiento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.fechaVencimiento}
+                  onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">Responsable Asignado</label>
+          {/* Información Adicional */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información Adicional</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
                 <input
                   type="text"
                   value={formData.responsable}
                   onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow"
-                  placeholder="Ej: Dra. María Fernández"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Dra. María Fernández López"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">Observaciones Iniciales</label>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
                 <textarea
                   value={formData.observaciones}
                   onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                  rows={1}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow resize-none"
-                  placeholder="Notas adicionales..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder="Observaciones adicionales sobre el proceso..."
                 />
               </div>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-all"
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
           >
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="min-w-[140px] px-8 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
           >
             {loading ? (
               <>
@@ -1043,12 +944,12 @@ function ModalNuevoProceso({
                 Guardando...
               </>
             ) : (
-              procesoEditar ? 'Actualizar' : 'Crear Proceso'
+              procesoEditar ? 'Actualizar' : (<><Plus className="w-4 h-4" />Crear Proceso</>)
             )}
           </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }
 
@@ -1056,13 +957,11 @@ function ModalNuevoProceso({
 function ModalDetalleProceso({
   proceso,
   isOpen,
-  onClose,
-  onUpdate
+  onClose
 }: {
   proceso: ProcesoCoactivo;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate?: () => void;
 }) {
   const estadoConfig = {
     IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700' },
@@ -1073,312 +972,166 @@ function ModalDetalleProceso({
     FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700' }
   }[proceso.estado];
 
-  const [adjuntos, setAdjuntos] = useState<ProcesoCoactivoAdjunto[]>([]);
-  const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
-  const [modalPagos, setModalPagos] = useState(false);
-  const [modalHistorial, setModalHistorial] = useState(false);
-
-  // Cargar adjuntos al abrir
-  useEffect(() => {
-    if (isOpen && proceso.id) {
-      loadAdjuntos();
-    }
-  }, [isOpen, proceso.id]);
-
-  const loadAdjuntos = async () => {
-    try {
-      setLoadingAdjuntos(true);
-      const docs = await procesosCoactivosService.getAdjuntos(proceso.id);
-      // ✅ Asegurar que siempre sea un array
-      setAdjuntos(Array.isArray(docs) ? docs : []);
-    } catch (error) {
-      console.error('Error cargando adjuntos:', error);
-      setAdjuntos([]); // ✅ Fallback a array vacío en caso de error
-      // No mostrar toast de error para evitar spam cuando el backend tiene problemas
-    } finally {
-      setLoadingAdjuntos(false);
-    }
-  };
-
-  const handleDownload = (adjunto: ProcesoCoactivoAdjunto) => {
-    const url = procesosCoactivosService.getAdjuntoDownloadUrl(adjunto.nombreArchivo, adjunto.nombreOriginal);
-    window.open(url, '_blank');
-  };
-
-  const handleDeleteAdjunto = async (id: string) => {
-    if (confirm('¿Está seguro de eliminar este documento?')) {
-      try {
-        await procesosCoactivosService.deleteAdjunto(id);
-        toast.success('Documento eliminado');
-        loadAdjuntos();
-        // Notificar al padre para actualizar stats
-        if (onUpdate) onUpdate();
-      } catch (error) {
-        console.error('Error eliminando adjunto:', error);
-        toast.error('Error al eliminar documento');
-      }
-    }
-  };
+  if (!isOpen) return null;
 
   return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Proceso ${proceso.radicado}`}
-      size="large"
-    >
-      {/* Sub-Modales */}
-      <ModalGestionarPagos
-        isOpen={modalPagos}
-        onClose={() => setModalPagos(false)}
-        proceso={{
-          id: proceso.id,
-          deudor: proceso.deudor.nombre,
-          valorTotal: proceso.obligacion.valor,
-          valorPagado: proceso.obligacion.valorPagado || 0
-        }}
-        onRegistrarPago={() => {
-          if (onUpdate) onUpdate();
-        }}
-      />
-      <ModalHistorialCoactivo
-        isOpen={modalHistorial}
-        onClose={() => setModalHistorial(false)}
-        procesoId={proceso.id}
-        radicado={proceso.radicado}
-      />
-
-      <div className="space-y-4">
-        {/* Header con Estado y Botones */}
-        {/* Header con Estado y Botones */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-0">Estado Actual</p>
-          <div>
-            {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) ? (
-              <div className="relative inline-block">
-                <select
-                  value={proceso.estado}
-                  onChange={async (e) => {
-                    const wrongTypeState = e.target.value as any;
-                    try {
-                      await procesosCoactivosService.update(proceso.id, { estado: wrongTypeState });
-                      toast.success('Estado actualizado correctamente');
-                      if (onUpdate) onUpdate();
-                      onClose(); // Cerrar modal al cambiar estado
-                    } catch (err) {
-                      console.error(err);
-                      toast.error('Error al actualizar el estado');
-                    }
-                  }}
-                  className={`appearance-none pl-3 pr-8 py-1.5 rounded-full text-sm font-bold border-2 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer transition-all ${estadoConfig.color.replace('bg-', 'bg-white border-').replace('text-', 'text-')}`}
-                  style={{ backgroundImage: 'none' }}
-                >
-                  <option value="IDENTIFICADO">Identificado</option>
-                  <option value="PERSUASIVO">Persuasivo</option>
-                  <option value="PREJURIDICO">Prejurídico</option>
-                  <option value="MANDAMIENTO">Mandamiento</option>
-                  <option value="EMBARGO">Embargo</option>
-                  <option value="FINALIZADO">Finalizado</option>
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none opacity-50" />
-              </div>
-            ) : (
-              <span className={`px-3 py-1 mt-1 inline-flex text-sm font-bold rounded-full ${estadoConfig.color}`}>
-                {estadoConfig.label}
-              </span>
-            )}
-          </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{zIndex: 101}}>
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Proceso {proceso.radicado}</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-6 space-y-4">
+          {/* Estado */}
+          <div className="flex items-center justify-between pb-3 border-b">
+            <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${estadoConfig.color}`}>
+              {estadoConfig.label}
+            </span>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Fecha creación</p>
+              <p className="text-sm font-medium text-gray-900">
+                {proceso.fechaCreacion.toLocaleDateString('es-CO', { 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </p>
+            </div>
+          </div>
+
           {/* Información del Deudor */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
-              <User className="w-4 h-4 text-blue-600" />
-              Datos del Deudor
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <User className="w-4 h-4 text-[#003DA5]" />
+              Información del Deudor
             </h3>
-            <div className="space-y-2">
-              <div>
-                <p className="text-xs text-gray-500">Nombre</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Identificación</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Contacto</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.telefono || 'N/A'} • {proceso.deudor.email || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Dirección</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.direccion || 'N/A'}</p>
+            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500">Nombre</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Identificación</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Teléfono</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.telefono}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.email}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">Dirección</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.direccion}</p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Información de la Obligación */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-green-600" />
-              Detalle de la Obligación
+              Obligación
             </h3>
-            <div className="space-y-3">
+            <div className="bg-green-50 rounded-lg p-4 space-y-3">
               <div>
-                <p className="text-xs text-gray-500">Concepto</p>
+                <p className="text-xs text-green-700 mb-1">Concepto</p>
                 <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <p className="text-xs text-gray-500">Valor Capital</p>
-                  <p className="text-lg font-bold text-green-700">
-                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valor)}
+                  <p className="text-xs text-green-700">Valor</p>
+                  <p className="text-lg font-bold text-green-900">
+                    ${proceso.obligacion.valor.toLocaleString('es-CO')}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Días en Mora</p>
-                  <p className={`text-lg font-bold ${proceso.obligacion.diasVencidos > 180 ? 'text-red-600' : 'text-orange-600'}`}>
-                    {proceso.obligacion.diasVencidos}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
-                <div>
-                  <p className="text-xs text-gray-500">Pagado</p>
-                  <p className="text-sm font-bold text-green-600">
-                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.valorPagado || 0)}
+                  <p className="text-xs text-green-700">Vencimiento</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Saldo Pendiente</p>
-                  <p className="text-sm font-bold text-orange-600">
-                    {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(proceso.obligacion.saldoPendiente || 0)}
+                  <p className="text-xs text-green-700">Días vencidos</p>
+                  <p className="text-sm font-bold text-red-600">
+                    {proceso.obligacion.diasVencidos} días
                   </p>
                 </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Fecha de Vencimiento</p>
-                <p className="text-sm text-gray-900">
-                  {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
-                </p>
+            </div>
+          </div>
+
+          {/* Gestión del Proceso */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-blue-600" />
+              Gestión del Proceso
+            </h3>
+            <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-blue-700">Responsable</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.responsable}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Última actuación</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Documentos adjuntos</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Notificaciones enviadas</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Gestión del Proceso */}
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-          <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-            <FileCheck className="w-4 h-4" />
-            Gestión y Seguimiento
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Observaciones */}
+          {proceso.observaciones && (
             <div>
-              <p className="text-xs text-blue-700">Responsable Asignado</p>
-              <p className="text-sm font-medium text-gray-900">{proceso.responsable || 'Sin asignar'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Última actuación</p>
-              <p className="text-sm font-medium text-gray-900">
-                {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Documentos</p>
-              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
-                <FileText className="w-3 h-3" /> {proceso.documentosAdjuntos}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Notificaciones</p>
-              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
-                <Send className="w-3 h-3" /> {proceso.notificacionesEnviadas}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Observaciones */}
-        {proceso.observaciones && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <h3 className="font-semibold text-amber-900 mb-2 text-sm">Observaciones</h3>
-            <p className="text-sm text-gray-800 italic">"{proceso.observaciones}"</p>
-          </div>
-        )}
-
-        {/* Sección de Documentos Adjuntos */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm">
-            <FileText className="w-4 h-4 text-blue-600" />
-            Documentos Adjuntos ({adjuntos.length})
-          </h3>
-
-          {loadingAdjuntos ? (
-            <p className="text-sm text-gray-500">Cargando documentos...</p>
-          ) : adjuntos.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">No hay documentos adjuntos a este proceso.</p>
-          ) : (
-            <div className="space-y-2">
-              {adjuntos.map((adjunto) => (
-                <div key={adjunto.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <div className="p-1.5 bg-blue-100 rounded text-blue-600">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 truncate max-w-[200px] sm:max-w-[300px]">
-                        {adjunto.nombreOriginal}
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        {(adjunto.tamano / 1024).toFixed(1)} KB • {new Date(adjunto.fechaCreacion).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleDownload(adjunto)}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Descargar"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-                      <button
-                        onClick={() => handleDeleteAdjunto(adjunto.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <h3 className="font-semibold text-gray-900 mb-3">Observaciones</h3>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-gray-900">{proceso.observaciones}</p>
+              </div>
             </div>
           )}
         </div>
 
-
-        {/* Botones de acción */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-all"
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
           >
             Cerrar
           </button>
           <button
-            onClick={() => {
-              const url = procesosCoactivosService.getFichaDownloadUrl(proceso.id);
-              window.open(url, '_blank');
+            onClick={() => toast.info('Función en desarrollo')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{ 
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
             }}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5"
           >
-            <Download className="w-5 h-5" />
-            Descargar Ficha
+            <Download className="w-4 h-4" />
+            Exportar PDF
           </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }

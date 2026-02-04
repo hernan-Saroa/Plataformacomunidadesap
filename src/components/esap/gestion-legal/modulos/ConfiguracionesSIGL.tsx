@@ -880,25 +880,7 @@ export function ConfiguracionesSIGL() {
                   </span>
                 </div>
               </button>
-
-              <button
-                onClick={() => setModuloActivo('plantillas-oficios')}
-                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plantillas-oficios'
-                  ? 'bg-blue-50 text-blue-900 font-semibold'
-                  : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs sm:text-sm">Plantillas de Oficios</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1 ml-6">
-                  <span className="text-xs text-gray-500">
-                    Logo y diseño de documentos
-                  </span>
-                </div>
-              </button>
-
+              
               <button
                 onClick={() => setModuloActivo('plantillas-oficios')}
                 className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${

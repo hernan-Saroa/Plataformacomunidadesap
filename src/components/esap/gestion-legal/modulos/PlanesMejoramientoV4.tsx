@@ -223,7 +223,7 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
-  const { entesControl } = useConfiguracionesSIGL();
+  // const { entesControl } = useConfiguracionesSIGL();
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
   
@@ -739,10 +739,10 @@ export function ModuloPlanesMejoramientoV4() {
             onChange: setFiltroEnte,
             options: [
               { label: 'Todos', value: 'TODOS' },
-              ...entesControl.filter(e => e.activo).map(ente => ({
-                label: ente.nombre,
-                value: ente.id
-              }))
+              { label: '🏛️ Contraloría', value: 'CONTRALORIA' },
+              { label: '⚖️ Procuraduría', value: 'PROCURADURIA' },
+              { label: '🔍 OCI', value: 'OCI' },
+              { label: '📊 Auditoría Externa', value: 'AUDITORIA_EXTERNA' }
             ]
           },
           {
@@ -848,15 +848,11 @@ export function ModuloPlanesMejoramientoV4() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
-                      <SelectContent className="z-[9999]" align="start">
-                        {entesControl.filter(e => e.activo).map((ente) => (
-                          <SelectItem key={ente.id} value={ente.id}>
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }} />
-                              {ente.nombre}
-                            </div>
-                          </SelectItem>
-                        ))}
+                      <SelectContent>
+                        <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
+                        <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
+                        <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
+                        <SelectItem value="AUDITORIA_EXTERNA">📊 Auditoría Externa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1143,32 +1139,18 @@ export function ModuloPlanesMejoramientoV4() {
 
 // ==================== VISTA: DASHBOARD ====================
 function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
-  const { entesControl } = useConfiguracionesSIGL();
+  // const { entesControl } = useConfiguracionesSIGL();
 
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
-    const grupos: Record<string, PlanMejoramiento[]> = {};
-
-    // Inicializar grupos con entes activos
-    entesControl.forEach(ente => {
-      grupos[ente.id] = [];
-    });
-
-    // Inicializar OTRO y RIESGO
-    if (!grupos['OTRO']) grupos['OTRO'] = [];
-    if (!grupos['RIESGO']) grupos['RIESGO'] = [];
-
-    planes.forEach(p => {
-      const key = p.enteControl;
-      if (grupos[key]) {
-        grupos[key].push(p);
-      } else {
-        grupos['OTRO'].push(p);
-      }
-    });
-
+    const grupos = {
+      CONTRALORIA: planes.filter(p => p.enteControl === 'CONTRALORIA'),
+      PROCURADURIA: planes.filter(p => p.enteControl === 'PROCURADURIA'),
+      OCI: planes.filter(p => p.enteControl === 'OCI'),
+      AUDITORIA_EXTERNA: planes.filter(p => p.enteControl === 'AUDITORIA_EXTERNA')
+    };
     return grupos;
-  }, [planes, entesControl]);
+  }, [planes]);
 
   // Estadísticas de severidad
   const estadisticasSeveridad = useMemo(() => {
@@ -1200,22 +1182,20 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
       <Card className="p-6">
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
-          {entesControl.filter(e => e.activo).map((ente) => {
-            const planesEnte = planesPorEnte[ente.id] || [];
-
+          {Object.entries(planesPorEnte).map(([ente, planesEnte]) => {
+            const config = getEnteConfig(ente as EnteControl);
             const avancePromedio = planesEnte.length > 0
-              ? Math.round(planesEnte.reduce((sum: number, p: any) => sum + p.avanceGeneral, 0) / planesEnte.length)
+              ? Math.round(planesEnte.reduce((sum, p) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
 
             return (
-              <div key={ente.id} className="border rounded-lg p-4">
+              <div key={ente} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {/* Icon removed, using name only */}
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ente.color || '#3B82F6' }}></div>
-                    <span className="text-sm font-semibold text-gray-700">{ente.nombre}</span>
+                    <span className="text-lg">{config.icon}</span>
+                    <span className="text-sm font-semibold text-gray-700">{config.nombre}</span>
                   </div>
-                  <Badge className="text-white" style={{ backgroundColor: ente.color || '#3B82F6' }}>
+                  <Badge style={{ background: config.bgColor, color: config.color }}>
                     {planesEnte.length} planes
                   </Badge>
                 </div>
@@ -1224,15 +1204,6 @@ function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; 
               </div>
             );
           })}
-          {/* Show 'Otros' if exist */}
-          {planesPorEnte['OTRO'] && planesPorEnte['OTRO'].length > 0 && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700">Otros / Riesgos</span>
-                <Badge className="bg-gray-200 text-gray-700">{planesPorEnte['OTRO'].length}</Badge>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 

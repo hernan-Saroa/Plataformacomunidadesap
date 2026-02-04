@@ -31,11 +31,11 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 
 // Modales
-import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
-import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
-import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
-import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
-import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
+// import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
+// import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
+// import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
+// import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
+// import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
 import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
@@ -266,19 +266,19 @@ export function OrganosControl() {
   };
 
   // Handler para mover requerimientos entre etapas
-  const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
-    setRequerimientos((prevRequerimientos) => 
-      prevRequerimientos.map((req) => 
-        req.id === requerimientoId 
-          ? { ...req, etapa: nuevaEtapa }
-          : req
-      )
-    );
+  // const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
+  //   setRequerimientos((prevRequerimientos) => 
+  //     prevRequerimientos.map((req) => 
+  //       req.id === requerimientoId 
+  //         ? { ...req, etapa: nuevaEtapa }
+  //         : req
+  //     )
+  //   );
     
-    toast.success('Requerimiento movido exitosamente', {
-      description: `Cambiado a etapa: ${nuevaEtapa}`
-    });
-  };
+  //   toast.success('Requerimiento movido exitosamente', {
+  //     description: `Cambiado a etapa: ${nuevaEtapa}`
+  //   });
+  // };
 
   useEffect(() => {
     fetchRequerimientos();
@@ -513,51 +513,36 @@ export function OrganosControl() {
       {/* Modales */}
       {modalNuevoOpen && (
         <ModalNuevoRequerimiento
-          isOpen={modalNuevoOpen}
           onClose={() => setModalNuevoOpen(false)}
-          onSuccess={fetchRequerimientos}
         />
       )}
 
       {modalVerOpen && requerimientoSeleccionado && (
         <ModalVerRequerimiento
-          isOpen={modalVerOpen}
           requerimiento={requerimientoSeleccionado}
           onClose={() => setModalVerOpen(false)}
-          onUpdate={fetchRequerimientos}
         />
       )}
 
       {/* TODO: Implementar integración en estos modales si es necesario */}
       {modalDocsOpen && requerimientoSeleccionado && (
         <ModalDocumentos
-          isOpen={modalDocsOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalDocsOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          tituloContexto="Gestión de Documentos"
-          nombreRequerimiento={`Requerimiento ${requerimientoSeleccionado.numeroOficio}`}
         />
       )}
 
       {modalRespuestaOpen && requerimientoSeleccionado && (
         <ModalRespuesta
-          isOpen={modalRespuestaOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalRespuestaOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          organismoNombre={requerimientoSeleccionado.organismo}
-          onSuccess={() => {
-            fetchRequerimientos();
-            setModalRespuestaOpen(false);
-          }}
         />
       )}
 
       {modalComentariosOpen && requerimientoSeleccionado && (
         <ModalComentarios
-          isOpen={modalComentariosOpen}
+          requerimiento={requerimientoSeleccionado}
           onClose={() => setModalComentariosOpen(false)}
-          requerimientoId={requerimientoSeleccionado.id}
-          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -782,7 +767,7 @@ function TarjetaRequerimiento({
               className="w-full text-xs font-bold"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Archive className="w-3 h-3 mr-1" />
               Ver Requerimiento
             </Button>
 
@@ -793,7 +778,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <FileCheck className="w-3 h-3" />
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
               </Button>
 
               <Button
@@ -802,7 +788,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <Send className="w-3 h-3" />
+                <Send className="w-3 h-3 mr-0.5" />
+                Respuesta
               </Button>
             </div>
 
@@ -1357,6 +1344,163 @@ function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimie
               Cargar Documento
             </Button>
           </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Respuesta
+function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [contenido, setContenido] = useState('');
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Redactar Respuesta"
+          subtitulo={`${requerimiento.id} - ${requerimiento.organismo}`}
+          icono={Send}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Destinatario</label>
+              <Input value={requerimiento.organismo} readOnly />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Referencia</label>
+              <Input value={requerimiento.numeroOficio} readOnly />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
+            <Input value={`Respuesta a: ${requerimiento.asunto}`} readOnly />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Contenido de la Respuesta</label>
+            <Textarea
+              placeholder="Redacte aquí la respuesta al requerimiento..."
+              value={contenido}
+              onChange={(e) => setContenido(e.target.value)}
+              rows={12}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Adjuntar Documentos</label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-sm font-semibold text-gray-600">Haga clic o arrastre archivos aquí</p>
+              <p className="text-xs text-gray-500 mt-1">PDF, Word, Excel - Máx. 10MB</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cancelar</Button>
+          <Button variant="outline" onClick={() => toast.success('Guardado como borrador')}>
+            <Save className="w-4 h-4 mr-2" />
+            Guardar Borrador
+          </Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Respuesta enviada correctamente');
+              onClose();
+            }}
+          >
+            <Send className="w-4 h-4 mr-2" />
+            Enviar Respuesta
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// Modal Comentarios
+function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
+  const [nuevoComentario, setNuevoComentario] = useState('');
+
+  const comentariosMock = [
+    {
+      autor: 'Dra. María Fernández',
+      fecha: new Date('2024-12-28 10:30'),
+      texto: 'Se está revisando la documentación solicitada. Falta el certificado de contratos.'
+    },
+    {
+      autor: 'Dr. Carlos Méndez',
+      fecha: new Date('2024-12-27 15:45'),
+      texto: 'Coordinado con el área de contratación para obtener la información requerida.'
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <ModalHeaderClean
+          titulo="Comentarios y Seguimiento"
+          subtitulo={`${requerimiento.id} • ${comentariosMock.length} comentarios`}
+          icono={MessageSquare}
+          colorIcono="blue"
+          onClose={onClose}
+        />
+
+        <div className="p-6 space-y-4">
+          <div className="space-y-3">
+            {comentariosMock.map((comentario, idx) => (
+              <Card key={idx} className="p-4 bg-gray-50">
+                <div className="flex items-start gap-3">
+                  <Avatar className="w-8 h-8">
+                    <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                      {comentario.autor.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="font-semibold text-sm">{comentario.autor}</p>
+                      <p className="text-xs text-gray-500">
+                        {comentario.fecha.toLocaleDateString('es-CO')} {comentario.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <p className="text-sm text-gray-700">{comentario.texto}</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="border-t pt-4">
+            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Nuevo Comentario</label>
+            <Textarea
+              placeholder="Escriba su comentario..."
+              value={nuevoComentario}
+              onChange={(e) => setNuevoComentario(e.target.value)}
+              rows={4}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
+          <Button onClick={onClose} variant="outline">Cerrar</Button>
+          <Button 
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+            onClick={() => {
+              toast.success('Comentario agregado');
+              setNuevoComentario('');
+            }}
+          >
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Agregar Comentario
+          </Button>
         </div>
       </Card>
     </div>

@@ -39,6 +39,7 @@ import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
 import { ModalActas } from './ModalActas';
+import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -71,6 +72,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
+  const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
@@ -433,7 +435,15 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[]}
+        buttons={[
+           {
+            label: 'Nuevo Proceso',
+            labelMobile: 'Nuevo',
+            icon: <Plus className="w-4 h-4" />,
+            onClick: () => setModalNuevoProcesoOpen(true),
+            variant: 'primary'
+          }
+        ]}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Juzgamiento Disciplinario"
