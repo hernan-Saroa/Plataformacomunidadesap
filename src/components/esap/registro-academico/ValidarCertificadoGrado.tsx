@@ -39,10 +39,7 @@ interface ValidacionResult {
       cohorte: string;
     };
     fechaGrado: string;
-    numeroActa: string;
-    numeroFolio: string;
-    tituloOtorgado: string;
-    firmadoPor: string;
+    registroFolioLibro: string;
     estado: 'VIGENTE' | 'REVOCADO' | 'ANULADO';
   };
   error?: string;
@@ -76,10 +73,7 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
       cohorte: 'No especificado'
     },
     fechaGrado: certificado.graduationDate,
-    numeroActa: certificado.actaNumber || 'No especificado',
-    numeroFolio: certificado.diplomaNumber || 'No especificado',
-    tituloOtorgado: certificado.degreeTitle,
-    firmadoPor: [certificado.signerName, certificado.signerPosition].filter(Boolean).join(' - ') || 'No especificado',
+    registroFolioLibro: certificado.actaNumber || 'No especificado',
     estado: mapEstadoCertificado(certificado.status)
   });
 
@@ -484,37 +478,10 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
 
                                 <div>
                                   <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Acta
+                                    Registro/Folio/Libro
                                   </label>
                                   <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroActa}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Folio
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroFolio}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Título Otorgado
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.tituloOtorgado}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Firmado por
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.firmadoPor}
+                                    {validationResult.certificado.registroFolioLibro}
                                   </p>
                                 </div>
                               </div>

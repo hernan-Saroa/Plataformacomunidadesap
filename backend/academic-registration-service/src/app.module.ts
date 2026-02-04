@@ -12,6 +12,7 @@ import { CertificateDownload } from './graduation-certificates/certificate-downl
 import { Signer } from './graduation-certificates/signer.entity';
 import { TemplateConfig } from './graduation-certificates/template-config.entity';
 import { TemplateConfigChange } from './graduation-certificates/template-config-change.entity';
+import { GraduateFile } from './graduation-certificates/graduate-file.entity';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { TemplateConfigChange } from './graduation-certificates/template-config-
         Signer,
         TemplateConfig,
         TemplateConfigChange,
+        GraduateFile,
       ],
       synchronize: false, // Using existing schema from migrations
     }),

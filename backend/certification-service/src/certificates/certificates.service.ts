@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
 import { Signer } from './signer.entity';
@@ -304,6 +304,33 @@ export class CertificatesService {
   }
 
   async createSolicitud(data: Partial<CertificateRequest>) {
+    const rawIdNumber = (data.id_number || '').trim();
+    if (rawIdNumber) {
+      const normalizedIdNumber = rawIdNumber.replace(/\D+/g, '');
+      const existing = await this.requestRepo.findOne({
+        where: normalizedIdNumber
+          ? {
+              id_number: Raw(
+                (alias) =>
+                  `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+                { idNumber: normalizedIdNumber },
+              ),
+            }
+          : { id_number: rawIdNumber },
+        order: { request_date: 'DESC' },
+      });
+
+      if (existing) {
+        const incomingName = this.normalizeTemplateText(data.full_name || '');
+        const existingName = this.normalizeTemplateText(existing.full_name || '');
+        if (incomingName && existingName && incomingName !== existingName) {
+          throw new BadRequestException(
+            `El documento ${rawIdNumber} ya está registrado a nombre de ${existing.full_name}. Verifica el número de documento.`,
+          );
+        }
+      }
+    }
+
     const request = this.requestRepo.create(data);
     return await this.requestRepo.save(request);
   }

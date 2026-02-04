@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -38,7 +38,6 @@ import { toast } from 'sonner';
 import type { ReviewRequest, ReviewRequestStats } from '../../types';
 import graduadosService, { SolicitudCertificadoGraduado } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
-import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '../../enums/permissions';
 
@@ -46,13 +45,13 @@ type ApprovalForm = {
   fullName: string;
   idNumber: string;
   email: string;
-  phone: string;
   programName: string;
-  programType: string;
-  degreeTitle: string;
   graduationDate: string;
   campus: string;
   seccionalName: string;
+  numRegistro: string;
+  numFolio: string;
+  numLibro: string;
 };
 
 export function ReviewRequestsModule() {
@@ -74,17 +73,17 @@ export function ReviewRequestsModule() {
     fullName: '',
     idNumber: '',
     email: '',
-    phone: '',
     programName: '',
-    programType: '',
-    degreeTitle: '',
     graduationDate: '',
     campus: '',
     seccionalName: '',
+    numRegistro: '',
+    numFolio: '',
+    numLibro: '',
   });
+  const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
-  const [degreeTitleOptions, setDegreeTitleOptions] = useState<string[]>([]);
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -103,6 +102,48 @@ export function ReviewRequestsModule() {
     notes?: string;
     approvalDetails?: ApprovalForm;
   } | null>(null);
+  const currentUser = authService.getCurrentUser();
+  const resolveReviewerName = (user: any): string | undefined => {
+    if (!user) return undefined;
+    const personFullName =
+      typeof user.person?.full_name === 'string' ? user.person.full_name.trim() : '';
+    if (personFullName) return personFullName;
+    const personFirstName =
+      typeof user.person?.first_name === 'string' ? user.person.first_name.trim() : '';
+    const personLastName =
+      typeof user.person?.last_name === 'string' ? user.person.last_name.trim() : '';
+    const personComposed = `${personFirstName} ${personLastName}`.trim();
+    if (personComposed) return personComposed;
+    const directFullName = typeof user.fullName === 'string' ? user.fullName.trim() : '';
+    if (directFullName) return directFullName;
+    const firstName = typeof user.firstName === 'string' ? user.firstName.trim() : '';
+    const lastName = typeof user.lastName === 'string' ? user.lastName.trim() : '';
+    const composedName = `${firstName} ${lastName}`.trim();
+    if (composedName) return composedName;
+    const username = typeof user.username === 'string' ? user.username.trim() : '';
+    if (username) return username;
+    const email = typeof user.email === 'string' ? user.email.trim() : '';
+    if (email) return email;
+    const personEmail = typeof user.person?.email === 'string' ? user.person.email.trim() : '';
+    return personEmail || undefined;
+  };
+  const resolveReviewerId = (user: any): string | undefined =>
+    user?.id || user?.id_user || user?.userId || undefined;
+  const reviewerName = resolveReviewerName(currentUser);
+  const reviewerId = resolveReviewerId(currentUser);
+  const PROGRAMAS_ESAP = [
+    'ADMINISTRACIÓN PÚBLICA',
+    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
+    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
+    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
+    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
+    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
+    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
+    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
+    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
+    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
+    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
+  ];
 
   // Funciones auxiliares
   const getStatusBadge = (status: string) => {
@@ -192,9 +233,6 @@ export function ReviewRequestsModule() {
     });
   };
 
-  const normalizePhone = (value?: string) =>
-    (value || '').replace(/\D+/g, '').slice(0, 10);
-
   const handleCopyToClipboard = async (text: string, label: string) => {
     const { copyToClipboard } = await import('@/utils/browser');
     const success = await copyToClipboard(text);
@@ -203,6 +241,57 @@ export function ReviewRequestsModule() {
     } else {
       toast.error('No se pudo copiar. Por favor, cópialo manualmente.');
     }
+  };
+
+  const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
+  const allowedFileMimeTypes = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+  ]);
+  const getApprovalFileChipClass = (file: File) => {
+    const name = file.name.toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+    if (ext === 'pdf') return 'review-approval-chip--pdf';
+    if (ext === 'doc' || ext === 'docx') return 'review-approval-chip--word';
+    if (ext === 'xls' || ext === 'xlsx') return 'review-approval-chip--excel';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
+      return 'review-approval-chip--image';
+    }
+    return 'review-approval-chip--generic';
+  };
+  const isAllowedFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
+    return allowedFileExtensions.includes(ext) || allowedFileMimeTypes.has(file.type);
+  };
+  const handleApprovalFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []);
+    if (!selected.length) {
+      return;
+    }
+    const nextFiles = [...approvalFiles, ...selected];
+    if (nextFiles.length > 5) {
+      toast.error('Solo puedes adjuntar máximo 5 archivos');
+      event.target.value = '';
+      return;
+    }
+    const invalidFile = nextFiles.find((file) => !isAllowedFile(file));
+    if (invalidFile) {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes');
+      event.target.value = '';
+      return;
+    }
+    setApprovalFiles(nextFiles);
+    event.target.value = '';
+  };
+  const handleRemoveApprovalFile = (index: number) => {
+    setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const mapStatus = (status: SolicitudCertificadoGraduado['status']): ReviewRequest['status'] => {
@@ -361,13 +450,6 @@ export function ReviewRequestsModule() {
         setSedesOptions(Array.from(new Set(sedesList)).sort());
         setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort());
 
-        const degreeTitles = new Set<string>();
-        (graduatesResponse || []).forEach((graduate) => {
-          if (graduate?.degreeTitle) {
-            degreeTitles.add(graduate.degreeTitle);
-          }
-        });
-        setDegreeTitleOptions(Array.from(degreeTitles).sort());
       } catch (error) {
         console.error('Error cargando catalogos de aprobacion:', error);
       }
@@ -380,39 +462,7 @@ export function ReviewRequestsModule() {
     };
   }, []);
 
-  const programNameOptions = useMemo(() => {
-    const names = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nombre) {
-        names.add(programa.nombre);
-      }
-    });
-    if (approvalForm.programName) {
-      names.add(approvalForm.programName);
-    }
-    return Array.from(names);
-  }, [approvalForm.programName]);
-
-  const programTypeOptions = useMemo(() => {
-    const types = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nivel) {
-        types.add(programa.nivel);
-      }
-    });
-    if (approvalForm.programType) {
-      types.add(approvalForm.programType);
-    }
-    return Array.from(types);
-  }, [approvalForm.programType]);
-
-  const degreeTitleSelectOptions = useMemo(() => {
-    const titles = new Set<string>(degreeTitleOptions);
-    if (approvalForm.degreeTitle) {
-      titles.add(approvalForm.degreeTitle);
-    }
-    return Array.from(titles);
-  }, [approvalForm.degreeTitle, degreeTitleOptions]);
+  const programNameOptions = useMemo(() => PROGRAMAS_ESAP, []);
 
   const campusOptions = useMemo(() => {
     const options = new Set<string>(sedesOptions);
@@ -468,6 +518,7 @@ export function ReviewRequestsModule() {
     setReviewAction(action);
     setReviewNotes('');
     setShowReviewModal(true);
+    setApprovalFiles([]);
 
     if (action !== 'approve') {
       return;
@@ -484,13 +535,15 @@ export function ReviewRequestsModule() {
         fullName: '',
         idNumber: detail.idNumber || request.graduateDocumentNumber,
         email: '',
-        phone: '',
-        programName: detail.programName || '',
-        programType: '',
-        degreeTitle: '',
+        programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
+          ? (detail.programName || '').trim()
+          : '',
         graduationDate,
         campus: '',
         seccionalName: '',
+        numRegistro: '',
+        numFolio: '',
+        numLibro: '',
       };
 
       if (detail.graduateId) {
@@ -501,15 +554,17 @@ export function ReviewRequestsModule() {
             fullName: graduate.fullName || nextForm.fullName,
             idNumber: graduate.idNumber || nextForm.idNumber,
             email: graduate.email || nextForm.email,
-            phone: normalizePhone(graduate.phone || nextForm.phone),
-            programName: graduate.programName || nextForm.programName,
-            programType: graduate.programType || nextForm.programType,
-            degreeTitle: graduate.degreeTitle || nextForm.degreeTitle,
+            programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
+              ? (graduate.programName || '').trim()
+              : nextForm.programName,
             graduationDate: graduate.graduationDate
               ? graduate.graduationDate.toString().slice(0, 10)
               : nextForm.graduationDate,
             campus: graduate.campus || nextForm.campus,
             seccionalName: graduate.seccionalName || nextForm.seccionalName,
+            numRegistro: graduate.numRegistro || nextForm.numRegistro,
+            numFolio: graduate.numFolio || nextForm.numFolio,
+            numLibro: graduate.numLibro || nextForm.numLibro,
           };
         } catch (error) {
           console.error('Error cargando graduado asociado:', error);
@@ -534,8 +589,10 @@ export function ReviewRequestsModule() {
     if (reviewAction === 'approve') {
       const trimmedFullName = approvalForm.fullName.trim();
       const trimmedEmail = approvalForm.email.trim();
-      const rawPhoneDigits = approvalForm.phone.replace(/\D+/g, '');
-      const phoneDigits = normalizePhone(approvalForm.phone);
+      const trimmedRegistro = approvalForm.numRegistro.trim();
+      const trimmedFolio = approvalForm.numFolio.trim();
+      const trimmedLibro = approvalForm.numLibro.trim();
+      const digitsOnly = /^\d{1,10}$/;
 
       if (!trimmedFullName) {
         toast.error('El nombre del graduado es obligatorio');
@@ -550,24 +607,8 @@ export function ReviewRequestsModule() {
         toast.error('El email no tiene un formato valido');
         return;
       }
-      if (!rawPhoneDigits) {
-        toast.error('El telefono es obligatorio');
-        return;
-      }
-      if (rawPhoneDigits.length > 10) {
-        toast.error('El telefono no puede superar 10 digitos');
-        return;
-      }
       if (!approvalForm.programName) {
         toast.error('Selecciona el programa');
-        return;
-      }
-      if (!approvalForm.programType) {
-        toast.error('Selecciona el tipo de programa');
-        return;
-      }
-      if (!approvalForm.degreeTitle) {
-        toast.error('Selecciona el titulo');
         return;
       }
       if (!approvalForm.graduationDate) {
@@ -582,12 +623,26 @@ export function ReviewRequestsModule() {
         toast.error('Selecciona la seccional');
         return;
       }
+      if (!trimmedRegistro || !digitsOnly.test(trimmedRegistro)) {
+        toast.error('El numero de registro es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
+      if (!trimmedFolio || !digitsOnly.test(trimmedFolio)) {
+        toast.error('El numero de folio es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
+      if (!trimmedLibro || !digitsOnly.test(trimmedLibro)) {
+        toast.error('El numero de libro es obligatorio y debe tener maximo 10 digitos');
+        return;
+      }
 
       approvalDetails = {
         ...approvalForm,
         fullName: trimmedFullName,
         email: trimmedEmail,
-        phone: phoneDigits,
+        numRegistro: trimmedRegistro,
+        numFolio: trimmedFolio,
+        numLibro: trimmedLibro,
       };
     }
 
@@ -612,22 +667,47 @@ export function ReviewRequestsModule() {
 
     try {
       if (confirmAction.type === 'start_review') {
-        await graduadosService.solicitudes.marcarEnRevision(confirmAction.request.id);
+        await graduadosService.solicitudes.marcarEnRevision(
+          confirmAction.request.id,
+          reviewerName,
+          reviewerId,
+        );
         toast.success('Solicitud marcada como en revisión');
       } else if (confirmAction.type === 'approve') {
         const approvalPayload = {
           reviewNotes: confirmAction.notes || 'Aprobado por revision manual',
+          reviewerName,
+          reviewerId,
           ...(confirmAction.approvalDetails || {}),
         };
-        await graduadosService.solicitudes.aprobar(
+        const approvalResponse = await graduadosService.solicitudes.aprobar(
           confirmAction.request.id,
           approvalPayload
         );
+        const graduateId =
+          approvalResponse?.request?.graduateId ||
+          (approvalResponse as any)?.request?.graduate?.id;
+        if (graduateId && approvalFiles.length > 0) {
+          try {
+            await graduadosService.graduados.subirArchivos(
+              graduateId,
+              approvalFiles,
+              reviewerName,
+            );
+          } catch (uploadError: any) {
+            console.error('Error subiendo archivos del graduado:', uploadError);
+            toast.error('La solicitud fue aprobada, pero no se pudieron subir los archivos', {
+              description: uploadError?.response?.data?.message || uploadError?.message,
+            });
+          }
+        }
         toast.success('Solicitud aprobada y certificado generado');
       } else if (confirmAction.type === 'reject') {
         await graduadosService.solicitudes.rechazar(
           confirmAction.request.id,
-          confirmAction.notes || 'Solicitud rechazada'
+          confirmAction.notes || 'Solicitud rechazada',
+          reviewerName,
+          reviewerId,
         );
         toast.success('Solicitud rechazada');
       }
@@ -635,6 +715,7 @@ export function ReviewRequestsModule() {
       setSelectedRequest(null);
       setConfirmAction(null);
       setShowConfirmModal(false);
+      setApprovalFiles([]);
       await loadRequests();
     } catch (error: any) {
       console.error('Error actualizando solicitud:', error);
@@ -1428,9 +1509,9 @@ export function ReviewRequestsModule() {
       {/* Modal: Revisar Solicitud */}
       <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
         <DialogContent
-          className={`w-[92vw] max-w-3xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-2rem)] !overflow-hidden !flex !flex-col`}
+          className="review-approval-dialog w-[92vw] max-w-4xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-1.25rem)] !overflow-hidden !flex !flex-col"
         >
-          <DialogHeader className="px-6 pt-4 pb-2">
+          <DialogHeader className="px-6 pt-3 pb-1">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
               {reviewActionLabel} Solicitud
@@ -1440,7 +1521,7 @@ export function ReviewRequestsModule() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-2 pb-8 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-1 pb-6 space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <FileText className="w-5 h-5 mt-0.5 text-blue-600" />
@@ -1466,13 +1547,13 @@ export function ReviewRequestsModule() {
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 placeholder="Describe los hallazgos de la revisión..."
-                className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
+                className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
               />
             </div>
 
             {reviewAction === 'approve' && (
-              <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="review-approval-card space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-900">Datos del graduado</p>
                   <span className="text-xs text-gray-500">Acta y diploma se generan automaticamente</span>
@@ -1485,7 +1566,7 @@ export function ReviewRequestsModule() {
                     <input
                       value={approvalForm.fullName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, fullName: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
                     />
@@ -1497,7 +1578,7 @@ export function ReviewRequestsModule() {
                     <input
                       value={approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || ''}
                       onChange={(e) => setApprovalForm({ ...approvalForm, idNumber: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled
                     />
                   </div>
@@ -1509,7 +1590,7 @@ export function ReviewRequestsModule() {
                       type="email"
                       value={approvalForm.email}
                       onChange={(e) => setApprovalForm({ ...approvalForm, email: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
                       required
@@ -1517,19 +1598,63 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Telefono<span className="text-red-500"> *</span>
+                      Numero de registro<span className="text-red-500"> *</span>
                     </label>
                     <input
-                      type="tel"
-                      value={approvalForm.phone}
+                      type="text"
+                      value={approvalForm.numRegistro}
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          phone: normalizePhone(e.target.value),
+                          numRegistro: e.target.value.replace(/\D+/g, ''),
                         })
                       }
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      placeholder="3001234567"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Registro"
+                      disabled={isLoadingApprovalData}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Numero de folio<span className="text-red-500"> *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalForm.numFolio}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          numFolio: e.target.value.replace(/\D+/g, ''),
+                        })
+                      }
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Folio"
+                      disabled={isLoadingApprovalData}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={10}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-700">
+                      Numero de libro<span className="text-red-500"> *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={approvalForm.numLibro}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          numLibro: e.target.value.replace(/\D+/g, ''),
+                        })
+                      }
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Libro"
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
@@ -1544,7 +1669,7 @@ export function ReviewRequestsModule() {
                     <select
                       value={approvalForm.programName}
                       onChange={(e) => setApprovalForm({ ...approvalForm, programName: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar programa</option>
@@ -1557,49 +1682,13 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Tipo de programa<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.programType}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, programType: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar tipo</option>
-                      {programTypeOptions.map((tipo) => (
-                        <option key={tipo} value={tipo}>
-                          {tipo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
-                      Titulo<span className="text-red-500"> *</span>
-                    </label>
-                    <select
-                      value={approvalForm.degreeTitle}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, degreeTitle: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-                      disabled={isLoadingApprovalData}
-                    >
-                      <option value="">Seleccionar titulo</option>
-                      {degreeTitleSelectOptions.map((titulo) => (
-                        <option key={titulo} value={titulo}>
-                          {titulo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-700">
                       Fecha de graduacion<span className="text-red-500"> *</span>
                     </label>
                     <input
                       type="date"
                       value={approvalForm.graduationDate}
                       onChange={(e) => setApprovalForm({ ...approvalForm, graduationDate: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     />
                   </div>
@@ -1610,7 +1699,7 @@ export function ReviewRequestsModule() {
                     <select
                       value={approvalForm.campus}
                       onChange={(e) => setApprovalForm({ ...approvalForm, campus: e.target.value })}
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar sede</option>
@@ -1623,14 +1712,14 @@ export function ReviewRequestsModule() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-700">
-                      Seccional<span className="text-red-500"> *</span>
+                      Territorial<span className="text-red-500"> *</span>
                     </label>
                     <select
                       value={approvalForm.seccionalName}
                       onChange={(e) =>
                         setApprovalForm({ ...approvalForm, seccionalName: e.target.value })
                       }
-                      className="w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
                       <option value="">Seleccionar seccional</option>
@@ -1641,6 +1730,59 @@ export function ReviewRequestsModule() {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div className="space-y-2 border-t border-dashed border-gray-200 pt-3">
+                  <div className="review-approval-file-header">
+                    <div className="review-approval-file-picker">
+                      <input
+                        id="approval-files-input"
+                        type="file"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                        onChange={handleApprovalFilesChange}
+                        className="review-approval-file-input"
+                        disabled={isLoadingApprovalData}
+                      />
+                      <label
+                        htmlFor="approval-files-input"
+                        className="review-approval-file-label"
+                      >
+                        Elegir archivos
+                      </label>
+                    </div>
+                    <label className="text-xs font-medium text-gray-700">
+                      Archivos del título (opcional, máx. 5)
+                    </label>
+                  </div>
+                  {approvalFiles.length > 0 ? (
+                    <>
+                      <p className="text-xs text-gray-600">
+                        Archivos seleccionados: <span className="font-semibold">{approvalFiles.length}</span>
+                      </p>
+                      <div className="review-approval-files">
+                        {approvalFiles.map((file, index) => (
+                          <div
+                            key={`${file.name}-${index}`}
+                            className={`review-approval-chip flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${getApprovalFileChipClass(file)}`}
+                          >
+                            <span className="review-approval-chip__name">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveApprovalFile(index)}
+                              className="text-gray-400 hover:text-red-500"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Adjunta documentos PDF, Word, Excel o imágenes.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -1662,15 +1804,18 @@ export function ReviewRequestsModule() {
 
           <DialogFooter className="px-6 pb-10 pt-4">
             <button
-              onClick={() => setShowReviewModal(false)}
-              className="px-4 py-2 text-sm font-medium rounded-lg border-2"
+              onClick={() => {
+                setShowReviewModal(false);
+                setApprovalFiles([]);
+              }}
+              className="review-approval-btn review-approval-btn--ghost px-4 py-2 text-sm font-medium rounded-lg border-2"
               style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
             >
               Cancelar
             </button>
             <button
               onClick={handleSubmitReview}
-              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              className="review-approval-btn review-approval-btn--primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
               disabled={isLoadingApprovalData}
             >

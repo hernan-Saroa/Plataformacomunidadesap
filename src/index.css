@@ -14803,3 +14803,396 @@ body:not(.keyboard-navigation) :focus {
     transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));
   }
 }
+
+/* Graduates files dialog sizing + confirm centering */
+[data-slot="dialog-content"].graduate-files-dialog {
+  width: 900px !important;
+  max-width: 92vw !important;
+  top: 6vh !important;
+  height: min(760px, calc(100vh - 12vh)) !important;
+  max-height: calc(100vh - 12vh) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-dropzone {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-dropzone:hover,
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-dropzone:focus-within {
+  border-color: #93C5FD !important;
+  background-color: #F3F8FF !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-dropzone {
+  position: relative;
+  cursor: pointer;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #1D4ED8;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-label:hover {
+  color: #1E40AF;
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.25);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-label:active {
+  color: #1E3A8A;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-input:disabled + .graduate-files-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-upload-btn {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-upload-btn:hover:not(:disabled) {
+  box-shadow: 0 8px 18px rgba(29, 78, 216, 0.25);
+  filter: brightness(0.98);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-upload-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-item {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-item:hover {
+  border-color: #BFDBFE !important;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-action-btn {
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-action-btn:hover {
+  text-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+  text-decoration: underline;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-action-btn.is-danger:hover {
+  text-shadow: 0 0 12px rgba(220, 38, 38, 0.35);
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge.is-pdf {
+  border-color: #FECACA;
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge.is-word {
+  border-color: #BFDBFE;
+  background: #EFF6FF;
+  color: #1D4ED8;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge.is-excel {
+  border-color: #BBF7D0;
+  background: #ECFDF3;
+  color: #15803D;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge.is-image {
+  border-color: #E5E7EB;
+  background: #F3F4F6;
+  color: #374151;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-type-badge.is-generic {
+  border-color: #E5E7EB;
+  background: #F8FAFC;
+  color: #0F172A;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-secondary-btn {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-dialog .graduate-files-secondary-btn:hover {
+  background-color: #F3F4F6;
+  border-color: #CBD5F5 !important;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-secondary-btn {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-secondary-btn:hover {
+  background-color: #F3F4F6;
+  border-color: #CBD5F5 !important;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-danger-btn {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-danger-btn:hover {
+  box-shadow: 0 10px 20px rgba(220, 38, 38, 0.25);
+  filter: brightness(0.98);
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-danger-btn:active {
+  transform: translateY(1px);
+}
+
+/* Review approval modal styles */
+[data-slot="dialog-content"].review-approval-dialog .review-approval-input {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  background-color: #FFFFFF;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-input:hover {
+  border-color: #C7D2FE;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-input:focus,
+[data-slot="dialog-content"].review-approval-dialog .review-approval-input:focus-visible {
+  border-color: #2563EB !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-input:disabled {
+  background-color: #F8FAFC;
+  color: #94A3B8;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-card {
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file {
+  background: #F8FAFF;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-btn {
+  transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease, background-color 0.2s ease;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-btn--primary:hover:not(:disabled) {
+  box-shadow: 0 10px 20px rgba(0, 61, 165, 0.25);
+  filter: brightness(0.98);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-btn--primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-btn--ghost:hover {
+  background-color: #F3F4F6;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-header label {
+  margin: 0;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.75rem;
+  border: 2px solid #CBD5F5;
+  background: #F8FAFF;
+  color: #1E3A8A;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, transform 0.15s ease;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-label:hover {
+  border-color: #93C5FD;
+  background-color: #EEF6FF;
+  box-shadow: 0 6px 14px rgba(59, 130, 246, 0.18);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-label:active {
+  transform: translateY(1px);
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-file-input:disabled + .review-approval-file-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-files {
+  max-width: 100%;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 175px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border-color: #E5E7EB;
+  background: #F8FAFC;
+  color: #0F172A;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip--pdf {
+  border-color: #FECACA;
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip--word {
+  border-color: #BFDBFE;
+  background: #EFF6FF;
+  color: #1D4ED8;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip--excel {
+  border-color: #BBF7D0;
+  background: #ECFDF3;
+  color: #15803D;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip--image {
+  border-color: #E5E7EB;
+  background: #F3F4F6;
+  color: #374151;
+}
+
+[data-slot="dialog-content"].review-approval-dialog .review-approval-chip--generic {
+  border-color: #E5E7EB;
+  background: #F8FAFC;
+  color: #0F172A;
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog {
+  top: 50% !important;
+  left: 60% !important;
+  width: 420px !important;
+  max-width: 90vw !important;
+  transform: translate(-50%, -50%) !important;
+  overflow-x: hidden !important;
+}
+
+@media (max-width: 768px) {
+  [data-slot="dialog-content"].graduate-files-dialog {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    top: 4vh !important;
+    height: calc(100vh - 8vh) !important;
+    max-height: calc(100vh - 8vh) !important;
+  }
+
+  [data-slot="dialog-content"].graduate-files-confirm-dialog {
+    width: 92vw !important;
+    left: 50% !important;
+  }
+}
+
+[data-slot="dialog-content"].graduate-files-confirm-dialog .graduate-files-filename {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-height: 700px) {
+  [data-slot="dialog-content"].graduate-files-dialog {
+    top: 4vh !important;
+    height: calc(100vh - 8vh) !important;
+    max-height: calc(100vh - 8vh) !important;
+  }
+}
