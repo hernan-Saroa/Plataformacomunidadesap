@@ -91,7 +91,7 @@ interface Proceso {
   denunciante: Persona;
   denunciado: Persona;
   cedula: string; // Mantener por compatibilidad
-  etapaActual: 'RECEPCION' | 'VALORACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO';
+  etapaActual: 'RECEPCION' | 'VALORACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'EVALUACION' | 'JUZGAMIENTO' | 'INDAGACION' | 'FALLO' | 'SEGUNDA_INSTANCIA';
   estadoActual: string;
   profesionalAsignado: Persona;
   profesionalAsignadoId?: string; // ID del profesional para filtrado
@@ -161,6 +161,8 @@ const DEFAULT_STAGES = [
   { nombre: 'INVESTIGACION', dias: 60 },
   { nombre: 'EVALUACION', dias: 10 },
   { nombre: 'JUZGAMIENTO', dias: 50 },
+  { nombre: 'INDAGACION', dias: 30 },
+  { nombre: 'FALLO', dias: 10 },
   { nombre: 'SEGUNDA INSTANCIA', dias: 10 }
 ];
 
@@ -2682,9 +2684,9 @@ export function DashboardKanbanOperativo({
     [normalizeEtapa('Evaluacion')]: 'EVALUACION',
     [normalizeEtapa('Valoracion')]: 'EVALUACION',
     [normalizeEtapa('Valoraci?n')]: 'EVALUACION',
-    [normalizeEtapa('INDAGACION')]: 'INDAGACION_PREVIA',
-    [normalizeEtapa('Indagacion')]: 'INDAGACION_PREVIA',
-    [normalizeEtapa('Indagaci?n')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('INDAGACION')]: 'INDAGACION',
+    [normalizeEtapa('Indagacion')]: 'INDAGACION',
+    [normalizeEtapa('Indagaci?n')]: 'INDAGACION',
     [normalizeEtapa('INDAGACION_PREVIA')]: 'INDAGACION_PREVIA',
     [normalizeEtapa('Indagacion_Previa')]: 'INDAGACION_PREVIA',
     [normalizeEtapa('Indagacion Previa')]: 'INDAGACION_PREVIA',
@@ -2695,7 +2697,10 @@ export function DashboardKanbanOperativo({
     [normalizeEtapa('JUZGAMIENTO')]: 'JUZGAMIENTO',
     [normalizeEtapa('Juzgamiento')]: 'JUZGAMIENTO',
     [normalizeEtapa('FALLO')]: 'FALLO',
-    [normalizeEtapa('Fallo')]: 'FALLO'
+    [normalizeEtapa('Fallo')]: 'FALLO',
+    [normalizeEtapa('SEGUNDA_INSTANCIA')]: 'SEGUNDA_INSTANCIA',
+    [normalizeEtapa('Segunda Instancia')]: 'SEGUNDA_INSTANCIA',
+    [normalizeEtapa('segundainstancia')]: 'SEGUNDA_INSTANCIA',  // Sin espacios ni acentos
   };
 
   const getStageIndex = (name?: string) => {

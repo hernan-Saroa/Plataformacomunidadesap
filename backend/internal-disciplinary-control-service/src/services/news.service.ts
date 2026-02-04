@@ -193,11 +193,193 @@ export class NewsService {
   }
 
   /**
+   * Actualiza el historial de auditoría de una noticia
+   */
+  async updateHistory(id: string, historyEntry: any): Promise<DisciplinaryNews> {
+    const noticia = await this.findById(id);
+    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+    return await this.newsRepository.save(noticia);
+  }
+
+  /**
    * Elimina una noticia (y sus archivos)
    */
   async delete(id: string): Promise<void> {
     const noticia = await this.findById(id);
     await this.storageService.deleteExpediente(noticia.radicado);
     await this.newsRepository.delete(id);
+  }
+
+  /**
+   * Construye el contenido HTML del correo de remisión por competencia
+   */
+  buildRemisionEmailContent(
+    noticia: DisciplinaryNews,
+    entidadDestino: string,
+    justificacion: string,
+  ): string {
+    const formatDate = (date: Date | string | undefined): string => {
+      if (!date) return 'No especificada';
+      return new Date(date).toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    };
+
+    const formatPersonInfo = (person: any): string => {
+      if (!person) return 'No disponible';
+      let info = `<strong>${person.nombre || 'Sin nombre'}</strong>`;
+      if (person.cedula) info += `<br>C.C.: ${person.cedula}`;
+      if (person.cargo) info += `<br>Cargo: ${person.cargo}`;
+      if (person.dependencia) info += `<br>Dependencia: ${person.dependencia}`;
+      if (person.entidad) info += `<br>Entidad: ${person.entidad}`;
+      if (person.email) info += `<br>Email: ${person.email}`;
+      if (person.telefono) info += `<br>Teléfono: ${person.telefono}`;
+      return info;
+    };
+
+    return `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 700px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Remisión por Competencia - Control Interno Disciplinario ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Información de la Remisión
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              <table width="100%" cellspacing="0" cellpadding="8" style="background: #f9fafb; border-radius: 8px;">
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Entidad de Destino:</td>
+                  <td style="color: #111827;">${entidadDestino}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Fecha de Remisión:</td>
+                  <td style="color: #111827;">${formatDate(new Date())}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Radicado Original:</td>
+                  <td style="color: #111827;">${noticia.radicado}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Justificación de la Remisión
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0;">
+              ${justificacion}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Datos del Denunciante
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${formatPersonInfo(noticia.denunciante)}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Datos del Disciplinable
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${formatPersonInfo(noticia.disciplinable)}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Hechos de la Noticia
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${noticia.hechos || 'No especificados'}
+            </td>
+          </tr>
+          ${noticia.conductas && noticia.conductas.length > 0 ? `
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Conductasallegadas
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              <ul style="margin: 0; padding-left: 20px;">
+                ${noticia.conductas.map(c => `<li>${c}</li>`).join('')}
+              </ul>
+            </td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Información Adicional
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              <table width="100%" cellspacing="0" cellpadding="8" style="background: #f9fafb; border-radius: 8px;">
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Origen:</td>
+                  <td style="color: #111827;">${noticia.origen || 'No especificado'}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Territorial:</td>
+                  <td style="color: #111827;">${noticia.territorial || 'No especificada'}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Dependencia del Denunciado:</td>
+                  <td style="color: #111827;">${noticia.dependenciaDenunciado || 'No especificada'}</td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Fecha de Recepción:</td>
+                  <td style="color: #111827;">${formatDate(noticia.fechaRecepcion)}</td>
+                </tr>
+                ${noticia.fechaQueja ? `
+                <tr>
+                  <td style="font-weight: 600; color: #374151;">Fecha de los Hechos:</td>
+                  <td style="color: #111827;">${formatDate(noticia.fechaQueja)}</td>
+                </tr>
+                ` : ''}
+              </table>
+            </td>
+          </tr>
+          ${noticia.adjuntos && noticia.adjuntos.length > 0 ? `
+          <tr>
+            <td style="padding: 16px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Archivos Adjuntos
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              ${noticia.adjuntos.length} archivo(s) adjunto(s) en el sistema
+            </td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; text-align: center;">
+              ESAP - Escuela Superior de Administración Pública<br>
+              Sistema de Control Interno Disciplinario<br>
+              Este correo fue generado automáticamente.
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
   }
 }

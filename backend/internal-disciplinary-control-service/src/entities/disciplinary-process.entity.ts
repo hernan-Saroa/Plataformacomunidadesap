@@ -15,11 +15,13 @@ import { Evidence } from './evidence.entity';
 
 export enum ProcessStage {
   RECEPCION = 'RECEPCION',
-  EVALUACION = 'EVALUACION',
   VALORACION = 'VALORACION',
   INDAGACION_PREVIA = 'INDAGACION_PREVIA',
   INVESTIGACION = 'INVESTIGACION',
+  EVALUACION = 'EVALUACION',
   JUZGAMIENTO = 'JUZGAMIENTO',
+  INDAGACION = 'INDAGACION',
+  FALLO = 'FALLO',
   SEGUNDA_INSTANCIA = 'SEGUNDA_INSTANCIA',
 }
 
@@ -47,7 +49,11 @@ export class DisciplinaryProcess {
   @Column('uuid')
   newsId: string;
 
-  @ManyToOne(() => DisciplinaryProfessional, { eager: true, nullable: true, createForeignKeyConstraints: false })
+  @ManyToOne(() => DisciplinaryProfessional, {
+    eager: true,
+    nullable: true,
+    createForeignKeyConstraints: false,
+  })
   @JoinColumn({ name: 'abogado_asignado_id' })
   abogadoAsignado: DisciplinaryProfessional;
 
