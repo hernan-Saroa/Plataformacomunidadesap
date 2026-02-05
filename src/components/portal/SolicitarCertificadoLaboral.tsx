@@ -249,6 +249,54 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'INACTIVO') return 'inactivo';
+    if (statusUpper === 'ACTIVO') return 'activo';
+    return 'activo';
+  };
+
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
     const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
     const templateType =
@@ -266,7 +314,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
       cargo: cert.career_category || 'N/A',
       dependencia: cert.department || 'N/A',
-      dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
+      dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
       fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
       salario_actual: salarioBase,
       prima_tecnica: bonusBase,
@@ -276,29 +324,35 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       incluyePrimaTecnica: false,
       qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
       nombre_completo: cert.full_name || 'N/A',
-      certificado_completo: {
-        id: cert.id,
-        consecutivo: cert.certificate_number || cert.verification_code,
-        qrCode: cert.verification_code,
-        cantidadEscaneos: 0,
-        incluyeSalario: true,
-        incluyePrimaTecnica: false,
-        technical_bonus: bonusBase,
-        empleado: {
-          nombre: cert.full_name,
-          documento: cert.id_number,
-          email: cert.email || cert.certificate_email || 'N/A',
-          cargo: cert.career_category,
-          dependencia: cert.department || 'N/A',
-          dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
-          tipoVinculacion: cert.position_category || 'Administrativo',
-          fechaVinculacion: cert.hiring_date,
-          grado: cert.position_location || 'N/A',
-          salario: salarioBase,
-          salarioOriginal: salarioBase,
-          salarioTexto: salarioTextoBase,
-          salarioTextoOriginal: salarioTextoBase
-        },
+        certificado_completo: {
+          id: cert.id,
+          consecutivo: cert.certificate_number || cert.verification_code,
+          qrCode: cert.verification_code,
+          cantidadEscaneos: 0,
+          incluyeSalario: true,
+          incluyePrimaTecnica: false,
+          technical_bonus: bonusBase,
+          career_category: cert.career_category,
+          position_category: cert.position_category,
+          cod_cargo: cert.cod_cargo || cert.codCargo,
+          cod_grade: cert.cod_grade || cert.codGrade,
+          empleado: {
+            nombre: cert.full_name,
+            documento: cert.id_number,
+            email: cert.email || cert.certificate_email || 'N/A',
+            cargo: cert.career_category,
+            dependencia: cert.department || 'N/A',
+            dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
+            cod_cargo: cert.cod_cargo || cert.codCargo,
+            cod_grade: cert.cod_grade || cert.codGrade,
+            tipoVinculacion: cert.position_category || 'Administrativo',
+            fechaVinculacion: cert.hiring_date,
+            grado: cert.position_location || 'N/A',
+            salario: salarioBase,
+            salarioOriginal: salarioBase,
+            salarioTexto: salarioTextoBase,
+            salarioTextoOriginal: salarioTextoBase
+          },
         estado: cert.status?.toLowerCase?.() || 'activo',
         tipoSolicitud: 'AUTOSERVICIO' as const,
         fechaSolicitud: cert.created_at || new Date().toISOString(),
@@ -331,6 +385,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
   const [numeroDocumento, setNumeroDocumento] = useState('');
   const [buscandoEmpleado, setBuscandoEmpleado] = useState(false);
   const [empleadoEncontrado, setEmpleadoEncontrado] = useState<EmpleadoData | null>(null);
+  const [estadoLaboral, setEstadoLaboral] = useState<'activo' | 'inactivo' | null>(null);
   const numeroDocumentoRef = useRef('');
   const numeroDocumentoInputRef = useRef<HTMLInputElement | null>(null);
   
@@ -480,6 +535,8 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
 
     setNumeroDocumento(documentoIngresado);
     numeroDocumentoRef.current = documentoIngresado;
+    setEstadoLaboral(null);
+    setEmpleadoEncontrado(null);
     setBuscandoEmpleado(true);
 
     try {
@@ -494,6 +551,24 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
       if (!verificacion.existe) {
         setBuscandoEmpleado(false);
         toast.error('No encontramos tu documento en la base de datos de ESAP');
+        return;
+      }
+
+      const solicitudVerificada =
+        verificacion.solicitud && typeof verificacion.solicitud === 'object' ? verificacion.solicitud : null;
+      const estadoVerificacion = resolverEstadoLaboral(
+        solicitudVerificada?.hiring_date ?? solicitudVerificada?.hiringDate,
+        solicitudVerificada?.request_date ?? solicitudVerificada?.requestDate,
+        solicitudVerificada?.status ?? null,
+      );
+
+      if (estadoVerificacion === 'inactivo') {
+        setBuscandoEmpleado(false);
+        setEstadoLaboral('inactivo');
+        toast.error('Actualmente no tienes un contrato activo en la ESAP.', {
+          description: 'Por favor comunícate con Talento Humano para validar tu situación laboral.',
+          duration: 6000,
+        });
         return;
       }
 
@@ -537,7 +612,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         tipo_vinculacion: vinculoNormalizado,
         cargo: cargoNormalizado,
         dependencia: solicitud.department || 'N/A',
-        dependenciaPadre: solicitud.department_parent || solicitud.departmentParent || 'Registro padre',
+        dependenciaPadre: solicitud.cod_cargo || solicitud.codCargo || 'Registro padre',
         fecha_vinculacion: solicitud.hiring_date || new Date().toISOString(),
         estado: 'Activo',
         correo_institucional: emailDestino,
@@ -610,7 +685,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
         cargo: cert.career_category || empleadoEncontrado?.cargo || 'N/A',
         dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
-        dependenciaPadre: cert.department_parent || cert.departmentParent || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
+        dependenciaPadre: cert.cod_cargo || cert.codCargo || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
         fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
         salario_actual: salarioBase,
         prima_tecnica: bonusBase,
@@ -621,27 +696,33 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
         qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
         nombre_completo: cert.full_name || empleadoEncontrado?.nombre_completo || 'N/A',
         // Datos completos del certificado para el visor
-        certificado_completo: {
-          id: cert.id,
-          consecutivo: cert.certificate_number || cert.verification_code,
-          qrCode: cert.verification_code,
-          cantidadEscaneos: 0,
-          incluyeSalario: true,
-          incluyePrimaTecnica: false,
-          technical_bonus: bonusBase,
-          empleado: {
-            nombre: cert.full_name,
-            documento: cert.id_number,
-            email: empleadoEncontrado?.correo_institucional || 'N/A',
-            cargo: cert.career_category,
-            dependencia: cert.department || 'N/A',
-            dependenciaPadre: cert.department_parent || cert.departmentParent || 'Registro padre',
-            tipoVinculacion: cert.position_category || 'Administrativo',
-            fechaVinculacion: cert.hiring_date,
-            grado: cert.position_location || 'N/A',
-            salario: salarioBase,
-            salarioOriginal: salarioBase,
-            salarioTexto: salarioTextoBase,
+      certificado_completo: {
+        id: cert.id,
+        consecutivo: cert.certificate_number || cert.verification_code,
+        qrCode: cert.verification_code,
+        cantidadEscaneos: 0,
+        incluyeSalario: true,
+        incluyePrimaTecnica: false,
+        technical_bonus: bonusBase,
+        career_category: cert.career_category,
+        position_category: cert.position_category,
+        cod_cargo: cert.cod_cargo || cert.codCargo,
+        cod_grade: cert.cod_grade || cert.codGrade,
+        empleado: {
+          nombre: cert.full_name,
+          documento: cert.id_number,
+          email: empleadoEncontrado?.correo_institucional || 'N/A',
+          cargo: cert.career_category,
+          dependencia: cert.department || 'N/A',
+          dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
+          cod_cargo: cert.cod_cargo || cert.codCargo,
+          cod_grade: cert.cod_grade || cert.codGrade,
+          tipoVinculacion: cert.position_category || 'Administrativo',
+          fechaVinculacion: cert.hiring_date,
+          grado: cert.position_location || 'N/A',
+          salario: salarioBase,
+          salarioOriginal: salarioBase,
+          salarioTexto: salarioTextoBase,
             salarioTextoOriginal: salarioTextoBase
           },
           estado: 'activo' as const,
@@ -782,6 +863,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
     setDigitosCodigo(['', '', '', '', '', '']);
     setCodigoEnviado('');
     setEmpleadoEncontrado(null);
+    setEstadoLaboral(null);
     setCertificadoGenerado(null);
     setCertificadoExistente(false);
     certificadoBaseRef.current = null;
@@ -1019,7 +1101,10 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                             id="tipo-documento"
                             name="tipo-documento"
                             value={tipoDocumento}
-                            onChange={(event) => setTipoDocumento(event.target.value)}
+                            onChange={(event) => {
+                              setTipoDocumento(event.target.value);
+                              setEstadoLaboral(null);
+                            }}
                             className="h-12 w-full rounded-md border-2 border-input bg-input-background px-3 text-sm text-gray-700 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                           >
                             <option value="" disabled>
@@ -1031,7 +1116,13 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                             <option value="PP">Pasaporte (PP)</option>
                           </select>
                         ) : (
-                          <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
+                          <Select
+                            value={tipoDocumento}
+                            onValueChange={(value) => {
+                              setTipoDocumento(value);
+                              setEstadoLaboral(null);
+                            }}
+                          >
                             <SelectTrigger id="tipo-documento" className="h-12 border-2">
                               <SelectValue placeholder="Selecciona el tipo de documento" />
                             </SelectTrigger>
@@ -1066,6 +1157,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                                 target.value = limpio;
                               }
                               numeroDocumentoRef.current = limpio;
+                              setEstadoLaboral(null);
                             }}
                             className="h-12 pl-10 border-2"
                             maxLength={15}
@@ -1102,7 +1194,7 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                       {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado}
+                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo'}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (
@@ -1117,6 +1209,19 @@ export function SolicitarCertificadoLaboral({ onBack, onLoginClick }: SolicitarC
                           </>
                         )}
                       </Button>
+                      {estadoLaboral === 'inactivo' && (
+                        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+                          <div className="flex items-start gap-3">
+                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm">
+                              <p className="font-semibold">Actualmente no tienes un contrato activo en la ESAP.</p>
+                              <p className="text-red-700 mt-1">
+                                Por favor comunícate con Talento Humano.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Información de ayuda */}
