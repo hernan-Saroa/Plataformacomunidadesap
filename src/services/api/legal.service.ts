@@ -177,6 +177,27 @@ export class LegalService {
         await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
+    // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
+    async getExpedientesArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/estado/archivados`);
+    }
+
+    async archivarExpediente(id: string, motivo?: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/archivar`, { motivo, usuario });
+    }
+
+    async eliminarExpedienteSoft(id: string, motivo?: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/eliminar`, { motivo, usuario });
+    }
+
+    async restaurarExpediente(id: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/restaurar`, {});
+    }
+
+    async eliminarPermanenteExpediente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}/permanente`);
+    }
+
     async deleteAudiencia(id: string): Promise<void> {
         await apiClient.delete(`${SERVICE_PREFIX}/audiencias/${id}`);
     }
@@ -210,6 +231,8 @@ export class LegalService {
     async getAbogados(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
     }
+
+
 
     // ==================== PROCESOS COACTIVOS ====================
     async getProcesosCoactivos(): Promise<any[]> {
@@ -423,7 +446,28 @@ export class LegalService {
     }
 
     async deleteConsultaJuridica(id: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`); // Esto sería soft delete si el backend lo maneja así, o hard delete
+    }
+
+    // --- Métodos de Archivo Consultas ---
+    async getConsultasArchivadas(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/archivadas/lista`);
+    }
+
+    async archivarConsulta(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/archivar`, { motivo, usuario });
+    }
+
+    async eliminarConsultaSoft(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/eliminar`, { motivo, usuario });
+    }
+
+    async restaurarConsulta(id: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/restaurar`, { usuario });
+    }
+
+    async eliminarConsultaPermanente(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}/permanente`);
     }
 
     async getConsultaJuridicaHistorial(id: string): Promise<any[]> {
@@ -804,6 +848,7 @@ class OCService {
 
 export interface RiesgoAPI {
     id: string;
+    motivoArchivo?: string;
     codigo: string;
     nombre: string;
     descripcion: string;
@@ -893,8 +938,20 @@ class RiesgosService {
         return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/etapa`, { etapa });
     }
 
-    async archivar(id: string): Promise<RiesgoAPI> {
-        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/archivar`, {});
+    async archivar(id: string, motivo?: string): Promise<RiesgoAPI> {
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/archivar`, { motivo });
+    }
+
+    async getArchived(): Promise<RiesgoAPI[]> {
+        return apiClient.get<RiesgoAPI[]>(`${SERVICE_PREFIX}/riesgos/archivados/all`);
+    }
+
+    async restaurar(id: string): Promise<RiesgoAPI> {
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/restaurar`, {});
+    }
+
+    async eliminarPermanente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/riesgos/${id}/permanente`);
     }
 
     async getEstadisticas(): Promise<{

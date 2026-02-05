@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import {
   FileText, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -15,7 +15,7 @@ import {
   Building2, Gavel, MapPin, DollarSign, FileCheck,
   MessageSquare, Send, Edit, Filter, ChevronDown,
   Briefcase, Phone, Mail, Hash, Activity, Bell,
-  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2
+  Shield, Target, Flag, Bookmark, Archive, Upload, Trash2, Check
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -68,6 +68,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // Estado para modal de reasignar
   const [showReasignarModal, setShowReasignarModal] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false); // Modal de confirmación archivar
+  const [motivoArchivo, setMotivoArchivo] = useState(''); // Motivo de archivo
   const [abogados, setAbogados] = useState<any[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
   const [selectedAbogado, setSelectedAbogado] = useState('');
@@ -174,14 +176,38 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const loadNotas = async (id: string) => {
     try {
       setLoadingNotas(true);
-      const data = await legalService.getNotasByExpediente(id);
-      const mapped = data.map((n: any) => ({
-        id: n.id,
-        fecha: new Date(n.createdAt).toLocaleDateString('es-CO'),
-        autor: n.autorNombre || 'Usuario',
-        nota: n.contenido,
-        tipo: n.tipo ? n.tipo.charAt(0).toUpperCase() + n.tipo.slice(1) : 'General'
-      }));
+      // Las notas se guardan como actuaciones tipo NOTA_INTERNA
+      // Filtrarlas desde el endpoint de actuaciones
+      const allActuaciones = await legalService.getActuaciones(id);
+      const notasActuaciones = allActuaciones.filter(
+        (a: any) => a.tipoActuacion === 'NOTA_INTERNA' || a.tipoActuacion === 'NOTA'
+      );
+
+      // Mapeo de tipos a colores
+      const tipoColorMap: Record<string, string> = {
+        'Importante': '#EF4444',    // Rojo
+        'Seguimiento': '#F59E0B',   // Amarillo/Naranja
+        'Informativa': '#10B981',   // Verde
+        'General': '#6B7280'        // Gris
+      };
+
+      const mapped = notasActuaciones.map((n: any) => {
+        // Extraer tipo del formato [Tipo] en la descripción
+        const tipoMatch = n.descripcion?.match(/^\[([^\]]+)\]/);
+        const tipoExtraido = tipoMatch ? tipoMatch[1] : 'General';
+
+        // Limpiar descripción quitando el [Tipo] si existe
+        const notaLimpia = n.descripcion?.replace(/^\[[^\]]+\]\s*/, '') || n.descripcion;
+
+        return {
+          id: n.id,
+          fecha: new Date(n.fechaActuacion || n.createdAt).toLocaleDateString('es-CO'),
+          autor: n.usuarioResponsable || 'Sistema',
+          nota: notaLimpia,
+          tipo: tipoExtraido,
+          color: tipoColorMap[tipoExtraido] || tipoColorMap['General']
+        };
+      });
       setNotas(mapped);
     } catch (error) {
       console.error('Error loading notas', error);
@@ -362,8 +388,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
 
-      const response = await fetch(fullUrl);
-      if (!response.ok) throw new Error('Error al descargar el archivo');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include', // Importante para CORS en producción
+      });
+
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -382,9 +420,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       toast.success('✅ Descarga completada', { id: 'descarga-doc' });
     } catch (error) {
       console.error('Error downloading:', error);
-      // Fallback: intentar abrir en nueva pestaña si falla el blob
-      window.open(fullUrl, '_blank');
-      toast.error('⚠️ Error en descarga directa, abriendo en pestaña...', { id: 'descarga-doc' });
+      // Fallback: intentar descarga directa con link (funciona mejor en algunos casos)
+      try {
+        const link = document.createElement('a');
+        link.href = fullUrl;
+        link.setAttribute('download', doc.nombre || 'documento');
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'descarga-doc' });
+      } catch {
+        window.open(fullUrl, '_blank');
+        toast.error('⚠️ Error en descarga, abriendo en pestaña...', { id: 'descarga-doc' });
+      }
     }
   };
 
@@ -418,8 +467,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const id = expediente.uuid || expediente.id;
       const url = legalService.getDocumentosDownloadZipUrl(id);
 
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Error al generar el ZIP');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -439,7 +499,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       toast.success('✅ Archivo ZIP descargado', { id: 'descarga-zip' });
     } catch (error) {
       console.error('Error downloading zip:', error);
-      toast.error('❌ Error al descargar el ZIP', { id: 'descarga-zip' });
+      // Fallback: intentar descarga directa por link
+      try {
+        const id = expediente.uuid || expediente.id;
+        const url = legalService.getDocumentosDownloadZipUrl(id);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'descarga-zip' });
+      } catch {
+        toast.error('❌ Error al descargar el ZIP', { id: 'descarga-zip' });
+      }
     }
   };
 
@@ -463,6 +536,39 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         duration: 4000
       });
     }, 3500);
+  };
+
+  // Handler para archivar el expediente - abre modal de confirmación
+  const handleArchivar = () => {
+    setMotivoArchivo(''); // Resetear motivo
+    setShowArchivarModal(true);
+  };
+
+  // Confirmar archivo del expediente
+  const confirmarArchivar = async () => {
+    if (!motivoArchivo.trim()) {
+      toast.error('⚠️ El motivo es obligatorio');
+      return;
+    }
+
+    try {
+      toast.loading('📦 Archivando expediente...', { id: 'archivar-exp' });
+      const usuario = 'Usuario Actual'; // TODO: obtener del contexto de auth
+
+      await legalService.archivarExpediente(expediente.uuid || expediente.id, motivoArchivo, usuario);
+
+      toast.success('✅ Expediente archivado correctamente', {
+        id: 'archivar-exp',
+        description: 'El expediente ha sido movido a Archivados'
+      });
+      setShowArchivarModal(false);
+      onClose(); // Cerrar el modal
+      // Trigger refresh del Kanban si existe callback
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.error('❌ Error al archivar el expediente', { id: 'archivar-exp' });
+    }
   };
 
   const handleCompartir = async () => {
@@ -1056,7 +1162,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   }}
                 >
                   <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: semaforo.color }} />
-                  {semaforo.label} - {expediente.diasRestantes} días
+                  {semaforo.label} - {expediente.tiempoRestante || `${expediente.diasRestantes} días`}
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
                   <FileText className="w-3 h-3 mr-1" />
@@ -1096,7 +1202,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 {expediente.diasTotales - expediente.diasRestantes} días transcurridos
               </span>
               <span className="text-xs text-gray-600">
-                {expediente.diasRestantes} días restantes
+                {expediente.tiempoRestante || `${expediente.diasRestantes} días restantes`}
               </span>
             </div>
           </div>
@@ -2153,6 +2259,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handleArchivar}
+                  className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                >
+                  <Archive className="w-3.5 h-3.5 mr-1" />
+                  Archivar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleDescargarPDF}
                   className="font-bold text-xs"
                 >
@@ -2194,11 +2309,15 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     {loadingAbogados ? (
                       <option disabled>Cargando lista...</option>
                     ) : (
-                      abogados.map((abogado) => (
-                        <option key={abogado.id} value={abogado.nombre}>
-                          {abogado.nombre} - {abogado.especialidad || 'Abogado'} ({abogado.cargaActual || 0} exp.)
-                        </option>
-                      ))
+                      abogados.map((abogado) => {
+                        // Soportar múltiples formatos del API
+                        const displayName = abogado.nombreCompleto || `${abogado.nombre || ''} ${abogado.apellido || ''}`.trim() || abogado.name || 'Sin nombre';
+                        return (
+                          <option key={abogado.id} value={abogado.id}>
+                            {displayName} {abogado.especialidad ? `- ${abogado.especialidad}` : ''} ({abogado.cargaActual || abogado.expedientesActivos || 0} exp.)
+                          </option>
+                        );
+                      })
                     )}
                   </select>
                 </div>
@@ -2228,6 +2347,62 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           </Dialog>
         </DialogContent>
       </Dialog >
+
+      {/* ==================== MODAL DE CONFIRMACIÓN ARCHIVAR ==================== */}
+      <Dialog open={showArchivarModal} onOpenChange={setShowArchivarModal}>
+        <DialogContent
+          className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+          style={{ maxWidth: '380px', width: '100%' }}
+        >
+          <DialogHeader className="p-4 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Archive className="w-5 h-5 text-orange-500" />
+              Archivar Expediente
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-4 pt-2">
+            <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg mb-3">
+              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-orange-800">
+                <p className="font-semibold">¿Archivar este expediente?</p>
+                <p className="text-xs mt-1 opacity-80">Podrá restaurarlo desde la vista de Archivados.</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-700">Motivo del archivo <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full text-sm p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                rows={3}
+                placeholder="Indique la razón..."
+                value={motivoArchivo}
+                onChange={(e) => setMotivoArchivo(e.target.value)}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowArchivarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={confirmarArchivar}
+              disabled={!motivoArchivo.trim()}
+            >
+              <Archive className="w-4 h-4 mr-1" />
+              Archivar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
       < ModalNotificar
@@ -2296,6 +2471,93 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         audienciaExistente={audienciaAReasignar}
         abogados={abogados}
       />
+
+      {/* ==================== MODAL DE REASIGNAR PROFESIONAL ==================== */}
+      {showReasignarModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <User className="w-5 h-5" />
+                Reasignar Profesional
+              </h3>
+              <p className="text-blue-100 text-sm">Seleccione el nuevo abogado responsable</p>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Abogado actual:
+                </label>
+                <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-lg">
+                  <Avatar className="w-10 h-10">
+                    <AvatarFallback className="bg-blue-100 text-blue-600 font-bold">
+                      {expediente.abogadoAsignado?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'NA'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-semibold text-gray-900">{expediente.abogadoAsignado || 'No asignado'}</span>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Nuevo abogado: *
+                </label>
+                {loadingAbogados ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-sm text-gray-500">Cargando abogados...</span>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedAbogado}
+                    onChange={(e) => setSelectedAbogado(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm font-medium"
+                  >
+                    <option value="">Seleccione un abogado...</option>
+                    {abogados.map((abogado) => (
+                      <option key={abogado.id} value={abogado.id}>
+                        {abogado.nombreCompleto || `${abogado.nombre} ${abogado.apellido}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowReasignarModal(false);
+                    setSelectedAbogado('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={handleConfirmarReasignacion}
+                  disabled={!selectedAbogado || reasignando}
+                >
+                  {reasignando ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Reasignando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 mr-1" />
+                      Confirmar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

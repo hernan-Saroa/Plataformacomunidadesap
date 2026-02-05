@@ -92,7 +92,15 @@ export class ExpedienteService {
 
         if (data.fechaNotificacion && data.terminoProcesalDias) {
             const fechaNotif = new Date(data.fechaNotificacion);
-            data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
+            const tipoConteo = data.tipoConteoTermino || 'HABILES';
+
+            if (tipoConteo === 'CALENDARIO') {
+                const vencimiento = new Date(fechaNotif);
+                vencimiento.setDate(vencimiento.getDate() + Number(data.terminoProcesalDias));
+                data.fechaVencimientoTermino = vencimiento;
+            } else {
+                data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
+            }
         }
 
         const nuevoExpediente = this.expedienteRepository.create(data);
@@ -117,6 +125,9 @@ export class ExpedienteService {
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
         queryBuilder.leftJoinAndSelect('expediente.actors', 'actors');
+
+        // Solo mostrar expedientes activos en el Kanban (no archivados ni eliminados)
+        queryBuilder.andWhere("expediente.estadoArchivo = 'ACTIVO'");
 
         queryBuilder.addSelect((subQuery) => {
             return subQuery
@@ -304,6 +315,82 @@ export class ExpedienteService {
         excepcion.fechaResolucion = new Date().toISOString().split('T')[0];
 
         return this.excepcionRepository.save(excepcion);
+    }
+
+    // ==================== MÉTODOS DE ARCHIVO/ELIMINADO ====================
+
+    /**
+     * Obtener expedientes archivados y eliminados
+     */
+    async getExpedientesArchivados(): Promise<Expediente[]> {
+        return this.expedienteRepository.find({
+            where: [
+                { estadoArchivo: 'ARCHIVADO' },
+                { estadoArchivo: 'ELIMINADO' }
+            ],
+            order: { fechaArchivo: 'DESC' },
+            relations: ['actors']
+        });
+    }
+
+    /**
+     * Archivar un expediente (permanece en BD pero sale del Kanban)
+     */
+    async archivarExpediente(id: string, motivo: string, usuario: string): Promise<Expediente> {
+        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
+
+        expediente.estadoArchivo = 'ARCHIVADO';
+        expediente.fechaArchivo = new Date();
+        expediente.usuarioArchivo = usuario;
+        expediente.motivoArchivo = motivo;
+
+        return this.expedienteRepository.save(expediente);
+    }
+
+    /**
+     * Eliminar un expediente (soft delete - va a papelera)
+     */
+    async eliminarExpedienteSoft(id: string, motivo: string, usuario: string): Promise<Expediente> {
+        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
+
+        expediente.estadoArchivo = 'ELIMINADO';
+        expediente.fechaArchivo = new Date();
+        expediente.usuarioArchivo = usuario;
+        expediente.motivoArchivo = motivo;
+
+        return this.expedienteRepository.save(expediente);
+    }
+
+    /**
+     * Restaurar un expediente archivado o eliminado al Kanban
+     */
+    async restaurarExpediente(id: string): Promise<Expediente> {
+        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
+
+        expediente.estadoArchivo = 'ACTIVO';
+        expediente.fechaArchivo = undefined as any;
+        expediente.usuarioArchivo = undefined as any;
+        expediente.motivoArchivo = undefined as any;
+
+        return this.expedienteRepository.save(expediente);
+    }
+
+    /**
+     * Eliminar permanentemente un expediente de la BD
+     */
+    async eliminarPermanente(id: string): Promise<void> {
+        const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        if (!expediente) throw new NotFoundException(`Expediente con ID ${id} no encontrado`);
+
+        // Solo se puede eliminar permanentemente si ya está en estado ELIMINADO
+        if (expediente.estadoArchivo !== 'ELIMINADO') {
+            throw new ConflictException('Solo se pueden eliminar permanentemente expedientes que estén en estado ELIMINADO');
+        }
+
+        await this.expedienteRepository.delete(id);
     }
 
     async deleteExpediente(id: string): Promise<void> {

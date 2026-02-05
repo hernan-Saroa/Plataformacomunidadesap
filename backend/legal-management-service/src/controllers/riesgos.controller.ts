@@ -79,8 +79,26 @@ export class RiesgosController {
     }
 
     @Patch(':id/archivar')
-    async archivar(@Param('id') id: string): Promise<Riesgo> {
-        return this.riesgosService.archivar(id);
+    async archivar(
+        @Param('id') id: string,
+        @Body('motivo') motivo?: string
+    ): Promise<Riesgo> {
+        return this.riesgosService.archivar(id, motivo);
+    }
+
+    @Get('archivados/all')
+    async findArchived(): Promise<Riesgo[]> {
+        return this.riesgosService.findArchived();
+    }
+
+    @Patch(':id/restaurar')
+    async restaurar(@Param('id') id: string): Promise<Riesgo> {
+        return this.riesgosService.restaurar(id);
+    }
+
+    @Delete(':id/permanente')
+    async eliminarPermanente(@Param('id') id: string): Promise<void> {
+        return this.riesgosService.eliminarPermanente(id);
     }
 
     // ============================================
