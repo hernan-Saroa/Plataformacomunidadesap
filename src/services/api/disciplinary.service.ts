@@ -70,7 +70,7 @@ export interface CreateNewsDto {
 export interface DisciplinaryProcess {
     id: string;
     radicadoProceso: string;
-    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO';
+    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
     kanbanStage?: string;
     kanbanNotice?: string;
     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
