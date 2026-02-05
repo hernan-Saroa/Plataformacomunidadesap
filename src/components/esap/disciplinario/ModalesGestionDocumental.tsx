@@ -13,6 +13,7 @@ import { legalService } from '../../../services/api/legal.service';
 import { OnlyOfficeEditor } from './OnlyOfficeEditor';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import { useAutosConfigurationActive } from '../../../hooks/useAutosConfiguration';
 
 // Funciones utilitarias globales - disponibles para todos los componentes
 const isUuidLike = (value: string) =>
@@ -154,6 +155,42 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   // Estado para editor OnlyOffice
   const [modoEditorOnlyOffice, setModoEditorOnlyOffice] = useState(false);
   const [autoSeleccionado, setAutoSeleccionado] = useState<any | null>(null);
+
+  // Colores por tipo para mantener consistencia visual
+  const getColorPorTipo = (tipoId: string): string => {
+    const colores: Record<string, string> = {
+      'AUTO_APERTURA': '#8B5CF6',
+      'AUTO_INDAGACION_PRELIMINAR': '#06B6D4',
+      'AUTO_APERTURA_INVESTIGACION': '#10B981',
+      'AUTO_FORMULACION_PLIEGO': '#F59E0B',
+      'AUTO_CIERRE': '#22C55E',
+      'AUTO_ARCHIVO': '#6B7280',
+      'FALLO_SANCION': '#DC2626',
+      'FALLO_ABSOLUTORIO': '#10B981',
+      'AUTO_NO_PREVISTO': '#EF4444'
+    };
+    return colores[tipoId] || '#8B5CF6';
+  };
+
+  // Hook para cargar tipos de auto desde la configuración
+  const { configurations: autosConfig, loading: cargandoAutosConfig, refetch: recargarAutosConfig } = useAutosConfigurationActive();
+
+  // Mapear configuración a formato compatible con el componente
+  const tiposAuto = autosConfig?.map((auto: any) => ({
+    id: auto.tipo,
+    nombre: auto.nombre,
+    icon: Scale, // Icono por defecto, se puede expandir con más iconos
+    color: getColorPorTipo(auto.tipo),
+    plantilla: auto.plantilla, // Campo adicional de la configuración
+    orden: auto.orden
+  })) || [];
+
+  // Forzar recarga cuando se monta el componente
+  useEffect(() => {
+    if (recargarAutosConfig) {
+      recargarAutosConfig();
+    }
+  }, [recargarAutosConfig]);
 
   const buildAutoDocumentUrl = (relativeUrl: string) => {
     if (!relativeUrl) return '';
@@ -587,16 +624,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
 
   const documentoActual = visorDocumento.documento;
 
-  const tiposAuto = [
-    { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
-    { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
-    { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de Investigación', icon: FileText, color: '#10B981' },
-    { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de Formulación de Pliego', icon: FileCheck, color: '#F59E0B' },
-    { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
-    { id: 'AUTO_ARCHIVO', nombre: 'Auto de Archivo', icon: Archive, color: '#6B7280' },
-    { id: 'FALLO_SANCION', nombre: 'Fallo con Sanción', icon: AlertTriangle, color: '#DC2626' },
-    { id: 'FALLO_ABSOLUTORIO', nombre: 'Fallo Absolutorio', icon: CheckCircle, color: '#10B981' }
-  ];
+  // Tipos de auto hardcodeados - ahora se usan desde la configuración
+  // const tiposAutoHardcoded = [
+  //   { id: 'AUTO_APERTURA', nombre: 'Auto de Apertura', icon: Scale, color: '#8B5CF6' },
+  //   { id: 'AUTO_INDAGACION_PRELIMINAR', nombre: 'Auto de Indagación Preliminar', icon: Search, color: '#06B6D4' },
+  //   { id: 'AUTO_APERTURA_INVESTIGACION', nombre: 'Auto de Apertura de Investigación', icon: FileText, color: '#10B981' },
+  //   { id: 'AUTO_FORMULACION_PLIEGO', nombre: 'Auto de Formulación de Pliego', icon: FileCheck, color: '#F59E0B' },
+  //   { id: 'AUTO_CIERRE', nombre: 'Auto de Cierre', icon: CheckCircle, color: '#22C55E' },
+  //   { id: 'AUTO_ARCHIVO', nombre: 'Auto de Archivo', icon: Archive, color: '#6B7280' },
+  //   { id: 'FALLO_SANCION', nombre: 'Fallo con Sanción', icon: AlertTriangle, color: '#DC2626' },
+  //   { FALLO_ABSOLUTORIO', nombre: 'Fallo Absolutorio', icon: CheckCircle, color: '#10B981' }
+  // ];
 
   if (!proceso) {
     return null;
@@ -983,13 +1021,16 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     key={tipo.id}
                     onClick={() => handleSeleccionarTipoAuto(tipo)}
                     className="p-4 border-2 rounded-xl hover:shadow-md transition-all text-left group hover:scale-105"
-                    style={{ borderColor: tipo.color + '40' }}
+                    style={{ borderColor: (tipo.color || getColorPorTipo(tipo.id)) + '40' }}
                   >
                     <tipo.icon
                       className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform"
-                      style={{ color: tipo.color }}
+                      style={{ color: tipo.color || getColorPorTipo(tipo.id) }}
                     />
                     <p className="font-bold text-sm text-gray-900">{tipo.nombre}</p>
+                    {tipo.id === 'AUTO_NO_PREVISTO' && (
+                      <p className="text-xs text-gray-500 mt-1">Auto para casos no contemplados</p>
+                    )}
                   </button>
                 ))}
               </div>
