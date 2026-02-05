@@ -581,16 +581,15 @@ const coloresDisponibles = [
 const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
   '[DOCUMENTO]': 'Numero de documento',
-  '[CARGO]': 'Cargo del empleado',
-  '[CARGO DATO6]': 'Tipo vinculacion',
+  '[CARGO]': 'Cargo calculado (categoria + codigo + grado)',
+  '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia donde trabaja',
   '[DATO1]': 'Dato 1 (nombre empleado)',
   '[DATO2]': 'Dato 2 (documento)',
-  '[DATO3]': 'Dato 3 (tipo vinculacion)',
   '[DATO4]': 'Dato 4 (fecha de inicio)',
-  '[DATO5]': 'Dato 5 (cargo)',
+  '[DATO5]': 'Cargo del empleado',
   '[DATO6]': 'Dato 6 (dato adicional)',
-  '[DATO7]': 'Ubicacion',
+  '[UBICACIÓN]': 'Ubicacion',
   '[DATO8]': 'Dato 8 (salario en letras)',
   '[FECHA_INICIO]': 'Fecha de inicio del contrato',
   '[FECHA_FIN]': 'Fecha de finalizacion',
@@ -606,7 +605,7 @@ const descripcionVariables: Record<string, string> = {
 
 
 
-const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [DATO3] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO DATO6] ubicado en [DATO7].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [UBICACIÓN].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
 
 
 
@@ -695,7 +694,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const variablesDisponibles = useMemo(() => {
     const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
-    const tokens = contenidoBase.match(/\[[A-Z0-9_]+(?: [A-Z0-9_]+)*\]/g) || [];
+    const tokens = contenidoBase.match(/\[[A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*\]/g) || [];
     const vistos = new Set<string>();
     const ordenados: string[] = [];
     for (const token of tokens) {
@@ -812,11 +811,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [CARGO DATO6], etc.
+    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [CARGO], etc.
 
 
 
-    const patron = /\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\]/g;
+    const patron = /\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\]/g;
 
 
 
@@ -857,13 +856,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
     // Paso 2: Normalizar todos los spans con clase variable-token
     resultado = resultado.replace(
-      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\][^<]*)<\/span>/g,
+      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\][^<]*)<\/span>/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$2]</span>'
     );
 
     // Paso 3: Envolver variables sueltas que no tienen span
     resultado = resultado.replace(
-      /(-<!<span[^>]*>)\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\](-![^<]*<\/span>)/g,
+      /(-<!<span[^>]*>)\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\](-![^<]*<\/span>)/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
     );
 

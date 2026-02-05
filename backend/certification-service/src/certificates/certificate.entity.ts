@@ -47,10 +47,10 @@ export class Certificate {
   department: string;
 
   @Column({ length: 255, nullable: true })
-  department_parent: string;
+  cod_cargo: string;
 
   @Column({ length: 255, nullable: true })
-  department_son: string;
+  cod_grade: string;
 
   @Column({ length: 100, nullable: true })
   campus: string;

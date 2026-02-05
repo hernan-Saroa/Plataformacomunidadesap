@@ -111,6 +111,65 @@ export class LaborCertificatePdfService {
     );
   }
 
+  private normalizeCodeValue(value?: string | number | null): string {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  }
+
+  private isZeroValue(value: string): boolean {
+    return Boolean(value) && /^0+$/.test(value);
+  }
+
+  private buildCargoVariable(
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ): string {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = this.normalizeCodeValue(codCargo);
+    const codGradeRaw = this.normalizeCodeValue(codGrade);
+
+    const isNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoIsZero = this.isZeroValue(codCargoRaw);
+    const gradeIsZero = this.isZeroValue(codGradeRaw);
+
+    if (isNoDefinido && cargoIsZero && gradeIsZero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const beforeGrado = baseText.split(/grado/i)[0].trim();
+      if (beforeGrado) {
+        baseText = beforeGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradeIsZero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
   private async generateQrCodeDataUrl(value: string): Promise<string | null> {
     if (!value) return null;
     try {
@@ -171,8 +230,8 @@ export class LaborCertificatePdfService {
     const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml } = params;
 
     const certificateExtras = certificate as Certificate & {
-      department_parent?: string;
-      departmentParent?: string;
+      cod_cargo?: string;
+      codCargo?: string;
       observations?: string;
     };
     const requestObservations =
@@ -185,7 +244,12 @@ export class LaborCertificatePdfService {
     const fullName = certificate.full_name || '';
     const documentNumber = certificate.id_number || '';
     const requestData = (certificate as Certificate & {
-      request?: { career_category?: string; position_category?: string };
+      request?: {
+        career_category?: string;
+        position_category?: string;
+        cod_cargo?: string;
+        cod_grade?: string;
+      };
     }).request;
     // Match frontend mapping: tipo vinculacion from position_category, cargo from career_category.
     const tipoVinculacion =
@@ -198,13 +262,25 @@ export class LaborCertificatePdfService {
       certificate.career_category ||
       certificate.position_category ||
       '';
+    const codCargoSource =
+      requestData?.cod_cargo ||
+      (certificate as Certificate & { cod_cargo?: string }).cod_cargo ||
+      '';
+    const codGradeSource =
+      requestData?.cod_grade ||
+      (certificate as Certificate & { cod_grade?: string }).cod_grade ||
+      '';
+    const cargoVariable =
+      this.buildCargoVariable(cargoTexto, codCargoSource, codGradeSource) ||
+      cargoTexto ||
+      tipoVinculacion ||
+      '';
     const grado = certificate.position_location || '';
     const dependenciaHijo = certificate.department || '';
     const dependenciaPadre =
-      (certificate as Certificate & { request?: { department_parent?: string } }).request
-        ?.department_parent ||
-      certificateExtras.department_parent ||
-      certificateExtras.departmentParent ||
+      (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo ||
+      certificateExtras.cod_cargo ||
+      certificateExtras.codCargo ||
       '';
 
     const ubicacion =
@@ -225,7 +301,7 @@ export class LaborCertificatePdfService {
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
     const dato7 = requestPositionLocation || certificate.position_location || '';
-    const cargoDato6 = cargoTexto;
+    const cargoDato6 = tipoVinculacion;
 
     const salarioBase = Number(certificate.monthly_salary || 0);
     const salarioTextoBase = certificate.salary_text || '';
@@ -246,8 +322,11 @@ export class LaborCertificatePdfService {
       '[DATO8]': includeSalary ? (salarioTextoBase || salarioEnLetras) : '',
       '[NOMBRE_EMPLEADO]': fullName,
       '[DOCUMENTO]': documentNumber,
-      '[CARGO]': cargoPlantilla,
+      '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
+      '[TIPO_DATO]': cargoDato6,
+      '[UBICACIÓN]': dato7,
+      '[UBICACION]': dato7,
       '[DEPENDENCIA]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
