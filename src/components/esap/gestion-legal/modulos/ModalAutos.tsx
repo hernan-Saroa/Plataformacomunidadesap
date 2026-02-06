@@ -127,8 +127,19 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
     toast.loading('⏳ Descargando...', { id: 'download-auto' });
     try {
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar el archivo');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -142,7 +153,19 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       toast.success('✅ Descarga completada', { id: 'download-auto', description: auto.archivoNombre });
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Error al descargar el archivo', { id: 'download-auto' });
+      // Fallback: intentar descarga directa
+      try {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', auto.archivoNombre || `auto-${auto.numero}.pdf`);
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-auto' });
+      } catch {
+        toast.error('Error al descargar el archivo', { id: 'download-auto' });
+      }
     }
   };
 
@@ -219,13 +242,24 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
       const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('No se encontraron archivos para descargar');
         }
-        throw new Error('Error al descargar los autos');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -247,7 +281,22 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       });
     } catch (error: any) {
       console.error('Error descargando ZIP de autos:', error);
-      toast.error(error.message || 'Error al descargar autos', { id: 'download-autos' });
+      // Fallback: intentar descarga directa
+      try {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const radicadoTarget = expediente.id || expediente.radicado;
+        const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-autos' });
+      } catch {
+        toast.error(error.message || 'Error al descargar autos', { id: 'download-autos' });
+      }
     }
   };
 

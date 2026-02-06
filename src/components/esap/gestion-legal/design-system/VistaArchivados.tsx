@@ -12,12 +12,12 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
-import { 
-  Archive, 
-  Trash2, 
-  RotateCcw, 
-  AlertTriangle, 
-  Search, 
+import {
+  Archive,
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
+  Search,
   Filter,
   Eye,
   Calendar,
@@ -28,7 +28,7 @@ import {
   CheckCircle,
   XCircle
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
 
@@ -132,7 +132,7 @@ export function VistaArchivados({
   // ✅ FUNCIONES DE ACCIÓN
   const confirmarRestaurar = async () => {
     if (!itemSeleccionado) return;
-    
+
     try {
       await onRestaurar(itemSeleccionado.id);
       toast.success('Item restaurado exitosamente', {
@@ -151,7 +151,7 @@ export function VistaArchivados({
 
   const confirmarEliminarPermanente = async () => {
     if (!itemSeleccionado) return;
-    
+
     try {
       await onEliminarPermanente(itemSeleccionado.id);
       toast.success('Item eliminado permanentemente', {
@@ -410,11 +410,10 @@ export function VistaArchivados({
                 <div>
                   <label className="text-xs font-semibold text-gray-600 uppercase">Estado</label>
                   <Badge
-                    className={`mt-1 ${
-                      itemSeleccionado.estado === 'ARCHIVADO'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}
+                    className={`mt-1 ${itemSeleccionado.estado === 'ARCHIVADO'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-red-100 text-red-700'
+                      }`}
                   >
                     {itemSeleccionado.estado}
                   </Badge>
@@ -535,11 +534,6 @@ export function VistaArchivados({
                 </div>
               </div>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <p className="text-xs text-yellow-800">
-                  <strong>Nota:</strong> Esta acción solo debe realizarse bajo estricto cumplimiento de políticas de retención documental y normativa vigente.
-                </p>
-              </div>
 
               <div className="flex gap-3 justify-end">
                 <Button variant="outline" onClick={() => setAccionModal(null)}>

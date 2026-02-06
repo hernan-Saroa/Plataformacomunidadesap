@@ -91,6 +91,43 @@ export class ExpedienteController {
     async eliminar(@Param('id') id: string): Promise<void> {
         return this.expedienteService.deleteExpediente(id);
     }
+
+    // ==================== ENDPOINTS DE ARCHIVO/ELIMINADO ====================
+
+    @Get('estado/archivados')
+    async listarArchivados(): Promise<Expediente[]> {
+        return this.expedienteService.getExpedientesArchivados();
+    }
+
+    @Post(':id/archivar')
+    async archivar(
+        @Param('id') id: string,
+        @Body() body: { motivo?: string; usuario?: string }
+    ): Promise<Expediente> {
+        const motivo = body.motivo || 'Sin motivo especificado';
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.archivarExpediente(id, motivo, usuario);
+    }
+
+    @Post(':id/eliminar')
+    async eliminarSoft(
+        @Param('id') id: string,
+        @Body() body: { motivo?: string; usuario?: string }
+    ): Promise<Expediente> {
+        const motivo = body.motivo || 'Sin motivo especificado';
+        const usuario = body.usuario || 'Sistema';
+        return this.expedienteService.eliminarExpedienteSoft(id, motivo, usuario);
+    }
+
+    @Post(':id/restaurar')
+    async restaurar(@Param('id') id: string): Promise<Expediente> {
+        return this.expedienteService.restaurarExpediente(id);
+    }
+
+    @Delete(':id/permanente')
+    async eliminarPermanente(@Param('id') id: string): Promise<void> {
+        return this.expedienteService.eliminarPermanente(id);
+    }
 }
 
 

@@ -144,10 +144,21 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
-        throw new Error('Error al descargar las evidencias');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -166,7 +177,22 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       });
     } catch (error) {
       console.error('Error descargando ZIP:', error);
-      toast.error('Error al descargar evidencias', { id: 'download-evidencias' });
+      // Fallback: intentar descarga directa
+      try {
+        const expedienteId = expediente.uuid || expediente.id;
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-evidencias' });
+      } catch {
+        toast.error('Error al descargar evidencias', { id: 'download-evidencias' });
+      }
     }
   };
 
@@ -217,8 +243,19 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
 
     toast.loading('⏳ Descargando...', { id: 'download-evidencia' });
     try {
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -233,7 +270,19 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       toast.success('✅ Descarga completada', { id: 'download-evidencia', description: ev.nombre });
     } catch (error) {
       console.error('Error descargando:', error);
-      toast.error('Error al descargar el archivo', { id: 'download-evidencia' });
+      // Fallback: intentar descarga directa
+      try {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', ev.nombre || 'evidencia');
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-evidencia' });
+      } catch {
+        toast.error('Error al descargar el archivo', { id: 'download-evidencia' });
+      }
     }
   };
 

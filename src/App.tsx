@@ -18,7 +18,7 @@ import { GestionProfesoralApp } from './components/gestion-profesoral/GestionPro
 import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
 // import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
 import { Toaster } from './components/ui/sonner';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
@@ -80,7 +80,7 @@ type AppView =
   | 'verificar-certificado'
   | 'convocatorias-docentes';
 
-type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
+type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | 'portal' | null;
 
 type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 // type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
@@ -98,9 +98,13 @@ interface User {
   person: UserPerson;
   roles: UserRoles[];
   modules: string[];
-  username: string;
-  accessToken: string;
-  rememberMe: boolean;
+  username?: string;
+  email?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  accessToken?: string;
+  rememberMe?: boolean;
 }
 
 interface UserPerson {
@@ -201,14 +205,14 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
   const [userRoles, setUserRoles] = useState<string[]>([]);
-  const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
+  const [userType, setUserType] = useState<UserType>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
   // const [vistaActual, setVistaActual] = useState<Vista>('landing');
   // Leer parámetro de vista desde URL
   const urlParams = new URLSearchParams(window.location.search);
   const viewParam = urlParams.get('view') as Vista | null;
-  
+
   const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
@@ -253,26 +257,26 @@ export default function App() {
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
         // Verificar si tiene acceso a Control Interno (múltiples roles)
-        const hasControlInterno = roles.some((role: string) => 
+        const hasControlInterno = roles.some((role: string) =>
           ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-           'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+            'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
         );
-        
-        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
-        : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-        : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-        : hasControlInterno ? 'control-interno'
-        : 'users-persons';
-        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
-        : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-        : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
-        : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-        : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-        : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-        : 'Control Interno';
+
+        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
+          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+            : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+              : hasControlInterno ? 'control-interno'
+                : 'users-persons';
+        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+            : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                          : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -317,7 +321,7 @@ export default function App() {
         console.error('Error al restaurar sesión de auth:', error);
       }
     } else {
-      if(sesionGuardada) {
+      if (sesionGuardada) {
         toast.error('Sesión ha expirado', {
           description: 'Por seguridad la sesión se ha cerrado',
           duration: 5000,
@@ -542,24 +546,24 @@ export default function App() {
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
           // Verificar si tiene acceso a Control Interno (múltiples roles)
-          const hasControlInterno = roles.some((role: string) => 
+          const hasControlInterno = roles.some((role: string) =>
             ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-             'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+              'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
           );
-          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales' 
-          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-          : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-          : 'control-interno';
-          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales' 
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-          : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
-          : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-          : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-          : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-          : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-          : 'Control Interno';
+          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
+            : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+              : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+                : 'control-interno';
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
+            : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+              : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+                : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                  : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                    : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                      : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                            : 'Control Interno';
           const userDataToSave = {
             name: userName,
             email: userEmail,
@@ -682,7 +686,7 @@ export default function App() {
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
     localStorage.clear();
-    if(viewToast) {
+    if (viewToast) {
       toast.success('Sesión cerrada exitosamente', {
         description: 'Has cerrado sesión de forma segura',
       });
@@ -952,13 +956,13 @@ export default function App() {
       case 'procesos-coactivos-demo':
         // return <DemoReprogramacionAudiencia />;
         return <DemoProcesosCoactivos />;
-      
+
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
     }
   };
 
-  const renderViewLanding = () => { 
+  const renderViewLanding = () => {
     switch (currentView) {
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
@@ -1020,24 +1024,24 @@ export default function App() {
       `}</style>
 
         <Routes>
-           <Route
-             path="/verificar-certificado-graduado"
-             element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
-           />
-           <Route
-             path="/verificar-certificado/:codigo"
-             element={<VerificarCertificadoPublico />}
-           />
-           <Route
-             path="/validar/:codigo"
-             element={<VerificarCertificadoPublico />}
-           />
-           <Route
-             path="/editor-plantillas"
-             element={<EditorPlantillasPage />}
-           />
-           <Route path="*" element={renderVista()} />
-         </Routes>
+          <Route
+            path="/verificar-certificado-graduado"
+            element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+          />
+          <Route
+            path="/verificar-certificado/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route
+            path="/validar/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route
+            path="/editor-plantillas"
+            element={<EditorPlantillasPage />}
+          />
+          <Route path="*" element={renderVista()} />
+        </Routes>
 
         {/* Modal de Alerta de Inactividad */}
         {mostrarAlertaInactividad && (

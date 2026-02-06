@@ -101,7 +101,7 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
 export function Riesgos() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   const [vistaActual, setVistaActual] = useState<VistaModulo>('matriz');
   const [busqueda, setBusqueda] = useState('');
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
@@ -111,46 +111,96 @@ export function Riesgos() {
   // Estado para lista de riesgos (solo API, sin mocks)
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
-  // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'RIESGO-999',
-      codigo: 'RIESGO-999',
-      nombre: 'Pérdida de información crítica por falla en sistema de backup - Gestión Documental',
-      tipo: 'Riesgo',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-15T10:00:00'),
-      usuarioArchivo: 'Dr. Luis Gómez',
-      motivoArchivo: 'Riesgo mitigado completamente. Se implementaron controles redundantes de respaldo y sistema de nube híbrida. Probabilidad reducida a nivel mínimo',
-      metadatos: {
-        'Proceso': 'Gestión Documental',
-        'Tipo Riesgo': '🔒 Seguridad Digital',
-        'Zona Inicial': '🔴 Extremo',
-        'Zona Final': '🟢 Bajo',
-        'Responsable': 'Dr. Luis Gómez - Jefe Sistemas',
-        'Controles Implementados': '5',
-        'Fecha Mitigación': '15/12/2024'
-      }
+  // ✅ Estado para items archivados (cargados desde API)
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // ✅ Función para cargar riesgos archivados desde la API
+  const fetchArchivados = async () => {
+    try {
+      const archivados = await riesgosService.getArchived();
+      const items: ItemArchivado[] = archivados.map(r => ({
+        id: r.id,
+        codigo: r.codigo,
+        nombre: `${r.nombre} - ${r.proceso}`,
+        tipo: 'Riesgo',
+        estado: 'ARCHIVADO' as EstadoArchivado,
+        fechaArchivado: new Date(r.updatedAt),
+        usuarioArchivo: r.responsable || 'Sistema',
+        motivoArchivo: r.motivoArchivo || `Riesgo archivado desde el módulo de Gestión de Riesgos`,
+        metadatos: {
+          'Proceso': r.proceso,
+          'Tipo Riesgo': r.tipoRiesgo,
+          'Zona Residual': r.zonaResidual,
+          'Responsable': r.responsable || 'Sin asignar'
+        }
+      }));
+      setItemsArchivados(items);
+    } catch (error) {
+      console.log('Error cargando archivados:', error);
     }
-  ]);
+  };
+
+  // ✅ Función para archivar un riesgo
+  const handleArchivarRiesgo = async (riesgo: Riesgo & { motivoArchivo?: string }) => {
+    const toastId = toast.loading('Archivando riesgo...');
+    try {
+      await riesgosService.archivar(riesgo.id, riesgo.motivoArchivo);
+
+      // Actualizar estado local: mover de activos a archivados
+      setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
+
+      // Recargar archivados
+      await fetchArchivados();
+
+      toast.success('Riesgo archivado exitosamente', {
+        id: toastId,
+        description: `${riesgo.codigo || riesgo.id} ha sido archivado`
+      });
+    } catch (error) {
+      console.error('Error archivando riesgo:', error);
+      toast.error('Error al archivar el riesgo', { id: toastId });
+    }
+  };
 
   // ✅ Función para restaurar un riesgo archivado
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando riesgo:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Riesgo restaurado exitosamente');
+    const toastId = toast.loading('Restaurando riesgo...');
+    try {
+      const restored = await riesgosService.restaurar(itemId);
+
+      // Agregar a la lista de activos
+      const riesgoRestaurado = apiToLocalRiesgo(restored);
+      setRiesgos(prev => [riesgoRestaurado, ...prev]);
+
+      // Remover de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+
+      toast.success('Riesgo restaurado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error restaurando riesgo:', error);
+      toast.error('Error al restaurar el riesgo', { id: toastId });
+    }
   };
 
   // ✅ Función para eliminar permanentemente un riesgo
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente riesgo:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Riesgo eliminado permanentemente');
+    const toastId = toast.loading('Eliminando riesgo permanentemente...');
+    try {
+      await riesgosService.eliminarPermanente(itemId);
+
+      // Remover de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+
+      toast.success('Riesgo eliminado permanentemente', { id: toastId });
+    } catch (error) {
+      console.error('Error eliminando riesgo:', error);
+      toast.error('Error al eliminar el riesgo', { id: toastId });
+    }
   };
 
   // Handlers
   const handleNuevoRiesgo = () => {
-    setModalNuevoRiesgo(true);
+    setModalNuevoOpen(true);
   };
 
   // Estado para el modal de nuevo riesgo (también usado para edición)
@@ -178,6 +228,7 @@ export function Riesgos() {
       }
     };
     fetchRiesgos();
+    fetchArchivados(); // También cargar archivados
   }, []);
 
   const riesgosFiltrados = useMemo(() => {
@@ -469,10 +520,12 @@ export function Riesgos() {
         riesgo={riesgoSeleccionado}
         onEdit={handleEditarRiesgo}
         onDelete={handleEliminarRiesgo}
+        onArchive={handleArchivarRiesgo}
       />
 
       {/* Vista de Archivados */}
       <VistaArchivados
+        moduloNombre="Gestión de Riesgos"
         items={itemsArchivados}
         onRestaurar={handleRestaurar}
         onEliminarPermanente={handleEliminarPermanente}

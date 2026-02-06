@@ -15,8 +15,9 @@
  */
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, AlertCircle, Info, Trash2, XCircle, CheckCircle } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, Trash2, XCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from './button';
 
 // ============ TIPOS ============
@@ -95,8 +96,9 @@ export function ConfirmationDialog({
   variant = 'danger',
   loading = false,
   requiresTyping = false,
-  confirmationWord = 'ELIMINAR'
-}: ConfirmationDialogProps) {
+  confirmationWord = 'ELIMINAR',
+  showDataLossWarning = true
+}: ConfirmationDialogProps & { showDataLossWarning?: boolean }) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [typedWord, setTypedWord] = useState('');
 
@@ -142,123 +144,119 @@ export function ConfirmationDialog({
 
   const canConfirm = requiresTyping ? typedWord === confirmationWord : true;
 
-  return (
+  // Only render the portal when open to avoid invisible overlays blocking other elements
+  if (!open) return null;
+
+  // Use Portal to avoid z-index and focus trap issues with other modals
+  return createPortal(
     <AnimatePresence>
-      {open && (
-        <>
-          {/* OVERLAY */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[99998]"
-            onClick={!isConfirming ? onClose : undefined}
-          />
+      {/* OVERLAY */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/60 z-[99998]"
+        onClick={!isConfirming ? onClose : undefined}
+      />
 
-          {/* DIALOG */}
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ duration: 0.2 }}
-              className={`bg-white rounded-lg shadow-2xl w-full max-w-md border-2 ${config.borderColor}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* CONTENIDO */}
-              <div className="p-6">
-                {/* ICONO */}
-                <div className="flex justify-center mb-4">
-                  <div className={`w-16 h-16 rounded-full ${config.iconBg} flex items-center justify-center`}>
-                    <Icon className={`w-8 h-8 ${config.iconColor}`} />
-                  </div>
-                </div>
-
-                {/* TÍTULO */}
-                <h2 className={`text-xl font-black text-center mb-3 ${config.title}`}>
-                  {title}
-                </h2>
-
-                {/* DESCRIPCIÓN */}
-                <p className={`text-sm text-center mb-6 ${config.description}`}>
-                  {description}
-                </p>
-
-                {/* CAMPO DE TIPEO (OPCIONAL) */}
-                {requiresTyping && (
-                  <div className="mb-6">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      Para confirmar, escribe <span className="font-mono text-red-600">{confirmationWord}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={typedWord}
-                      onChange={(e) => setTypedWord(e.target.value.toUpperCase())}
-                      placeholder={`Escribe "${confirmationWord}"`}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 font-mono ${
-                        typedWord && typedWord !== confirmationWord
-                          ? 'border-red-500'
-                          : 'border-gray-300'
-                      }`}
-                      disabled={isConfirming}
-                      autoFocus
-                    />
-                    {typedWord && typedWord !== confirmationWord && (
-                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        El texto no coincide
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* ADVERTENCIA ADICIONAL */}
-                {variant === 'danger' && (
-                  <div className="mb-6 p-3 bg-red-50 rounded-lg border border-red-200">
-                    <p className="text-xs text-red-700 flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Advertencia:</strong> Esta acción no se puede deshacer. Los datos se eliminarán permanentemente.
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {/* BOTONES */}
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={onClose}
-                    disabled={isConfirming || loading}
-                    className="flex-1"
-                  >
-                    {cancelText}
-                  </Button>
-                  <Button
-                    onClick={handleConfirm}
-                    disabled={!canConfirm || isConfirming || loading}
-                    className={`flex-1 ${config.confirmBg} ${config.confirmText}`}
-                  >
-                    {isConfirming || loading ? (
-                      <>
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                          className="w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"
-                        />
-                        Procesando...
-                      </>
-                    ) : (
-                      confirmText
-                    )}
-                  </Button>
-                </div>
+      {/* DIALOG */}
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 20 }}
+          transition={{ duration: 0.2 }}
+          className={`bg-white rounded-lg shadow-2xl w-full max-w-md border-2 ${config.borderColor}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* CONTENIDO */}
+          <div className="p-6">
+            {/* ICONO */}
+            <div className="flex justify-center mb-4">
+              <div className={`w-16 h-16 rounded-full ${config.iconBg} flex items-center justify-center`}>
+                <Icon className={`w-8 h-8 ${config.iconColor}`} />
               </div>
-            </motion.div>
+            </div>
+
+            {/* TÍTULO */}
+            <h2 className={`text-xl font-black text-center mb-3 ${config.title}`}>
+              {title}
+            </h2>
+
+            {/* DESCRIPCIÓN */}
+            <p className={`text-sm text-center mb-6 ${config.description}`}>
+              {description}
+            </p>
+
+            {/* CAMPO DE TIPEO (OPCIONAL) */}
+            {requiresTyping && (
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Para confirmar, escribe <span className="font-mono text-red-600">{confirmationWord}</span>
+                </label>
+                <input
+                  type="text"
+                  value={typedWord}
+                  onChange={(e) => setTypedWord(e.target.value.toUpperCase())}
+                  placeholder={`Escribe "${confirmationWord}"`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 font-mono ${typedWord && typedWord !== confirmationWord
+                    ? 'border-red-500'
+                    : 'border-gray-300'
+                    }`}
+                  disabled={isConfirming}
+                  autoFocus
+                />
+                {typedWord && typedWord !== confirmationWord && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    El texto no coincide
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ADVERTENCIA ADICIONAL */}
+            {variant === 'danger' && showDataLossWarning && (
+              <div className="mb-6 p-3 bg-red-50 rounded-lg border border-red-200">
+                <p className="text-xs text-red-700 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Advertencia:</strong> Esta acción no se puede deshacer. Los datos se eliminarán permanentemente.
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {/* BOTONES */}
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                disabled={isConfirming}
+                className="flex-1"
+              >
+                {cancelText}
+              </Button>
+              <Button
+                onClick={handleConfirm}
+                disabled={!canConfirm || isConfirming}
+                className={`flex-1 text-white ${config.confirmBg}`}
+              >
+                {isConfirming ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Procesando...
+                  </>
+                ) : (
+                  confirmText
+                )}
+              </Button>
+            </div>
           </div>
-        </>
-      )}
-    </AnimatePresence>
+        </motion.div>
+      </div>
+    </AnimatePresence>,
+    document.body
   );
 }
 
@@ -273,14 +271,14 @@ export function useConfirmation() {
     props: {}
   });
 
-  const confirm = (props: Omit<ConfirmationDialogProps, 'open' | 'onClose'>) => {
+  const confirm = (props: Omit<ConfirmationDialogProps, 'open' | 'onClose' | 'onConfirm'> & { onConfirm?: () => void | Promise<void> }) => {
     return new Promise<boolean>((resolve) => {
       setConfirmationState({
         open: true,
         props: {
           ...props,
           onConfirm: async () => {
-            await props.onConfirm();
+            if (props.onConfirm) await props.onConfirm();
             resolve(true);
           },
           onClose: () => {
@@ -298,7 +296,7 @@ export function useConfirmation() {
       onClose={() => setConfirmationState({ open: false, props: {} })}
       title=""
       description=""
-      onConfirm={() => {}}
+      onConfirm={() => { }}
       {...confirmationState.props}
     />
   );
