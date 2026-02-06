@@ -535,18 +535,17 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     if (file.size > maxSize) {
       setArchivoError('El archivo no puede superar 10MB');
       setArchivo(null);
+      e.target.value = '';
       return;
     }
 
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',  // .doc
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // .docx
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
-      setArchivoError('Solo se permiten archivos PDF y Word (.doc, .docx)');
+    // Solo se permiten archivos PDF para autos
+    const allowedType = 'application/pdf';
+    
+    if (file.type !== allowedType) {
+      setArchivoError('Solo se permiten archivos PDF');
       setArchivo(null);
+      e.target.value = '';
       return;
     }
 
@@ -1069,7 +1068,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                     <input
                       type="file"
                       onChange={handleArchivoChange}
-                      accept=".pdf,.doc,.docx"
+                      accept=".pdf"
                       className="hidden"
                       id="archivo-auto-input"
                     />
@@ -1082,8 +1081,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         </div>
                       ) : (
                         <div className="text-sm">
-                          <p className="font-bold text-gray-900">Seleccionar archivo PDF o Word</p>
-                          <p className="text-xs text-gray-500">PDF, .doc, .docx (máx. 10MB)</p>
+                          <p className="font-bold text-gray-900">Seleccionar archivo PDF</p>
+                          <p className="text-xs text-gray-500">Solo se acepta formato PDF (máx. 10MB)</p>
                         </div>
                       )}
                     </label>
