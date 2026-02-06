@@ -7,7 +7,7 @@
  * ✅ Tooltips explicativos
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
@@ -16,11 +16,11 @@ import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { 
+import {
   FileQuestion, Scale, User, MessageSquare, Clock, Plus, FileText, Mail, Phone,
   X, CheckCircle, AlertCircle, Info, Send, Building2, Calendar, AlertTriangle
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ✅ Importar sistema de validación
 import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
@@ -40,12 +40,18 @@ interface ModalNuevaConsultaProps {
 }
 
 export interface NuevaConsultaData {
+  tipoSolicitud: string;
+  canalEntrada: string;
   temaJuridico: TemaJuridico;
   solicitante: string;
   funcionarioSolicitante: string;
   cargo: string;
+  emailSolicitante: string;
+  telefonoSolicitante?: string; // Nuevo campo
   consulta: string;
+  antecedentes?: string;
   prioridad: PrioridadConsulta;
+  abogadoAsignadoId: string;
   documentosAdjuntos?: File[];
 }
 
@@ -56,37 +62,68 @@ interface Abogado {
   email?: string;
 }
 
+// ✅ Helpers de validación de formato
+const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+const onlyNumbers = (value: string): string => value.replace(/[^0-9]/g, '');
+const onlyLettersAndNumbers = (value: string): string => value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g, '');
+
+// ========== REGLAS DE VALIDACIÓN ESTÁTICAS ==========
+const validationRules = {
+  solicitante: [
+    CommonValidations.required('La dependencia solicitante es obligatoria')
+  ],
+  funcionarioSolicitante: [
+    CommonValidations.required('El nombre del funcionario es obligatorio'),
+    CommonValidations.minLength(3, 'Ingrese el nombre completo'),
+    {
+      custom: (value: string) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]+$/.test(value),
+      message: 'Solo se permiten letras'
+    }
+  ],
+  cargo: [
+    CommonValidations.required('El cargo es obligatorio'),
+    {
+      custom: (value: string) => /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]+$/.test(value),
+      message: 'Solo se permiten letras'
+    }
+  ],
+  emailSolicitante: [
+    CommonValidations.required('El correo electrónico es obligatorio'),
+    CommonValidations.email('Ingrese un correo electrónico válido')
+  ],
+  telefonoSolicitante: [
+    CommonValidations.numeric('Solo se permiten números'),
+    CommonValidations.minLength(7, 'Mínimo 7 dígitos'),
+    CommonValidations.maxLength(10, 'Máximo 10 dígitos')
+  ],
+  abogadoAsignadoId: [
+    CommonValidations.required('Debe asignar un abogado a la consulta')
+  ],
+  consulta: [
+    CommonValidations.required('La consulta jurídica es obligatoria'),
+    CommonValidations.minLength(20, 'Describa la consulta con al menos 20 caracteres')
+  ]
+};
+
+const initialData: NuevaConsultaData = {
+  tipoSolicitud: 'Consulta',
+  canalEntrada: 'Correo Electrónico',
+  temaJuridico: 'Contractual' as TemaJuridico,
+  solicitante: '',
+  funcionarioSolicitante: '',
+  cargo: '',
+  emailSolicitante: '',
+  telefonoSolicitante: '',
+  consulta: '',
+  antecedentes: '',
+  prioridad: 'MEDIA' as PrioridadConsulta,
+  abogadoAsignadoId: ''
+};
+
 export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaConsultaProps) {
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
-  // ========== DATOS INICIALES ==========
-  const initialData = {
-    temaJuridico: 'Contractual' as TemaJuridico,
-    solicitante: '',
-    funcionarioSolicitante: '',
-    cargo: '',
-    consulta: '',
-    prioridad: 'MEDIA' as PrioridadConsulta
-  };
-
-  // ========== REGLAS DE VALIDACIÓN ==========
-  const validationRules = {
-    solicitante: [
-      CommonValidations.required('La dependencia solicitante es obligatoria'),
-      CommonValidations.minLength(3, 'Ingrese el nombre completo de la dependencia')
-    ],
-    funcionarioSolicitante: [
-      CommonValidations.required('El nombre del funcionario es obligatorio'),
-      CommonValidations.minLength(3, 'Ingrese el nombre completo')
-    ],
-    cargo: [
-      CommonValidations.required('El cargo es obligatorio')
-    ],
-    consulta: [
-      CommonValidations.required('La consulta jurídica es obligatoria'),
-      CommonValidations.minLength(30, 'Describa la consulta con al menos 30 caracteres para un mejor análisis')
-    ]
-  };
+  const [enviando, setEnviando] = useState(false);
 
   // ========== HOOK DE VALIDACIÓN ==========
   const {
@@ -102,8 +139,10 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
     resetForm
   } = useFormValidation(initialData, validationRules);
 
-  const [enviando, setEnviando] = useState(false);
-  // const [errors, setErrors] = useState<Record<string, string>>({});
+  // Debug local para asegurar que los campos son editables
+  const handleUpdate = useCallback((field: keyof NuevaConsultaData, value: any) => {
+    updateField(field, value);
+  }, [updateField]);
 
   // Cargar abogados al abrir el modal
   useEffect(() => {
@@ -130,44 +169,29 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
     }
   };
 
-  // ✅ Helpers de validación de formato
-  const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
-  const onlyLettersAndNumbers = (value: string): string => value.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s\-\.]/g, '');
-  const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
   // Handler para cambios en inputs con filtros de formato
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = useCallback((field: keyof NuevaConsultaData, value: string) => {
     let filteredValue = value;
 
     switch (field) {
-      case 'nombreSolicitante':
-      case 'cargoSolicitante':
-        // Solo letras y espacios para nombres y cargos
+      case 'funcionarioSolicitante':
+      case 'cargo':
+        // Solo letras y espacios
         filteredValue = onlyLetters(value);
         break;
-      case 'dependenciaSolicitante':
-        // Letras, números y algunos caracteres especiales para dependencias
-        filteredValue = onlyLettersAndNumbers(value);
+      case 'telefonoSolicitante':
+        // Solo números
+        filteredValue = onlyNumbers(value);
         break;
       case 'emailSolicitante':
-        // Validar email en tiempo real (mostrar error si es inválido)
-        if (value && !isValidEmail(value)) {
-          setErrors(prev => ({ ...prev, emailSolicitante: 'Formato inválido (ej: usuario@dominio.com)' }));
-        } else {
-          setErrors(prev => ({ ...prev, emailSolicitante: '' }));
-        }
         filteredValue = value.toLowerCase().trim();
         break;
       default:
         filteredValue = value;
     }
 
-    setFormData(prev => ({ ...prev, [field]: filteredValue }));
-
-    if (field !== 'emailSolicitante' && errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+    updateField(field, filteredValue);
+  }, [updateField]);
 
   // ========== OPCIONES ==========
   const temasJuridicos: Array<{ value: TemaJuridico; label: string; icon: string }> = [
@@ -180,7 +204,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
     { value: 'Civil', label: 'Civil', icon: '👨‍⚖️' },
     { value: 'Propiedad Intelectual', label: 'Propiedad Intelectual', icon: '💡' },
     { value: 'Ambiental', label: 'Ambiental', icon: '🌿' },
-    { value: 'Otro', label: 'Otro', icon: '📂' }
+    { value: 'Otros', label: 'Otros', icon: '📂' }
   ];
 
   const prioridades: Array<{ value: PrioridadConsulta; label: string; color: string; desc: string }> = [
@@ -218,11 +242,17 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
     try {
       // await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const nuevaConsulta: NuevaConsultaData = {
-        ...formData
-      } as NuevaConsultaData;
+      const payload = {
+        ...formData,
+        dependenciaSolicitante: formData.solicitante,
+        nombreSolicitante: formData.funcionarioSolicitante,
+        cargoSolicitante: formData.cargo,
+        descripcion: formData.consulta,
+        materiaJuridica: formData.temaJuridico, // Map temaJuridico to materiaJuridica
+        terminoLegalDias: 30 // Default 30 business days
+      };
 
-      await legalService.createConsultaJuridica(nuevaConsulta);
+      await legalService.createConsultaJuridica(payload);
 
       // const consecutivo = `CJ-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
 
@@ -262,9 +292,9 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
   const keyboardVisible = useKeyboardVisible();
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancel}>
-      <DialogContent 
-        hideCloseButton 
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleCancel()}>
+      <DialogContent
+        hideCloseButton
         className={`
           w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[800px]
           ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
@@ -296,7 +326,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
         {/* ==================== CONTENIDO CON SCROLL ==================== */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
           <div className="space-y-4 sm:space-y-6">
-            
+
             {/* ✅ PROGRESO DEL FORMULARIO */}
             <FormProgress completed={completedFields} total={totalFields} />
 
@@ -305,12 +335,12 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-blue-900">
-                  <p className="font-bold mb-2">📋 Antes de continuar, asegúrese de:</p>
+                  <p className="font-bold mb-2">📋 Antes de continuar, considere:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>Identificar claramente el tema jurídico de la consulta</li>
-                    <li>Redactar la consulta de forma clara y concreta</li>
-                    <li>Incluir toda la información relevante para el análisis</li>
-                    <li>Definir la prioridad según la urgencia real</li>
+                    <li>El término de respuesta por defecto es de <strong>30 días hábiles</strong> (Ley 1755 de 2015).</li>
+                    <li>Identificar claramente el tema jurídico de la consulta.</li>
+                    <li>Redactar la consulta de forma clara y concreta.</li>
+                    <li>Definir la prioridad según la urgencia real del trámite.</li>
                   </ul>
                 </div>
               </div>
@@ -323,29 +353,74 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
               icon={<Scale />}
               color="blue"
             >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <FormField
+                  name="tipoSolicitud"
+                  label="Tipo de Solicitud"
+                  type="select"
+                  value={formData.tipoSolicitud}
+                  onChange={(val) => handleUpdate('tipoSolicitud', val)}
+                  onBlur={() => touchField('tipoSolicitud')}
+                  options={[
+                    { value: 'Consulta', label: '📄 Consulta' },
+                    { value: 'Concepto', label: '💡 Concepto' },
+                    { value: 'Revisión', label: '🔍 Revisión' },
+                    { value: 'Tutela', label: '⚖️ Tutela' }
+                  ]}
+                  required
+                />
+                <FormField
+                  name="canalEntrada"
+                  label="Canal de Entrada"
+                  type="select"
+                  value={formData.canalEntrada}
+                  onChange={(val) => handleUpdate('canalEntrada', val)}
+                  onBlur={() => touchField('canalEntrada')}
+                  options={[
+                    { value: 'Correo Electrónico', label: '📧 Correo Electrónico' },
+                    { value: 'Oficio', label: '📝 Oficio' },
+                    { value: 'Verbal', label: '🗣️ Verbal' },
+                    { value: 'Sistema', label: '💻 Sistema' }
+                  ]}
+                  required
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   name="temaJuridico"
-                  label="Tema Jurídico"
+                  label="Materia Jurídica"
                   type="select"
                   value={formData.temaJuridico}
-                  onChange={(val) => updateField('temaJuridico', val)}
+                  onChange={(val) => handleUpdate('temaJuridico', val)}
                   onBlur={() => touchField('temaJuridico')}
                   options={temasJuridicos.map(tema => ({
                     value: tema.value,
                     label: `${tema.icon} ${tema.label}`
                   }))}
-                  helpText="Área del derecho relacionada con la consulta"
+                  helpText="Área del derecho relacionada"
                   icon={<Scale className="w-4 h-4" />}
                 />
 
-                <div className="flex items-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <Clock className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
-                  <div className="text-xs text-blue-900">
-                    <p className="font-bold">Tiempo de respuesta</p>
-                    <p>Según prioridad seleccionada</p>
-                  </div>
-                </div>
+                <FormField
+                  name="abogadoAsignadoId"
+                  label="Abogado Asignado"
+                  type="select"
+                  value={formData.abogadoAsignadoId}
+                  onChange={(val) => handleUpdate('abogadoAsignadoId', val)}
+                  onBlur={() => touchField('abogadoAsignadoId')}
+                  required
+                  error={errors.abogadoAsignadoId}
+                  state={getFieldState('abogadoAsignadoId')}
+                  options={[
+                    ...abogados.map(abogado => ({
+                      value: abogado.id,
+                      label: abogado.nombreCompleto
+                    }))
+                  ]}
+                  disabled={loadingAbogados}
+                  icon={<User className="w-4 h-4" />}
+                />
               </div>
 
               {/* Prioridad */}
@@ -360,11 +435,10 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                     return (
                       <Card
                         key={prioridad.value}
-                        className={`p-3 cursor-pointer transition-all ${
-                          isSelected 
-                            ? `${prioridad.color} text-white border-2 border-gray-900` 
-                            : 'bg-white hover:bg-gray-50 border-2 border-transparent'
-                        }`}
+                        className={`p-3 cursor-pointer transition-all ${isSelected
+                          ? `${prioridad.color} text-white border-2 border-gray-900`
+                          : 'bg-white hover:bg-gray-50 border-2 border-transparent'
+                          }`}
                         onClick={() => {
                           updateField('prioridad', prioridad.value);
                           touchField('prioridad');
@@ -400,7 +474,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                 label="Dependencia Solicitante"
                 type="select"
                 value={formData.solicitante}
-                onChange={(val) => updateField('solicitante', val)}
+                onChange={(val) => handleUpdate('solicitante', val)}
                 onBlur={() => touchField('solicitante')}
                 required
                 error={errors.solicitante}
@@ -418,7 +492,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                   label="Nombre del Funcionario"
                   type="text"
                   value={formData.funcionarioSolicitante}
-                  onChange={(val) => updateField('funcionarioSolicitante', val)}
+                  onChange={(val) => handleInputChange('funcionarioSolicitante', val)}
                   onBlur={() => touchField('funcionarioSolicitante')}
                   required
                   error={errors.funcionarioSolicitante}
@@ -433,13 +507,43 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                   label="Cargo"
                   type="text"
                   value={formData.cargo}
-                  onChange={(val) => updateField('cargo', val)}
+                  onChange={(val) => handleInputChange('cargo', val)}
                   onBlur={() => touchField('cargo')}
                   required
                   error={errors.cargo}
                   state={getFieldState('cargo')}
                   placeholder="Ej: Director de Talento Humano"
                   tooltip="Cargo del funcionario solicitante"
+                />
+
+                <FormField
+                  name="emailSolicitante"
+                  label="Email"
+                  type="text"
+                  value={formData.emailSolicitante}
+                  onChange={(val) => handleInputChange('emailSolicitante', val)}
+                  onBlur={() => touchField('emailSolicitante')}
+                  required
+                  error={errors.emailSolicitante}
+                  state={getFieldState('emailSolicitante')}
+                  placeholder="correo@esap.edu.co"
+                  tooltip="Correo institucional para notificaciones"
+                  icon={<Mail className="w-4 h-4" />}
+                />
+
+                <FormField
+                  name="telefonoSolicitante"
+                  label="Teléfono / Extensión"
+                  type="text"
+                  value={formData.telefonoSolicitante || ''}
+                  onChange={(val) => handleInputChange('telefonoSolicitante', val)}
+                  onBlur={() => touchField('telefonoSolicitante')}
+                  error={errors.telefonoSolicitante}
+                  state={getFieldState('telefonoSolicitante')}
+                  placeholder="Ej: 3001234567 o Ext. 1234"
+                  tooltip="Número de contacto para seguimiento"
+                  icon={<Phone className="w-4 h-4" />}
+                  maxLength={10}
                 />
               </div>
             </FormSection>
@@ -456,7 +560,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                 label="Descripción de la Consulta"
                 type="textarea"
                 value={formData.consulta}
-                onChange={(val) => updateField('consulta', val)}
+                onChange={(val) => handleUpdate('consulta', val)}
                 onBlur={() => touchField('consulta')}
                 required
                 error={errors.consulta}
@@ -467,6 +571,20 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                 maxLength={2000}
                 showCharCount
               />
+
+              <div className="mt-4">
+                <FormField
+                  name="antecedentes"
+                  label="Antecedentes (opcional)"
+                  type="textarea"
+                  value={formData.antecedentes || ''}
+                  onChange={(val) => handleUpdate('antecedentes', val)}
+                  onBlur={() => touchField('antecedentes')}
+                  state={getFieldState('antecedentes')}
+                  placeholder="Antecedentes relevantes si los hay..."
+                  rows={3}
+                />
+              </div>
             </FormSection>
 
             {/* ✅ RECOMENDACIONES */}
@@ -522,7 +640,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
               {completedFields}/{totalFields} completados
             </span>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <Button
               type="button"
@@ -534,13 +652,13 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
               <X className="w-4 h-4 mr-2" />
               Cancelar
             </Button>
-            
+
             <Button
               type="button"
               onClick={handleSubmit}
               disabled={!isFormValid || enviando}
-              style={isFormValid && !enviando ? { 
-                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' 
+              style={isFormValid && !enviando ? {
+                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)'
               } : {}}
               className={`w-full sm:w-auto ${!isFormValid || enviando ? 'opacity-50 cursor-not-allowed' : ''}`}
             >

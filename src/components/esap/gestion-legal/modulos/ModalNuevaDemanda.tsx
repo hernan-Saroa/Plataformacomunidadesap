@@ -1,40 +1,24 @@
 /**
- * ModalNuevaDemanda - VERSIÓN MEJORADA CON VALIDACIÓN EN TIEMPO REAL
- * ✅ Sistema useFormValidation para validaciones reactivas
- * ✅ FormField components con indicadores visuales
- * ✅ Progreso del formulario visible
- * ✅ Botón inteligente que se deshabilita
- * ✅ Banner de prerequisitos
- * ✅ Mensajes inline específicos por campo
- * ✅ Tooltips explicativos
- * ✅ Mantiene funcionalidad de múltiples demandantes/demandados
+ * ModalNuevaDemanda - Formulario para registrar nuevas demandas judiciales
+ * ✅ Diseño corporativo ESAP 2025 premium con ModalSIGLPremium
+ * ✅ Validación completa y UX mejorada
+ * ✅ Botones SIEMPRE visibles en el footer
+ * ✅ MÚLTIPLES DEMANDANTES con UI mejorada
+ * ✅ MODAL 30% MÁS ANCHO para mejor visualización
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { 
-  Scale, User, Calendar, FileText, Building2, AlertCircle, 
-  Save, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Users, 
-  Clock, Info, CheckCircle, Trash2, Upload, Loader2, Phone, Mail, Briefcase
-} from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
-import { Button } from '../../../ui/button';
-import { Input } from '../../../ui/input';
-import { Label } from '../../../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
+import { useState, useEffect } from 'react';
+import { Scale, Users, User, Calendar, FileText, Building2, AlertCircle, Save, Upload, Loader2, MapPin, DollarSign, Gavel, Plus, X, UserPlus, Phone, Mail, Briefcase } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { toast } from 'sonner@2.0.3';
-
-// ✅ Importar sistema de validación
-import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
-import { FormField, FormSection, FormProgress } from '../design-system/FormField';
-import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { ModalSIGLPremium } from '../design-system/ModalSIGLPremium';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { Button } from '../../../ui/button';
+import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-
-// ✅ Importar hooks responsive
-import { useIsMobile } from '../../../../hooks/useIsMobile';
-import { useKeyboardVisible } from '../../../../hooks/useKeyboardVisible';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { terminosDefensaJudicial } from '../config/terminosLegales';
 
 interface ModalNuevaDemandaProps {
   isOpen: boolean;
@@ -68,20 +52,31 @@ export interface NuevaDemandaData {
     direccion?: string;
     apoderado?: string;
   }>;
+  otrosActores: Array<{
+    id: string;
+    nombre: string;
+    tipoPersona: 'natural' | 'juridica';
+    identificacion: string;
+    rol: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+    apoderado?: string;
+  }>;
   cuantia: string;
   juzgado: string;
   ciudad: string;
   departamento: string;
   fechaNotificacion: string;
-  horaNotificacion: string;
   fechaVencimiento: string;
-  horaVencimiento: string;
-  tipoDias: 'habiles' | 'calendario';
   abogadoAsignado: string;
   etapa: string;
   pretensiones: string;
   hechos: string;
   observaciones: string;
+  // Campos para cálculo de términos
+  terminoProcesalDias?: number;
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
 }
 
 interface Abogado {
@@ -108,8 +103,7 @@ const MEDIOS_CONTROL = [
   'OTRO'
 ];
 
-// Tipos de Procesos Judiciales ahora vienen de ConfiguracionesSIGLContext
-// Tipos de Procesos Judiciales y Medios de Control configurables desde Configuraciones SIGL
+// ✅ LISTAS ESTÁTICAS PARA ASEGURAR CARGA INMEDIATA (FALLBACK)
 const TIPOS_PROCESOS_JUDICIALES = [
   { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización de perjuicios' },
   { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento del Derecho', descripcion: 'Acción para declarar la nulidad de un acto administrativo' },
@@ -121,6 +115,16 @@ const TIPOS_PROCESOS_JUDICIALES = [
   { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales' },
 ];
 
+const ETAPAS_PROCESO = [
+  { id: 'NOTIFICADA', nombre: 'Notificada' },
+  { id: 'CONTESTACIÓN', nombre: 'Contestación' },
+  { id: 'PROBATORIA', nombre: 'Probatoria' },
+  { id: 'ALEGATOS', nombre: 'Alegatos' },
+  { id: 'SENTENCIA', nombre: 'Sentencia' },
+  { id: 'APELACIÓN', nombre: 'Apelación' }
+];
+
+
 const DEPARTAMENTOS = [
   'Cundinamarca',
   'Antioquia',
@@ -131,14 +135,6 @@ const DEPARTAMENTOS = [
   'Tolima',
   'Boyacá',
   'Otro'
-];
-// Listado de abogados
-const abogadosDisponibles = [
-  { value: 'DR. CARLOS MENDEZ RUIZ', label: 'Dr. Carlos Méndez Ruiz' },
-  { value: 'DRA. ANA MARIA LOPEZ', label: 'Dra. Ana María López Sánchez' },
-  { value: 'DR. ROBERTO GARCIA SOTO', label: 'Dr. Roberto García Soto' },
-  { value: 'DRA. PATRICIA ROJAS DIAZ', label: 'Dra. Patricia Rojas Díaz' },
-  { value: 'DR. LUIS GOMEZ TORRES', label: 'Dr. Luis Gómez Torres' }
 ];
 
 // const INITIAL_FORM_DATA: NuevaDemandaData = {
@@ -174,92 +170,131 @@ const abogadosDisponibles = [
 // };
 
 export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemandaProps) {
-  
-  // ✅ Obtener configuraciones desde Context API
-  const { mediosControlActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
-  
-  // ========== DATOS INICIALES ==========
-  const initialData = {
+  // ✅ Contexto desactivado temporalmente por error de carga
+  // const { estadosActivos, tiposProcesosActivos: tiposProcesosConfiguracion } = useConfiguracionModulo();
+
+  const [formData, setFormData] = useState<NuevaDemandaData>({
     numeroRadicado: '',
     medioControl: '',
     tipoProceso: '',
-    demandantes: [] as any[],
-    demandados: [] as any[],
+    demandantes: [],
+    demandados: [],
+    otrosActores: [],
     cuantia: '',
     juzgado: '',
     ciudad: '',
     departamento: '',
     fechaNotificacion: '',
-    horaNotificacion: '08:00',
     fechaVencimiento: '',
-    horaVencimiento: '17:00',
-    tipoDias: 'habiles' as 'habiles' | 'calendario',
     abogadoAsignado: '',
-    etapa: 'NOTIFICADA',
+    etapa: ETAPAS_PROCESO[0].id,
     pretensiones: '',
     hechos: '',
     observaciones: ''
-  };
+  });
 
-  // ========== REGLAS DE VALIDACIÓN ==========
-  const validationRules = {
-    numeroRadicado: [
-      CommonValidations.required('El número de radicado es obligatorio'),
-      CommonValidations.minLength(10, 'Debe tener al menos 10 caracteres')
-    ],
-    medioControl: [
-      CommonValidations.required('Seleccione el medio de control')
-    ],
-    demandantes: [
-      CommonValidations.arrayMinLength(1, 'Debe agregar al menos un demandante')
-    ],
-    juzgado: [
-      CommonValidations.required('El juzgado es obligatorio'),
-      CommonValidations.minLength(5, 'Ingrese el nombre completo del juzgado')
-    ],
-    ciudad: [
-      CommonValidations.required('La ciudad es obligatoria')
-    ],
-    fechaNotificacion: [
-      CommonValidations.required('La fecha de notificación es obligatoria'),
-      CommonValidations.pastDate('La notificación debe ser de fecha pasada o actual')
-    ],
-    fechaVencimiento: [
-      CommonValidations.required('La fecha de vencimiento es obligatoria'),
-      {
-        custom: (value, formData) => {
-          if (!formData?.fechaNotificacion || !value) return true;
-          return new Date(value) > new Date(formData.fechaNotificacion);
-        },
-        message: '⚠️ Debe ser posterior a la fecha de notificación'
+  // Estado para tipo de conteo de términos
+  const [tipoConteo, setTipoConteo] = useState<'HABILES' | 'CALENDARIO'>('HABILES');
+  const [terminoDias, setTerminoDias] = useState<string>('');
+
+  // Función para calcular fecha de vencimiento
+  const calculateDeadline = (dias: number, tipo: 'HABILES' | 'CALENDARIO', fechaInicio: Date = new Date()): Date => {
+    let fecha = new Date(fechaInicio); // Fecha base (default now)
+
+    // Regla de Negocio: Si es días hábiles y se crea fuera de horario judicial (8am-5pm)
+    // se debe mover al siguiente día hábil a las 8:00 AM.
+    if (tipo === 'HABILES') {
+      const hora = fecha.getHours();
+      const diaSemana = fecha.getDay(); // 0=Dom, 6=Sab
+
+      let fueraDeHorario = false;
+
+      // Fin de semana
+      if (diaSemana === 0 || diaSemana === 6) {
+        fueraDeHorario = true;
       }
-    ],
-    abogadoAsignado: [
-      CommonValidations.required('Debe asignar un abogado responsable')
-    ],
-    pretensiones: [
-      CommonValidations.required('Las pretensiones son obligatorias'),
-      CommonValidations.minLength(20, 'Describa las pretensiones con al menos 20 caracteres')
-    ]
+      // Entre semana pero fuera de 8am - 5pm
+      else if (hora < 8 || hora >= 17) {
+        fueraDeHorario = true;
+      }
+
+      if (fueraDeHorario) {
+        // Mover al siguiente día hábil a las 8:00 AM
+
+        // Si es tarde (>=17) o fin de semana -> avanzar 1 día y chequear
+        // Si es temprano (<8) -> mismo día 8am (si es habil)
+
+        if (hora >= 17 || diaSemana === 6 || diaSemana === 0) {
+          fecha.setDate(fecha.getDate() + 1);
+          fecha.setHours(8, 0, 0, 0);
+        } else if (hora < 8 && diaSemana !== 0 && diaSemana !== 6) {
+          fecha.setHours(8, 0, 0, 0);
+        }
+
+        // Asegurarse que no caiga en finde después de mover
+        while (fecha.getDay() === 0 || fecha.getDay() === 6) {
+          fecha.setDate(fecha.getDate() + 1);
+          fecha.setHours(8, 0, 0, 0);
+        }
+      }
+    }
+
+    // Sumar días
+    if (tipo === 'CALENDARIO') {
+      // Calendario: suma los días completos después de la fecha de notificación
+      // Feb 4 + 2 días = Feb 6 a la misma hora
+      fecha.setDate(fecha.getDate() + dias);
+    } else {
+      // Días hábiles: El día de inicio (ya ajustado a 8am) es Día 1
+      // Necesitamos avanzar (dias - 1) días hábiles adicionales
+      let diasAgregados = 0;
+      while (diasAgregados < (dias - 1)) {
+        fecha.setDate(fecha.getDate() + 1);
+        // Si no es sábado(6) ni domingo(0), cuenta
+        // TODO: Agregar festivos colombianos
+        if (fecha.getDay() !== 0 && fecha.getDay() !== 6) {
+          diasAgregados++;
+        }
+      }
+      // El vencimiento en días hábiles SIEMPRE es a las 5:00 PM (Cierre Despacho)
+      fecha.setHours(17, 0, 0, 0);
+    }
+
+    return fecha;
   };
 
-  // ========== HOOK DE VALIDACIÓN ==========
-  const {
-    formData,
-    // errors,
-    updateField,
-    touchField,
-    // validateForm,
-    isFormValid,
-    getFieldState,
-    completedFields,
-    totalFields,
-    resetForm
-  } = useFormValidation(initialData, validationRules);
+  // Efecto para recalcular vencimiento cuando cambia tipo, dias o fechaNotificacion (si se usa fecha notificacion como base opcional, pero user pidió "desde que se crea")
+  // User dijo: "cuando es dias habiles si por ejemplo una demanda se crea... hoy a las 6 pm... el tiempo corre desde que se crea"
+  // Pero ojo, "Datos del Proceso Judicial" tiene "Fecha Vencimiento Término". 
+  // Usualmente este término corre a partir de la notificación o admisión.
+  // EL USER DIJO: "si una solicitud se registra a las 3:00 p. m., el vencimiento deberá generarse a las 3:00 p. m. del día correspondiente"
+  // Esto implica que la base es el momento de CREACIÓN para este cálculo automatico.
+  useEffect(() => {
+    // Si NO hay fecha de notificación, limpiar vencimiento inmediatamente
+    if (!formData.fechaNotificacion) {
+      if (formData.fechaVencimiento) {
+        setFormData(prev => ({ ...prev, fechaVencimiento: '' }));
+      }
+      return;
+    }
 
-  // ========== ESTADO LOCAL PARA AGREGAR DEMANDANTES/DEMANDADOS ==========
-  const [enviando, setEnviando] = useState(false);
-  
+    // Si hay fecha y días configurados, calcular
+    if (terminoDias && !isNaN(Number(terminoDias))) {
+      const dias = parseInt(terminoDias);
+      const fechaBase = new Date(formData.fechaNotificacion);
+
+      // Validar fecha base válida
+      if (!isNaN(fechaBase.getTime())) {
+        const nuevaFecha = calculateDeadline(dias, tipoConteo, fechaBase);
+        setFormData(prev => ({
+          ...prev,
+          fechaVencimiento: nuevaFecha.toISOString()
+        }));
+      }
+    }
+  }, [tipoConteo, terminoDias, formData.fechaNotificacion]);
+
+  // Estado para el demandante temporal que se está agregando
   const [nuevoDemandante, setNuevoDemandante] = useState({
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
@@ -270,6 +305,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     apoderado: ''
   });
 
+  // Estado para el demandado temporal que se está agregando
   const [nuevoDemandado, setNuevoDemandado] = useState({
     nombre: '',
     tipoPersona: 'natural' as 'natural' | 'juridica',
@@ -297,31 +333,46 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const [abogados, setAbogados] = useState<Abogado[]>([]);
   const [loadingAbogados, setLoadingAbogados] = useState(false);
 
+  // ✅ Obtener tipos de procesos y medios de control desde configuración centralizada
+  const { tiposProcesosActivos, mediosControlActivos } = useConfiguracionModulo('defensa-judicial');
+
   // ✅ Auto-calcular fecha de vencimiento cuando cambia tipoProceso o fechaNotificacion
+  // [REEMPLAZADO] Esta lógica se unificó en handleInputChange + useEffect de terminoDias
+  /*
   useEffect(() => {
     if (formData.tipoProceso && formData.fechaNotificacion) {
       const tipoSeleccionado = tiposProcesosActivos.find((t: any) => t.nombre === formData.tipoProceso);
       if (tipoSeleccionado && tipoSeleccionado.plazo) {
-        const fechaNotif = new Date(formData.fechaNotificacion);
-        // Valid date check
-        if (!isNaN(fechaNotif.getTime())) {
-          const fechaVenc = new Date(fechaNotif);
-          fechaVenc.setDate(fechaVenc.getDate() + tipoSeleccionado.plazo);
-          const fechaVencStr = fechaVenc.toISOString().split('T')[0];
-
-          if (formData.fechaVencimiento !== fechaVencStr) {
-            setFormData(prev => ({ ...prev, fechaVencimiento: fechaVencStr }));
-          }
-        }
+        ...
       }
     }
   }, [formData.tipoProceso, formData.fechaNotificacion, tiposProcesosActivos]);
+  */
 
   // Cargar abogados desde la API y resetear formulario al abrir
   useEffect(() => {
     if (isOpen) {
       loadAbogados();
-      // setFormData(INITIAL_FORM_DATA);
+      // Resetear el formulario al abrir
+      setFormData({
+        numeroRadicado: '',
+        medioControl: '',
+        tipoProceso: '',
+        demandantes: [],
+        demandados: [],
+        otrosActores: [],
+        cuantia: '',
+        juzgado: '',
+        ciudad: '',
+        departamento: '',
+        fechaNotificacion: '',
+        fechaVencimiento: '',
+        abogadoAsignado: '',
+        etapa: 'NOTIFICADA',
+        pretensiones: '',
+        hechos: '',
+        observaciones: ''
+      });
       setErrors({});
     }
   }, [isOpen]);
@@ -353,6 +404,41 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   const handleInputChange = (field: keyof NuevaDemandaData, value: any) => {
     let finalValue = value;
 
+    // Si cambia el tipo de proceso, buscar configuración de término
+    if (field === 'tipoProceso') {
+      const upperVal = String(value).toUpperCase();
+      let termKey = '';
+
+      // 1. Mapeo inteligente (Case Insensitive)
+      if (upperVal.includes('NULIDAD') && upperVal.includes('RESTABLECIMIENTO')) termKey = 'Contestación NRD';
+      else if (upperVal.includes('TUTELA')) termKey = 'Contestación de Tutela';
+      else if (upperVal.includes('REPARACIÓN DIRECTA') || upperVal.includes('REPARACION DIRECTA')) termKey = 'Contestación Reparación Directa';
+      else if (upperVal.includes('CONTROVERSIAS')) termKey = 'Contestación Controversias';
+      else if (upperVal.includes('ACCIÓN DE GRUPO') || upperVal.includes('ACCION DE GRUPO')) termKey = 'Contestación Acción de Grupo';
+      else if (upperVal.includes('ACCIÓN POPULAR') || upperVal.includes('ACCION POPULAR')) termKey = 'Contestación Acción Popular';
+      else if (upperVal.includes('EJECUTIVO')) termKey = 'Contestación Proceso Ejecutivo';
+
+      // 2. Buscar primero en la configuración del módulo (si tiene plazo definido)
+      const tipoDelModulo = tiposProcesosActivos.find((t: any) => t.nombre === value);
+
+      if (tipoDelModulo && tipoDelModulo.plazo) {
+        setTipoConteo((tipoDelModulo as any).tipoDias || 'HABILES');
+        setTerminoDias(tipoDelModulo.plazo.toString());
+      }
+      // 3. Fallback a terminosLegales.ts
+      else {
+        const config = terminosDefensaJudicial.find(t => t.tipo.includes(termKey) || (termKey && t.tipo === termKey));
+        if (config) {
+          setTipoConteo(config.tipoDias);
+          setTerminoDias(config.diasPlazo.toString());
+        } else {
+          // Si no encuentra nada, dejar como estaba o resetear? Mejor resetear para evitar datos basura
+          // setTipoConteo('HABILES');
+          // setTerminoDias('15'); // Default generico
+        }
+      }
+    }
+
     if (field === 'numeroRadicado') {
       // Allow only numbers, max 23 chars
       finalValue = onlyNumbers(value).slice(0, 23);
@@ -377,17 +463,6 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
   };
 
   // Agregar demandante a la lista
-  // ========== CALCULAR FECHA VENCIMIENTO AUTOMÁTICA ==========
-  const calcularFechaVencimientoSugerida = useMemo(() => {
-    if (!formData.fechaNotificacion) return null;
-    
-    const fecha = new Date(formData.fechaNotificacion);
-    // Calcular 10 días hábiles aproximados (14 días calendario)
-    fecha.setDate(fecha.getDate() + 14);
-    return fecha.toISOString().split('T')[0];
-  }, [formData.fechaNotificacion]);
-
-  // ========== HANDLERS DEMANDANTES ==========
   const handleAgregarDemandante = () => {
     if (!nuevoDemandante.nombre.trim()) {
       toast.error('⚠️ Nombre incompleto', { description: 'Ingrese el nombre completo del demandante' });
@@ -420,9 +495,12 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       apoderado: nuevoDemandante.apoderado
     };
 
-    updateField('demandantes', [...formData.demandantes, demandante]);
-    touchField('demandantes');
+    setFormData(prev => ({
+      ...prev,
+      demandantes: [...prev.demandantes, demandante]
+    }));
 
+    // Limpiar formulario de nuevo demandante
     setNuevoDemandante({
       nombre: '',
       tipoPersona: 'natural',
@@ -438,6 +516,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     });
   };
 
+  // Eliminar demandante de la lista
   const handleEliminarDemandante = (id: string) => {
     setFormData(prev => ({
       ...prev,
@@ -449,7 +528,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     });
   };
 
-  // ========== HANDLERS DEMANDADOS ==========
+  // Agregar demandado a la lista
   const handleAgregarDemandado = () => {
     if (!nuevoDemandado.nombre.trim()) {
       toast.error('⚠️ Nombre incompleto', { description: 'Ingrese el nombre completo del demandado' });
@@ -484,8 +563,12 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       apoderado: nuevoDemandado.apoderado
     };
 
-    updateField('demandados', [...formData.demandados, demandado]);
+    setFormData(prev => ({
+      ...prev,
+      demandados: [...prev.demandados, demandado]
+    }));
 
+    // Limpiar formulario de nuevo demandado
     setNuevoDemandado({
       nombre: '',
       tipoPersona: 'natural',
@@ -502,6 +585,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     });
   };
 
+  // Eliminar demandado de la lista
   const handleEliminarDemandado = (id: string) => {
     setFormData(prev => ({
       ...prev,
@@ -619,25 +703,57 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
       toast.error('⚠️ Formulario incompleto', {
-        description: 'Revise los campos marcados en rojo',
-        duration: 4000
+        description: 'Por favor complete todos los campos obligatorios marcados con *'
       });
       return;
     }
 
-    onSave(formData);
+    // Verificar si ya existe una demanda con este número de radicado
+    try {
+      setIsSubmitting(true);
+      const expedientesExistentes = await legalService.getExpedientes();
+      const yaExiste = expedientesExistentes.some(
+        (exp: any) => exp.numeroRadicado === formData.numeroRadicado || exp.radicado === formData.numeroRadicado
+      );
+
+      if (yaExiste) {
+        toast.error('⚠️ Número de radicado duplicado', {
+          description: `Ya existe una demanda con el radicado ${formData.numeroRadicado}. Verifique el número e intente nuevamente.`,
+          duration: 5000
+        });
+        setErrors(prev => ({ ...prev, numeroRadicado: 'Este número de radicado ya existe en el sistema' }));
+        setIsSubmitting(false);
+        return; // NO resetear el formulario, mantener los datos
+      }
+    } catch (error) {
+      console.error('Error verificando radicado:', error);
+      // Si falla la verificación, permitir continuar pero con advertencia
+      toast.warning('⚠️ No se pudo verificar duplicados', {
+        description: 'La demanda se creará, pero no se pudo verificar si el radicado ya existe.'
+      });
+    }
+    // Incluir los datos de términos en el formData antes de guardar
+    const formDataConTerminos = {
+      ...formData,
+      terminoProcesalDias: terminoDias ? parseInt(terminoDias) : undefined,
+      tipoConteoTermino: tipoConteo
+    };
+
+    onSave(formDataConTerminos);
 
     toast.success('✅ Demanda registrada exitosamente', {
       description: `Radicado: ${formData.numeroRadicado}`,
       duration: 4000
     });
 
-    // Resetear formulario
+    // Solo resetear formulario si la creación fue exitosa
     setFormData({
       numeroRadicado: '',
       medioControl: '',
@@ -650,10 +766,7 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       ciudad: '',
       departamento: '',
       fechaNotificacion: '',
-      horaNotificacion: '08:00',
       fechaVencimiento: '',
-      horaVencimiento: '17:00',
-      tipoDias: 'habiles',
       abogadoAsignado: '',
       etapa: 'NOTIFICADA',
       pretensiones: '',
@@ -690,726 +803,1099 @@ export function ModalNuevaDemanda({ isOpen, onClose, onSave }: ModalNuevaDemanda
       apoderado: ''
     });
     setErrors({});
+    setIsSubmitting(false);
 
     onClose();
   };
 
-  const handleCancel = () => {
-    if (completedFields > 0) {
-      if (confirm('¿Desea cancelar? Se perderán los datos ingresados.')) {
-        resetForm();
-        onClose();
-      }
-    } else {
-      onClose();
-    }
-  };
-
-  const handleAutoFillFechaVencimiento = () => {
-    if (calcularFechaVencimientoSugerida) {
-      updateField('fechaVencimiento', calcularFechaVencimientoSugerida);
-      touchField('fechaVencimiento');
-      toast.success('📅 Fecha calculada: 10 días hábiles');
-    }
-  };
-
-  // ✅ Hooks responsive
-  const isMobile = useIsMobile();
-  const keyboardVisible = useKeyboardVisible();
-
   return (
-    <Dialog open={isOpen} onOpenChange={handleCancel}>
-      <DialogContent 
-        hideCloseButton 
-        className={`
-          w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[1000px]
-          ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
-          flex flex-col p-0 gap-0
-          transition-all duration-200
-        `}
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      {/* ✅ ANCHO AUMENTADO EN 30%: de max-w-2xl (672px) a max-w-4xl (896px) = ~33% más ancho */}
+      <DialogContent
+        hideCloseButton
+        className="w-[95vw] max-w-[1000px] lg:max-w-5xl xl:max-w-6xl !max-h-[82vh] flex flex-col p-0 gap-0"
       >
-        <DialogTitle className="sr-only">
-          Nueva Demanda Judicial - Validación Mejorada
-        </DialogTitle>
+        {/* Títulos ocultos para accesibilidad */}
+        <DialogTitle className="sr-only">Nueva Demanda Judicial</DialogTitle>
         <DialogDescription className="sr-only">
-          Formulario para registrar una nueva demanda judicial con validación en tiempo real
+          Formulario de registro de nueva demanda judicial contra ESAP
         </DialogDescription>
 
-        {/* ==================== HEADER ==================== */}
+        {/* Header - flex-shrink-0 (siempre visible) */}
         <ModalHeaderClean
-          icono={Gavel}
+          icono={Scale}
           colorIcono="blue"
           titulo="Nueva Demanda Judicial"
-          subtitulo="Registro de proceso judicial con validación en tiempo real"
-          badgePrincipal="NOTIFICADA"
-          badges={
-            <Badge className="bg-green-100 text-green-700 font-semibold text-xs">
-              ✅ Validación Reactiva
-            </Badge>
-          }
-          onClose={handleCancel}
+          subtitulo="Registro de demanda contra ESAP"
+          badgePrincipal="Formulario de Registro"
+          onClose={onClose}
         />
 
-        {/* ==================== CONTENIDO CON SCROLL ==================== */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
-          <div className="space-y-4 sm:space-y-6">
-            
-            {/* ✅ PROGRESO DEL FORMULARIO */}
-            <FormProgress completed={completedFields} total={totalFields} />
+        {/* Contenido - flex-1 overflow-y-auto (solo esto hace scroll) */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Sección 1: Datos del Proceso */}
+            <div className="bg-gradient-to-br from-blue-50 to-white p-4 rounded-lg border-l-4 border-l-blue-600">
+              <h3 className="text-sm font-bold text-blue-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                DATOS DEL PROCESO JUDICIAL
+              </h3>
 
-            {/* ✅ BANNER DE PREREQUISITOS */}
-            <Card className="p-4 bg-blue-50 border-blue-300">
-              <div className="flex items-start gap-3">
-                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-900">
-                  <p className="font-bold mb-2">📋 Antes de continuar, asegúrese de tener:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Número de radicado judicial completo</li>
-                    <li>Fecha y hora exacta de la notificación oficial</li>
-                    <li>Nombre completo del juzgado notificador</li>
-                    <li>Datos del(los) demandante(s) (nombre e identificación)</li>
-                    <li>Pretensiones y hechos de la demanda</li>
-                  </ul>
-                </div>
-              </div>
-            </Card>
-
-            {/* ✅ SECCIÓN 1: INFORMACIÓN DEL PROCESO */}
-            <FormSection
-              title="Información del Proceso Judicial"
-              description="Complete los datos de identificación del proceso"
-              icon={<FileText />}
-              color="blue"
-            >
-              <FormField
-                name="numeroRadicado"
-                label="Número de Radicado Judicial"
-                type="text"
-                value={formData.numeroRadicado}
-                onChange={(val) => updateField('numeroRadicado', val)}
-                onBlur={() => touchField('numeroRadicado')}
-                required
-                error={errors.numeroRadicado}
-                state={getFieldState('numeroRadicado')}
-                placeholder="25000-23-33-001-2024-00123-00"
-                tooltip="Formato completo del radicado tal como aparece en la notificación oficial"
-                maxLength={50}
-                showCharCount
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  name="medioControl"
-                  label="Medio de Control"
-                  type="select"
-                  value={formData.medioControl}
-                  onChange={(val) => updateField('medioControl', val)}
-                  onBlur={() => touchField('medioControl')}
-                  required
-                  error={errors.medioControl}
-                  state={getFieldState('medioControl')}
-                  options={mediosControlActivos.map(mc => ({
-                    value: mc.id,
-                    label: mc.nombre,
-                    icon: <Scale className="w-4 h-4" />
-                  }))}
-                  tooltip="Tipo de acción judicial según clasificación legal colombiana"
-                />
-
-                <FormField
-                  name="tipoProceso"
-                  label="Tipo de Proceso"
-                  type="select"
-                  value={formData.tipoProceso}
-                  onChange={(val) => updateField('tipoProceso', val)}
-                  onBlur={() => touchField('tipoProceso')}
-                  error={errors.tipoProceso}
-                  state={getFieldState('tipoProceso')}
-                  options={tiposProcesosActivos.map(tp => ({
-                    value: tp.id,
-                    label: tp.nombre
-                  }))}
-                  helpText="Opcional: Clasificación específica del proceso"
-                />
-              </div>
-
-              <FormField
-                name="cuantia"
-                label="Cuantía"
-                type="text"
-                value={formData.cuantia}
-                onChange={(val) => updateField('cuantia', val)}
-                onBlur={() => touchField('cuantia')}
-                placeholder="Ej: $150.000.000"
-                tooltip="Valor total de las pretensiones en pesos colombianos"
-                helpText="Opcional: Valor económico de la demanda"
-                icon={<DollarSign className="w-4 h-4" />}
-              />
-            </FormSection>
-
-            {/* ✅ SECCIÓN 2: DEMANDANTES */}
-            <FormSection
-              title="Parte Demandante (Actor)"
-              description="Agregue los demandantes del proceso judicial"
-              icon={<UserPlus />}
-              color="green"
-            >
-              {/* Validación de demandantes */}
-              {errors.demandantes && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-700 font-semibold">{errors.demandantes}</p>
-                </div>
-              )}
-
-              {/* Lista de demandantes agregados */}
-              {formData.demandantes.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-gray-700">
-                    Demandantes agregados ({formData.demandantes.length})
-                  </Label>
-                  {formData.demandantes.map((dem: any) => (
-                    <Card key={dem.id} className="p-3 bg-white border-green-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <User className="w-5 h-5 text-green-600" />
-                          <div>
-                            <p className="font-bold text-sm text-gray-900">{dem.nombre}</p>
-                            <p className="text-xs text-gray-600">
-                              {dem.tipoPersona === 'natural' ? 'Persona Natural' : 'Persona Jurídica'} 
-                              {' • '}{dem.identificacion}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEliminarDemandante(dem.id)}
-                          className="text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-              {/* Formulario para agregar nuevo demandante */}
-              <Card className="p-4 bg-green-50 border-green-200">
-                <Label className="text-sm font-bold text-gray-900 mb-3 block">
-                  Agregar nuevo demandante
-                </Label>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Tipo de Persona
-                    </Label>
-                    <Select
-                      value={nuevoDemandante.tipoPersona}
-                      onValueChange={(val: 'natural' | 'juridica') => 
-                        setNuevoDemandante({ ...nuevoDemandante, tipoPersona: val })
-                      }
-                    >
-                      <SelectTrigger className="text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="natural">👤 Persona Natural</SelectItem>
-                        <SelectItem value="juridica">🏢 Persona Jurídica</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Nombre completo *
-                    </Label>
-                    <Input
-                      value={nuevoDemandante.nombre}
-                      onChange={(e) => setNuevoDemandante({ ...nuevoDemandante, nombre: e.target.value })}
-                      placeholder="Ej: María Rodríguez Pérez"
-                      className="text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Identificación (CC/NIT) *
-                    </Label>
-                    <Input
-                      value={nuevoDemandante.identificacion}
-                      onChange={(e) => setNuevoDemandante({ ...nuevoDemandante, identificacion: e.target.value })}
-                      placeholder="Ej: 1234567890"
-                      className="text-sm"
-                    />
-                  </div>
-
-                  <Button
-                    type="button"
-                    onClick={handleAgregarDemandante}
-                    className="w-full"
-                    style={{ background: '#10B981' }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Demandante
-                  </Button>
-                </div>
-              </Card>
-            </FormSection>
-
-            {/* ✅ SECCIÓN 3: DEMANDADOS (Opcional) */}
-            <FormSection
-              title="Parte Demandada"
-              description="Agregue los demandados (opcional si ESAP es demandado)"
-              icon={<Users />}
-              color="orange"
-            >
-              {formData.demandados.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-gray-700">
-                    Demandados agregados ({formData.demandados.length})
-                  </Label>
-                  {formData.demandados.map((dem: any) => (
-                    <Card key={dem.id} className="p-3 bg-white border-orange-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Building2 className="w-5 h-5 text-orange-600" />
-                          <div>
-                            <p className="font-bold text-sm text-gray-900">{dem.nombre}</p>
-                            <p className="text-xs text-gray-600">
-                              {dem.tipoPersona === 'natural' ? 'Persona Natural' : 'Persona Jurídica'}
-                              {' • '}{dem.identificacion}
-                              {dem.cargo && ` • ${dem.cargo}`}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEliminarDemandado(dem.id)}
-                          className="text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-              <Card className="p-4 bg-orange-50 border-orange-200">
-                <Label className="text-sm font-bold text-gray-900 mb-3 block">
-                  Agregar nuevo demandado (opcional)
-                </Label>
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Tipo de Persona
-                    </Label>
-                    <Select
-                      value={nuevoDemandado.tipoPersona}
-                      onValueChange={(val: 'natural' | 'juridica') => 
-                        setNuevoDemandado({ ...nuevoDemandado, tipoPersona: val })
-                      }
-                    >
-                      <SelectTrigger className="text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="natural">👤 Persona Natural</SelectItem>
-                        <SelectItem value="juridica">🏢 Persona Jurídica</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                        Nombre completo
-                      </Label>
-                      <Input
-                        value={nuevoDemandado.nombre}
-                        onChange={(e) => setNuevoDemandado({ ...nuevoDemandado, nombre: e.target.value })}
-                        placeholder="Ej: Ministerio de Educación"
-                        className="text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                        Identificación (CC/NIT)
-                      </Label>
-                      <Input
-                        value={nuevoDemandado.identificacion}
-                        onChange={(e) => setNuevoDemandado({ ...nuevoDemandado, identificacion: e.target.value })}
-                        placeholder="Ej: 8999999990"
-                        className="text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs font-semibold text-gray-700 mb-1 block">
-                      Cargo (opcional)
-                    </Label>
-                    <Input
-                      value={nuevoDemandado.cargo}
-                      onChange={(e) => setNuevoDemandado({ ...nuevoDemandado, cargo: e.target.value })}
-                      placeholder="Ej: Ministro de Educación"
-                      className="text-sm"
-                    />
-                  </div>
-
-                  <Button
-                    type="button"
-                    onClick={handleAgregarDemandado}
-                    variant="outline"
-                    className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Demandado
-                  </Button>
-                </div>
-              </Card>
-            </FormSection>
-
-            {/* ✅ SECCIÓN 4: UBICACIÓN Y JUZGADO */}
-            <FormSection
-              title="Despacho Judicial y Ubicación"
-              description="Información del juzgado notificador"
-              icon={<Building2 />}
-              color="purple"
-            >
-              <FormField
-                name="juzgado"
-                label="Juzgado o Tribunal"
-                type="text"
-                value={formData.juzgado}
-                onChange={(val) => updateField('juzgado', val)}
-                onBlur={() => touchField('juzgado')}
-                required
-                error={errors.juzgado}
-                state={getFieldState('juzgado')}
-                placeholder="Ej: Juzgado 15 Administrativo de Bogotá D.C."
-                tooltip="Nombre completo del despacho judicial que notifica"
-                maxLength={200}
-                showCharCount
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  name="ciudad"
-                  label="Ciudad"
-                  type="text"
-                  value={formData.ciudad}
-                  onChange={(val) => updateField('ciudad', val)}
-                  onBlur={() => touchField('ciudad')}
-                  required
-                  error={errors.ciudad}
-                  state={getFieldState('ciudad')}
-                  placeholder="Ej: Bogotá D.C."
-                  icon={<MapPin className="w-4 h-4" />}
-                />
-
-                <FormField
-                  name="departamento"
-                  label="Departamento"
-                  type="text"
-                  value={formData.departamento}
-                  onChange={(val) => updateField('departamento', val)}
-                  onBlur={() => touchField('departamento')}
-                  placeholder="Ej: Cundinamarca"
-                  helpText="Opcional"
-                />
-              </div>
-            </FormSection>
-
-            {/* ✅ SECCIÓN 5: FECHAS Y PLAZOS */}
-            <FormSection
-              title="Fechas y Términos Procesales"
-              description="Fechas críticas para el seguimiento del proceso"
-              icon={<Calendar />}
-              color="red"
-            >
-              {/* ✅ SELECTOR DE TIPO DE DÍAS - NUEVO */}
-              <Card className="p-4 bg-blue-50 border-blue-200">
-                <div className="flex items-start gap-3">
-                  <Clock className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 space-y-3">
-                    <div>
-                      <Label className="text-sm font-bold text-gray-900 mb-2 block">
-                        Tipo de cómputo de días *
-                      </Label>
-                      <Select
-                        value={formData.tipoDias}
-                        onValueChange={(val: 'habiles' | 'calendario') => {
-                          updateField('tipoDias', val);
-                          toast.success(
-                            val === 'habiles' 
-                              ? '📅 Días hábiles seleccionados (predeterminado)' 
-                              : '📆 Días calendario seleccionados',
-                            {
-                              description: val === 'habiles'
-                                ? 'Lunes a viernes, excluye fines de semana y festivos'
-                                : 'Todos los días del año, incluye fines de semana'
-                            }
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="text-sm bg-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="habiles">
-                            📅 Días Hábiles (predeterminado)
-                          </SelectItem>
-                          <SelectItem value="calendario">
-                            📆 Días Calendario
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div className={`p-3 rounded-lg border-2 ${
-                      formData.tipoDias === 'habiles' 
-                        ? 'bg-blue-100 border-blue-300' 
-                        : 'bg-green-100 border-green-300'
-                    }`}>
-                      {formData.tipoDias === 'habiles' ? (
-                        <div className="flex items-start gap-2">
-                          <Clock className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
-                          <div className="text-xs text-blue-900">
-                            <p className="font-bold mb-1">⚖️ Días Hábiles (seleccionado)</p>
-                            <p>Se contarán únicamente los días de lunes a viernes, excluyendo fines de semana y días festivos según el calendario judicial colombiano. Este es el estándar según la normativa procesal.</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-2">
-                          <Calendar className="w-4 h-4 text-green-700 flex-shrink-0 mt-0.5" />
-                          <div className="text-xs text-green-900">
-                            <p className="font-bold mb-1">📆 Días Calendario (seleccionado)</p>
-                            <p>Se contarán todos los días del año de manera continua, incluyendo sábados, domingos y días festivos. Los plazos corren sin interrupción.</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  name="fechaNotificacion"
-                  label="Fecha de Notificación"
-                  type="date"
-                  value={formData.fechaNotificacion}
-                  onChange={(val) => updateField('fechaNotificacion', val)}
-                  onBlur={() => touchField('fechaNotificacion')}
-                  required
-                  error={errors.fechaNotificacion}
-                  state={getFieldState('fechaNotificacion')}
-                  tooltip="Fecha en que se recibió oficialmente la notificación judicial"
-                  icon={<Calendar className="w-4 h-4" />}
-                />
-
-                <FormField
-                  name="horaNotificacion"
-                  label="Hora de Notificación"
-                  type="text"
-                  value={formData.horaNotificacion}
-                  onChange={(val) => updateField('horaNotificacion', val)}
-                  placeholder="08:00"
-                  helpText="Formato 24 horas (HH:MM)"
-                  icon={<Clock className="w-4 h-4" />}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <FormField
-                    name="fechaVencimiento"
-                    label="Fecha de Vencimiento"
-                    type="date"
-                    readOnly
-                    value={formData.fechaVencimiento}
-                    onChange={(val) => updateField('fechaVencimiento', val)}
-                    onBlur={() => touchField('fechaVencimiento')}
-                    required
-                    error={errors.fechaVencimiento}
-                    state={getFieldState('fechaVencimiento')}
-                    tooltip="Fecha límite para responder la demanda según términos legales"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Número de Radicado */}
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Número de Radicado <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.numeroRadicado}
+                    onChange={(e) => handleInputChange('numeroRadicado', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.numeroRadicado
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                    placeholder="Ej: 25000233300120240000100"
                   />
-                  {calcularFechaVencimientoSugerida && !formData.fechaVencimiento && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAutoFillFechaVencimiento}
-                      className="text-xs w-full"
-                    >
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Auto-calcular (10 días {formData.tipoDias === 'habiles' ? 'hábiles' : 'calendario'})
-                    </Button>
+                  {errors.numeroRadicado && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.numeroRadicado}
+                    </p>
                   )}
                 </div>
 
-                <FormField
-                  name="horaVencimiento"
-                  label="Hora de Vencimiento"
-                  type="text"
-                  value={formData.horaVencimiento}
-                  onChange={(val) => updateField('horaVencimiento', val)}
-                  placeholder="17:00"
-                  helpText="Formato 24 horas (HH:MM)"
-                  icon={<Clock className="w-4 h-4" />}
-                />
+                {/* Medio de Control */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Medio de Control <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={formData.medioControl}
+                    onChange={(e) => handleInputChange('medioControl', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.medioControl
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                  >
+                    <option value="">Seleccione...</option>
+                    {mediosControlActivos.map((medio: any) => (
+                      <option key={medio.id} value={medio.nombre}>{medio.nombre}</option>
+                    ))}
+                  </select>
+                  {errors.medioControl && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.medioControl}
+                    </p>
+                  )}
+                </div>
+
+                {/* Tipo de Proceso Judicial */}
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Tipo de Proceso Judicial
+                  </label>
+                  <select
+                    value={formData.tipoProceso}
+                    onChange={(e) => handleInputChange('tipoProceso', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.tipoProceso
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                  >
+                    <option value="">Seleccione un tipo de proceso...</option>
+                    {TIPOS_PROCESOS_JUDICIALES.map((tipo: any) => (
+                      <option key={tipo.id} value={tipo.nombre}>
+                        {tipo.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.tipoProceso && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.tipoProceso}
+                    </p>
+                  )}
+                  {formData.tipoProceso && (
+                    <p className="text-xs text-gray-600 mt-1.5 italic bg-blue-50 px-2 py-1.5 rounded">
+                      ℹ️ {TIPOS_PROCESOS_JUDICIALES.find((t: any) => t.nombre === formData.tipoProceso)?.descripcion}
+                    </p>
+                  )}
+                </div>
+
+                {/* Etapa */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Etapa Procesal
+                  </label>
+                  <select
+                    value={formData.etapa}
+                    onChange={(e) => handleInputChange('etapa', e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {ETAPAS_PROCESO.map(estado => (
+                      <option key={estado.id} value={estado.id}>{estado.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Cuantía */}
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Cuantía (COP)
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.cuantia}
+                      onChange={(e) => handleInputChange('cuantia', e.target.value)}
+                      className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Ej: 50000000"
+                    />
+                  </div>
+                </div>
               </div>
-            </FormSection>
+            </div>
 
-            {/* ✅ SECCIÓN 6: ASIGNACIÓN */}
-            <FormSection
-              title="Asignación de Responsable"
-              description="Abogado encargado del proceso"
-              icon={<User />}
-              color="blue"
-            >
-              <FormField
-                name="abogadoAsignado"
-                label="Abogado Responsable"
-                type="select"
-                value={formData.abogadoAsignado}
-                onChange={(val) => updateField('abogadoAsignado', val)}
-                onBlur={() => touchField('abogadoAsignado')}
-                required
-                error={errors.abogadoAsignado}
-                state={getFieldState('abogadoAsignado')}
-                options={abogadosDisponibles}
-                tooltip="Profesional que asumirá la representación de ESAP"
-              />
-            </FormSection>
+            {/* Sección 2: Datos de Demandantes - ✅ NUEVO DISEÑO MEJORADO */}
+            <div className="bg-gradient-to-br from-orange-50 to-white p-4 rounded-lg border-l-4 border-l-orange-500">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-orange-900 flex items-center gap-2">
+                  <User className="w-5 h-5 text-orange-600" />
+                  DATOS DEL DEMANDANTE(S)
+                </h3>
+                <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs font-bold rounded-full">
+                  {formData.demandantes.length} agregado(s)
+                </span>
+              </div>
+              {/* ✅ FORMULARIO PARA AGREGAR DEMANDANTE */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-orange-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-orange-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandante</h4>
+                </div>
 
-            {/* ✅ SECCIÓN 7: CONTENIDO DE LA DEMANDA */}
-            <FormSection
-              title="Contenido de la Demanda"
-              description="Pretensiones, hechos y observaciones"
-              icon={<FileText />}
-              color="green"
-            >
-              <FormField
-                name="pretensiones"
-                label="Pretensiones"
-                type="textarea"
-                value={formData.pretensiones}
-                onChange={(val) => updateField('pretensiones', val)}
-                onBlur={() => touchField('pretensiones')}
-                required
-                error={errors.pretensiones}
-                state={getFieldState('pretensiones')}
-                placeholder="Describa las pretensiones del demandante..."
-                tooltip="Resumen de lo que solicita el demandante en la demanda"
-                rows={6}
-                maxLength={2000}
-                showCharCount
-              />
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
+                    </label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersona"
+                          value="natural"
+                          checked={nuevoDemandante.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersona"
+                          value="juridica"
+                          checked={nuevoDemandante.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoDemandante(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
 
-              <FormField
-                name="hechos"
-                label="Hechos"
-                type="textarea"
-                value={formData.hechos}
-                onChange={(val) => updateField('hechos', val)}
-                placeholder="Resuma los hechos narrados en la demanda..."
-                helpText="Opcional: Descripción de los hechos alegados"
-                rows={6}
-                maxLength={2000}
-                showCharCount
-              />
+                  {/* Segunda fila: Identificación, Nombre y Botón - ALINEADOS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoDemandante.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.identificacion}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const filtered = nuevoDemandante.tipoPersona === 'natural' ? onlyNumbers(val) : onlyNit(val);
+                          setNuevoDemandante(prev => ({ ...prev, identificacion: filtered }));
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder={nuevoDemandante.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                      />
+                    </div>
 
-              <FormField
-                name="observaciones"
-                label="Observaciones Adicionales"
-                type="textarea"
-                value={formData.observaciones}
-                onChange={(val) => updateField('observaciones', val)}
-                placeholder="Notas internas, comentarios del equipo jurídico..."
-                helpText="Opcional: Notas internas visibles solo para el equipo"
-                rows={4}
-                maxLength={1000}
-                showCharCount
-              />
-            </FormSection>
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.nombre}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, nombre: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Nombre completo del demandante"
+                      />
+                    </div>
+                  </div>
 
-            {/* ✅ ADVERTENCIA SI FORMULARIO INCOMPLETO */}
-            {!isFormValid && completedFields > 0 && (
-              <Card className="p-4 bg-yellow-50 border-yellow-300">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-yellow-900">
-                    <p className="font-bold mb-1">⚠️ Faltan campos obligatorios</p>
-                    <p>Complete los campos marcados con asterisco (*) y resuelva los errores antes de guardar.</p>
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.telefono || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Ej: 3001234567"
+                      />
+                    </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoDemandante.email || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.direccion || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandante.apoderado || ''}
+                        onChange={(e) => setNuevoDemandante(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarDemandante}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#F57C00' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Demandante
+                    </Button>
                   </div>
                 </div>
-              </Card>
-            )}
+              </div>
 
-            {/* ✅ CONFIRMACIÓN SI FORMULARIO VÁLIDO */}
-            {isFormValid && (
-              <Card className="p-4 bg-green-50 border-green-300">
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-green-900">
-                    <p className="font-bold">✅ Formulario completo y válido</p>
-                    <p>Puede guardar la demanda judicial ahora.</p>
+              {/* ✅ LISTA DE DEMANDANTES AGREGADOS */}
+              {errors.demandantes && (
+                <p className="text-xs text-red-600 mb-2 flex items-center gap-1 bg-red-50 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-4 h-4" />
+                  {errors.demandantes}
+                </p>
+              )}
+
+              {formData.demandantes.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.demandantes.map((demandante, index) => (
+                    <div
+                      key={demandante.id}
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-orange-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{demandante.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {demandante.tipoPersona}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {demandante.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandante.identificacion}
+                          </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {demandante.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-orange-400" /> {demandante.telefono}</p>}
+                            {demandante.email && <p className="flex items-center gap-1.5 truncate" title={demandante.email}><Mail className="w-3 h-3 text-orange-400" /> {demandante.email}</p>}
+                            {demandante.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-orange-400" /> {demandante.direccion}</p>}
+                            {demandante.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-orange-400" /> Apoderado: {demandante.apoderado}</p>}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarDemandante(demandante.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay demandantes agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Sección 3: Datos de Demandados - ✅ SECCIÓN AGREGADA PARA ESAP */}
+            <div className="bg-gradient-to-br from-red-50 to-white p-4 rounded-lg border-l-4 border-l-red-500">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-red-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-red-600" />
+                  DATOS DEL DEMANDADO(S)
+                </h3>
+                <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full">
+                  {formData.demandados.length} agregado(s)
+                </span>
+              </div>
+
+              {/* ✅ FORMULARIO PARA AGREGAR DEMANDADO */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-red-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-red-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Demandado</h4>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
+                    </label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaDemandado"
+                          value="natural"
+                          checked={nuevoDemandado.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#DC2626' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaDemandado"
+                          value="juridica"
+                          checked={nuevoDemandado.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoDemandado(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#DC2626' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Segunda fila: Identificación, Nombre, Cargo y Botón */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoDemandado.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.identificacion}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const filtered = nuevoDemandado.tipoPersona === 'natural' ? onlyNumbers(val) : onlyNit(val);
+                          setNuevoDemandado(prev => ({ ...prev, identificacion: filtered }));
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder={nuevoDemandado.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                      />
+                    </div>
+
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.nombre}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, nombre: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Nombre completo del demandado"
+                      />
+                    </div>
+
+                    {/* Cargo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Cargo / Función (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.cargo}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, cargo: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Ej: Rector, Director, etc."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.telefono || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Ej: 3001234567"
+                      />
+                    </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoDemandado.email || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.direccion || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoDemandado.apoderado || ''}
+                        onChange={(e) => setNuevoDemandado(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarDemandado}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#DC2626' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Demandado
+                    </Button>
                   </div>
                 </div>
-              </Card>
-            )}
-          </div>
+              </div>
+
+              {/* ✅ LISTA DE DEMANDADOS AGREGADOS */}
+              {formData.demandados.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.demandados.map((demandado, index) => (
+                    <div
+                      key={demandado.id}
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-red-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{demandado.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {demandado.tipoPersona}
+                            </span>
+                            {demandado.cargo && (
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                                {demandado.cargo}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {demandado.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {demandado.identificacion}
+                          </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {demandado.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-red-400" /> {demandado.telefono}</p>}
+                            {demandado.email && <p className="flex items-center gap-1.5 truncate" title={demandado.email}><Mail className="w-3 h-3 text-red-400" /> {demandado.email}</p>}
+                            {demandado.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-red-400" /> {demandado.direccion}</p>}
+                            {demandado.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-red-400" /> Apoderado: {demandado.apoderado}</p>}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarDemandado(demandado.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay demandados agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Sección 4: Datos de Otros Actores - ✅ SECCIÓN AGREGADA PARA ESAP */}
+            <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-gray-600" />
+                  DATOS DE OTROS ACTORES
+                </h3>
+                <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-bold rounded-full">
+                  {formData.otrosActores.length} agregado(s)
+                </span>
+              </div>
+
+              {/* ✅ FORMULARIO PARA AGREGAR OTRO ACTOR */}
+              <div className="bg-white p-4 rounded-lg border-2 border-dashed border-gray-300 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <UserPlus className="w-4 h-4 text-gray-600" />
+                  <h4 className="text-xs font-bold text-gray-700">Agregar Nuevo Otro Actor</h4>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Primera fila: Tipo de Persona */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Persona
+                    </label>
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaOtroActor"
+                          value="natural"
+                          checked={nuevoOtroActor.tipoPersona === 'natural'}
+                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'natural' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Natural</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="nuevoTipoPersonaOtroActor"
+                          value="juridica"
+                          checked={nuevoOtroActor.tipoPersona === 'juridica'}
+                          onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, tipoPersona: 'juridica' }))}
+                          className="w-3 h-3"
+                          style={{ accentColor: '#2962FF' }}
+                        />
+                        <span className="text-xs text-gray-700">Jurídica</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Segunda fila: Identificación, Nombre, Rol y Botón */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {/* Identificación */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        {nuevoOtroActor.tipoPersona === 'natural' ? 'Cédula' : 'NIT'}
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.identificacion}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const filtered = nuevoOtroActor.tipoPersona === 'natural' ? onlyNumbers(val) : onlyNit(val);
+                          setNuevoOtroActor(prev => ({ ...prev, identificacion: filtered }));
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder={nuevoOtroActor.tipoPersona === 'natural' ? 'Ej: 1234567890' : 'Ej: 900123456-1'}
+                      />
+                    </div>
+
+                    {/* Nombre Completo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Nombre Completo / Razón Social
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.nombre}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, nombre: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Nombre completo del otro actor"
+                      />
+                    </div>
+
+                    {/* Rol */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Rol
+                      </label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.rol}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, rol: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Ej: Tercero, Ministerio Público, etc."
+                      />
+                    </div>
+                  </div>
+
+                  {/* Fila: Datos de Contacto */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Teléfono */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Teléfono</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.telefono || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, telefono: phoneFormat(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Ej: 3001234567"
+                      />
+                    </div>
+                    {/* Correo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Correo Electrónico</label>
+                      <input
+                        type="email"
+                        value={nuevoOtroActor.email || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="correo@ejemplo.com"
+                      />
+                    </div>
+                    {/* Dirección */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Dirección</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.direccion || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, direccion: e.target.value }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Dirección física"
+                      />
+                    </div>
+                    {/* Apoderado */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Apoderado</label>
+                      <input
+                        type="text"
+                        value={nuevoOtroActor.apoderado || ''}
+                        onChange={(e) => setNuevoOtroActor(prev => ({ ...prev, apoderado: onlyLetters(e.target.value) }))}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        placeholder="Nombre del apoderado"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botón Agregar */}
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="button"
+                      onClick={handleAgregarOtroActor}
+                      className="w-full md:w-auto text-white text-xs font-bold px-6"
+                      style={{ background: '#2962FF' }}
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar Otro Actor
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ LISTA DE OTROS ACTORES AGREGADOS */}
+              {formData.otrosActores.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.otrosActores.map((otroActor, index) => (
+                    <div
+                      key={otroActor.id}
+                      className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                          <span className="text-xs font-bold text-gray-700">#{index + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900">{otroActor.nombre}</span>
+                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-full uppercase">
+                              {otroActor.tipoPersona}
+                            </span>
+                            {otroActor.rol && (
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                                {otroActor.rol}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {otroActor.tipoPersona === 'natural' ? 'CC' : 'NIT'}: {otroActor.identificacion}
+                          </p>
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500 bg-gray-50 p-2 rounded-md border border-gray-100">
+                            {otroActor.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-blue-400" /> {otroActor.telefono}</p>}
+                            {otroActor.email && <p className="flex items-center gap-1.5 truncate" title={otroActor.email}><Mail className="w-3 h-3 text-blue-400" /> {otroActor.email}</p>}
+                            {otroActor.direccion && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><MapPin className="w-3 h-3 text-blue-400" /> {otroActor.direccion}</p>}
+                            {otroActor.apoderado && <p className="flex items-center gap-1.5 col-span-1 sm:col-span-2"><Briefcase className="w-3 h-3 text-blue-400" /> Apoderado: {otroActor.apoderado}</p>}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEliminarOtroActor(otroActor.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-white rounded-lg border-2 border-dashed border-gray-300">
+                  <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-xs text-gray-500 font-medium">
+                    No hay otros actores agregados. Use el formulario arriba para agregar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Sección 5: Juzgado y Ubicación */}
+            <div className="bg-gradient-to-br from-purple-50 to-white p-4 rounded-lg border-l-4 border-l-purple-600">
+              <h3 className="text-sm font-black text-purple-900 mb-4 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-purple-600" />
+                JUZGADO Y UBICACIÓN
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Juzgado */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Juzgado / Tribunal <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <Gavel className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.juzgado}
+                      onChange={(e) => handleInputChange('juzgado', e.target.value)}
+                      className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.juzgado
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                        : 'border-gray-300 focus:ring-blue-500'
+                        }`}
+                      placeholder="Ej: Juzgado 10 Administrativo del Circuito de Bogotá"
+                    />
+                  </div>
+                  {errors.juzgado && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.juzgado}
+                    </p>
+                  )}
+                </div>
+
+                {/* Departamento */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Departamento
+                  </label>
+                  <select
+                    value={formData.departamento}
+                    onChange={(e) => handleInputChange('departamento', e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="">Seleccione...</option>
+                    {DEPARTAMENTOS.map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ciudad */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Ciudad <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.ciudad}
+                      onChange={(e) => handleInputChange('ciudad', e.target.value)}
+                      className={`w-full pl-10 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.ciudad
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                        : 'border-gray-300 focus:ring-blue-500'
+                        }`}
+                      placeholder="Ej: Bogotá D.C."
+                    />
+                  </div>
+                  {errors.ciudad && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.ciudad}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 6: Fechas y Asignación */}
+            <div className="bg-gradient-to-br from-green-50 to-white p-4 rounded-lg border-l-4 border-l-green-600">
+              <h3 className="text-sm font-bold text-green-900 mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-green-600" />
+                FECHAS Y ASIGNACIÓN
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+
+                {/* CONFIGURACIÓN DE PLAZOS */}
+                <div className="md:col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                      Configuración de Términos
+                    </label>
+                    <p className="text-xs text-gray-600">
+                      Automáticamente calcula el vencimiento según el horario judicial.
+                    </p>
+                  </div>
+
+                  {/* Tipo de Conteo */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Tipo de Plazo
+                    </label>
+                    <select
+                      value={tipoConteo}
+                      onChange={(e) => setTipoConteo(e.target.value as 'HABILES' | 'CALENDARIO')}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="HABILES">Días Hábiles</option>
+                      <option value="CALENDARIO">Días Calendario</option>
+                    </select>
+                  </div>
+
+                  {/* Días */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Término (Días)
+                    </label>
+                    <input
+                      type="number"
+                      readOnly
+                      value={terminoDias}
+                      placeholder="Automático..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none bg-gray-100 text-gray-700 font-bold cursor-not-allowed"
+                      title="Este valor se define automáticamente según el tipo de proceso seleccionado en la configuración."
+                    />
+                  </div>
+                </div>
+
+                {/* Fecha Notificación */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Fecha de Notificación <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.fechaNotificacion}
+                    onChange={(e) => handleInputChange('fechaNotificacion', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.fechaNotificacion
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                  />
+                  {errors.fechaNotificacion && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.fechaNotificacion}
+                    </p>
+                  )}
+                </div>
+
+                {/* Fecha Vencimiento (Calculada) */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Fecha Vencimiento (Calculada)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    readOnly
+                    value={formData.fechaVencimiento ? (() => {
+                      const date = new Date(formData.fechaVencimiento);
+                      const offset = date.getTimezoneOffset();
+                      const localDate = new Date(date.getTime() - (offset * 60000));
+                      return localDate.toISOString().slice(0, 16);
+                    })() : ''}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none bg-gray-100 text-gray-700 font-medium cursor-not-allowed"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    {tipoConteo === 'HABILES' ? 'Considera horario 8am-5pm y excluye fines de semana.' : 'Suma días calendario exactos.'}
+                  </p>
+                </div>
+
+                {/* Abogado Asignado */}
+                <div className="lg:col-span-1">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Abogado Responsable <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={formData.abogadoAsignado}
+                    onChange={(e) => handleInputChange('abogadoAsignado', e.target.value)}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.abogadoAsignado
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                  >
+                    <option value="">Seleccione un abogado...</option>
+                    {abogados.length > 0 ? (
+                      abogados.map(abogado => (
+                        <option key={abogado.id} value={abogado.id}>{abogado.nombreCompleto}</option>
+                      ))
+                    ) : (
+                      <option disabled>Cargando abogados...</option>
+                    )}
+                  </select>
+                  {errors.abogadoAsignado && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.abogadoAsignado}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Sección 7: Detalles del Proceso */}
+            <div className="bg-gradient-to-br from-gray-50 to-white p-4 rounded-lg border-l-4 border-l-gray-600">
+              <h3 className="text-sm font-black text-gray-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-600" />
+                DETALLES DEL PROCESO
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Pretensiones <span className="text-red-600">*</span>
+                  </label>
+                  <textarea
+                    value={formData.pretensiones}
+                    onChange={(e) => handleInputChange('pretensiones', e.target.value)}
+                    rows={3}
+                    className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 ${errors.pretensiones ? 'border-red-500 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
+                      }`}
+                    placeholder="Describa las pretensiones de la demanda..."
+                  />
+                  {errors.pretensiones && (
+                    <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-semibold">
+                      <AlertCircle className="w-3 h-3" />
+                      {errors.pretensiones}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">Hechos</label>
+                  <textarea
+                    value={formData.hechos}
+                    onChange={(e) => handleInputChange('hechos', e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Resumen de los hechos de la demanda..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5">Observaciones Adicionales</label>
+                  <textarea
+                    value={formData.observaciones}
+                    onChange={(e) => handleInputChange('observaciones', e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Notas u observaciones relevantes..."
+                  />
+                </div>
+              </div>
+            </div>
+
+          </form>
         </div>
 
-        {/* ==================== FOOTER STICKY ==================== */}
-        <div className="flex-shrink-0 px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-white border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="text-xs text-gray-600 text-center sm:text-left">
-            <span className="text-red-500 font-bold">*</span> Campos obligatorios
-            <span className="mx-2">•</span>
-            <span className={isFormValid ? 'text-green-600 font-bold' : 'text-orange-600'}>
-              {completedFields}/{totalFields} completados
-            </span>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+        {/* Footer - flex-shrink-0 (siempre visible) */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-t border-gray-200 flex items-center justify-between">
+          <p className="text-xs text-gray-600">
+            Los campos marcados con <span className="text-red-600 font-bold">*</span> son obligatorios
+          </p>
+          <div className="flex gap-3">
             <Button
               type="button"
               variant="outline"
-              onClick={handleCancel}
-              disabled={enviando}
-              className="w-full sm:w-auto"
+              onClick={onClose}
             >
-              <X className="w-4 h-4 mr-2" />
               Cancelar
             </Button>
-            
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={!isFormValid || enviando}
-              style={isFormValid && !enviando ? { 
-                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' 
-              } : {}}
-              className={`w-full sm:w-auto ${!isFormValid || enviando ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={isSubmitting}
+              className="text-white"
+              style={{ background: isSubmitting ? '#9E9E9E' : '#2962FF' }}
             >
-              {enviando ? (
+              {isSubmitting ? (
                 <>
-                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Guardando...
-                </>
-              ) : !isFormValid ? (
-                <>
-                  <AlertCircle className="w-4 h-4 mr-2" />
-                  Complete los campos requeridos
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Verificando...
                 </>
               ) : (
                 <>

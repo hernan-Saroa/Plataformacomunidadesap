@@ -170,7 +170,8 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'ALEGATOS', nombre: 'Alegatos', color: '#EC4899', orden: 4, activo: true },
       { id: 'SENTENCIA', nombre: 'Sentencia', color: '#10B981', orden: 5, activo: true },
       { id: 'APELACIÓN', nombre: 'Apelación', color: '#F59E0B', orden: 6, activo: true },
-      { id: 'CUMPLIMIENTO', nombre: 'Cumplimiento', color: '#6B7280', orden: 7, activo: true },
+      { id: 'FALLO_2A_INSTANCIA', nombre: 'Fallo 2ª Instancia', color: '#EF4444', orden: 7, activo: true },
+      { id: 'CUMPLIMIENTO', nombre: 'Cumplimiento', color: '#6B7280', orden: 8, activo: true },
     ],
     tiempos: [
       { id: 'estudio-inicial', tipo: 'Estudio Inicial', dias: 5, alertaDias: 2, activo: true },
@@ -758,7 +759,7 @@ export function useConfiguracionesSIGL() {
 
 export function useConfiguracionModulo(moduloId: string) {
   const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas } = useConfiguracionesSIGL();
-  
+
   return {
     configuracion: getConfiguracionModulo(moduloId),
     estadosActivos: getEstadosActivos(moduloId),

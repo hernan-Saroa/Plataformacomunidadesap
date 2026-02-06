@@ -188,8 +188,20 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
     try {
       toast.info('Iniciando descarga...');
       const fileUrl = getFileUrl(acta.archivoUrl);
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar');
+
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -200,9 +212,23 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success('✅ Descarga completada');
     } catch (error) {
       console.error('Download error:', error);
-      toast.error('Error al descargar el archivo');
+      // Fallback: intentar descarga directa
+      try {
+        const fileUrl = getFileUrl(acta.archivoUrl);
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', acta.archivo || `acta_${acta.id}.pdf`);
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...');
+      } catch {
+        toast.error('Error al descargar el archivo');
+      }
     }
   };
 
@@ -317,10 +343,21 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
-        throw new Error('Error al descargar las actas');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -339,7 +376,22 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       });
     } catch (error) {
       console.error('Error descargando ZIP:', error);
-      toast.error('Error al descargar actas', { id: 'download-actas' });
+      // Fallback: intentar descarga directa
+      try {
+        const expedienteId = expediente.uuid || expediente.id;
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-actas' });
+      } catch {
+        toast.error('Error al descargar actas', { id: 'download-actas' });
+      }
     }
   };
 

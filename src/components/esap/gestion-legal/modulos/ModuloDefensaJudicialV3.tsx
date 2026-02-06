@@ -22,6 +22,13 @@ import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../../../ui/dialog';
 import { toast } from 'sonner';
 
 import { legalService } from '../../../../services/api/legal.service';
@@ -59,13 +66,13 @@ const ItemTypes = {
 export function ModuloDefensaJudicialV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
-  
+
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   // ✅ Estado para cambiar entre vista normal y archivados
   const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
-  
+
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
@@ -78,345 +85,77 @@ export function ModuloDefensaJudicialV3() {
   // Estado local para manejar drag and drop
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
 
-  // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'DJ-999',
-      codigo: '25000-23-33-001-2023-00999-00',
-      nombre: 'Nulidad y Restablecimiento - Juan Pérez Gómez',
-      tipo: 'Proceso Judicial',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-15T10:30:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Desistimiento de la demanda por parte del actor mediante memorial radicado el 12/12/2024',
-      metadatos: {
-        'Tipo Acción': 'NULIDAD Y RESTABLECIMIENTO',
-        'Juzgado': 'Juzgado 12 Administrativo de Bogotá',
-        'Cuantía': '$85,000,000',
-        'Fecha Notificación': '15/01/2024',
-        'Abogado Responsable': 'Dra. Ana María López'
-      }
-    },
-    {
-      id: 'DJ-998',
-      codigo: '11001-03-25-000-2023-00888-00',
-      nombre: 'Reparación Directa - María Rodríguez Castro',
-      tipo: 'Proceso Judicial',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-11-20T14:15:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Proceso terminado por sentencia favorable a ESAP en segunda instancia',
-      metadatos: {
-        'Tipo Acción': 'REPARACIÓN DIRECTA',
-        'Juzgado': 'Tribunal Administrativo de Cundinamarca',
-        'Cuantía': '$150,000,000',
-        'Resultado': 'Sentencia Favorable'
-      }
-    },
-    {
-      id: 'DJ-997',
-      codigo: '50001-23-31-000-2023-00777-00',
-      nombre: 'Nulidad Simple - Asociación Ciudadana',
-      tipo: 'Proceso Judicial',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-10-05T09:20:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Proceso duplicado - Error en radicación. El proceso real está bajo radicado 50001-23-31-000-2023-00778-00',
-      metadatos: {
-        'Tipo Acción': 'NULIDAD SIMPLE',
-        'Juzgado': 'Juzgado Administrativo de Meta',
-        'Motivo Eliminación': 'Duplicado'
-      }
-    },
-    {
-      id: 'DJ-996',
-      codigo: '76001-23-33-002-2023-00666-00',
-      nombre: 'Acción de Grupo - Comunidad Indígena',
-      tipo: 'Proceso Judicial',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-09-18T16:45:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Conciliación extrajudicial exitosa. Acuerdo firmado el 15/09/2024',
-      metadatos: {
-        'Tipo Acción': 'ACCIÓN DE GRUPO',
-        'Juzgado': 'Tribunal Administrativo del Valle',
-        'Cuantía': '$320,000,000',
-        'Resultado': 'Conciliación'
-      }
-    },
-    {
-      id: 'DJ-995',
-      codigo: '13001-23-33-001-2022-00555-00',
-      nombre: 'Controversia Contractual - Consorcio ABC',
-      tipo: 'Proceso Judicial',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-08-22T11:10:00'),
-      usuarioArchivo: 'Admin Sistema',
-      motivoArchivo: 'Registro erróneo - No corresponde a demanda contra ESAP',
-      metadatos: {
-        'Tipo Acción': 'CONTROVERSIA CONTRACTUAL',
-        'Juzgado': 'Juzgado Civil del Circuito',
-        'Motivo Eliminación': 'Error de registro'
-      }
+  // ✅ Estado para items archivados/eliminados (cargados desde backend)
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // ✅ Función para cargar expedientes archivados desde el backend
+  const loadArchivados = async () => {
+    try {
+      const data = await legalService.getExpedientesArchivados();
+      const mapped: ItemArchivado[] = data.map((exp: any) => ({
+        id: exp.id,
+        codigo: exp.radicado || exp.id,
+        nombre: `${exp.tipoProceso || 'Proceso'} - ${exp.demandante || 'No especificado'}`,
+        tipo: 'Proceso Judicial',
+        estado: exp.estadoArchivo as EstadoArchivado,
+        fechaArchivado: new Date(exp.fechaArchivo || new Date()),
+        usuarioArchivo: exp.usuarioArchivo || 'Sistema',
+        motivoArchivo: exp.motivoArchivo || 'Sin motivo especificado',
+        metadatos: {
+          'Tipo Proceso': exp.tipoProceso || 'No especificado',
+          'Juzgado': exp.juzgadoConocimiento || 'No asignado',
+          'Cuantía': exp.cuantia ? `$${exp.cuantia.toLocaleString()}` : 'No especificada',
+          'Etapa': exp.etapaProcesal || exp.etapa || 'No especificada'
+        }
+      }));
+      setItemsArchivados(mapped);
+    } catch (error) {
+      console.error('Error cargando archivados:', error);
+      setItemsArchivados([]);
     }
-  ]);
+  };
 
   // ✅ Función para restaurar un expediente archivado
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando expediente:', itemId);
-    
-    // Simulación: En producción esto haría una llamada al backend
-    // await api.restaurarExpediente(itemId);
-    
-    // Remover de la lista de archivados
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    
-    // Aquí se agregaría de vuelta a los expedientes activos
-    // Por ahora solo mostramos el toast (la lógica completa se implementa con backend)
+    try {
+      await legalService.restaurarExpediente(itemId);
+      toast.success('✅ Expediente restaurado al Kanban');
+      // Remover de la lista de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      // Recargar expedientes activos
+      loadExpedientes();
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.error('❌ Error al restaurar el expediente');
+    }
   };
 
   // ✅ Función para eliminar permanentemente un expediente
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente expediente:', itemId);
-    
-    // Simulación: En producción esto haría una llamada al backend
-    // await api.eliminarPermanente(itemId);
-    
-    // Remover de la lista de archivados
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    try {
+      await legalService.eliminarPermanenteExpediente(itemId);
+      toast.success('🗑️ Expediente eliminado permanentemente');
+      // Remover de la lista de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('❌ Error al eliminar el expediente');
+    }
   };
 
-  // ✅ Datos mock para cada etapa del tablero Kanban
-  const expedientesMockDefensaJudicial: any[] = [
-    {
-      id: 'DJ-001',
-      radicado: '25000-23-33-001-2024-00045-00',
-      demandante: 'María Rodríguez López',
-      tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
-      estado: 'ACTIVO',
-      etapa: 'NOTIFICADA',
-      prioridad: 'ALTA',
-      fechaNotificacion: '2025-01-15',
-      fechaVencimiento: '2025-02-15',
-      juzgado: 'Juzgado 12 Administrativo de Bogotá',
-      abogadoResponsable: 'Dra. Ana María López',
-      cuantia: '85000000',
-      pretensiones: 'Nulidad del acto administrativo por el cual se declaró insubsistencia del cargo y restablecimiento del derecho con reintegro y pago de salarios dejados de percibir.',
-      demandantes: [
-        {
-          id: 'DEM-001',
-          nombre: 'María Rodríguez López',
-          tipoPersona: 'natural',
-          identificacion: '52123456'
-        }
-      ],
-      demandados: [
-        {
-          id: 'DEMAN-001',
-          nombre: 'ESAP - Escuela Superior de Administración Pública',
-          tipoPersona: 'juridica',
-          identificacion: '899999061-4',
-          cargo: 'Entidad Accionada'
-        },
-        {
-          id: 'DEMAN-002',
-          nombre: 'José Alberto Ramírez González',
-          tipoPersona: 'natural',
-          identificacion: '79456123',
-          cargo: 'Rector ESAP'
-        }
-      ],
-      otrosActores: [
-        {
-          id: 'OTRO-001',
-          nombre: 'Procuraduría General de la Nación',
-          tipoPersona: 'juridica',
-          identificacion: '899999007-1',
-          rol: 'Ministerio Público'
-        }
-      ],
-      ultimaActuacion: {
-        fecha: '2025-01-20',
-        tipo: 'Auto Admisorio',
-        descripcion: 'Se admite demanda y se ordena notificación a ESAP',
-        responsable: 'Juzgado 12 Administrativo',
-        estado: 'NOTIFICADO'
-      }
-    },
-    {
-      id: 'DJ-002',
-      radicado: '11001-03-25-000-2024-00123-00',
-      demandante: 'Carlos Eduardo Martínez',
-      tipoAccion: 'REPARACIÓN DIRECTA',
-      estado: 'ACTIVO',
-      etapa: 'CONTESTACIÓN',
-      prioridad: 'MEDIA',
-      fechaNotificacion: '2024-12-05',
-      fechaVencimiento: '2025-02-05',
-      juzgado: 'Tribunal Administrativo de Cundinamarca',
-      abogadoResponsable: 'Dr. Juan Carlos Pérez',
-      cuantia: '120000000',
-      pretensiones: 'Reparación directa por daños y perjuicios ocasionados en accidente de tránsito con vehículo institucional de ESAP.',
-      demandantes: [
-        {
-          id: 'DEM-002',
-          nombre: 'Carlos Eduardo Martínez',
-          tipoPersona: 'natural',
-          identificacion: '80123456'
-        }
-      ],
-      demandados: [
-        {
-          id: 'DEMAN-003',
-          nombre: 'ESAP - Escuela Superior de Administración Pública',
-          tipoPersona: 'juridica',
-          identificacion: '899999061-4',
-          cargo: 'Entidad Demandada'
-        }
-      ],
-      otrosActores: [
-        {
-          id: 'OTRO-002',
-          nombre: 'Seguros del Estado S.A.',
-          tipoPersona: 'juridica',
-          identificacion: '860066119-1',
-          rol: 'Tercero Llamado en Garantía'
-        }
-      ],
-      ultimaActuacion: {
-        fecha: '2025-01-18',
-        tipo: 'Contestación Demanda',
-        descripcion: 'Se presenta escrito de contestación y excepciones',
-        responsable: 'Oficina Jurídica ESAP',
-        estado: 'RADICADO'
-      }
-    },
-    {
-      id: 'DJ-003',
-      radicado: '76001-23-33-000-2024-00089-00',
-      demandante: 'Asociación Docentes ESAP',
-      tipoAccion: 'ACCIÓN DE GRUPO',
-      estado: 'ACTIVO',
-      etapa: 'PROBATORIA',
-      prioridad: 'ALTA',
-      fechaNotificacion: '2024-10-10',
-      fechaVencimiento: '2025-03-10',
-      juzgado: 'Juzgado 8 Administrativo del Circuito de Cali',
-      abogadoResponsable: 'Dra. María González',
-      cuantia: '450000000',
-      pretensiones: 'Acción de grupo por falta de pago de primas de vacaciones a docentes de planta durante los años 2022-2024.',
-      demandantes: [
-        {
-          id: 'DEM-003',
-          nombre: 'Asociación Docentes ESAP',
-          tipoPersona: 'juridica',
-          identificacion: '900123789-1'
-        }
-      ],
-      demandados: [
-        {
-          id: 'DEMAN-004',
-          nombre: 'ESAP - Escuela Superior de Administración Pública',
-          tipoPersona: 'juridica',
-          identificacion: '899999061-4',
-          cargo: 'Entidad Demandada'
-        }
-      ],
-      otrosActores: [
-        {
-          id: 'OTRO-003',
-          nombre: 'Dr. Alberto Mendoza Ramírez',
-          tipoPersona: 'natural',
-          identificacion: '79345678',
-          rol: 'Curador Ad Litem del Grupo'
-        },
-        {
-          id: 'OTRO-004',
-          nombre: 'Defensoría del Pueblo',
-          tipoPersona: 'juridica',
-          identificacion: '899999011-7',
-          rol: 'Agente Oficioso'
-        }
-      ],
-      ultimaActuacion: {
-        fecha: '2025-01-22',
-        tipo: 'Decreto Pruebas',
-        descripcion: 'Se decretan testimonios y pruebas documentales solicitadas',
-        responsable: 'Juzgado 8 Administrativo',
-        estado: 'EN PRÁCTICA'
-      }
-    },
-    {
-      id: 'DJ-004',
-      radicado: '05001-23-33-000-2024-00234-00',
-      demandante: 'Pedro Antonio Gómez',
-      tipoAccion: 'TUTELA',
-      estado: 'ACTIVO',
-      etapa: 'ALEGATOS',
-      prioridad: 'URGENTE',
-      fechaNotificacion: '2025-01-08',
-      fechaVencimiento: '2025-01-30',
-      juzgado: 'Juzgado 5 Civil del Circuito de Medellín',
-      abogadoResponsable: 'Dr. Carlos Ramírez',
-      cuantia: '0',
-      pretensiones: 'Protección del derecho fundamental al debido proceso en investigación disciplinaria adelantada por ESAP.',
-      demandantes: [
-        {
-          id: 'DEM-004',
-          nombre: 'Pedro Antonio Gómez',
-          tipoPersona: 'natural',
-          identificacion: '71234567'
-        }
-      ],
-      demandados: [
-        {
-          id: 'DEMAN-005',
-          nombre: 'ESAP - Escuela Superior de Administración Pública',
-          tipoPersona: 'juridica',
-          identificacion: '899999061-4',
-          cargo: 'Entidad Accionada'
-        }
-      ],
-      otrosActores: [
-        {
-          id: 'OTRO-005',
-          nombre: 'Agencia Nacional de Defensa Jurídica del Estado',
-          tipoPersona: 'juridica',
-          identificacion: '900460870-4',
-          rol: 'Tercero con Interés'
-        }
-      ],
-      ultimaActuacion: {
-        fecha: '2025-01-25',
-        tipo: 'Alegatos de Conclusión',
-        descripcion: 'Se presentan alegatos finales por parte de ESAP',
-        responsable: 'Oficina Jurídica ESAP',
-        estado: 'PRESENTADO'
-      }
+  // ✅ Cargar datos reales al montar el componente (sin mocks hardcodeados)
+  useEffect(() => {
+    loadExpedientes();
+    loadArchivados(); // También cargar archivados
+  }, []); // Se ejecuta solo al montar, rompiendo el ciclo infinito de estadosActivos
+
+  // ✅ Recargar archivados cuando se cambia a esa vista
+  useEffect(() => {
+    if (tipoVista === 'archivados') {
+      loadArchivados();
     }
-  ];
+  }, [tipoVista]);
 
-  // ✅ Log de configuraciones cargadas
-  useEffect(() => {
-    console.log('🎯 DEFENSA JUDICIAL - Configuraciones centralizadas cargadas:');
-    console.log('   📊 Estados activos:', estadosActivos.length);
-    console.log('   ⚖️ Tipos de procesos activos:', tiposProcesosActivos.length);
-    console.log('   ✅ Conexión con ConfiguracionesSIGL establecida');
-  }, [estadosActivos, tiposProcesosActivos]);
-
-  // ✅ Cargar datos mock al montar el componente
-  useEffect(() => {
-    const mockMapped = expedientesMockDefensaJudicial.map(exp => ({
-      ...exp,
-      abogadoAsignado: exp.abogadoResponsable || 'Sin asignar',
-      diasRestantes: exp.fechaVencimiento ? Math.ceil((new Date(exp.fechaVencimiento).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : 0,
-      diasTotales: exp.fechaVencimiento && exp.fechaNotificacion ? Math.ceil((new Date(exp.fechaVencimiento).getTime() - new Date(exp.fechaNotificacion).getTime()) / (1000 * 60 * 60 * 24)) : 0,
-      fechaActualizacion: new Date(exp.ultimaActuacion?.fecha || exp.fechaNotificacion || new Date()),
-      documentos: [],
-      medioControl: exp.tipoAccion || 'N/A'
-    }));
-    setExpedientes(mockMapped as ExpedienteJudicial[]);
-  }, []);
 
   // Detectar tamaño de pantalla
   useEffect(() => {
@@ -452,7 +191,7 @@ export function ModuloDefensaJudicialV3() {
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
-      // Mapear datos del backend al tipo ExpedienteJudicial del frontend
+      console.log('📦 [DEBUG] Expedientes from API:', data?.length, data);
       const mapped: ExpedienteJudicial[] = data.map((exp: any) => {
         // Encontrar la última actuación real
         let latestActuacionVal = null;
@@ -477,7 +216,11 @@ export function ModuloDefensaJudicialV3() {
           radicado: exp.radicado || exp.numeroRadicado || exp.id,
           tipo: exp.tipoProceso || 'declarativo', // Propiedad requerida por interface antigua
           tipoAccion: exp.tipoProceso || 'SIN CLASIFICAR', // Propiedad nueva
-          etapa: (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA',
+          etapa: (() => {
+            // Backend default es 'RADICACION', mapear a primera etapa visual 'NOTIFICADA'
+            if (exp.etapaProcesal === 'RADICACION') return 'NOTIFICADA';
+            return (exp.etapaProcesal as EtapaDefensaJudicial) || 'NOTIFICADA';
+          })(),
           prioridad: 'MEDIA',
           demandante: exp.actors && exp.actors.some((a: any) => a.rol === 'DEMANDANTE')
             ? exp.actors.find((a: any) => a.rol === 'DEMANDANTE').nombre
@@ -527,7 +270,10 @@ export function ModuloDefensaJudicialV3() {
           estado: exp.estado || 'ACTIVO',
           ultimaActuacion: latestActuacionVal || {
             descripcion: `Expediente en etapa de ${exp.etapaProcesal || 'NOTIFICADA'}`,
-            fecha: exp.updatedAt
+            fecha: exp.updatedAt,
+            tipo: 'ACTUALIZACIÓN',
+            responsable: 'Sistema',
+            estado: 'REALIZADO'
           },
           demandadoDireccion: exp.demandadoDireccion,
           demandadoTelefono: exp.demandadoTelefono,
@@ -535,6 +281,8 @@ export function ModuloDefensaJudicialV3() {
         }
       });
       setExpedientes(mapped);
+      console.log('🗂️ [DEBUG] Mapped expedientes:', mapped.map(e => ({ id: e.id, etapa: e.etapa, radicado: e.radicado })));
+      console.log('📊 [DEBUG] estadosActivos:', estadosActivos.map((e: any) => e.id));
     } catch (error) {
       console.error('Error cargando expedientes:', error);
       toast.error('Error al cargar expedientes');
@@ -623,23 +371,62 @@ export function ModuloDefensaJudicialV3() {
     return matchBusqueda && matchTipo;
   });
 
+  // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
+  const normalizeString = (str: string) => {
+    if (!str) return '';
+    // Primero arreglar mojibake común (UTF-8 interpretado como Latin-1)
+    let fixed = str
+      .replace(/Ã"/g, 'O')  // Ó corrupta
+      .replace(/Ã³/g, 'o')  // ó corrupta
+      .replace(/Ã/g, 'I')   // Í corrupta (Ã seguida de algo)
+      .replace(/Ã©/g, 'e')  // é corrupta
+      .replace(/Ãº/g, 'u')  // ú corrupta
+      .replace(/Ã¡/g, 'a')  // á corrupta
+      .replace(/Ã±/g, 'n'); // ñ corrupta
+
+    // Luego normalizar acentos normales
+    return fixed
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+      .toLowerCase()
+      .replace(/[_-]/g, ' ')
+      .trim();
+  };
+
   // Agrupar expedientes filtrados por etapa de forma dinámica
-  const expedientesPorEtapa = estadosActivos.reduce((acc: Record<string, ExpedienteJudicial[]>, estado: any) => {
-    // Si hay filtro de etapa, solo incluir esa etapa
-    if (filtroEtapa !== 'TODAS' && estado.nombre !== filtroEtapa) {
+  const expedientesPorEtapa = estadosActivos.reduce((acc: any, estado: any, index: number) => {
+    if (!estado?.id) return acc;
+
+    // Inicializar array para este estado
+    if (!acc[estado.id]) {
       acc[estado.id] = [];
-      return acc;
     }
 
+    // Filtrar expedientes para este estado
     acc[estado.id] = expedientesFiltrados.filter((exp: ExpedienteJudicial) => {
-      const stage = exp.etapa ? exp.etapa.toString().toLowerCase().replace(/_/g, ' ') : '';
-      const stateId = estado.id.toLowerCase().replace(/-/g, ' ');
-      const stateName = estado.nombre.toLowerCase();
+      // Normalizar strings para comparación (sin acentos, minúsculas)
+      const stage = normalizeString(exp.etapa || '');
+      const stateId = normalizeString(estado.id);
+      const stateName = normalizeString(estado.nombre);
 
-      return stage === stateId || stage === stateName || exp.etapa === estado.id;
+      // Match directo (sin acentos)
+      const exactMatch = stage === stateId || stage === stateName;
+
+      // Match especial para 'RADICACION' (Backend Default) -> Primera Columna (Frontend: NOTIFICADA)
+      // Si es la primera columna del tablero, incluimos también los que vienen como 'RADICACION'
+      const normalizedEtapa = normalizeString(exp.etapa || '');
+      if (index === 0 && (normalizedEtapa === 'radicacion' || !exp.etapa)) {
+        return true;
+      }
+
+      return exactMatch;
     });
+
     return acc;
   }, {} as Record<string, ExpedienteJudicial[]>);
+
+  // DEBUG: Mostrar cuántos expedientes hay en cada columna
+  console.log('🔍 [DEBUG] expedientesPorEtapa:', Object.entries(expedientesPorEtapa).map(([k, v]) => `${k}: ${(v as any[]).length}`));
 
   // Calcular estadísticas - solo expedientes en las etapas activas
   const expedientesVisibles = Object.values(expedientesPorEtapa).flat() as ExpedienteJudicial[];
@@ -676,8 +463,8 @@ export function ModuloDefensaJudicialV3() {
         pretensionDemandante: demandaData.pretensiones,
         fechaNotificacion: demandaData.fechaNotificacion,
         fechaVencimientoTermino: demandaData.fechaVencimiento,
-        etapaProcesal: demandaData.etapa,
-        ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
+        etapaProcesal: demandaData.etapa || (estadosActivos.length > 0 ? estadosActivos[0].id : 'RADICACION'),
+        ultimaActuacion: undefined, // Backend manages initial state or assumes created
 
         // Mapeo unificado de actores
         actors: [
@@ -1072,6 +859,7 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
   const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
   const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
   const [modalActasOpen, setModalActasOpen] = useState(false);
+  const [showEliminarModal, setShowEliminarModal] = useState(false);
 
   const puedeEliminar = true; // authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE);
 
@@ -1080,21 +868,26 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
     setModalExpedienteOpen(true);
   };
 
-  const handleEliminarExpediente = async () => {
+  // Handler para abrir modal de eliminar
+  const handleEliminarExpediente = () => {
+    setShowEliminarModal(true);
+  };
+
+  // Confirmar eliminación del expediente
+  const confirmarEliminar = async () => {
     const id = expediente.uuid || expediente.id;
     if (!id) {
       toast.error('No se encontró el ID del expediente');
       return;
     }
 
-    const confirmDelete = window.confirm(`¿Eliminar el expediente ${expediente.id}? Esta acción no se puede deshacer.`);
-    if (!confirmDelete) return;
-
     try {
-      await legalService.deleteExpediente(id);
-      toast.success('Expediente eliminado', {
+      // Usar soft delete para mover a "Eliminados" en la vista de archivos
+      await legalService.eliminarExpedienteSoft(id, 'Eliminado desde Kanban', 'Usuario Actual');
+      toast.success('Expediente movido a papelera', {
         description: `Radicado ${expediente.id}`
       });
+      setShowEliminarModal(false);
       onRefresh?.();
     } catch (error) {
       console.error('Error eliminando expediente:', error);
@@ -1378,6 +1171,51 @@ function TarjetaExpediente({ expediente, isMobile, onRefresh, onMoverExpediente,
           expediente={expediente}
           modulo='defensa-judicial'
         />
+
+        {/* Modal de confirmación de eliminación */}
+        <Dialog open={showEliminarModal} onOpenChange={setShowEliminarModal}>
+          <DialogContent
+            className="sm:max-w-[380px] w-[90vw] !max-w-[380px] !w-auto p-0 overflow-hidden"
+            style={{ maxWidth: '380px', width: '100%' }}
+          >
+            <DialogHeader className="p-4 pb-2">
+              <DialogTitle className="flex items-center gap-2 text-base text-red-600">
+                <Trash2 className="w-5 h-5" />
+                Eliminar Expediente
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="p-4 pt-0">
+              <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-red-800">
+                  <p className="font-semibold">¿Eliminar este expediente?</p>
+                  <p className="text-xs mt-1 opacity-80">
+                    Se moverá a la papelera. Podrá restaurarlo o eliminarlo permanentemente desde la vista de Archivados.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 pt-0 bg-gray-50/50">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEliminarModal(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={confirmarEliminar}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Eliminar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </Card>
     </div>
   );

@@ -40,16 +40,12 @@ import {
 import {
   ButtonSIGL,
   InputSIGL,
-  SelectSIGL,
   BadgeSIGL,
   CardSIGL,
   ModalSIGL,
-  TableSIGL,
-  useToast,
 } from './design-system';
-import { FormularioExpedienteJudicial } from './defensa-judicial/FormularioExpedienteJudicial';
-import { SistemaAlertasExpedientes } from './SistemaAlertasExpedientes';
-import { GestionDocumentosExpediente } from './GestionDocumentosExpediente';
+import { toast } from 'sonner';
+import { ModalNuevaDemanda, NuevaDemandaData } from './modulos/ModalNuevaDemanda';
 import { legalService } from '../../../services/api/legal.service';
 
 // ============================================
@@ -73,6 +69,8 @@ interface Expediente {
   fechaVencimiento: Date;
   plazo: number; // días hábiles
   diasRestantes: number;
+  tiempoRestante?: string; // String formateado para mostrar (ej: "28 días hábiles")
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO'; // Tipo de conteo de días
   colorAlerta: ColorAlerta;
   estado: EstadoExpediente;
   valorDemanda?: number;
@@ -80,6 +78,9 @@ interface Expediente {
   createdAt: Date;
   updatedAt: Date;
   documents?: string[];
+  demandantes?: Array<{ nombre: string; identificacion: string; tipoPersona?: string }>;
+  demandados?: Array<{ nombre: string; identificacion: string; cargo?: string }>;
+  otrosActores?: Array<{ nombre: string; rol: string }>;
 }
 
 // Mock removed - data now comes from backend via legalService.getExpedientes()
@@ -95,7 +96,6 @@ export function ModuloDefensaJudicial({
   onVolverKanban?: () => void;
   hideHeader?: boolean;
 }) {
-  const { showToast } = useToast();
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [vista, setVista] = useState<'lista' | 'detalle'>('lista');
   const [expedienteSeleccionado, setExpedienteSeleccionado] = useState<Expediente | null>(null);
@@ -108,38 +108,93 @@ export function ModuloDefensaJudicial({
     try {
       const data = await legalService.getExpedientes();
       if (data) {
-        const mappedData: Expediente[] = data.map((item: any) => ({
-          id: item.radicado,
-          jurisdiccion: item.jurisdiccion as Jurisdiccion,
-          demandante: item.demandante,
-          demandado: item.demandado,
-          juzgado: item.juzgadoConocimiento || 'Por definir',
-          medioControl: item.medioControl || 'Nulidad',
-          abogadoAsignado: item.abogadoSustanciador || 'Por asignar',
-          fechaNotificacion: item.fechaNotificacion ? new Date(item.fechaNotificacion) : new Date(),
-          fechaDemanda: item.fechaRadicacion ? new Date(item.fechaRadicacion) : new Date(),
-          fechaVencimiento: item.fechaVencimientoTermino ? new Date(item.fechaVencimientoTermino) : new Date(),
-          plazo: item.terminoProcesalDias || 30,
-          diasRestantes: item.fechaVencimientoTermino
-            ? Math.ceil((new Date(item.fechaVencimientoTermino).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-            : 0,
-          colorAlerta: item.riesgoPrescripcion ? 'ROJO' : 'VERDE',
-          estado: 'ACTIVO', // Map BE status 'RADICADO' -> 'ACTIVO' ?
-          valorDemanda: Number(item.cuantia) || 0,
-          pretension: item.pretensionDemandante || '',
-          createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
-          updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
-          documents: item.documentosInicialesUrls || []
-        }));
+        // Función para calcular días hábiles entre dos fechas (excluyendo fines de semana)
+        const calcularDiasHabiles = (fechaInicio: Date, fechaFin: Date): number => {
+          let dias = 0;
+          const fecha = new Date(fechaInicio);
+          fecha.setHours(0, 0, 0, 0);
+          const fin = new Date(fechaFin);
+          fin.setHours(0, 0, 0, 0);
+
+          while (fecha <= fin) {
+            const dia = fecha.getDay();
+            if (dia !== 0 && dia !== 6) { // Excluir domingos (0) y sábados (6)
+              dias++;
+            }
+            fecha.setDate(fecha.getDate() + 1);
+          }
+          return dias;
+        };
+
+        const mappedData: Expediente[] = data.map((item: any) => {
+          // Calcular días restantes según tipo de conteo
+          const fechaVencimiento = item.fechaVencimientoTermino ? new Date(item.fechaVencimientoTermino) : null;
+          const now = new Date();
+          const tipoConteo = item.tipoConteoTermino || 'HABILES';
+          let diasRestantes = 0;
+          let tiempoRestante = 'Por definir';
+
+          if (fechaVencimiento) {
+            if (tipoConteo === 'HABILES') {
+              if (fechaVencimiento > now) {
+                diasRestantes = calcularDiasHabiles(now, fechaVencimiento);
+                tiempoRestante = `${diasRestantes} días hábiles`;
+              } else {
+                diasRestantes = -calcularDiasHabiles(fechaVencimiento, now);
+                tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} días hábiles`;
+              }
+            } else {
+              const diff = fechaVencimiento.getTime() - now.getTime();
+              const dayMs = 1000 * 60 * 60 * 24;
+              diasRestantes = Math.ceil(diff / dayMs);
+              if (diff > 0) {
+                tiempoRestante = `${diasRestantes} días calendario`;
+              } else {
+                tiempoRestante = `Vencido hace ${Math.abs(diasRestantes)} días calendario`;
+              }
+            }
+          } else {
+            diasRestantes = item.terminoProcesalDias || 30;
+            const tipoLabel = tipoConteo === 'HABILES' ? 'hábiles' : 'calendario';
+            tiempoRestante = `${diasRestantes} días ${tipoLabel}`;
+          }
+
+          return {
+            id: item.radicado,
+            jurisdiccion: item.jurisdiccion as Jurisdiccion,
+            demandante: item.demandante,
+            demandado: item.demandado,
+            juzgado: item.juzgadoConocimiento || 'Por definir',
+            medioControl: item.medioControl || 'Nulidad',
+            abogadoAsignado: item.abogadoSustanciador || 'Por asignar',
+            fechaNotificacion: item.fechaNotificacion ? new Date(item.fechaNotificacion) : new Date(),
+            fechaDemanda: item.fechaRadicacion ? new Date(item.fechaRadicacion) : new Date(),
+            fechaVencimiento: item.fechaVencimientoTermino ? new Date(item.fechaVencimientoTermino) : new Date(),
+            plazo: item.terminoProcesalDias || 30,
+            diasRestantes,
+            tiempoRestante,
+            tipoConteoTermino: tipoConteo as 'HABILES' | 'CALENDARIO',
+            colorAlerta: item.riesgoPrescripcion ? 'ROJO' : 'VERDE',
+            estado: 'ACTIVO', // Map BE status 'RADICADO' -> 'ACTIVO' ?
+            valorDemanda: Number(item.cuantia) || 0,
+            pretension: item.pretensionDemandante || '',
+            createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+            updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+            documents: item.documentosInicialesUrls || [],
+            demandantes: item.actors && item.actors.some((a: any) => a.rol === 'DEMANDANTE')
+              ? item.actors.filter((a: any) => a.rol === 'DEMANDANTE')
+              : (item.demandante ? [{ nombre: item.demandante, identificacion: item.numeroIdDemandante || '', tipoPersona: 'natural' }] : []),
+            demandados: item.actors && item.actors.some((a: any) => a.rol === 'DEMANDADO')
+              ? item.actors.filter((a: any) => a.rol === 'DEMANDADO')
+              : (item.demandado ? [{ nombre: item.demandado, identificacion: item.numeroIdDemandado || '', tipoPersona: 'juridica' }] : []),
+            otrosActores: item.actors ? item.actors.filter((a: any) => a.rol !== 'DEMANDANTE' && a.rol !== 'DEMANDADO') : []
+          };
+        });
         setExpedientes(mappedData);
       }
     } catch (error) {
       console.error('Error fetching expedientes:', error);
-      showToast({
-        variant: 'error',
-        title: 'Error',
-        message: 'No se pudieron cargar los expedientes'
-      });
+      toast.error('No se pudieron cargar los expedientes');
     }
   };
 
@@ -147,10 +202,10 @@ export function ModuloDefensaJudicial({
 
 
   // Modal formulario
-  const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
 
   // Tabs en vista detalle
-  const [tabActivo, setTabActivo] = useState<'info' | 'documentos' | 'alertas'>('info');
+  const [tabActivo, setTabActivo] = useState<'info' | 'partes' | 'documentos' | 'alertas'>('info');
 
   // Filtros
   const [busqueda, setBusqueda] = useState('');
@@ -207,8 +262,95 @@ export function ModuloDefensaJudicial({
   // ============================================
 
   const handleCrearExpediente = () => {
-    setMostrarFormulario(true);
+    setModalNuevaDemandaOpen(true);
   };
+
+  const handleSaveNuevaDemanda = async (demandaData: NuevaDemandaData) => {
+    try {
+      // Mapear datos del formulario al formato del backend (Igual que en V3)
+      const expedienteData = {
+        radicado: demandaData.numeroRadicado,
+        tipoProceso: demandaData.tipoProceso,
+        jurisdiccion: 'Contencioso Administrativo', // Default o mapeado
+        demandante: demandaData.demandantes[0]?.nombre || 'Sin Demandante',
+        demandado: demandaData.demandados[0]?.nombre || 'Sin Demandado',
+        estado: 'ACTIVO',
+        fechaRadicacion: new Date().toISOString(),
+        cuantia: parseFloat(demandaData.cuantia.replace(/[^0-9]/g, '')) || 0,
+        abogadoSustanciador: demandaData.abogadoAsignado,
+        medioControl: demandaData.medioControl,
+        juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
+        ubicacionFisica: demandaData.ciudad,
+        pretensionDemandante: demandaData.pretensiones,
+        fechaNotificacion: demandaData.fechaNotificacion,
+        fechaVencimientoTermino: demandaData.fechaVencimiento,
+        etapaProcesal: demandaData.etapa,
+        ultimaActuacion: demandaData.observaciones || 'Demanda registrada',
+
+        // Mapeo unificado de actores
+        actors: [
+          ...demandaData.demandantes.map((d: any) => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: 'DEMANDANTE',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          })),
+          ...demandaData.demandados.map((d: any) => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: 'DEMANDADO',
+            cargo: d.cargo,
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          })),
+          ...(demandaData.otrosActores || []).map((d: any) => ({
+            nombre: d.nombre,
+            tipoPersona: d.tipoPersona,
+            identificacion: d.identificacion,
+            rol: d.rol || 'OTRO',
+            telefono: d.telefono,
+            email: d.email,
+            direccion: d.direccion,
+            apoderado: d.apoderado
+          })),
+        ],
+
+        // Datos Legacy (para compatibilidad con API vieja si fuera necesario)
+        tipoIdDemandante: demandaData.demandantes[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandante: demandaData.demandantes[0]?.identificacion || '',
+        demandanteDireccion: demandaData.demandantes[0]?.direccion || '',
+        demandanteTelefono: demandaData.demandantes[0]?.telefono || '',
+        demandanteEmail: demandaData.demandantes[0]?.email || '',
+
+        tipoIdDemandado: demandaData.demandados[0]?.tipoPersona === 'natural' ? 'CC' : 'NIT',
+        numeroIdDemandado: demandaData.demandados[0]?.identificacion || '',
+        demandadoDireccion: demandaData.demandados[0]?.direccion || '',
+        demandadoTelefono: demandaData.demandados[0]?.telefono || '',
+        demandadoEmail: demandaData.demandados[0]?.email || '',
+
+        // Campos de términos procesales
+        terminoProcesalDias: demandaData.terminoProcesalDias,
+        tipoConteoTermino: demandaData.tipoConteoTermino || 'HABILES',
+      };
+
+      await legalService.crearExpediente(expedienteData);
+
+      fetchExpedientes();
+      setModalNuevaDemandaOpen(false);
+    } catch (error: any) {
+      console.error('Error guardando demanda:', error);
+      toast.error(error.message || 'Error al guardar la demanda');
+    }
+  };
+
+
 
 
 
@@ -223,11 +365,7 @@ export function ModuloDefensaJudicial({
   };
 
   const handleExportar = () => {
-    showToast({
-      variant: 'info',
-      title: 'Exportando datos',
-      message: 'Se está generando el reporte en Excel...',
-    });
+    toast.info('Se está generando el reporte en Excel...', { description: 'Exportando datos' });
   };
 
   // ============================================
@@ -277,7 +415,7 @@ export function ModuloDefensaJudicial({
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-4">
               <ButtonSIGL
-                variant="outline"
+                variant="secondary"
                 onClick={handleVolverLista}
               >
                 ← Volver a la lista
@@ -300,83 +438,193 @@ export function ModuloDefensaJudicial({
             </BadgeSIGL>
           </div>
 
-          {/* Contenido */}
+          {/* Tabs de Navegación del Detalle */}
+          <div className="flex gap-4 mb-6 border-b border-gray-200">
+            <button
+              onClick={() => setTabActivo('info')}
+              className={`pb-2 px-4 font-medium text-sm transition-colors relative ${tabActivo === 'info' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              General
+              {tabActivo === 'info' && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />
+              )}
+            </button>
+            <button
+              onClick={() => setTabActivo('partes')}
+              className={`pb-2 px-4 font-medium text-sm transition-colors relative ${tabActivo === 'partes' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              Partes Procesales
+              {tabActivo === 'partes' && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />
+              )}
+            </button>
+            <button
+              onClick={() => setTabActivo('documentos')}
+              className={`pb-2 px-4 font-medium text-sm transition-colors relative ${tabActivo === 'documentos' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+            >
+              Documentos
+              {tabActivo === 'documentos' && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600" />
+              )}
+            </button>
+          </div>
+
+          {/* Contenido (Tabs) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Columna principal */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Información general */}
-              <CardSIGL>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  Información General
-                </h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-500">Jurisdicción</p>
-                    <p className="font-medium">{expedienteSeleccionado.jurisdiccion}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Medio de Control</p>
-                    <p className="font-medium">{expedienteSeleccionado.medioControl}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Juzgado/Tribunal</p>
-                    <p className="font-medium">{expedienteSeleccionado.juzgado}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Abogado Asignado</p>
-                    <p className="font-medium">{expedienteSeleccionado.abogadoAsignado}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Valor de la Demanda</p>
-                    <p className="font-medium">{formatCurrency(expedienteSeleccionado.valorDemanda)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Estado</p>
-                    <BadgeSIGL variant={expedienteSeleccionado.estado === 'VENCIDO' ? 'danger' : 'success'}>
-                      {expedienteSeleccionado.estado}
-                    </BadgeSIGL>
-                  </div>
-                </div>
-              </CardSIGL>
 
-              {/* Pretensión */}
-              <CardSIGL>
-                <h3 className="text-lg font-semibold mb-3">Pretensión del Demandante</h3>
-                <p className="text-gray-700">{expedienteSeleccionado.pretension}</p>
-              </CardSIGL>
+              {/* TAB: GENERAL */}
+              {tabActivo === 'info' && (
+                <>
+                  {/* Información general */}
+                  <CardSIGL>
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      Información General
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">Jurisdicción</p>
+                        <p className="font-medium">{expedienteSeleccionado.jurisdiccion}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Medio de Control</p>
+                        <p className="font-medium">{expedienteSeleccionado.medioControl}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Juzgado/Tribunal</p>
+                        <p className="font-medium">{expedienteSeleccionado.juzgado}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Abogado Asignado</p>
+                        <p className="font-medium">{expedienteSeleccionado.abogadoAsignado}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Valor de la Demanda</p>
+                        <p className="font-medium">{formatCurrency(expedienteSeleccionado.valorDemanda)}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Estado</p>
+                        <BadgeSIGL variant={expedienteSeleccionado.estado === 'VENCIDO' ? 'danger' : 'success'}>
+                          {expedienteSeleccionado.estado}
+                        </BadgeSIGL>
+                      </div>
+                    </div>
+                  </CardSIGL>
 
-              {/* Documentos */}
-              <CardSIGL>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-blue-600" />
-                  Documentos del Expediente
-                </h3>
-                <div className="space-y-2">
-                  {expedienteSeleccionado.documents && expedienteSeleccionado.documents.length > 0 ? (
-                    expedienteSeleccionado.documents.map((docUrl, idx) => {
-                      const fileName = docUrl.split('/').pop() || `Documento ${idx + 1}`;
-                      return (
-                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-4 h-4 text-gray-500" />
-                            <span className="text-sm truncate max-w-[200px]" title={fileName}>{fileName}</span>
+                  {/* Pretensión */}
+                  <CardSIGL>
+                    <h3 className="text-lg font-semibold mb-3">Pretensión del Demandante</h3>
+                    <p className="text-gray-700">{expedienteSeleccionado.pretension}</p>
+                  </CardSIGL>
+                </>
+              )}
+
+              {/* TAB: PARTES */}
+              {tabActivo === 'partes' && (
+                <CardSIGL>
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    Partes Procesales
+                  </h3>
+
+                  {/* Demandantes */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide border-b pb-1">Demandantes</h4>
+                    <div className="space-y-3">
+                      {expedienteSeleccionado.demandantes && expedienteSeleccionado.demandantes.length > 0 ? (
+                        expedienteSeleccionado.demandantes.map((d, i) => (
+                          <div key={i} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
+                            <div>
+                              <p className="font-semibold text-gray-900">{d.nombre}</p>
+                              <p className="text-sm text-gray-500">{d.tipoPersona} - {d.identificacion}</p>
+                            </div>
+                            <BadgeSIGL variant="info" size="sm">Demandante</BadgeSIGL>
                           </div>
-                          <ButtonSIGL
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(docUrl, '_blank')}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </ButtonSIGL>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="text-gray-500 text-sm italic">No hay documentos adjuntos</p>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 italic">No hay demandantes registrados</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Demandados */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide border-b pb-1">Demandados</h4>
+                    <div className="space-y-3">
+                      {expedienteSeleccionado.demandados && expedienteSeleccionado.demandados.length > 0 ? (
+                        expedienteSeleccionado.demandados.map((d, i) => (
+                          <div key={i} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
+                            <div>
+                              <p className="font-semibold text-gray-900">{d.nombre}</p>
+                              <p className="text-sm text-gray-500">{d.identificacion} {d.cargo ? `- ${d.cargo}` : ''}</p>
+                            </div>
+                            <BadgeSIGL variant="danger" size="sm">Demandado</BadgeSIGL>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 italic">No hay demandados registrados</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Otros Actores */}
+                  {expedienteSeleccionado.otrosActores && expedienteSeleccionado.otrosActores.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide border-b pb-1">Otros Actores</h4>
+                      <div className="space-y-3">
+                        {expedienteSeleccionado.otrosActores.map((a, i) => (
+                          <div key={i} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center">
+                            <div>
+                              <p className="font-semibold text-gray-900">{a.nombre}</p>
+                              <p className="text-sm text-gray-500">{a.rol}</p>
+                            </div>
+                            <BadgeSIGL variant="warning" size="sm">Otro</BadgeSIGL>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </div>
-              </CardSIGL>
+                </CardSIGL>
+              )}
+
+              {/* TAB: DOCUMENTOS */}
+              <div className={tabActivo === 'documentos' ? 'block' : 'hidden'}>
+                <CardSIGL>
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    Documentos del Expediente
+                  </h3>
+                  <div className="space-y-2">
+                    {expedienteSeleccionado.documents && expedienteSeleccionado.documents.length > 0 ? (
+                      expedienteSeleccionado.documents.map((docUrl, idx) => {
+                        const fileName = docUrl.split('/').pop() || `Documento ${idx + 1}`;
+                        return (
+                          <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-4 h-4 text-gray-500" />
+                              <span className="text-sm truncate max-w-[200px]" title={fileName}>{fileName}</span>
+                            </div>
+                            <ButtonSIGL
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => window.open(docUrl, '_blank')}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </ButtonSIGL>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-500 text-sm italic">No hay documentos adjuntos</p>
+                    )}
+                  </div>
+                </CardSIGL>
+              </div>
             </div>
 
             {/* Columna lateral */}
@@ -424,11 +672,11 @@ export function ModuloDefensaJudicial({
                     <Edit className="w-4 h-4" />
                     Editar Expediente
                   </ButtonSIGL>
-                  <ButtonSIGL variant="outline" fullWidth>
+                  <ButtonSIGL variant="secondary" fullWidth>
                     <FileText className="w-4 h-4" />
                     Subir Documento
                   </ButtonSIGL>
-                  <ButtonSIGL variant="outline" fullWidth>
+                  <ButtonSIGL variant="secondary" fullWidth>
                     <Download className="w-4 h-4" />
                     Generar Reporte
                   </ButtonSIGL>
@@ -455,7 +703,7 @@ export function ModuloDefensaJudicial({
               <div className="flex items-center gap-4">
                 {onVolverKanban && (
                   <ButtonSIGL
-                    variant="outline"
+                    variant="secondary"
                     onClick={onVolverKanban}
                   >
                     ← Volver al Kanban
@@ -572,31 +820,31 @@ export function ModuloDefensaJudicial({
 
               />
             </div>
-            <SelectSIGL
+            <select
               value={filtroJurisdiccion}
-              onChange={setFiltroJurisdiccion}
-              options={[
-                { value: 'TODAS', label: 'Todas las jurisdicciones' },
-                { value: 'CONSTITUCIONAL', label: 'Constitucional' },
-                { value: 'CONTENCIOSO', label: 'Contencioso Administrativo' },
-                { value: 'LABORAL', label: 'Laboral' },
-                { value: 'ORDINARIA', label: 'Ordinaria' },
-              ]}
-            />
+              onChange={(e) => setFiltroJurisdiccion(e.target.value as any)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="TODAS">Todas las jurisdicciones</option>
+              <option value="CONSTITUCIONAL">Constitucional</option>
+              <option value="CONTENCIOSO">Contencioso Administrativo</option>
+              <option value="LABORAL">Laboral</option>
+              <option value="ORDINARIA">Ordinaria</option>
+            </select>
             <div className="flex gap-2">
-              <SelectSIGL
+              <select
                 value={filtroAlerta}
-                onChange={setFiltroAlerta}
-                options={[
-                  { value: 'TODAS', label: 'Todas las alertas' },
-                  { value: 'VERDE', label: 'Verde' },
-                  { value: 'AMARILLO', label: 'Amarillo' },
-                  { value: 'ROJO', label: 'Rojo' },
-                  { value: 'VENCIDO', label: 'Vencido' },
-                ]}
-              />
+                onChange={(e) => setFiltroAlerta(e.target.value as any)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="TODAS">Todas las alertas</option>
+                <option value="VERDE">Verde</option>
+                <option value="AMARILLO">Amarillo</option>
+                <option value="ROJO">Rojo</option>
+                <option value="VENCIDO">Vencido</option>
+              </select>
               <ButtonSIGL
-                variant="outline"
+                variant="secondary"
                 onClick={handleExportar}
               >
                 <Download className="w-4 h-4" />
@@ -684,7 +932,7 @@ export function ModuloDefensaJudicial({
                       <td className="px-4 py-4">
                         <ButtonSIGL
                           variant="ghost"
-                          size="small"
+                          size="sm"
                           onClick={() => handleVerDetalle(expediente)}
                         >
                           <Eye className="w-4 h-4" />
@@ -706,43 +954,12 @@ export function ModuloDefensaJudicial({
         </CardSIGL>
       </div>
 
-      {/* Modal Formulario */}
-      {mostrarFormulario && (
-        <FormularioExpedienteJudicial
-          isOpen={mostrarFormulario}
-          onClose={() => setMostrarFormulario(false)}
-          onExpedienteCreado={(data: any) => {
-            showToast({
-              variant: 'success',
-              title: '✅ Expediente creado',
-              message: `Expediente ${data.radicado} creado exitosamente`,
-            });
-            setMostrarFormulario(false);
-
-            const nuevoExpediente: Expediente = {
-              id: data.radicado,
-              jurisdiccion: (data.jurisdiccion as Jurisdiccion) || 'ORDINARIA',
-              demandante: data.demandante || '',
-              demandado: data.demandado || 'ESAP',
-              juzgado: data.juzgadoConocimiento || 'Por definir',
-              medioControl: data.medioControl || 'Nulidad',
-              abogadoAsignado: data.abogadoSustanciador || 'Por asignar',
-              fechaNotificacion: data.fechaNotificacion ? new Date(data.fechaNotificacion) : new Date(),
-              fechaDemanda: data.fechaRadicacion ? new Date(data.fechaRadicacion) : new Date(),
-              fechaVencimiento: data.fechaVencimientoTermino ? new Date(data.fechaVencimientoTermino) : new Date(),
-              plazo: data.terminoProcesalDias || 30,
-              diasRestantes: 30, // Debería calcularse real
-              colorAlerta: 'VERDE', // Debería calcularse real
-              estado: 'ACTIVO',
-              valorDemanda: Number(data.cuantia) || 0,
-              pretension: data.pretensionDemandante || '',
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              documents: data.documentosInicialesUrls || [],
-            };
-
-            setExpedientes((prev) => [nuevoExpediente, ...prev]);
-          }}
+      {/* Modal Formulario Nueva Demanda */}
+      {modalNuevaDemandaOpen && (
+        <ModalNuevaDemanda
+          isOpen={modalNuevaDemandaOpen}
+          onClose={() => setModalNuevaDemandaOpen(false)}
+          onSave={handleSaveNuevaDemanda}
         />
       )}
     </div>

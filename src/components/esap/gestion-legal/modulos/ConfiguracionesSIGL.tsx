@@ -373,7 +373,7 @@ export function ConfiguracionesSIGL() {
 
   const agregarMedioControl = () => {
     if (!moduloActual || !moduloActual.mediosControl) return;
-    
+
     const nuevoMedio: MedioControl = {
       id: `medio-${Date.now()}`,
       nombre: 'Nuevo Medio de Control',
@@ -382,13 +382,12 @@ export function ConfiguracionesSIGL() {
       orden: (moduloActual.mediosControl?.length || 0) + 1,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, mediosControl: [...(m.mediosControl || []), nuevoMedio] }
         : m
     ));
-    setCambiosPendientes(true);
-    
+
     toast.success('Medio de control agregado correctamente', {
       description: 'Se ha agregado un nuevo medio de control',
       duration: 3000
@@ -399,13 +398,12 @@ export function ConfiguracionesSIGL() {
     const medio = moduloActual?.mediosControl?.find(m => m.id === medioId);
     if (!medio) return;
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { ...m, mediosControl: (m.mediosControl || []).filter(mc => mc.id !== medioId) }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? { ...m, mediosControl: (m.mediosControl || []).filter((mc: MedioControl) => mc.id !== medioId) }
         : m
     ));
-    setCambiosPendientes(true);
-    
+
     toast.success('Medio de control eliminado correctamente', {
       description: `"${medio.nombre}" ha sido eliminado de los medios de control`,
       duration: 3000
@@ -413,17 +411,16 @@ export function ConfiguracionesSIGL() {
   };
 
   const actualizarMedioControl = (medioId: string, cambios: Partial<MedioControl>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            mediosControl: (m.mediosControl || []).map(mc => 
-              mc.id === medioId ? { ...mc, ...cambios } : mc
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          mediosControl: (m.mediosControl || []).map((mc: MedioControl) =>
+            mc.id === medioId ? { ...mc, ...cambios } : mc
+          )
+        }
         : m
     ));
-    setCambiosPendientes(true);
   };
 
   // ============ FUNCIONES DE TIPOS DE AUTOS ============
@@ -505,9 +502,9 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarTipoActuacion = () => {
     if (!moduloActual || !moduloActual.tiposActuaciones) return;
-    
+
     const maxOrden = Math.max(0, ...moduloActual.tiposActuaciones.map(t => t.orden || 0));
-    
+
     const nuevoTipo: TipoActuacion = {
       id: `actuacion-${Date.now()}`,
       nombre: 'Nuevo Tipo de Actuación',
@@ -516,14 +513,14 @@ export function ConfiguracionesSIGL() {
       orden: maxOrden + 1,
     };
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    setConfiguraciones(prev => prev.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposActuaciones: [...(m.tiposActuaciones || []), nuevoTipo] }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalAgregarActuacion(false);
-    
+
     toast.success('Tipo de actuación agregado correctamente', {
       description: 'Se ha agregado un nuevo tipo de actuación disciplinaria',
       duration: 3000
@@ -541,31 +538,31 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarTipoActuacion = () => {
     if (!actuacionAEliminar) return;
 
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
+    setConfiguraciones(prev => prev.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposActuaciones: (m.tiposActuaciones || []).filter(t => t.id !== actuacionAEliminar.id) }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalEliminarActuacion(false);
-    
+
     toast.success('Tipo de actuación eliminado correctamente', {
       description: `"${actuacionAEliminar.nombre}" ha sido eliminado de los tipos de actuaciones`,
       duration: 3000
     });
-    
+
     setActuacionAEliminar(null);
   };
 
   const actualizarTipoActuacion = (tipoId: string, cambios: Partial<TipoActuacion>) => {
-    setConfiguraciones(prev => prev.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiposActuaciones: (m.tiposActuaciones || []).map(t => 
-              t.id === tipoId ? { ...t, ...cambios } : t
-            )
-          }
+    setConfiguraciones(prev => prev.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiposActuaciones: (m.tiposActuaciones || []).map(t =>
+            t.id === tipoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
     setCambiosPendientes(true);
@@ -579,9 +576,9 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarTipoExcepcion = () => {
     if (!moduloActual || !moduloActual.tiposExcepcionesProcesal) return;
-    
+
     const maxOrden = Math.max(0, ...moduloActual.tiposExcepcionesProcesal.map(t => t.orden || 0));
-    
+
     const nuevoTipo: TipoExcepcionProcesal = {
       id: `excepcion-${Date.now()}`,
       nombre: 'Nueva Excepción Procesal',
@@ -591,14 +588,14 @@ export function ConfiguracionesSIGL() {
       orden: maxOrden + 1,
     };
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposExcepcionesProcesal: [...(m.tiposExcepcionesProcesal || []), nuevoTipo] }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalAgregarExcepcion(false);
-    
+
     toast.success('Tipo de excepción agregado correctamente', {
       description: 'Se ha agregado un nuevo tipo de excepción procesal',
       duration: 3000
@@ -616,31 +613,31 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarTipoExcepcion = () => {
     if (!excepcionAEliminar) return;
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, tiposExcepcionesProcesal: (m.tiposExcepcionesProcesal || []).filter(t => t.id !== excepcionAEliminar.id) }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalEliminarExcepcion(false);
-    
+
     toast.success('Tipo de excepción eliminado correctamente', {
       description: `"${excepcionAEliminar.nombre}" ha sido eliminado`,
       duration: 3000
     });
-    
+
     setExcepcionAEliminar(null);
   };
 
   const actualizarTipoExcepcion = (tipoId: string, cambios: Partial<TipoExcepcionProcesal>) => {
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            tiposExcepcionesProcesal: (m.tiposExcepcionesProcesal || []).map(t => 
-              t.id === tipoId ? { ...t, ...cambios } : t
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          tiposExcepcionesProcesal: (m.tiposExcepcionesProcesal || []).map(t =>
+            t.id === tipoId ? { ...t, ...cambios } : t
+          )
+        }
         : m
     ));
     setCambiosPendientes(true);
@@ -654,9 +651,9 @@ export function ConfiguracionesSIGL() {
 
   const confirmarAgregarCausalEspecifica = () => {
     if (!moduloActual || !moduloActual.causalesEspecificas) return;
-    
+
     const maxOrden = Math.max(0, ...moduloActual.causalesEspecificas.map(c => c.orden || 0));
-    
+
     const nuevaCausal: CausalEspecifica = {
       id: `causal-${Date.now()}`,
       nombre: 'Nueva Causal Específica',
@@ -666,14 +663,14 @@ export function ConfiguracionesSIGL() {
       orden: maxOrden + 1,
     };
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, causalesEspecificas: [...(m.causalesEspecificas || []), nuevaCausal] }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalAgregarCausal(false);
-    
+
     toast.success('Causal específica agregada correctamente', {
       description: 'Se ha agregado una nueva causal específica',
       duration: 3000
@@ -691,31 +688,31 @@ export function ConfiguracionesSIGL() {
   const confirmarEliminarCausalEspecifica = () => {
     if (!causalAEliminar) return;
 
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
         ? { ...m, causalesEspecificas: (m.causalesEspecificas || []).filter(c => c.id !== causalAEliminar.id) }
         : m
     ));
     setCambiosPendientes(true);
     setShowModalEliminarCausal(false);
-    
+
     toast.success('Causal específica eliminada correctamente', {
       description: `"${causalAEliminar.nombre}" ha sido eliminada`,
       duration: 3000
     });
-    
+
     setCausalAEliminar(null);
   };
 
   const actualizarCausalEspecifica = (causalId: string, cambios: Partial<CausalEspecifica>) => {
-    actualizarConfiguraciones(configuraciones.map(m => 
-      m.id === moduloActivo 
-        ? { 
-            ...m, 
-            causalesEspecificas: (m.causalesEspecificas || []).map(c => 
-              c.id === causalId ? { ...c, ...cambios } : c
-            )
-          }
+    actualizarConfiguraciones(configuraciones.map(m =>
+      m.id === moduloActivo
+        ? {
+          ...m,
+          causalesEspecificas: (m.causalesEspecificas || []).map(c =>
+            c.id === causalId ? { ...c, ...cambios } : c
+          )
+        }
         : m
     ));
     setCambiosPendientes(true);
@@ -880,14 +877,13 @@ export function ConfiguracionesSIGL() {
                   </span>
                 </div>
               </button>
-              
+
               <button
                 onClick={() => setModuloActivo('plantillas-oficios')}
-                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${
-                  moduloActivo === 'plantillas-oficios'
-                    ? 'bg-blue-50 text-blue-900 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`w-full text-left px-3 py-2 sm:py-2.5 rounded-lg transition-colors ${moduloActivo === 'plantillas-oficios'
+                  ? 'bg-blue-50 text-blue-900 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
@@ -1395,7 +1391,7 @@ export function ConfiguracionesSIGL() {
                           <textarea
                             value={tipo.descripcion}
                             onChange={(e) => {
-                              const nuevosRequerimientos = tiposRequerimientos.map(t => 
+                              const nuevosRequerimientos = tiposRequerimientos.map(t =>
                                 t.id === tipo.id ? { ...t, descripcion: e.target.value } : t
                               );
                               actualizarTiposRequerimientos(nuevosRequerimientos);
@@ -1638,7 +1634,7 @@ export function ConfiguracionesSIGL() {
               )}
 
               {/* Configuración de Medios de Control - SOLO PARA DEFENSA JUDICIAL */}
-              {moduloActual.mediosControl && moduloActual.mediosControl.length > 0 && (
+              {moduloActual.mediosControl && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200">
                   <div className="p-3 sm:p-4 lg:p-6">
                     <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
@@ -1654,7 +1650,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarMedioControl}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -1666,7 +1662,7 @@ export function ConfiguracionesSIGL() {
 
                     <div className="space-y-3">
                       {moduloActual.mediosControl.map((medio) => (
-                        <div 
+                        <div
                           key={medio.id}
                           className="p-3 sm:p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-200"
                         >
@@ -1819,7 +1815,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarTipoActuacion}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                           boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                         }}
@@ -1833,67 +1829,67 @@ export function ConfiguracionesSIGL() {
                       {moduloActual.tiposActuaciones
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
-                        <div 
-                          key={tipo.id}
-                          className="p-3 sm:p-4 bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-200"
-                        >
-                          {/* Fila 1: Orden + Nombre + Eliminar */}
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                                #
-                              </label>
+                          <div
+                            key={tipo.id}
+                            className="p-3 sm:p-4 bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-200"
+                          >
+                            {/* Fila 1: Orden + Nombre + Eliminar */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                  #
+                                </label>
+                                <input
+                                  type="number"
+                                  value={tipo.orden}
+                                  onChange={(e) => actualizarTipoActuacion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
+                                  min="1"
+                                  className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                              </div>
                               <input
-                                type="number"
-                                value={tipo.orden}
-                                onChange={(e) => actualizarTipoActuacion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
-                                min="1"
-                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                type="text"
+                                value={tipo.nombre}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { nombre: e.target.value })}
+                                className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                placeholder="Nombre del tipo de actuación"
+                              />
+                              <button
+                                onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
+                                className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Fila 2: Descripción */}
+                            <div className="mb-3">
+                              <textarea
+                                value={tipo.descripcion}
+                                onChange={(e) => actualizarTipoActuacion(tipo.id, { descripcion: e.target.value })}
+                                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                                placeholder="Descripción de la actuación disciplinaria..."
+                                rows={2}
                               />
                             </div>
-                            <input
-                              type="text"
-                              value={tipo.nombre}
-                              onChange={(e) => actualizarTipoActuacion(tipo.id, { nombre: e.target.value })}
-                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              placeholder="Nombre del tipo de actuación"
-                            />
-                            <button
-                              onClick={() => solicitarEliminarTipoActuacion(tipo.id)}
-                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
 
-                          {/* Fila 2: Descripción */}
-                          <div className="mb-3">
-                            <textarea
-                              value={tipo.descripcion}
-                              onChange={(e) => actualizarTipoActuacion(tipo.id, { descripcion: e.target.value })}
-                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                              placeholder="Descripción de la actuación disciplinaria..."
-                              rows={2}
-                            />
+                            {/* Fila 3: Activo */}
+                            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                              {/* Toggle Activo */}
+                              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                                <input
+                                  type="checkbox"
+                                  checked={tipo.activo}
+                                  onChange={(e) => actualizarTipoActuacion(tipo.id, { activo: e.target.checked })}
+                                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                  Activo
+                                </span>
+                              </label>
+                            </div>
                           </div>
-
-                          {/* Fila 3: Activo */}
-                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                            {/* Toggle Activo */}
-                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
-                              <input
-                                type="checkbox"
-                                checked={tipo.activo}
-                                onChange={(e) => actualizarTipoActuacion(tipo.id, { activo: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
-                                Activo
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 </div>
@@ -1916,7 +1912,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarTipoExcepcion}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
                           boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
                         }}
@@ -1930,74 +1926,74 @@ export function ConfiguracionesSIGL() {
                       {moduloActual.tiposExcepcionesProcesal
                         .sort((a, b) => a.orden - b.orden)
                         .map((tipo) => (
-                        <div 
-                          key={tipo.id}
-                          className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
-                        >
-                          {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                                #
-                              </label>
+                          <div
+                            key={tipo.id}
+                            className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
+                          >
+                            {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                  #
+                                </label>
+                                <input
+                                  type="number"
+                                  value={tipo.orden}
+                                  onChange={(e) => actualizarTipoExcepcion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
+                                  min="1"
+                                  className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                              </div>
                               <input
-                                type="number"
-                                value={tipo.orden}
-                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { orden: parseInt(e.target.value) || 1 })}
-                                min="1"
-                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                type="text"
+                                value={tipo.icono}
+                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { icono: e.target.value })}
+                                className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="📋"
+                                maxLength={2}
+                              />
+                              <input
+                                type="text"
+                                value={tipo.nombre}
+                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { nombre: e.target.value })}
+                                className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="Nombre de la excepción"
+                              />
+                              <button
+                                onClick={() => solicitarEliminarTipoExcepcion(tipo.id)}
+                                className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Fila 2: Descripción */}
+                            <div className="mb-3">
+                              <textarea
+                                value={tipo.descripcion}
+                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { descripcion: e.target.value })}
+                                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                                placeholder="Descripción de la excepción procesal..."
+                                rows={2}
                               />
                             </div>
-                            <input
-                              type="text"
-                              value={tipo.icono}
-                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { icono: e.target.value })}
-                              className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                              placeholder="📋"
-                              maxLength={2}
-                            />
-                            <input
-                              type="text"
-                              value={tipo.nombre}
-                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { nombre: e.target.value })}
-                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                              placeholder="Nombre de la excepción"
-                            />
-                            <button
-                              onClick={() => solicitarEliminarTipoExcepcion(tipo.id)}
-                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
 
-                          {/* Fila 2: Descripción */}
-                          <div className="mb-3">
-                            <textarea
-                              value={tipo.descripcion}
-                              onChange={(e) => actualizarTipoExcepcion(tipo.id, { descripcion: e.target.value })}
-                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                              placeholder="Descripción de la excepción procesal..."
-                              rows={2}
-                            />
+                            {/* Fila 3: Activo */}
+                            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                                <input
+                                  type="checkbox"
+                                  checked={tipo.activo}
+                                  onChange={(e) => actualizarTipoExcepcion(tipo.id, { activo: e.target.checked })}
+                                  className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                  Activo
+                                </span>
+                              </label>
+                            </div>
                           </div>
-
-                          {/* Fila 3: Activo */}
-                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
-                              <input
-                                type="checkbox"
-                                checked={tipo.activo}
-                                onChange={(e) => actualizarTipoExcepcion(tipo.id, { activo: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                              />
-                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
-                                Activo
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 </div>
@@ -2020,7 +2016,7 @@ export function ConfiguracionesSIGL() {
                       <button
                         onClick={agregarCausalEspecifica}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                        style={{ 
+                        style={{
                           background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
                           boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
                         }}
@@ -2034,74 +2030,74 @@ export function ConfiguracionesSIGL() {
                       {moduloActual.causalesEspecificas
                         .sort((a, b) => a.orden - b.orden)
                         .map((causal) => (
-                        <div 
-                          key={causal.id}
-                          className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
-                        >
-                          {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="flex items-center gap-2">
-                              <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
-                                #
-                              </label>
+                          <div
+                            key={causal.id}
+                            className="p-3 sm:p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-200"
+                          >
+                            {/* Fila 1: Orden + Icono + Nombre + Eliminar */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs sm:text-sm text-gray-700 font-medium whitespace-nowrap">
+                                  #
+                                </label>
+                                <input
+                                  type="number"
+                                  value={causal.orden}
+                                  onChange={(e) => actualizarCausalEspecifica(causal.id, { orden: parseInt(e.target.value) || 1 })}
+                                  min="1"
+                                  className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                />
+                              </div>
                               <input
-                                type="number"
-                                value={causal.orden}
-                                onChange={(e) => actualizarCausalEspecifica(causal.id, { orden: parseInt(e.target.value) || 1 })}
-                                min="1"
-                                className="w-14 px-2 py-1.5 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                type="text"
+                                value={causal.icono}
+                                onChange={(e) => actualizarCausalEspecifica(causal.id, { icono: e.target.value })}
+                                className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="📋"
+                                maxLength={2}
+                              />
+                              <input
+                                type="text"
+                                value={causal.nombre}
+                                onChange={(e) => actualizarCausalEspecifica(causal.id, { nombre: e.target.value })}
+                                className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="Nombre de la causal"
+                              />
+                              <button
+                                onClick={() => solicitarEliminarCausalEspecifica(causal.id)}
+                                className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Fila 2: Descripción */}
+                            <div className="mb-3">
+                              <textarea
+                                value={causal.descripcion}
+                                onChange={(e) => actualizarCausalEspecifica(causal.id, { descripcion: e.target.value })}
+                                className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                                placeholder="Descripción de la causal específica..."
+                                rows={2}
                               />
                             </div>
-                            <input
-                              type="text"
-                              value={causal.icono}
-                              onChange={(e) => actualizarCausalEspecifica(causal.id, { icono: e.target.value })}
-                              className="w-16 px-2 py-1.5 text-center text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                              placeholder="📋"
-                              maxLength={2}
-                            />
-                            <input
-                              type="text"
-                              value={causal.nombre}
-                              onChange={(e) => actualizarCausalEspecifica(causal.id, { nombre: e.target.value })}
-                              className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                              placeholder="Nombre de la causal"
-                            />
-                            <button
-                              onClick={() => solicitarEliminarCausalEspecifica(causal.id)}
-                              className="min-h-[44px] min-w-[44px] p-2.5 sm:p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
 
-                          {/* Fila 2: Descripción */}
-                          <div className="mb-3">
-                            <textarea
-                              value={causal.descripcion}
-                              onChange={(e) => actualizarCausalEspecifica(causal.id, { descripcion: e.target.value })}
-                              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                              placeholder="Descripción de la causal específica..."
-                              rows={2}
-                            />
+                            {/* Fila 3: Activo */}
+                            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                              <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
+                                <input
+                                  type="checkbox"
+                                  checked={causal.activo}
+                                  onChange={(e) => actualizarCausalEspecifica(causal.id, { activo: e.target.checked })}
+                                  className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                  Activo
+                                </span>
+                              </label>
+                            </div>
                           </div>
-
-                          {/* Fila 3: Activo */}
-                          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                            <label className="flex items-center gap-1.5 sm:gap-2 cursor-pointer ml-auto">
-                              <input
-                                type="checkbox"
-                                checked={causal.activo}
-                                onChange={(e) => actualizarCausalEspecifica(causal.id, { activo: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                              />
-                              <span className="text-xs sm:text-sm text-gray-700 font-medium">
-                                Activo
-                              </span>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 </div>
@@ -2522,7 +2518,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-purple-800">
                   Se creará un nuevo tipo de actuación con valores predeterminados que podrá personalizar posteriormente. Estará disponible en el formulario de Agregar Actuación del expediente disciplinario.
@@ -2539,7 +2535,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarTipoActuacion}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -2571,7 +2567,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   Tipo: "{actuacionAEliminar.nombre}"
@@ -2622,7 +2618,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-orange-800">
                   Se creará un nuevo tipo de excepción procesal con valores predeterminados que podrá personalizar posteriormente.
@@ -2639,7 +2635,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarTipoExcepcion}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
                     boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
                   }}
@@ -2671,7 +2667,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   Tipo: "{excepcionAEliminar.nombre}"
@@ -2722,7 +2718,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
                 <p className="text-sm text-orange-800">
                   Se creará una nueva causal específica con valores predeterminados que podrá personalizar posteriormente.
@@ -2739,7 +2735,7 @@ export function ConfiguracionesSIGL() {
                 <button
                   onClick={confirmarAgregarCausalEspecifica}
                   className="px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #F57C00 0%, #E65100 100%)',
                     boxShadow: '0 2px 4px rgba(245, 124, 0, 0.2)'
                   }}
@@ -2771,7 +2767,7 @@ export function ConfiguracionesSIGL() {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <p className="text-sm font-semibold text-red-900 mb-2">
                   Causal: "{causalAEliminar.nombre}"

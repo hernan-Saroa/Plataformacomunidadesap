@@ -20,32 +20,32 @@ export interface FormFieldProps {
   name: string;
   label: string;
   placeholder?: string;
-  
+
   // Tipo y valor
   type?: 'text' | 'email' | 'number' | 'date' | 'datetime-local' | 'tel' | 'url' | 'textarea' | 'select';
   value: any;
   onChange: (value: any) => void;
   onBlur?: () => void;
-  
+
   // Validación
   required?: boolean;
   error?: string;
   state?: 'default' | 'error' | 'success';
-  
+
   // Opciones para select
   options?: Array<{ value: string; label: string; icon?: React.ReactNode }>;
-  
+
   // Características adicionales
   disabled?: boolean;
   maxLength?: number;
   showCharCount?: boolean;
   rows?: number; // Para textarea
-  
+
   // Ayuda contextual
   helpText?: string;
   tooltip?: string;
   icon?: React.ReactNode;
-  
+
   // Styling
   className?: string;
 }
@@ -71,48 +71,53 @@ export function FormField({
   icon,
   className = ''
 }: FormFieldProps) {
-  
+
   // Determinar estado visual
   const visualState = error ? 'error' : state;
-  
+
   // Estilos según estado
   const getInputClassName = () => {
     const baseClass = 'transition-all duration-200';
-    
+
     if (visualState === 'error') {
       return `${baseClass} border-red-500 focus:border-red-600 focus:ring-red-500`;
     }
-    
+
     if (visualState === 'success') {
       return `${baseClass} border-green-500 focus:border-green-600 focus:ring-green-500`;
     }
-    
+
     return `${baseClass} border-gray-300 focus:border-blue-500`;
   };
 
   // Renderizar el campo según el tipo
   const renderInput = () => {
     if (type === 'select' && options) {
+      // Using native select for better compatibility with Dialog modals
       return (
-        <Select value={value} onValueChange={onChange} disabled={disabled}>
-          <SelectTrigger 
-            id={name}
-            className={getInputClassName()}
-            onBlur={onBlur}
-          >
-            <SelectValue placeholder={placeholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                <div className="flex items-center gap-2">
-                  {option.icon}
-                  {option.label}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <select
+          id={name}
+          name={name}
+          value={value || ''}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          disabled={disabled}
+          className={`w-full h-11 px-3 py-2 text-sm rounded-md border bg-white ${getInputClassName()} ${className} appearance-none cursor-pointer`}
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+            backgroundPosition: 'right 0.5rem center',
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: '1.5em 1.5em',
+            paddingRight: '2.5rem'
+          }}
+        >
+          <option value="" disabled>{placeholder || 'Seleccione una opción'}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       );
     }
 
@@ -155,13 +160,13 @@ export function FormField({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {icon && <span className="text-gray-600">{icon}</span>}
-          <Label 
+          <Label
             htmlFor={name}
             className="text-sm font-bold text-gray-700 flex items-center gap-1"
           >
             {label}
             {required && <span className="text-red-500 ml-1">*</span>}
-            
+
             {/* Tooltip informativo */}
             {tooltip && (
               <TooltipProvider delayDuration={200}>
@@ -171,7 +176,7 @@ export function FormField({
                       <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600 transition-colors" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent 
+                  <TooltipContent
                     side="top"
                     className="max-w-xs bg-gray-900 text-white text-xs p-3"
                   >
@@ -196,7 +201,7 @@ export function FormField({
       {/* Campo de entrada */}
       <div className="relative">
         {renderInput()}
-        
+
         {/* Icono de estado dentro del input */}
         {visualState === 'error' && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -240,13 +245,12 @@ export function FormField({
 
         {/* Contador de caracteres */}
         {showCharCount && maxLength && (type === 'text' || type === 'textarea') && (
-          <p className={`text-xs flex-shrink-0 ${
-            value?.length >= maxLength 
-              ? 'text-red-600 font-bold' 
-              : value?.length >= maxLength * 0.9
+          <p className={`text-xs flex-shrink-0 ${value?.length >= maxLength
+            ? 'text-red-600 font-bold'
+            : value?.length >= maxLength * 0.9
               ? 'text-orange-600 font-semibold'
               : 'text-gray-500'
-          }`}>
+            }`}>
             {value?.length || 0} / {maxLength}
           </p>
         )}
@@ -314,7 +318,7 @@ export function FormSection({
     <div className={`p-4 rounded-lg border ${colors.bg} ${colors.border} ${className}`}>
       <div className="flex items-start gap-3 mb-4">
         {icon && (
-          <div 
+          <div
             className="p-2 rounded-lg flex-shrink-0"
             style={{ background: colors.iconBg }}
           >
@@ -363,11 +367,11 @@ export function FormProgress({ completed, total, className = '' }: FormProgressP
         </p>
       </div>
       <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div 
+        <div
           className="h-full transition-all duration-300 rounded-full"
-          style={{ 
+          style={{
             width: `${percentage}%`,
-            background: isComplete 
+            background: isComplete
               ? 'linear-gradient(90deg, #10B981 0%, #059669 100%)'
               : 'linear-gradient(90deg, #2962FF 0%, #003DA5 100%)'
           }}

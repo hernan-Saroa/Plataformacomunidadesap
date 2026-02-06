@@ -42,6 +42,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
 
     async findAll(): Promise<any[]> {
         const consultas = await this.consultaRepository.find({
+            where: { estadoArchivo: 'ACTIVO' },
             relations: ['abogadoAsignado'],
             order: { fechaRecepcion: 'DESC' }
         });
@@ -305,5 +306,92 @@ export class ConsultasJuridicasService implements OnModuleInit {
             where: { consultaId },
             order: { fecha: 'DESC' }
         });
+    }
+
+    // --- Métodos de Archivo y Eliminación ---
+
+    async getArchivadas(): Promise<ConsultaJuridica[]> {
+        return this.consultaRepository.find({
+            where: [
+                { estadoArchivo: 'ARCHIVADO' },
+                { estadoArchivo: 'ELIMINADO' }
+            ],
+            relations: ['abogadoAsignado'],
+            order: { fechaArchivo: 'DESC' }
+        });
+    }
+
+    async archivar(id: string, motivo: string, usuario: string): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+
+        consulta.estadoArchivo = 'ARCHIVADO';
+        consulta.fechaArchivo = new Date();
+        consulta.usuarioArchivo = usuario;
+        consulta.motivoArchivo = motivo;
+
+        await this.registrarEvento(
+            id,
+            'ARCHIVADO',
+            'Consulta archivada',
+            `Motivo: ${motivo}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async eliminarSoft(id: string, motivo: string, usuario: string): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+
+        consulta.estadoArchivo = 'ELIMINADO';
+        consulta.fechaArchivo = new Date();
+        consulta.usuarioArchivo = usuario;
+        consulta.motivoArchivo = motivo;
+
+        await this.registrarEvento(
+            id,
+            'ELIMINADO_SOFT',
+            'Consulta movida a papelera',
+            `Motivo: ${motivo}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async restaurar(id: string, usuario: string): Promise<ConsultaJuridica> {
+        // Buscar incluso si está archivado/eliminado
+        const consulta = await this.consultaRepository.findOne({
+            where: { id },
+            relations: ['abogadoAsignado']
+        });
+
+        if (!consulta) throw new NotFoundException('Consulta no encontrada');
+
+        const estadoAnterior = consulta.estadoArchivo;
+        consulta.estadoArchivo = 'ACTIVO';
+        consulta.fechaArchivo = null as any;
+        consulta.usuarioArchivo = null as any;
+        consulta.motivoArchivo = null as any;
+
+        await this.registrarEvento(
+            id,
+            'RESTAURADO',
+            'Consulta restaurada',
+            `Restaurada desde estado: ${estadoAnterior}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async eliminarPermanente(id: string): Promise<void> {
+        const consulta = await this.consultaRepository.findOne({ where: { id } });
+        if (!consulta) throw new NotFoundException('Consulta no encontrada');
+
+        // Eliminar historial relacionado primero (cascade debería manejarlo pero por seguridad)
+        // await this.historialRepository.delete({ consultaId: id });
+
+        await this.consultaRepository.remove(consulta);
     }
 }

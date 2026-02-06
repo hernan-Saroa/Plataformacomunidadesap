@@ -88,6 +88,19 @@ export class ConsultaJuridica {
     @Column({ type: 'text', nullable: true })
     observaciones: string;
 
+    // Campos para sistema de archivo
+    @Column({ name: 'estado_archivo', type: 'varchar', default: 'ACTIVO' })
+    estadoArchivo: string; // ACTIVO, ARCHIVADO, ELIMINADO
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date;
+
+    @Column({ name: 'usuario_archivo', type: 'varchar', nullable: true })
+    usuarioArchivo: string;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

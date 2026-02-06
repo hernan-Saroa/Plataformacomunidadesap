@@ -4,11 +4,11 @@
  */
 
 export type TipoDias = 'HABILES' | 'CALENDARIO';
-export type ModuloOrigen = 
-  | 'DEFENSA_JUDICIAL' 
-  | 'JUZGAMIENTO' 
-  | 'ASESORIA' 
-  | 'ORGANOS_CONTROL' 
+export type ModuloOrigen =
+  | 'DEFENSA_JUDICIAL'
+  | 'JUZGAMIENTO'
+  | 'ASESORIA'
+  | 'ORGANOS_CONTROL'
   | 'PROCESOS_COACTIVOS'
   | 'CENTRO_COMUNICACIONES';
 
@@ -24,7 +24,7 @@ export interface ConfiguracionTermino {
 }
 
 // ============================================================================
-// TÉRMINOS DE DEFENSA JUDICIAL (PJ) - REDUCIDOS
+// TÉRMINOS DE DEFENSA JUDICIAL (PJ) - EXPANDIDO
 // ============================================================================
 export const terminosDefensaJudicial: ConfiguracionTermino[] = [
   {
@@ -44,6 +44,46 @@ export const terminosDefensaJudicial: ConfiguracionTermino[] = [
     improrrogable: true,
     normativa: 'Ley 1437/2011 Art. 187',
     consecuenciaIncumplimiento: 'Sentencia anticipada desfavorable',
+    moduloOrigen: 'DEFENSA_JUDICIAL',
+    etapaGeneradora: 'NOTIFICACION'
+  },
+  {
+    tipo: 'Contestación Reparación Directa',
+    diasPlazo: 30,
+    tipoDias: 'HABILES',
+    improrrogable: true,
+    normativa: 'Ley 1437/2011',
+    consecuenciaIncumplimiento: 'Pérdida de oportunidad defensa',
+    moduloOrigen: 'DEFENSA_JUDICIAL',
+    etapaGeneradora: 'NOTIFICACION'
+  },
+  {
+    tipo: 'Contestación Controversias Contractuales',
+    diasPlazo: 30,
+    tipoDias: 'HABILES',
+    improrrogable: true,
+    normativa: 'Ley 1437/2011',
+    consecuenciaIncumplimiento: 'Pérdida de oportunidad defensa',
+    moduloOrigen: 'DEFENSA_JUDICIAL',
+    etapaGeneradora: 'NOTIFICACION'
+  },
+  {
+    tipo: 'Contestación Acción de Grupo',
+    diasPlazo: 10,
+    tipoDias: 'HABILES',
+    improrrogable: false,
+    normativa: 'Ley 472/1998',
+    consecuenciaIncumplimiento: 'Indicio grave en contra',
+    moduloOrigen: 'DEFENSA_JUDICIAL',
+    etapaGeneradora: 'NOTIFICACION'
+  },
+  {
+    tipo: 'Contestación Acción Popular',
+    diasPlazo: 10,
+    tipoDias: 'HABILES',
+    improrrogable: false,
+    normativa: 'Ley 472/1998',
+    consecuenciaIncumplimiento: 'Indicio grave en contra',
     moduloOrigen: 'DEFENSA_JUDICIAL',
     etapaGeneradora: 'NOTIFICACION'
   },
@@ -151,13 +191,13 @@ export function calcularFechaVencimiento(
   esHabil: boolean
 ): Date {
   const fecha = new Date(fechaInicio);
-  
+
   if (!esHabil) {
     // Días calendario - simplemente sumar días
     fecha.setDate(fecha.getDate() + diasLegales);
     return fecha;
   }
-  
+
   // Días hábiles - saltar fines de semana
   let diasContados = 0;
   while (diasContados < diasLegales) {
@@ -168,7 +208,7 @@ export function calcularFechaVencimiento(
       diasContados++;
     }
   }
-  
+
   return fecha;
 }
 
@@ -184,17 +224,17 @@ export function calcularDiasRestantes(
   hoy.setHours(0, 0, 0, 0);
   const vencimiento = new Date(fechaVencimiento);
   vencimiento.setHours(0, 0, 0, 0);
-  
+
   if (!esHabil) {
     // Días calendario
     const diff = vencimiento.getTime() - hoy.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   }
-  
+
   // Días hábiles - contar solo días laborables
   let diasContados = 0;
   const fechaTemp = new Date(hoy);
-  
+
   while (fechaTemp < vencimiento) {
     fechaTemp.setDate(fechaTemp.getDate() + 1);
     const diaSemana = fechaTemp.getDay();
@@ -202,6 +242,6 @@ export function calcularDiasRestantes(
       diasContados++;
     }
   }
-  
+
   return diasContados;
 }
