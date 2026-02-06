@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
 import { Signer } from './signer.entity';
@@ -61,6 +61,27 @@ export class CertificatesService {
   private resolveTemplateTypeFromCertificate(certificate: Certificate): TemplateType {
     const raw = `${certificate?.position_category || ''} ${certificate?.career_category || ''}`;
     return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private normalizeDateOnly(value?: Date | string | null): Date | null {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  private resolveEmploymentStatus(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const start = this.normalizeDateOnly(hiringDate);
+    const end = this.normalizeDateOnly(endDate);
+    const today = this.normalizeDateOnly(new Date());
+
+    if (!start || !today) return 'INACTIVO';
+    if (today < start) return 'INACTIVO';
+    if (!end) return 'ACTIVO';
+    return today <= end ? 'ACTIVO' : 'INACTIVO';
   }
 
   private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
@@ -304,12 +325,50 @@ export class CertificatesService {
   }
 
   async createSolicitud(data: Partial<CertificateRequest>) {
-    const request = this.requestRepo.create(data);
+    const rawIdNumber = (data.id_number || '').trim();
+    if (rawIdNumber) {
+      const normalizedIdNumber = rawIdNumber.replace(/\D+/g, '');
+      const existing = await this.requestRepo.findOne({
+        where: normalizedIdNumber
+          ? {
+              id_number: Raw(
+                (alias) =>
+                  `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+                { idNumber: normalizedIdNumber },
+              ),
+            }
+          : { id_number: rawIdNumber },
+        order: { request_date: 'DESC' },
+      });
+
+      if (existing) {
+        const incomingName = this.normalizeTemplateText(data.full_name || '');
+        const existingName = this.normalizeTemplateText(existing.full_name || '');
+        if (incomingName && existingName && incomingName !== existingName) {
+          throw new BadRequestException(
+            `El documento ${rawIdNumber} ya está registrado a nombre de ${existing.full_name}. Verifica el número de documento.`,
+          );
+        }
+      }
+    }
+
+    const status = this.resolveEmploymentStatus(data.hiring_date, data.request_date);
+    const request = this.requestRepo.create({
+      ...data,
+      status,
+    });
     return await this.requestRepo.save(request);
   }
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
-    await this.requestRepo.update(id, data);
+    const patch: Partial<CertificateRequest> = { ...data };
+    if ('hiring_date' in data || 'request_date' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+      const requestDate = data.request_date ?? existing?.request_date ?? null;
+      patch.status = this.resolveEmploymentStatus(hiringDate, requestDate);
+    }
+    await this.requestRepo.update(id, patch);
     return await this.findSolicitudById(id);
   }
 
@@ -328,6 +387,14 @@ export class CertificatesService {
     // Agregar el conteo de validaciones para cada certificado
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+        );
+        if (cert.request && cert.request.status !== employmentStatus) {
+          await this.requestRepo.update(cert.request.id, { status: employmentStatus });
+          cert.request.status = employmentStatus;
+        }
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -335,6 +402,7 @@ export class CertificatesService {
           ...cert,
           email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -397,6 +465,14 @@ export class CertificatesService {
 
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+        );
+        if (cert.request && cert.request.status !== employmentStatus) {
+          await this.requestRepo.update(cert.request.id, { status: employmentStatus });
+          cert.request.status = employmentStatus;
+        }
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -404,6 +480,7 @@ export class CertificatesService {
           ...cert,
           email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -505,8 +582,8 @@ export class CertificatesService {
       technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
-      department_parent: request.department_parent,
-      department_son: request.department_son || undefined,
+      cod_cargo: request.cod_cargo,
+      cod_grade: request.cod_grade || undefined,
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
@@ -521,8 +598,9 @@ export class CertificatesService {
 
     const saved = await this.certificateRepo.save(certificate);
 
-    // Update request status
-    await this.updateSolicitud(request.id, { status: 'COMPLETED' });
+    // Update request employment status based on dates
+    const employmentStatus = this.resolveEmploymentStatus(request.hiring_date, request.request_date);
+    await this.updateSolicitud(request.id, { status: employmentStatus });
 
     return saved;
   }

@@ -51,7 +51,10 @@ import { AppService } from './app.service';
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
+import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
+import { AutosConfigurationController } from './controllers/autos-configuration.controller';
+import { AutosConfigurationService } from './services/autos-configuration.service';
 
 import { FilesController } from './controllers/files.controller';
 
@@ -77,6 +80,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
       DiaFestivo,
       ReglaAlerta,
       AlertaEnviada,
+      AutoConfiguration,
     ]),
   ],
   controllers: [
@@ -94,6 +98,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     AlertasController,
     JobsController,
     DisciplinaryExportController,
+    AutosConfigurationController,
   ],
   providers: [
     AppService,
@@ -112,6 +117,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     SeedService,
     DisciplinaryExportService,
     OnlyOfficeService,
+    AutosConfigurationService,
   ],
 })
 export class AppModule { }

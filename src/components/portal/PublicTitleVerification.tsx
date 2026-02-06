@@ -67,8 +67,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [companyNIT, setCompanyNIT] = useState(''); // NIT de la empresa
   const [contactPerson, setContactPerson] = useState(''); // Persona de contacto en la empresa
   const [requesterType, setRequesterType] = useState<'empresa' | 'graduado'>('graduado');
-  const [isDataPolicyAccepted, setIsDataPolicyAccepted] = useState(false);
-  const [showDataPolicyError, setShowDataPolicyError] = useState(false);
+  
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCertificate, setGeneratedCertificate] = useState<VerificationCertificate | null>(null);
@@ -76,53 +75,62 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [isLoadingCompanyData, setIsLoadingCompanyData] = useState(false);
   const [companyDataLoaded, setCompanyDataLoaded] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [nitLookupStatus, setNitLookupStatus] = useState<'idle' | 'found' | 'not_found' | 'error'>('idle');
+  const [nitLookupMessage, setNitLookupMessage] = useState('');
 
-  // 🏢 Base de datos simulada de empresas (normalmente vendría de un API)
-  const companyDatabase: { [key: string]: { name: string; email: string } } = {
-    '900123456-7': { name: 'Accenture Colombia S.A.S.', email: 'rrhh@accenture.com.co' },
-    '860123456-1': { name: 'Ecopetrol S.A.', email: 'talento@ecopetrol.com.co' },
-    '900987654-3': { name: 'Bancolombia S.A.', email: 'seleccion@bancolombia.com.co' },
-    '800456789-2': { name: 'Ministerio de Hacienda y Crédito Público', email: 'gestionhumana@minhacienda.gov.co' },
-    '899999063-3': { name: 'Departamento Administrativo de la Función Pública', email: 'talento@funcionpublica.gov.co' },
+  // 🔍 Función para capturar NIT (consulta al salir del campo o Enter)
+  const handleNITChange = (nit: string) => {
+    const digitsOnly = nit.replace(/\D+/g, '');
+    setCompanyNIT(digitsOnly);
+    setRequesterName('');
+    setCompanyDataLoaded(false);
+    setIsLoadingCompanyData(false);
+    setNitLookupStatus('idle');
+    setNitLookupMessage('');
   };
 
-  // 🔍 Función para buscar empresa por NIT
-  const handleNITChange = async (nit: string) => {
-    setCompanyNIT(nit);
-    
-    // Limpiar datos previos
-    if (nit.length < 9) {
+  const handleNITLookup = async (rawNit?: string) => {
+    const nitValue = (rawNit ?? companyNIT).trim();
+
+    if (nitValue.length < 9) {
       setRequesterName('');
-      setRequesterEmail('');
       setCompanyDataLoaded(false);
+      setNitLookupStatus('idle');
+      setNitLookupMessage('');
       return;
     }
 
-    // Buscar empresa en la base de datos cuando se complete el NIT
-    if (nit.length >= 9) {
-      setIsLoadingCompanyData(true);
-      
-      // Simular búsqueda en base de datos
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const companyData = companyDatabase[nit];
-      
-      if (companyData) {
-        setRequesterName(companyData.name);
-        setRequesterEmail(companyData.email);
+    setIsLoadingCompanyData(true);
+    try {
+      const response = await graduadosService.autoservicio.buscarEmpresaPorNit(nitValue);
+
+      if (response?.found && response.razonSocial) {
+        setRequesterName(response.razonSocial);
         setCompanyDataLoaded(true);
+        setNitLookupStatus('found');
+        setNitLookupMessage('');
         toast.success('Empresa encontrada', {
-          description: `Se cargaron los datos de ${companyData.name}`
+          description: `Se cargaron los datos de ${response.razonSocial}`,
         });
       } else {
         setRequesterName('');
-        setRequesterEmail('');
         setCompanyDataLoaded(false);
+        setNitLookupStatus('not_found');
+        setNitLookupMessage('No se encontró una empresa registrada con este NIT.');
         toast.warning('Empresa no encontrada', {
-          description: 'No se encontró una empresa registrada con este NIT. Por favor contacta al administrador.'
+          description:
+            'No se encontró una empresa registrada con este NIT. Por favor contacta al administrador.',
         });
       }
-      
+    } catch (error: any) {
+      setRequesterName('');
+      setCompanyDataLoaded(false);
+      setNitLookupStatus('error');
+      setNitLookupMessage('No se pudo consultar el NIT. Intenta nuevamente.');
+      toast.error('No se pudo consultar el NIT', {
+        description: error?.message || 'Intenta nuevamente más tarde.',
+      });
+    } finally {
       setIsLoadingCompanyData(false);
     }
   };
@@ -227,8 +235,12 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       return;
     }
     // Para graduados, el requesterName será el mismo que graduateLastName
+    if (requesterType === 'empresa' && !companyDataLoaded) {
+      toast.error('Debes validar el NIT para cargar la empresa');
+      return;
+    }
     if (requesterType === 'empresa' && !requesterName) {
-      toast.error('Por favor ingresa el nombre de tu empresa');
+      toast.error('Por favor ingresa un NIT válido para cargar la empresa');
       return;
     }
     if (requesterType === 'empresa' && !companyNIT) {
@@ -243,12 +255,6 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       toast.error('Por favor ingresa tu correo electronico');
       return;
     }
-    if (!isDataPolicyAccepted) {
-      setShowDataPolicyError(true);
-      toast.error('Debes aceptar la politica de proteccion de datos para continuar');
-      return;
-    }
-
     // Validacion de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(requesterEmail)) {
@@ -265,13 +271,24 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setIsGenerating(true);
 
     try {
+      const companyName = requesterName.trim();
+      const contactName = contactPerson.trim();
+      const effectiveRequesterName =
+        requesterType === 'graduado' ? graduateLastName : companyName;
       const response = await graduadosService.autoservicio.solicitarCertificado({
         idNumber: graduateDocumentNumber,
         graduationDate: graduateDocumentIssueDate,
         lastName: graduateLastName,
         requesterType: requesterType === 'empresa' ? 'COMPANY' : 'GRADUATE',
-        requesterName,
+        requesterName: effectiveRequesterName,
         requesterEmail,
+        ...(requesterType === 'empresa'
+          ? {
+              companyName,
+              companyNit: companyNIT.trim(),
+              contactPerson: contactName,
+            }
+          : {}),
       });
 
       if (!response.existe) {
@@ -330,8 +347,6 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setCompanyNIT('');
     setContactPerson('');
     setRequesterType('graduado');
-    setIsDataPolicyAccepted(false);
-    setShowDataPolicyError(false);
     setGeneratedCertificate(null);
     setReviewRequestCreated(false);
     setCompanyDataLoaded(false);
@@ -795,15 +810,32 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                             NIT de la Empresa <span className="text-red-500">*</span>
                           </Label>
                           <div className="relative">
-                            <Input
-                              id="companyNIT"
-                              type="text"
-                              value={companyNIT}
-                              onChange={(e) => handleNITChange(e.target.value)}
-                              placeholder="Ej: 900123456-7"
-                              className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
-                              required
-                            />
+                          <Input
+                            id="companyNIT"
+                            type="text"
+                            value={companyNIT}
+                            onChange={(e) => handleNITChange(e.target.value)}
+                            onBlur={() => handleNITLookup()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleNITLookup();
+                              }
+                            }}
+                            placeholder="Ej: 9001234567"
+                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            required
+                          />
+                          {nitLookupStatus === 'not_found' && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              {nitLookupMessage}
+                            </p>
+                          )}
+                          {nitLookupStatus === 'error' && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {nitLookupMessage}
+                            </p>
+                          )}
                             {isLoadingCompanyData && (
                               <div className="absolute right-3 top-2.5">
                                 <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -841,18 +873,15 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                             id="requesterEmail"
                             type="email"
                             value={requesterEmail}
-                            readOnly
-                            disabled={!companyDataLoaded}
-                            placeholder="Se cargará automáticamente"
-                            className={`h-10 text-sm ${companyDataLoaded ? 'bg-gray-50 border-gray-300 text-gray-900' : 'bg-gray-100 border-gray-200 text-gray-400'}`}
+                            onChange={(e) => setRequesterEmail(e.target.value)}
+                            placeholder="empresa@ejemplo.com"
+                            className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
                           />
-                          {companyDataLoaded && (
-                            <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                              <CheckCircle className="w-3 h-3" />
-                              El certificado se enviará a este correo
-                            </p>
-                          )}
+                          <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            El certificado se enviará a este correo
+                          </p>
                         </div>
 
                         {/* 👤 4. Persona que Solicita - CUARTO (EDITABLE) */}

@@ -63,7 +63,8 @@ interface VisorPDFCertificadoProps {
     // Campos adicionales del backend
     position_location?: string; // Ubicación del cargo
     department?: string; // Departamento
-    department_parent?: string; // Dependencia padre
+    cod_cargo?: string; // Dependencia padre
+    cod_grade?: string; // Grado del cargo
     campus?: string; // Sede
     signer_name?: string; // Nombre del firmante
     signer_position?: string; // Cargo del firmante
@@ -107,6 +108,63 @@ export function VisorPDFCertificado({
   };
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
+
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
 
   const obtenerSnapshotPlantilla = () => {
     return (certificado as any)?.templateSnapshot || (certificado as any)?.template_snapshot || null;
@@ -206,7 +264,7 @@ export function VisorPDFCertificado({
     };
     const dependenciaHijo = normalizarDependencia(certificado.empleado.dependencia || certificado.department || '');
     const dependenciaPadre = normalizarDependencia(
-      certificado.empleado.dependenciaPadre || certificado.department_parent || ''
+      certificado.empleado.dependenciaPadre || certificado.cod_cargo || ''
     );
     const dependenciaPlantilla = dependenciaPadre;
     const ubicacion = certificado.position_location || certificado.campus || dependenciaHijo || dependenciaPadre || '';
@@ -228,7 +286,7 @@ export function VisorPDFCertificado({
         : (certificado.observations || '');
 
     const dato7 = certificado.position_location || '';
-    const cargoDato6 = cargoTexto;
+    const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
     const fechaExpedicionSource =
@@ -236,6 +294,21 @@ export function VisorPDFCertificado({
       certificado.fechaSolicitud ||
       new Date().toISOString();
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
+
+    const requestData = (certificado as any)?.request || {};
+    const cargoVariable = construirCargoVariable(
+      requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
+      requestData?.cod_cargo ||
+        (certificado as any)?.cod_cargo ||
+        (certificado as any)?.codCargo ||
+        (certificado.empleado as any)?.cod_cargo ||
+        (certificado.empleado as any)?.codCargo,
+      requestData?.cod_grade ||
+        (certificado as any)?.cod_grade ||
+        (certificado as any)?.codGrade ||
+        (certificado.empleado as any)?.cod_grade ||
+        (certificado.empleado as any)?.codGrade,
+    ) || cargoTexto;
 
     const reemplazos: Record<string, string> = {
       '[DATO1]': certificado.empleado.nombre || '',
@@ -248,8 +321,11 @@ export function VisorPDFCertificado({
       '[DATO8]': incluirSalario ? (salarioTextoBase || salarioEnLetras) : '',
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
-      '[CARGO]': cargoPlantilla,
+      '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
+      '[TIPO_DATO]': cargoDato6,
+      '[UBICACIÓN]': dato7,
+      '[UBICACION]': dato7,
       '[DEPENDENCIA]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',

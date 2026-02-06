@@ -53,6 +53,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', label: 'Activo', icon: CheckCircle },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', label: 'Inactivo', icon: Clock },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', label: 'Revocado', icon: XCircle },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Expirado', icon: Clock },
     };
