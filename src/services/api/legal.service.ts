@@ -399,6 +399,48 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/archivo`, formData);
     }
 
+    // ==================== EXCEPCIONES PROCESALES ====================
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
+    }
+
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: string;
+        descripcion: string;
+        fundamento: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
+    }
+
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
+    }
+
+    // ==================== OFICIOS JUDICIALES ====================
+    async createOficio(formData: FormData): Promise<any> {
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/oficios`, formData);
+    }
+
+    async getOficios(expedienteId: string, modulo?: string): Promise<any[]> {
+        const params = modulo ? `?modulo=${encodeURIComponent(modulo)}` : '';
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/oficios/expediente/${expedienteId}${params}`);
+    }
+
+    getOficiosDownloadZipUrl(expedienteId: string, modulo?: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        const params = modulo ? `?modulo=${encodeURIComponent(modulo)}` : '';
+        return `${baseUrl}${prefix}/oficios/expediente/${expedienteId}/download-zip${params}`;
+    }
+
+    async deleteOficio(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/oficios/${id}`);
+    }
+
     // Duplicates removed
 
 

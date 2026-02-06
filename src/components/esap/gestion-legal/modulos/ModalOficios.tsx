@@ -61,46 +61,95 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
   const cargarOficios = async () => {
     setLoading(true);
     try {
-      let data: any[] = [];
-      // Determinar qué servicio usar según el módulo
+      // 1. Obtener oficios de la NUEVA tabla oficios_enviados
+      let oficiosFromDB: any[] = [];
+      try {
+        oficiosFromDB = await legalService.getOficios(expediente.id, modulo);
+      } catch (e) {
+        console.warn('No se pudieron cargar oficios de la tabla oficios_enviados:', e);
+      }
+
+      // 2. También obtener oficios legacy de actuaciones (para oficios recibidos y anteriores)
+      let actuacionesData: any[] = [];
       if (modulo === 'juzgamiento-disciplinario' || modulo === 'lista-juzgamiento') {
-        data = await legalService.getJuzgamientoActuaciones(expediente.id);
+        try {
+          actuacionesData = await legalService.getJuzgamientoActuaciones(expediente.id);
+        } catch (e) {
+          console.warn('Error fetching juzgamiento actuaciones:', e);
+        }
       } else {
         try {
-          data = await legalService.getActuaciones(expediente.id);
+          actuacionesData = await legalService.getActuaciones(expediente.id);
         } catch (e) {
-          console.warn('Error fetching general actuaciones, falling back to empty', e);
-          data = [];
+          console.warn('Error fetching general actuaciones:', e);
         }
       }
 
-      // Filtrar por tipo 'OFICIO' (ajustar según convenciones del backend)
-      const oficios = data.filter(item =>
+      // Filtrar actuaciones por tipo 'OFICIO'
+      const oficiosLegacy = actuacionesData.filter(item =>
         (item.tipoActuacion === 'OFICIO' || item.tipo === 'OFICIO') ||
         (item.descripcion && item.descripcion.toLowerCase().includes('oficio'))
       );
 
-      // Separar en Enviados vs Recibidos
-      // Asumimos lógica: si dice 'RECIBIDO' en descripción es recibido, sino enviado.
-      const enviados = oficios.filter(o => !o.descripcion?.toUpperCase().includes('RECIBIDO'));
-      const recibidos = oficios.filter(o => o.descripcion?.toUpperCase().includes('RECIBIDO'));
+      // Separar actuaciones legacy en Enviados vs Recibidos
+      const legacyRecibidos = oficiosLegacy.filter(o => o.descripcion?.toUpperCase().includes('RECIBIDO'));
 
-      // Mapear a estructura de vista
+      // Helper para construir URL correcta de archivos del backend
+      const buildFileUrl = (relativeUrl: string | null | undefined): string | null => {
+        if (!relativeUrl) return null;
+        // Si ya es absoluta con http, verificar y corregir puerto
+        if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
+          // Corregir si apunta al frontend en vez del backend
+          if (relativeUrl.includes('localhost:3000')) {
+            return relativeUrl.replace('localhost:3000', 'localhost:3008');
+          }
+          return relativeUrl;
+        }
+        // Es relativa - construir URL completa con backend
+        const baseUrl = getServiceUrl('legal');
+        // Quitar prefijo /legal si existe (el backend lo sirve directamente)
+        let cleanPath = relativeUrl;
+        if (cleanPath.startsWith('/legal/')) {
+          cleanPath = cleanPath.substring(6); // quitar '/legal'
+        }
+        if (!cleanPath.startsWith('/')) {
+          cleanPath = '/' + cleanPath;
+        }
+        return `${baseUrl}${cleanPath}`;
+      };
+
+      // Mapear oficios de la NUEVA tabla (oficios_enviados) - estos son ENVIADOS
+      const mapOficiosDB = (items: any[]) => items.map(item => {
+        const adjuntoUrl = item.archivosAdjuntos?.length > 0 ? buildFileUrl(item.archivosAdjuntos[0]?.url) : null;
+        return {
+          id: item.id,
+          numero: item.numero,
+          asunto: item.asunto,
+          destinatario: item.destinatario || item.destinatarioEmail,
+          remitente: 'ESAP - Oficina Jurídica',
+          fecha: item.fechaEnvio ? new Date(item.fechaEnvio).toLocaleDateString() : new Date(item.createdAt).toLocaleDateString(),
+          estado: item.estado === 'ENVIADO' ? 'Enviado' : 'Borrador',
+          estadoColor: item.estado === 'ENVIADO' ? 'blue' : 'gray',
+          contenido: item.contenido,
+          archivo: item.archivosAdjuntos?.length > 0 ? item.archivosAdjuntos[0]?.nombre : `${item.numero}.pdf`,
+          tamaño: item.archivosAdjuntos?.length > 0 ? `${item.archivosAdjuntos.length} adjunto(s)` : 'N/A',
+          url: adjuntoUrl,
+          archivosAdjuntos: item.archivosAdjuntos,
+          origen: 'oficios_enviados'
+        };
+      });
+
+      // Mapear actuaciones legacy a estructura de vista
       const mapToView = (items: any[]) => items.map(item => {
         const baseUrl = getServiceUrl('legal');
-        // Fix relative URLs
         let finalUrl = item.documentoUrl || item.url;
         if (finalUrl && !finalUrl.startsWith('http') && !finalUrl.startsWith('blob:') && !finalUrl.startsWith('data:')) {
-          // STRIP /legal/api/v1 prefix if present in the path, relying on baseUrl to provide it if needed
           const prefixToRemove = '/legal/api/v1';
           if (finalUrl.startsWith(prefixToRemove)) {
             finalUrl = finalUrl.substring(prefixToRemove.length);
           } else if (finalUrl.startsWith('/legal')) {
-            // Fallback just in case
             finalUrl = finalUrl.replace('/legal', '');
           }
-
-          // Ensure we don't double slash if baseUrl ends with / and url starts with /
           const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
           const cleanPath = finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`;
           finalUrl = `${cleanBase}${cleanPath}`;
@@ -108,24 +157,27 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
 
         return {
           id: item.id,
-          numero: item.numero || item.metadata?.numero || `OF-${item.id.substring(0, 8)}`,
+          numero: item.numero || item.metadata?.numero || `OF-${String(item.id).substring(0, 8)}`,
           asunto: item.titulo || item.descripcion,
           destinatario: item.metadata?.destinatario || 'Desconocido',
           remitente: item.metadata?.remitente || 'Desconocido',
           fecha: item.fechaActuacion ? new Date(item.fechaActuacion).toLocaleDateString() : 'Sin fecha',
-          estado: item.estado || 'Enviado',
-          estadoColor: 'blue',
+          estado: item.estado || 'Pendiente',
+          estadoColor: item.estado === 'Atendido' ? 'green' : 'orange',
           contenido: item.descripcion,
           archivo: item.documentoNombre || item.nombreArchivo || 'documento.pdf',
           tamaño: 'N/A',
           url: finalUrl,
-          metadata: item.metadata, // Pass metadata for verification
-          origen: item.origen
+          metadata: item.metadata,
+          origen: 'actuaciones',
+          requiereRespuesta: true,
+          prioridad: item.metadata?.prioridad || 'Media'
         };
       });
 
-      setOficiosEnviados(mapToView(enviados));
-      setOficiosRecibidos(mapToView(recibidos));
+      // Combinar: oficios de la nueva tabla como enviados + legacy recibidos
+      setOficiosEnviados(mapOficiosDB(oficiosFromDB));
+      setOficiosRecibidos(mapToView(legacyRecibidos));
 
     } catch (error) {
       console.error('Error cargando oficios:', error);
@@ -135,19 +187,22 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
     }
   };
 
-  const handleDescargarOficio = (oficio: any) => {
-    if (oficio.url) {
-      window.open(oficio.url, '_blank');
-      toast.success(`Descargando ${oficio.numero}...`);
-    } else {
-      toast.error('Este oficio no tiene documento adjunto o URL válida.');
-    }
-  };
-
   const handleVerOficio = async (oficio: any) => {
     if (oficio.url) {
+      // Detectar tipo de archivo por extensión
+      const url = oficio.url.toLowerCase();
+      const isImage = url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.gif') || url.endsWith('.webp');
+      const isPdf = url.endsWith('.pdf') || url.startsWith('blob:');
+
+      // Para imágenes, abrir directamente en nueva pestaña (el visor PDF no las soporta)
+      if (isImage) {
+        window.open(oficio.url, '_blank');
+        toast.success('Abriendo imagen en nueva pestaña');
+        return;
+      }
+
       // Si ya es un blob o pdf explícito, usarlo directo
-      if (oficio.url.startsWith('blob:') || oficio.url.endsWith('.pdf')) {
+      if (isPdf) {
         setOficioSeleccionado(oficio);
         setModalVisorPDFAbierto(true);
         return;
@@ -156,7 +211,6 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
       // Si es un endpoint de API que fuerza descarga, lo convertimos a Blob
       const toastId = toast.loading('Cargando documento...');
       try {
-        // Force no-cache to avoid 304 Empty responses if cache is stale
         const response = await fetch(oficio.url, { cache: 'no-store' });
 
         if (!response.ok) throw new Error(`Error al cargar documento: ${response.statusText}`);
@@ -164,26 +218,72 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
         const blob = await response.blob();
         if (blob.size === 0) throw new Error('El documento está vacío (0 bytes).');
 
-        const blobUrl = URL.createObjectURL(blob);
+        // Verificar tipo de contenido
+        const contentType = blob.type || response.headers.get('content-type') || '';
 
-        // Crear copia del oficio con la nueva URL
+        if (contentType.includes('image')) {
+          // Es imagen, abrir blob URL en nueva pestaña
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank');
+          toast.dismiss(toastId);
+          toast.success('Abriendo imagen');
+          return;
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
 
         setOficioSeleccionado({
           ...oficio,
           url: blobUrl,
-          originalUrl: oficio.url // Guardar ref por si acaso
+          originalUrl: oficio.url
         });
         setModalVisorPDFAbierto(true);
         toast.dismiss(toastId);
       } catch (error) {
         console.error('Error fetching blob:', error);
         toast.error('No se pudo visualizar el documento.', { id: toastId });
-        // Fallback: intentar abrirlo directo x si acaso
+        // Fallback: intentar abrirlo directo
         setOficioSeleccionado(oficio);
         setModalVisorPDFAbierto(true);
       }
     } else {
       toast.error('No se puede visualizar, no hay documento adjunto.');
+    }
+  };
+
+  const handleDescargarOficio = async (oficio: any) => {
+    if (!oficio.url) {
+      toast.error('Este oficio no tiene documento adjunto o URL válida.');
+      return;
+    }
+
+    const toastId = toast.loading(`Descargando ${oficio.numero}...`);
+
+    try {
+      const response = await fetch(oficio.url, { cache: 'no-store' });
+
+      if (!response.ok) {
+        throw new Error(`Error al descargar: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Crear enlace temporal para forzar descarga
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = oficio.archivo || `${oficio.numero}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Limpiar blob URL después de un momento
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+      toast.success(`${oficio.numero} descargado`, { id: toastId });
+    } catch (error) {
+      console.error('Error descargando archivo:', error);
+      toast.error('Error al descargar el archivo', { id: toastId });
     }
   };
 
@@ -193,6 +293,13 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
     // Como no existe deleteActuacion, solo simulamos en la vista
     setOficiosEnviados(oficiosEnviados.filter(o => o.id !== id));
     toast.success('🗑️ Oficio eliminado de la vista', {
+      description: numero
+    });
+  };
+
+  const handleEliminarOficioRecibido = async (id: number, numero: string) => {
+    setOficiosRecibidos(oficiosRecibidos.filter(o => o.id !== id));
+    toast.success('🗑️ Oficio recibido eliminado de la vista', {
       description: numero
     });
   };
@@ -213,13 +320,32 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
     });
   };
 
-  const handleDescargarTodos = () => {
+  const handleDescargarTodos = async () => {
     const total = oficiosEnviados.length + oficiosRecibidos.length;
     if (total === 0) {
       toast.warning('No hay oficios para descargar.');
       return;
     }
-    toast.info('La descarga masiva se implementará próximamente.');
+
+    try {
+      toast.loading('Generando archivo ZIP...', { id: 'download-zip' });
+
+      // Generar URL de descarga del ZIP
+      const zipUrl = legalService.getOficiosDownloadZipUrl(expediente.id, modulo);
+
+      // Crear un enlace temporal y simular click para descargar
+      const link = document.createElement('a');
+      link.href = zipUrl;
+      link.download = `Oficios_${expediente.id}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success('Descarga iniciada', { id: 'download-zip' });
+    } catch (error) {
+      console.error('Error descargando ZIP:', error);
+      toast.error('Error al generar el archivo ZIP', { id: 'download-zip' });
+    }
   };
 
   const getEstadoBadge = (estado: string, color: string) => {
@@ -551,13 +677,16 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
 
                             <div className="flex items-center gap-2 p-3 rounded-lg bg-gray-50 border-2 border-gray-200">
                               <FileText className="w-5 h-5 text-red-600 flex-shrink-0" />
-                              <p className="text-xs font-black text-gray-900 flex-1 truncate">{oficio.archivo}</p>
+                              <p className="text-xs font-black text-gray-900 flex-1 truncate">
+                                {oficio.url ? oficio.archivo : 'Sin documento adjunto'}
+                              </p>
                               <div className="flex items-center gap-1">
                                 <Button
                                   size="sm"
                                   onClick={() => handleVerOficio(oficio)}
-                                  className="font-bold text-xs px-3 py-1.5 text-white"
-                                  style={{ background: '#4CAF50' }}
+                                  disabled={!oficio.url}
+                                  className={`font-bold text-xs px-3 py-1.5 text-white ${!oficio.url ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  style={{ background: oficio.url ? '#4CAF50' : '#9E9E9E' }}
                                 >
                                   <Eye className="w-3.5 h-3.5 mr-1" />
                                   Ver
@@ -565,8 +694,9 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
                                 <Button
                                   size="sm"
                                   onClick={() => handleDescargarOficio(oficio)}
-                                  className="font-bold text-xs px-3 py-1.5 text-white"
-                                  style={{ background: '#003DA5' }}
+                                  disabled={!oficio.url}
+                                  className={`font-bold text-xs px-3 py-1.5 text-white ${!oficio.url ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  style={{ background: oficio.url ? '#003DA5' : '#9E9E9E' }}
                                 >
                                   <Download className="w-3.5 h-3.5 mr-1" />
                                   Descargar
@@ -580,6 +710,17 @@ export function ModalOficios({ isOpen, onClose, expediente, modulo }: ModalOfici
                                   >
                                     <CheckCircle className="w-3.5 h-3.5 mr-1" />
                                     Atender
+                                  </Button>
+                                )}
+
+                                {hasPermission('delete') && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEliminarOficioRecibido(oficio.id, oficio.numero)}
+                                    className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </Button>
                                 )}
                               </div>
