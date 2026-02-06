@@ -26,6 +26,32 @@ const formatFileSize = (size?: number) => {
   return `${Math.max(1, Math.round(size / 1024))} KB`;
 };
 
+// Construir URL para archivos de evidencias del servicio legal-management
+const buildEvidenciaFileUrl = (archivoUrl: string, forDownload: boolean = false, originalName?: string): string => {
+  // archivoUrl viene como "files/filename.pdf" - extraer solo el filename
+  const filename = archivoUrl.replace(/^files\//, '');
+  const endpoint = forDownload ? `files/download/${filename}` : `files/${filename}`;
+  const queryParams = forDownload && originalName ? `?name=${encodeURIComponent(originalName)}` : '';
+
+  if (API_MODE === 'direct') {
+    return `${MICROSERVICE_URLS['legal']}/${endpoint}${queryParams}`;
+  }
+  return buildApiUrl('legal', `/api/v1/${endpoint}${queryParams}`);
+};
+
+// Verificar si un archivo puede visualizarse en el navegador
+const canPreviewInBrowser = (tipoArchivo?: string): boolean => {
+  const previewableTypes = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm', 'mp3', 'wav', 'txt'];
+  return previewableTypes.includes((tipoArchivo || '').toLowerCase());
+};
+
+// Obtener URL de visor externo para archivos Office
+const getOfficeViewerUrl = (fileUrl: string): string => {
+  // Usar Microsoft Office Online Viewer para archivos Office
+  const encodedUrl = encodeURIComponent(fileUrl);
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodedUrl}`;
+};
+
 const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => {
   const suffix = view ? '?view=true' : '';
   const basePath = `/disciplinary-processes/${procId}/documents/${documentId}/download${suffix}`;
@@ -1696,9 +1722,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!procId) return;
     setCargandoEvidencias(true);
     try {
-      // NEW SERVICE CALL
       const lista = await disciplinaryService.getEvidencias(procId);
-      console.log('evidencias', evidencias)
       setEvidencias(lista);
     } catch (error) {
       console.error('Error cargando evidencias', error);
@@ -1952,11 +1976,35 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (evidencia.archivoUrl) {
-                          window.open(evidencia.archivoUrl, '_blank');
-                        } else {
+                        if (!evidencia.archivoUrl) {
                           toast.error('URL no disponible');
+                          return;
                         }
+
+                        const tipoArchivo = evidencia.tipoArchivo?.toLowerCase() || '';
+                        const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, false);
+
+                        // Archivos que se pueden ver directamente en el navegador
+                        if (canPreviewInBrowser(tipoArchivo)) {
+                          window.open(viewUrl, '_blank');
+                          return;
+                        }
+
+                        // Archivos Office - usar visor de Microsoft
+                        const officeTypes = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+                        if (officeTypes.includes(tipoArchivo)) {
+                          // Para archivos Office, necesitamos la URL pública completa
+                          // Por ahora, descargamos ya que el visor necesita URL accesible públicamente
+                          toast.info('Descargando archivo Office para visualización...');
+                          descargarArchivo(
+                            buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre),
+                            evidencia.archivoNombre || 'documento'
+                          );
+                          return;
+                        }
+
+                        // Otros tipos - abrir directamente
+                        window.open(viewUrl, '_blank');
                       }}
                       title="Ver documento"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
@@ -1967,34 +2015,15 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                       type="button"
                       size="sm"
                       variant="outline"
-                        onClick={(e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
-
-                        // Función REAL de descarga
-                        try {
-                          const blob = new Blob(['Contenido del archivo de evidencia'], { type: 'application/pdf' });
-                          const url = window.URL.createObjectURL(blob);
-
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = evidencia.nombre;
-                          link.style.display = 'none';
-
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-
-                          window.URL.revokeObjectURL(url);
-
-                          toast.success('Descarga iniciada', {
-                            description: `${evidencia.nombre} - ${evidencia.tamaño}`,
-                            duration: 3000
-                          });
-                        } catch (error) {
-                          toast.error('Error en descarga', {
-                            description: 'No se pudo descargar el archivo'
-                          });
+                        if (!evidencia.archivoUrl) {
+                          toast.error('URL no disponible');
+                          return;
                         }
+
+                        const downloadUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
+                        descargarArchivo(downloadUrl, evidencia.archivoNombre || 'evidencia');
                       }}
                       title="Descargar archivo"
                       style={{ borderColor: '#003DA5', color: '#003DA5' }}
