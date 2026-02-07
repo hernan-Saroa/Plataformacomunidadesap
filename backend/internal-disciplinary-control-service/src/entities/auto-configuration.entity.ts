@@ -23,6 +23,9 @@ export class AutoConfiguration {
   @Column({ type: 'text', nullable: true })
   plantilla: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  stage: string | null;
+
   @Column({ type: 'int', default: 0 })
   orden: number;
 

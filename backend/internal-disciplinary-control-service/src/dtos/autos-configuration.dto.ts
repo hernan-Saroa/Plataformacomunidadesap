@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsInt, Min, Max, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsInt, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAutosConfigurationDto {
@@ -20,6 +20,14 @@ export class CreateAutosConfigurationDto {
   @IsOptional()
   @IsString()
   plantilla?: string;
+
+  @ApiPropertyOptional({
+    description: 'Etapa del proceso asociada con este auto. Valores permitidos: RECEPCION, EVALUACION, VALORACION, INDAGACION_PREVIA, INVESTIGACION, JUZGAMIENTO, SEGUNDA_INSTANCIA. NULL significa disponible para todas las etapas.',
+    example: 'RECEPCION',
+  })
+  @IsOptional()
+  @IsString()
+  stage?: string;
 
   @ApiPropertyOptional({ description: 'Orden para visualización', default: 0 })
   @IsOptional()
@@ -51,6 +59,13 @@ export class UpdateAutosConfigurationDto {
   @IsString()
   plantilla?: string;
 
+  @ApiPropertyOptional({
+    description: 'Etapa del proceso asociada con este auto. Valores permitidos: RECEPCION, EVALUACION, VALORACION, INDAGACION_PREVIA, INVESTIGACION, JUZGAMIENTO, SEGUNDA_INSTANCIA. NULL significa disponible para todas las etapas.',
+  })
+  @IsOptional()
+  @IsString()
+  stage?: string;
+
   @ApiPropertyOptional({ description: 'Orden para visualización' })
   @IsOptional()
   @IsInt()
@@ -74,6 +89,11 @@ export class AutosConfigurationResponseDto {
 
   @ApiPropertyOptional()
   plantilla?: string;
+
+  @ApiPropertyOptional({
+    description: 'Etapa del proceso asociada con este auto. NULL significa disponible para todas las etapas.',
+  })
+  stage: string | null;
 
   @ApiProperty()
   orden: number;

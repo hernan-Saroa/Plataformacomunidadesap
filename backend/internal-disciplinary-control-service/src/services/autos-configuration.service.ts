@@ -37,6 +37,7 @@ export class AutosConfigurationService {
       nombre: createDto.nombre,
       estado: createDto.estado || 'activo',
       plantilla: createDto.plantilla || undefined,
+      stage: createDto.stage || null,
       orden: createDto.orden || 0,
     });
 
@@ -126,6 +127,7 @@ export class AutosConfigurationService {
     if (updateDto.nombre !== undefined) autoConfig.nombre = updateDto.nombre;
     if (updateDto.estado !== undefined) autoConfig.estado = updateDto.estado;
     if (updateDto.plantilla !== undefined) autoConfig.plantilla = updateDto.plantilla;
+    if (updateDto.stage !== undefined) autoConfig.stage = updateDto.stage;
     if (updateDto.orden !== undefined) autoConfig.orden = updateDto.orden;
 
     return await this.autoConfigRepository.save(autoConfig);
