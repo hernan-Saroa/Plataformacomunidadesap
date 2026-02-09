@@ -94,17 +94,19 @@ const getInitials = (nombre: string) => {
 };
 
 // Modal de Revisión y Edición - ACTUALIZADO
-function ModalRevisionEdicion({ 
-  borrador, 
-  onClose, 
-  onAprobar, 
-  onDevolver 
-}: { 
+function ModalRevisionEdicion({
+  borrador,
+  onClose,
+  onAprobar,
+  onDevolver,
+  onFirmar,
+  onNotificar
+}: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
   onDevolver: (motivo: string, comentarios: string, archivos: File[]) => void;
-  onFirmar: () => void;
+  onFirmar: (file?: File, method?: string) => void;
   onNotificar: (fecha: string, archivo: File) => void;
 }) {
   const [comentariosJefe, setComentariosJefe] = useState('');
@@ -494,24 +496,24 @@ function ModalRevisionEdicion({
           {borrador.estado === 'REVISION_JEFE' && (
             <>
               {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER) && (
-              <button
-                onClick={() => setShowModalDevolver(true)}
-                className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2"
-                style={{ borderColor: '#E5E7EB', color: '#DC2626' }}
-              >
-                <RotateCcw className="w-4 h-4" />
-                Devolver
-              </button>
+                <button
+                  onClick={() => setShowModalDevolver(true)}
+                  className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2"
+                  style={{ borderColor: '#E5E7EB', color: '#DC2626' }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Devolver
+                </button>
               )}
               {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
-              <button
-                onClick={() => setShowConfirmAprobar(true)}
-                className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
-                style={{ background: '#059669' }}
-              >
-                <CheckCircle className="w-4 h-4" />
-                Aprobar Auto
-              </button>
+                <button
+                  onClick={() => setShowConfirmAprobar(true)}
+                  className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  style={{ background: '#059669' }}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Aprobar Auto
+                </button>
               )}
             </>
           )}
@@ -538,7 +540,7 @@ function ModalRevisionEdicion({
             </button>
           )}
 
-          <button onClick={onClose} 
+          <button onClick={onClose}
             className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
             style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
             Cerrar
@@ -552,8 +554,8 @@ function ModalRevisionEdicion({
               borrador={borrador}
               comentariosJefe={comentariosJefe}
               onClose={() => setShowModalAprobar(false)}
-              onConfirm={(comentarios) => {
-                onFirmar();
+              onConfirm={(comentarios, file, method) => {
+                onFirmar(file, method);
                 setShowModalAprobar(false);
               }}
             />
@@ -646,7 +648,7 @@ function ModalAprobar({
   borrador: BorradorPendiente;
   comentariosJefe: string;
   onClose: () => void;
-  onConfirm: (comentarios: string) => void;
+  onConfirm: (comentarios: string, file?: File, method?: string) => void;
 }) {
   const [signatureMethod, setSignatureMethod] = useState<'ELECTRONIC' | 'DIGITAL_PROVIDER' | 'LOCAL_PDF'>('ELECTRONIC');
   const [localFile, setLocalFile] = useState<File | null>(null);
@@ -681,24 +683,28 @@ function ModalAprobar({
     }
   };
 
+  const isSignatureReady =
+    (signatureMethod === 'ELECTRONIC' && hasSignature) ||
+    (signatureMethod === 'LOCAL_PDF' && !!localFile) ||
+    (signatureMethod === 'DIGITAL_PROVIDER');
+
   const handleFirmar = () => {
-    if (signatureMethod === 'ELECTRONIC') {
-      if (!hasSignature) {
+    if (!isSignatureReady) {
+      if (signatureMethod === 'ELECTRONIC' && !hasSignature) {
         toast.error('No tiene una firma configurada', {
           description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
         });
-        return;
+      } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
+        toast.error('Archivo requerido', {
+          description: 'Debe adjuntar el PDF firmado.'
+        });
       }
-    } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
-      toast.error('Archivo requerido', {
-        description: 'Debe adjuntar el PDF firmado.'
-      });
       return;
     }
 
     setLoading(true);
     setTimeout(() => {
-      onConfirm(comentariosAprobacion);
+      onConfirm(comentariosAprobacion, localFile, signatureMethod);
       setLoading(false);
     }, 1500);
   };
@@ -895,9 +901,9 @@ function ModalAprobar({
           </Button>
           <Button
             onClick={handleFirmar}
-            disabled={loading || checkingSignature || !hasSignature}
-            style={{ background: hasSignature ? '#003DA5' : '#9CA3AF', color: '#FFFFFF' }}
-            className={`hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2 ${!hasSignature ? 'cursor-not-allowed' : ''}`}
+            disabled={loading || checkingSignature || !isSignatureReady}
+            style={{ background: isSignatureReady ? '#003DA5' : '#9CA3AF', color: '#FFFFFF' }}
+            className={`hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2 ${!isSignatureReady ? 'cursor-not-allowed' : ''}`}
           >
             {loading ? (
               <>
@@ -920,7 +926,6 @@ function ModalAprobar({
 }
 
 // Modal de Devolución - RESPONSIVE Y CORPORATIVO
-// Modal de Devolución - RESPONSIVE Y CORPORATIVO
 function ModalDevolver({
   borrador,
   onClose,
@@ -934,28 +939,18 @@ function ModalDevolver({
   const [comentarios, setComentarios] = useState('');
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
 
-  const borradorsFiltrados = borradores.filter(b => {
-    const matchesSearch = searchQuery === '' || 
-      b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.titulo.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesEstado = filtroEstado === 'todos' || b.estado === filtroEstado;
-    
-    return matchesSearch && matchesEstado;
-  });
-
-  const handleAprobar = (comentarios: string) => {
-    toast.success('Auto Aprobado', {
-      description: 'El auto ha sido aprobado exitosamente'
-    });
-    setBorradorSeleccionado(null);
+  const handleAgregarArchivos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
+    }
   };
 
-  const handleDevolver = (motivo: string, comentarios: string, archivos: File[]) => {
-    toast.warning('Auto Devuelto', {
-      description: 'El auto ha sido devuelto al profesional'
-    });
-    setBorradorSeleccionado(null);
+  const handleConfirmar = () => {
+    if (!motivo || !comentarios) {
+      toast.error('Campos requeridos', { description: 'Debe indicar motivo y observaciones.' });
+      return;
+    }
+    onConfirm(motivo, comentarios, archivosAdjuntos);
   };
 
   return (
@@ -1298,9 +1293,23 @@ export function RevisionAprobacionJefe() {
     }
   };
 
-  const handleFirmar = async (borradorId: string) => {
+  const handleFirmar = async (borradorId: string, file?: File, method?: string) => {
     try {
-      await disciplinaryService.firmarAuto(borradorId, currentUser.id);
+      let signData = {};
+
+      if (file && method === 'LOCAL_PDF') {
+        toast.info('Subiendo documento firmado...');
+        const uploadRes = await disciplinaryService.uploadFile(file);
+
+        signData = {
+          documentUrl: uploadRes.url,
+          documentName: uploadRes.filename,
+          documentType: file.type,
+          documentSize: file.size
+        };
+      }
+
+      await disciplinaryService.firmarAuto(borradorId, currentUser.id, signData);
 
       toast.success('Auto Firmado Exitosamente', {
         description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
@@ -1407,7 +1416,7 @@ export function RevisionAprobacionJefe() {
           </div>
 
           {/* Filtros Avanzados - Responsive Grid */}
-          <div className="py-4 border-t space-y-4" style={{display: 'none'}}>
+          <div className="py-4 border-t space-y-4" style={{ display: 'none' }}>
             <div className="flex flex-col sm:flex-row gap-3">
               {/* Buscador Principal */}
               <div className="relative flex-1">
@@ -1516,11 +1525,10 @@ export function RevisionAprobacionJefe() {
           <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={() => setFilterEstado('todos')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                filterEstado === 'todos'
-                  ? 'text-white'
-                  : 'bg-white text-gray-700 border-2'
-              }`}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'todos'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
               style={
                 filterEstado === 'todos'
                   ? { background: '#003DA5' }
@@ -1531,11 +1539,10 @@ export function RevisionAprobacionJefe() {
             </button>
             <button
               onClick={() => setFilterEstado('pendiente_revision')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                filterEstado === 'pendiente_revision'
-                  ? 'text-white'
-                  : 'bg-white text-gray-700 border-2'
-              }`}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'pendiente_revision'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
               style={
                 filterEstado === 'pendiente_revision'
                   ? { background: '#003DA5' }
@@ -1546,11 +1553,10 @@ export function RevisionAprobacionJefe() {
             </button>
             <button
               onClick={() => setFilterEstado('en_revision')}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                filterEstado === 'en_revision'
-                  ? 'text-white'
-                  : 'bg-white text-gray-700 border-2'
-              }`}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'en_revision'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
               style={
                 filterEstado === 'en_revision'
                   ? { background: '#003DA5' }
@@ -1579,7 +1585,7 @@ export function RevisionAprobacionJefe() {
           <div className="space-y-4">
             {filteredBorradores.map((borrador) => {
               const initials = getInitials(borrador.profesional.nombre);
-              
+
               return (
                 <div
                   key={borrador.id}
@@ -1651,7 +1657,7 @@ export function RevisionAprobacionJefe() {
             }}
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
             onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
-            onFirmar={() => handleFirmar(borradorSeleccionado.id)}
+            onFirmar={(file, method) => handleFirmar(borradorSeleccionado!.id, file, method)}
             onNotificar={(fecha, archivo) => handleNotificar(borradorSeleccionado.id, fecha, archivo)}
           />
         )}

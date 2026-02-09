@@ -179,10 +179,11 @@ export class AutoController {
   })
   async sign(
     @Param('id') id: string,
-    @Query('userId') userId: string, // Simplificación para demo
+    @Body() signData: any, // Acepta metadatos del archivo firmado localmente
+    @Query('userId') userId: string,
   ): Promise<LegalAuto> {
     if (!userId) throw new Error('UserId requerido para firma');
-    return await this.autoService.sign(id, userId);
+    return await this.autoService.sign(id, userId, signData);
   }
 
 

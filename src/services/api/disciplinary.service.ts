@@ -474,8 +474,8 @@ class DisciplinaryService {
         });
     }
 
-    async firmarAuto(id: string, userId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, {});
+    async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, data || {});
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {
