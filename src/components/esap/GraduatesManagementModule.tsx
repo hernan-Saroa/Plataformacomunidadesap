@@ -138,6 +138,9 @@ export function GraduatesManagementModule() {
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
+  const MAX_FILES_PER_GRADUATE = 5;
+  const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+  const MAX_UPLOAD_SIZE_LABEL = '10 MB';
   const PROGRAMAS_GRADUADOS = [
     'ADMINISTRACIÓN PÚBLICA',
     'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
@@ -274,6 +277,23 @@ export function GraduatesManagementModule() {
     const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
     return allowedFileExtensions.includes(ext) || allowedFileMimeTypes.has(file.type);
   };
+  const isPayloadTooLargeError = (error: unknown) => {
+    const normalizedError = error as {
+      statusCode?: number;
+      message?: string;
+      response?: {
+        status?: number;
+        data?: { message?: string } | string;
+      };
+    };
+    const responseMessage =
+      typeof normalizedError?.response?.data === 'string'
+        ? normalizedError.response.data
+        : normalizedError?.response?.data?.message;
+    const message = responseMessage || normalizedError?.message || '';
+    const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
+    return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
 
   const splitFullName = (fullName?: string) => {
     const safeName = (fullName || '').trim();
@@ -384,14 +404,22 @@ export function GraduatesManagementModule() {
     if (!selected.length) return;
     const currentCount = filesModalItems.length + filesUploadQueue.length;
     const nextCount = currentCount + selected.length;
-    if (nextCount > 5) {
-      toast.error('Solo puedes tener máximo 5 archivos en total');
+    if (nextCount > MAX_FILES_PER_GRADUATE) {
+      toast.error(`Solo puedes tener máximo ${MAX_FILES_PER_GRADUATE} archivos en total`);
       event.target.value = '';
       return;
     }
     const invalidFile = selected.find((file) => !isAllowedFile(file));
     if (invalidFile) {
       toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes');
+      event.target.value = '';
+      return;
+    }
+    const oversizedFile = selected.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL}.`,
+      });
       event.target.value = '';
       return;
     }
@@ -407,21 +435,57 @@ export function GraduatesManagementModule() {
     if (!filesModalUser || filesUploadQueue.length === 0) {
       return;
     }
-    setIsUploadingFiles(true);
-    try {
-      await graduadosService.graduados.subirArchivos(
-        filesModalUser.id,
-        filesUploadQueue,
-        authService.getCurrentUser()?.fullName || authService.getCurrentUser()?.email || undefined,
-      );
-      toast.success('Archivos subidos correctamente');
-      setFilesUploadQueue([]);
-      await loadGraduateFiles(filesModalUser.id);
-    } catch (error: any) {
-      console.error('Error subiendo archivos:', error);
-      toast.error('No se pudieron subir los archivos', {
-        description: error?.response?.data?.message || error?.message,
+    const oversizedFile = filesUploadQueue.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL}.`,
       });
+      return;
+    }
+    setIsUploadingFiles(true);
+    const uploader =
+      authService.getCurrentUser()?.fullName || authService.getCurrentUser()?.email || undefined;
+    const failedUploadIndexes = new Set<number>();
+    let uploadedCount = 0;
+    try {
+      for (const [index, file] of filesUploadQueue.entries()) {
+        try {
+          // Subida 1 a 1 para respetar el límite del servidor en requests multipart
+          await graduadosService.graduados.subirArchivos(
+            filesModalUser.id,
+            [file],
+            uploader,
+          );
+          uploadedCount += 1;
+        } catch (error: any) {
+          failedUploadIndexes.add(index);
+          console.error('Error subiendo archivo:', error);
+          if (isPayloadTooLargeError(error)) {
+            toast.error('El archivo es muy pesado', {
+              description: `El archivo "${file.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL} por archivo.`,
+            });
+          } else {
+            toast.error(`No se pudo subir "${file.name}"`, {
+              description: error?.response?.data?.message || error?.message,
+            });
+          }
+        }
+      }
+
+      if (uploadedCount > 0) {
+        toast.success(
+          uploadedCount === 1
+            ? 'Archivo subido correctamente'
+            : `${uploadedCount} archivos subidos correctamente`,
+        );
+        await loadGraduateFiles(filesModalUser.id);
+      }
+
+      if (failedUploadIndexes.size === 0) {
+        setFilesUploadQueue([]);
+      } else {
+        setFilesUploadQueue((prev) => prev.filter((_, idx) => failedUploadIndexes.has(idx)));
+      }
     } finally {
       setIsUploadingFiles(false);
     }
@@ -607,7 +671,6 @@ export function GraduatesManagementModule() {
   }, []);
 
   const graduatesOnly = useMemo(() => graduates, [graduates]);
-  const filesCount = filesModalItems.length;
   const totalQueuedFiles = filesModalItems.length + filesUploadQueue.length;
 
   const stats = useMemo(() => {
@@ -1564,7 +1627,7 @@ export function GraduatesManagementModule() {
                       transition={{ duration: 0.2 }}
                       className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
                     >
-                      {/* Grid de 3 columnas con informaci?n completa del graduado */}
+                      {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
                       <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
@@ -1616,7 +1679,7 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Programa acad?mico
+                            {'Programa acad\u00e9mico'}
                           </p>
                           <div className="flex items-center gap-1.5">
                             <GraduationCap className="w-4 h-4" style={{ color: '#6B7280' }} />
@@ -1640,7 +1703,7 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            N?mero de registro
+                            {'N\u00famero de registro'}
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
@@ -1652,7 +1715,7 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            N?mero de folio
+                            {'N\u00famero de folio'}
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
@@ -1664,7 +1727,7 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            N?mero de libro
+                            {'N\u00famero de libro'}
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
@@ -1676,7 +1739,7 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            M?todo de Enrolamiento
+                            {'M\u00e9todo de Enrolamiento'}
                           </p>
                           {getEnrollmentBadge(user.enrollmentMethod)}
                         </div>
@@ -1848,11 +1911,14 @@ export function GraduatesManagementModule() {
                     Límite
                   </p>
                   <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
-                    Máximo 5 archivos
+                    Máximo {MAX_FILES_PER_GRADUATE} archivos
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
+                    Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
                   </p>
                 </div>
                 <span className="text-xs font-semibold rounded-full px-3 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                  {totalQueuedFiles}/5
+                  {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE}
                 </span>
               </div>
             </div>
@@ -1883,7 +1949,7 @@ export function GraduatesManagementModule() {
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                   onChange={handleFilesQueueChange}
                   className="graduate-files-input"
-                  disabled={isLoadingFiles || isUploadingFiles || totalQueuedFiles >= 5}
+                  disabled={isLoadingFiles || isUploadingFiles || totalQueuedFiles >= MAX_FILES_PER_GRADUATE}
                 />
                 <div className="graduate-files-picker">
                   <label htmlFor="graduate-files-input" className="graduate-files-label">
@@ -1892,6 +1958,9 @@ export function GraduatesManagementModule() {
                 </div>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
                   Puedes seleccionar varios archivos en una sola carga.
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+                  Cada archivo debe pesar máximo {MAX_UPLOAD_SIZE_LABEL}. Se subirán uno por uno.
                 </p>
               </div>
 
@@ -2149,7 +2218,7 @@ export function GraduatesManagementModule() {
 
               <Label htmlFor="edit-program">
 
-                Programa Acad?mico
+                {'Programa Acad\u00e9mico'}
 
                 <span className="text-red-500"> *</span>
 
@@ -2188,7 +2257,7 @@ export function GraduatesManagementModule() {
 
               <Label htmlFor="edit-email">
 
-                Correo Electr?nico
+                {'Correo Electr\u00f3nico'}
 
                 <span className="text-red-500"> *</span>
 

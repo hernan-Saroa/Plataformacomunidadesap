@@ -144,6 +144,9 @@ export function ReviewRequestsModule() {
     'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
     'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
   ];
+  const MAX_APPROVAL_FILES = 5;
+  const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+  const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
 
   // Funciones auxiliares
   const getStatusBadge = (status: string) => {
@@ -270,20 +273,45 @@ export function ReviewRequestsModule() {
     const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
     return allowedFileExtensions.includes(ext) || allowedFileMimeTypes.has(file.type);
   };
+  const isPayloadTooLargeError = (error: unknown) => {
+    const normalizedError = error as {
+      statusCode?: number;
+      message?: string;
+      response?: {
+        status?: number;
+        data?: { message?: string } | string;
+      };
+    };
+    const responseMessage =
+      typeof normalizedError?.response?.data === 'string'
+        ? normalizedError.response.data
+        : normalizedError?.response?.data?.message;
+    const message = responseMessage || normalizedError?.message || '';
+    const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
+    return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
   const handleApprovalFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files || []);
     if (!selected.length) {
       return;
     }
     const nextFiles = [...approvalFiles, ...selected];
-    if (nextFiles.length > 5) {
-      toast.error('Solo puedes adjuntar máximo 5 archivos');
+    if (nextFiles.length > MAX_APPROVAL_FILES) {
+      toast.error(`Solo puedes adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
       event.target.value = '';
       return;
     }
     const invalidFile = nextFiles.find((file) => !isAllowedFile(file));
     if (invalidFile) {
       toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes');
+      event.target.value = '';
+      return;
+    }
+    const oversizedFile = selected.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+      });
       event.target.value = '';
       return;
     }
@@ -688,17 +716,26 @@ export function ReviewRequestsModule() {
           approvalResponse?.request?.graduateId ||
           (approvalResponse as any)?.request?.graduate?.id;
         if (graduateId && approvalFiles.length > 0) {
-          try {
-            await graduadosService.graduados.subirArchivos(
-              graduateId,
-              approvalFiles,
-              reviewerName,
-            );
-          } catch (uploadError: any) {
-            console.error('Error subiendo archivos del graduado:', uploadError);
-            toast.error('La solicitud fue aprobada, pero no se pudieron subir los archivos', {
-              description: uploadError?.response?.data?.message || uploadError?.message,
-            });
+          for (const file of approvalFiles) {
+            try {
+              // Subir archivo por archivo evita errores 413 por payload acumulado.
+              await graduadosService.graduados.subirArchivos(
+                graduateId,
+                [file],
+                reviewerName,
+              );
+            } catch (uploadError: any) {
+              console.error('Error subiendo archivo del graduado:', uploadError);
+              if (isPayloadTooLargeError(uploadError)) {
+                toast.error('El archivo es muy pesado', {
+                  description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+                });
+              } else {
+                toast.error(`No se pudo subir "${file.name}"`, {
+                  description: uploadError?.response?.data?.message || uploadError?.message,
+                });
+              }
+            }
           }
         }
         toast.success('Solicitud aprobada y certificado generado');
@@ -1742,7 +1779,7 @@ export function ReviewRequestsModule() {
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                         onChange={handleApprovalFilesChange}
                         className="review-approval-file-input"
-                        disabled={isLoadingApprovalData}
+                        disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
                       />
                       <label
                         htmlFor="approval-files-input"
@@ -1752,7 +1789,7 @@ export function ReviewRequestsModule() {
                       </label>
                     </div>
                     <label className="text-xs font-medium text-gray-700">
-                      Archivos del título (opcional, máx. 5)
+                      {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
                     </label>
                   </div>
                   {approvalFiles.length > 0 ? (
@@ -1780,7 +1817,7 @@ export function ReviewRequestsModule() {
                     </>
                   ) : (
                     <p className="text-xs text-gray-500">
-                      Adjunta documentos PDF, Word, Excel o imágenes.
+                      {`Adjunta documentos PDF, Word, Excel o imágenes (máx. ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo).`}
                     </p>
                   )}
                 </div>
