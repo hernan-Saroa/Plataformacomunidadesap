@@ -374,9 +374,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
   const isMobile = useIsMobile();
   const isTouchDevice = useMemo(() => {
     if (typeof window === 'undefined') return false;
-    const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-    const hasTouch = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
-    return coarsePointer || hasTouch;
+    const hasTouch = navigator.maxTouchPoints > 0;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const noHover = window.matchMedia?.('(hover: none)').matches ?? false;
+    const smallScreen = window.matchMedia?.('(max-width: 768px)').matches ?? false;
+    return (hasTouch && smallScreen) || (coarse && noHover);
   }, []);
   const useNativeInputs = isTouchDevice;
 
