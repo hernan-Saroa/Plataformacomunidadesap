@@ -649,7 +649,7 @@ const graduadosService = {
         formData.append('uploadedBy', uploadedBy);
       }
       const response = await apiClient.post(
-        `${SERVICE_PREFIX}/graduates/${id}/files`,
+        `${SERVICE_PREFIX}/graduates/${id}/upload-file`,
         formData
       );
       return response;

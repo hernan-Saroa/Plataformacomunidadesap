@@ -38,7 +38,7 @@ export class GraduatesController {
     return await this.service.listarArchivosGraduado(id);
   }
 
-  @Post(':id/files')
+  @Post(':id/upload-file')
   @UseInterceptors(
     FilesInterceptor('files', 5, {
       storage: diskStorage({
