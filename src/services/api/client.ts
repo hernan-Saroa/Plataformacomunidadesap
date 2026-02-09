@@ -104,11 +104,6 @@ class APIClient {
         if (serviceUrl) {
           let cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
 
-          if (serviceName === 'registro-academico') {
-            if (/^\/graduates(\/|$)/.test(cleanPath)) {
-              cleanPath = `/academic-registration/api/v1${cleanPath}`;
-            }
-          }
           fullUrl = `${serviceUrl}${cleanPath}`;
         } else {
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);

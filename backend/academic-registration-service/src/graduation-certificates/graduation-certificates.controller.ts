@@ -149,6 +149,16 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/autoservicio/empresa
+   * Consultar empresa por NIT (datos.gov.co)
+   */
+  @Get('autoservicio/empresa')
+  @HttpCode(HttpStatus.OK)
+  async buscarEmpresaPorNit(@Query('nit') nit: string) {
+    return await this.service.buscarEmpresaPorNit(nit);
+  }
+
+  /**
    * ====================================
    * ENDPOINTS DE VALIDACIÓN PÚBLICA
    * ====================================

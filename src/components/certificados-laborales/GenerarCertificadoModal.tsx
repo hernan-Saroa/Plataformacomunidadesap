@@ -36,7 +36,8 @@ interface CertificadoLaboralListado {
   qrCode?: string;
   position_location?: string;
   department?: string;
-  department_parent?: string;
+  cod_cargo?: string;
+  cod_grade?: string;
   campus?: string;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
@@ -53,7 +54,7 @@ interface CertificadoLaboralListado {
     ubicacion?: string;
     salario: number;
   };
-  estado: 'activo' | 'revocado' | 'expirado';
+  estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
   fechaSolicitud: string;
   fechaGeneracion: string;
   cantidadEscaneos: number;
@@ -72,6 +73,54 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     const lower = cleaned.toLowerCase();
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
+  };
+
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'INACTIVO') return 'inactivo';
+    if (statusUpper === 'ACTIVO') return 'activo';
+    return 'activo';
   };
 
   const [step, setStep] = useState<'buscar' | 'validar'>('buscar');
@@ -159,10 +208,10 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
 
       const transformados: CertificadoLaboralListado[] = items.map((cert: any) => {
         const dependenciaPadreRaw =
-          cert.request?.department_parent ||
-          cert.request?.departmentParent ||
-          cert.department_parent ||
-          cert.departmentParent ||
+          cert.request?.cod_cargo ||
+          cert.request?.codCargo ||
+          cert.cod_cargo ||
+          cert.codCargo ||
           '';
         const ubicacionRaw =
           cert.request?.position_location ||
@@ -170,6 +219,31 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cert.position_location ||
           cert.positionLocation ||
           '';
+        const employmentStatusRaw = String(
+          cert.employment_status ||
+          cert.request?.status ||
+          cert.request_status ||
+          ''
+        ).trim().toUpperCase();
+        const hiringDate =
+          cert.request?.hiring_date ||
+          cert.request?.hiringDate ||
+          cert.hiring_date ||
+          cert.hiringDate ||
+          null;
+        const endDate =
+          cert.request?.request_date ||
+          cert.request?.requestDate ||
+          cert.request_date ||
+          cert.requestDate ||
+          null;
+        const employmentEstado = resolverEstadoLaboral(hiringDate, endDate, employmentStatusRaw);
+        const certificadoEstado =
+          cert.status === 'REVOKED'
+            ? 'revocado'
+            : cert.status === 'EXPIRED'
+              ? 'expirado'
+              : employmentEstado;
         return {
           id: cert.id,
           consecutivo: cert.certificate_number,
@@ -177,7 +251,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           qrCode: cert.verification_code,
           position_location: ubicacionRaw,
           department: cert.department,
-          department_parent: dependenciaPadreRaw,
+          cod_cargo: dependenciaPadreRaw,
+          cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
           templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
           templateType:
@@ -190,7 +265,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             nombre: cert.full_name,
             documento: cert.id_number,
             cargo: cert.career_category,
-            dependencia: normalizarTexto(cert.department_son || cert.departmentSon),
+            dependencia: normalizarTexto(cert.cod_grade || cert.codGrade),
             dependenciaPadre: normalizarTexto(dependenciaPadreRaw),
             tipoVinculacion: cert.position_category,
             fechaVinculacion: cert.hiring_date,
@@ -199,7 +274,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             salario: Number(cert.monthly_salary),
             email: cert.email || cert.request?.email || 'No disponible'
           },
-          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
+          estado: certificadoEstado,
           fechaSolicitud: cert.created_at,
           fechaGeneracion: cert.issuance_timestamp,
           cantidadEscaneos: cert.validation_count || 0,
@@ -370,8 +445,20 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-lg ${cert.estado === 'activo' ? 'bg-green-100' : 'bg-gray-100'}`}>
-                              <User className={`w-6 h-6 ${cert.estado === 'activo' ? 'text-green-600' : 'text-gray-600'}`} />
+                            <div className={`p-3 rounded-lg ${
+                              cert.estado === 'activo'
+                                ? 'bg-green-100'
+                                : cert.estado === 'inactivo'
+                                  ? 'bg-red-100'
+                                  : 'bg-gray-100'
+                            }`}>
+                              <User className={`w-6 h-6 ${
+                                cert.estado === 'activo'
+                                  ? 'text-green-600'
+                                  : cert.estado === 'inactivo'
+                                    ? 'text-red-600'
+                                    : 'text-gray-600'
+                              }`} />
                             </div>
                             <div>
                               <h4 className="text-gray-900">{cert.empleado.nombre}</h4>
@@ -398,6 +485,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                           <div className="flex flex-col items-end gap-2">
                             {cert.estado === 'activo' ? (
                               <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Activo</span>
+                            ) : cert.estado === 'inactivo' ? (
+                              <span className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full">Inactivo</span>
                             ) : (
                               <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded-full">Inactivo</span>
                             )}
