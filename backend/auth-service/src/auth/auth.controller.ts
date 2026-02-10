@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { NewPersonDto } from './dto/new-person.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { Public } from './decorators/public.decorator';
 
 // NOTA: El versionamiento lo maneja el API Gateway.
 // Frontend llama: /auth/api/v1/login -> API Gateway envía -> /login
@@ -22,11 +23,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
+  @Public()
   @Get('')
   index() {
     return 'Hello from Api Auth Service';
   }
 
+  @Public()
   @Post('login')
   @HttpCode(200)
   login(@Body() dto: LoginDto) {
