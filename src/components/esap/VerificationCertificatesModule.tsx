@@ -99,6 +99,7 @@ interface CertificateRequest {
     phone?: string;
     type: 'entidad' | 'graduado'; // Quién solicitó el certificado
     logo?: string;
+    companyName?: string;
     companyNit?: string;
     contactPerson?: string;
   };
@@ -355,6 +356,21 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const lastActivity = lastActivityCandidates.length
             ? new Date(Math.max(...lastActivityCandidates)).toISOString()
             : normalizeDate(certificate.issueDate);
+          const requesterType = mapRequesterType(mainRequest?.requesterType);
+          const requesterNameRaw = (mainRequest?.requesterName || '').trim();
+          const requesterCompanyName = (mainRequest?.companyName || '').trim();
+          const requesterContactPerson = (mainRequest?.contactPerson || '').trim();
+          const requesterDisplayName =
+            requesterType === 'entidad'
+              ? requesterCompanyName || requesterNameRaw || certificate.fullName
+              : requesterNameRaw || certificate.fullName;
+          const requesterContactDisplay =
+            requesterType === 'entidad'
+              ? requesterContactPerson ||
+                (requesterNameRaw && requesterNameRaw !== requesterDisplayName
+                  ? requesterNameRaw
+                  : '')
+              : '';
 
           return {
             id: certificate.id,
@@ -381,12 +397,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             actaNumber: certificate.actaNumber,
             campus: certificate.campus || '',
             requester: {
-              name: mainRequest?.requesterName || certificate.fullName,
+              name: requesterDisplayName,
               email: mainRequest?.requesterEmail || '',
               phone: mainRequest?.requesterPhone || '',
-              type: mapRequesterType(mainRequest?.requesterType),
+              type: requesterType,
+              companyName:
+                requesterType === 'entidad'
+                  ? requesterCompanyName || requesterDisplayName
+                  : undefined,
               companyNit: mainRequest?.companyNit,
-              contactPerson: mainRequest?.contactPerson,
+              contactPerson: requesterContactDisplay || undefined,
             },
             status: mapStatus(certificate.status),
             firstRequestedAt,
@@ -727,6 +747,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         cert.graduate.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (cert.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (cert.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
@@ -928,10 +950,17 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       territorial: cert.graduate.seccionalName || '',
       fecha_grado: cert.graduate.graduationDate || '',
       registro_folio_libro: cert.actaNumber || '',
-      solicitante: cert.requester.name,
+      solicitante:
+        cert.requester.type === 'entidad'
+          ? cert.requester.companyName || cert.requester.name
+          : cert.requester.name,
       tipo_solicitante: cert.requester.type,
       nit: cert.requester.companyNit || '',
-      persona_que_solicito: cert.requester.contactPerson || '',
+      persona_que_solicito:
+        cert.requester.contactPerson ||
+        (cert.requester.companyName && cert.requester.name !== cert.requester.companyName
+          ? cert.requester.name
+          : ''),
       email_solicitante: cert.requester.email,
       fecha_generacion: cert.generatedAt,
     }));
@@ -1463,8 +1492,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <div className="space-y-1">
                         {getRequesterTypeBadge(cert.requester.type)}
                         <p className="text-sm font-medium line-clamp-1" style={{ color: '#1F2937' }}>
-                          {cert.requester.name}
+                          {cert.requester.type === 'entidad'
+                            ? cert.requester.companyName || cert.requester.name
+                            : cert.requester.name}
                         </p>
+                        {cert.requester.type === 'entidad' && cert.requester.contactPerson && (
+                          <p className="text-xs line-clamp-1" style={{ color: '#6B7280' }}>
+                            Contacto: {cert.requester.contactPerson}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -1673,8 +1709,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 {cert.requester.type === 'entidad' && <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 {cert.requester.type === 'graduado' && <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 <div>
-                                  <p className="text-xs text-gray-600">Nombre/Razón Social</p>
-                                  <p className="font-semibold text-gray-900">{cert.requester.name}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {cert.requester.type === 'entidad' ? 'Empresa' : 'Nombre completo'}
+                                  </p>
+                                  <p className="font-semibold text-gray-900">
+                                    {cert.requester.type === 'entidad'
+                                      ? cert.requester.companyName || cert.requester.name
+                                      : cert.requester.name}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
@@ -1701,7 +1743,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   <div>
                                     <p className="text-xs text-gray-600">Persona que solicit&oacute;</p>
                                     <p className="font-semibold text-gray-900">
-                                      {cert.requester.contactPerson || 'No informado'}
+                                      {cert.requester.contactPerson ||
+                                        (cert.requester.companyName &&
+                                        cert.requester.name !== cert.requester.companyName
+                                          ? cert.requester.name
+                                          : 'No informado')}
                                     </p>
                                   </div>
                                 </div>

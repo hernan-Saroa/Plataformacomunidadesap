@@ -319,7 +319,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       }
 
       const certificate = mapCertificado(response.certificado, {
-        name: requesterName,
+        name: effectiveRequesterName,
         email: requesterEmail,
         type: requesterType,
       });
@@ -353,6 +353,9 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
     setIsLoadingCompanyData(false);
     setAcceptedTerms(false);
   };
+
+  const requesterDisplayName =
+    requesterType === 'graduado' ? graduateLastName.trim() : requesterName.trim();
 
   // Si hay un certificado generado, mostrarlo
   if (generatedCertificate) {
@@ -443,12 +446,10 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       <p className="font-bold text-lg text-gray-900">{formatInputDate(graduateDocumentIssueDate)}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm text-gray-600 font-medium">Apellido</p>
-                      <p className="font-bold text-lg text-gray-900">{graduateLastName}</p>
-                    </div>
-                    <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Solicitante</p>
-                      <p className="font-bold text-lg text-gray-900">{requesterName}</p>
+                      <p className="font-bold text-lg text-gray-900">
+                        {requesterDisplayName || 'Sin registrar'}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-sm text-gray-600 font-medium">Email de Contacto</p>

@@ -16,6 +16,7 @@ import {
   FileText, 
   Building2, 
   User, 
+  UserCircle,
   Calendar, 
   Mail, 
   Hash,
@@ -236,6 +237,62 @@ export function ReviewRequestsModule() {
     });
   };
 
+  const toDateInputValue = (value?: string | Date | null) => {
+    if (!value) return '';
+
+    if (value instanceof Date) {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+
+    const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoDateMatch) return trimmed;
+
+    const isoDateTimeMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+    if (isoDateTimeMatch) {
+      return `${isoDateTimeMatch[1]}-${isoDateTimeMatch[2]}-${isoDateTimeMatch[3]}`;
+    }
+
+    const slashDateMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (slashDateMatch) {
+      return `${slashDateMatch[3]}-${slashDateMatch[2]}-${slashDateMatch[1]}`;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateOnly = (value?: string | Date | null) => {
+    const normalized = toDateInputValue(value);
+    if (!normalized) {
+      return 'Sin fecha';
+    }
+
+    const [yearRaw, monthRaw, dayRaw] = normalized.split('-');
+    const year = Number(yearRaw);
+    const month = Number(monthRaw) - 1;
+    const day = Number(dayRaw);
+    const localDate = new Date(year, month, day, 12, 0, 0);
+
+    return localDate.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
   const handleCopyToClipboard = async (text: string, label: string) => {
     const { copyToClipboard } = await import('@/utils/browser');
     const success = await copyToClipboard(text);
@@ -342,18 +399,36 @@ export function ReviewRequestsModule() {
   ): ReviewRequest['requester']['type'] => (type === 'COMPANY' ? 'empresa' : 'graduado');
 
   const mapRequest = (request: SolicitudCertificadoGraduado): ReviewRequest => {
+    const requesterType = mapRequesterType(request.requesterType);
+    const requesterName = (request.requesterName || '').trim();
+    const companyName = (request.companyName || '').trim();
+    const contactPerson = (request.contactPerson || '').trim();
+    const requesterDisplayName =
+      requesterType === 'empresa'
+        ? companyName || requesterName || 'Solicitante'
+        : requesterName || request.fullName || request.graduateLastName || 'Solicitante';
+    const requesterContactPerson =
+      requesterType === 'empresa'
+        ? contactPerson ||
+          (requesterName && requesterName !== requesterDisplayName ? requesterName : undefined)
+        : undefined;
+
     return {
       id: request.id,
       requestNumber: request.requestNumber,
       graduateDocumentNumber: request.idNumber,
       graduateDocumentIssueDate:
         request.idIssueDate || request.graduationDate || request.requestDate,
-      graduationDate: request.graduationDate,
+      graduationDate: toDateInputValue(request.graduationDate) || undefined,
       graduateLastName: request.graduateLastName,
+      graduateEmail: request.graduateEmail,
       requester: {
-        name: request.requesterName || request.companyName || 'Solicitante',
+        name: requesterDisplayName,
         email: request.requesterEmail,
-        type: mapRequesterType(request.requesterType),
+        type: requesterType,
+        companyName: requesterType === 'empresa' ? companyName || requesterDisplayName : undefined,
+        contactPerson: requesterContactPerson,
+        companyNit: request.companyNit,
       },
       status: mapStatus(request.status),
       createdAt: request.requestDate,
@@ -514,6 +589,8 @@ export function ReviewRequestsModule() {
       request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       request.graduateDocumentNumber.includes(searchQuery) ||
       request.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (request.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (request.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       request.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
@@ -555,14 +632,39 @@ export function ReviewRequestsModule() {
     setIsLoadingApprovalData(true);
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
-      const graduationDate = detail.graduationDate
-        ? detail.graduationDate.toString().slice(0, 10)
-        : '';
+      const graduationDate = toDateInputValue(
+        detail.graduationDate || request.graduationDate || request.graduateDocumentIssueDate
+      );
+      const isCompanyRequester =
+        detail.requesterType === 'COMPANY' || request.requester.type === 'empresa';
+      const resolvedFullName =
+        [
+          isCompanyRequester ? detail.graduateLastName : detail.fullName,
+          request.graduateLastName,
+          isCompanyRequester ? detail.fullName : detail.graduateLastName,
+          detail.requesterType === 'GRADUATE' ? detail.requesterName : '',
+          request.requester.type === 'graduado' ? request.requester.name : '',
+        ]
+          .map((value) => (value || '').trim())
+          .find((value) => value.length > 0) || '';
+      const resolvedEmail =
+        (
+          isCompanyRequester
+            ? [detail.graduateEmail, request.graduateEmail]
+            : [
+                detail.graduateEmail,
+                detail.requesterEmail,
+                request.graduateEmail,
+                request.requester.email,
+              ]
+        )
+          .map((value) => (value || '').trim())
+          .find((value) => value.length > 0) || '';
 
       let nextForm: ApprovalForm = {
-        fullName: '',
+        fullName: resolvedFullName,
         idNumber: detail.idNumber || request.graduateDocumentNumber,
-        email: '',
+        email: resolvedEmail,
         programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
           ? (detail.programName || '').trim()
           : '',
@@ -585,9 +687,8 @@ export function ReviewRequestsModule() {
             programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
               ? (graduate.programName || '').trim()
               : nextForm.programName,
-            graduationDate: graduate.graduationDate
-              ? graduate.graduationDate.toString().slice(0, 10)
-              : nextForm.graduationDate,
+            graduationDate:
+              toDateInputValue(graduate.graduationDate) || nextForm.graduationDate,
             campus: graduate.campus || nextForm.campus,
             seccionalName: graduate.seccionalName || nextForm.seccionalName,
             numRegistro: graduate.numRegistro || nextForm.numRegistro,
@@ -1138,11 +1239,19 @@ export function ReviewRequestsModule() {
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-sm truncate" style={{ color: '#1F2937' }}>
-                            {request.requester.name}
+                            {request.requester.type === 'empresa' && request.requester.contactPerson
+                              ? request.requester.contactPerson
+                              : request.requester.name}
                           </h3>
                           <p className="text-xs truncate" style={{ color: '#6B7280' }}>
                             {request.requestNumber}
                           </p>
+                          {request.requester.type === 'empresa' && (
+                            <p className="text-xs truncate flex items-center gap-1" style={{ color: '#6B7280' }}>
+                              <Building2 className="w-3 h-3" />
+                              {request.requester.companyName || request.requester.name}
+                            </p>
+                          )}
                           <p className="text-xs truncate flex items-center gap-1" style={{ color: '#6B7280' }}>
                             <Mail className="w-3 h-3" />
                             {request.requester.email}
@@ -1335,28 +1444,9 @@ export function ReviewRequestsModule() {
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Grado</p>
                                   <p className="font-semibold text-gray-900">
-                                    {request.graduationDate
-                                      ? new Date(request.graduationDate).toLocaleDateString('es-CO', {
-                                          year: 'numeric',
-                                          month: 'long',
-                                          day: 'numeric',
-                                        })
-                                      : 'Sin fecha'}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
-                                <div>
-                                  <p className="text-xs text-gray-600">Fecha de Solicitud</p>
-                                  <p className="font-semibold text-gray-900">
-                                    {request.createdAt
-                                      ? new Date(request.createdAt).toLocaleDateString('es-CO', {
-                                          year: 'numeric',
-                                          month: 'long',
-                                          day: 'numeric',
-                                        })
-                                      : 'Sin fecha'}
+                                    {formatDateOnly(
+                                      request.graduationDate || request.graduateDocumentIssueDate
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -1373,10 +1463,38 @@ export function ReviewRequestsModule() {
                               <div className="flex items-start gap-2">
                                 {request.requester.type === 'empresa' ? <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" /> : <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 <div>
-                                  <p className="text-xs text-gray-600">Nombre</p>
-                                  <p className="font-semibold text-gray-900">{request.requester.name}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {request.requester.type === 'empresa' ? 'Empresa' : 'Nombre'}
+                                  </p>
+                                  <p className="font-semibold text-gray-900">
+                                    {request.requester.type === 'empresa'
+                                      ? request.requester.companyName || request.requester.name
+                                      : request.requester.name}
+                                  </p>
                                 </div>
                               </div>
+                              {request.requester.type === 'empresa' && (
+                                <div className="flex items-start gap-2">
+                                  <UserCircle className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">Persona que Solicita</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {request.requester.contactPerson || 'No registrado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              {request.requester.type === 'empresa' && (
+                                <div className="flex items-start gap-2">
+                                  <Hash className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">NIT</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {request.requester.companyNit || 'No informado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                               <div className="flex items-start gap-2">
                                 <Mail className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
@@ -1387,6 +1505,21 @@ export function ReviewRequestsModule() {
                               <div>
                                 <p className="text-xs text-gray-600 mb-1">Tipo</p>
                                 {getRequesterTypeBadge(request.requester.type)}
+                              </div>
+                              <div className="flex items-start gap-2">
+                                <Calendar className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                <div>
+                                  <p className="text-xs text-gray-600">Fecha de Solicitud</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {request.createdAt
+                                      ? new Date(request.createdAt).toLocaleDateString('es-CO', {
+                                          year: 'numeric',
+                                          month: 'long',
+                                          day: 'numeric',
+                                        })
+                                      : 'Sin fecha'}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1569,9 +1702,22 @@ export function ReviewRequestsModule() {
                   <p className="text-sm text-gray-600 mb-2">
                     <strong>Cédula buscada:</strong> {selectedRequest?.graduateDocumentNumber}
                   </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Solicitante:</strong> {selectedRequest?.requester.name}
-                  </p>
+                  {selectedRequest?.requester.type === 'empresa' ? (
+                    <>
+                      <p className="text-sm text-gray-600">
+                        <strong>Empresa:</strong>{' '}
+                        {selectedRequest?.requester.companyName || selectedRequest?.requester.name}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        <strong>Persona que solicita:</strong>{' '}
+                        {selectedRequest?.requester.contactPerson || 'No registrado'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      <strong>Solicitante:</strong> {selectedRequest?.requester.name}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
