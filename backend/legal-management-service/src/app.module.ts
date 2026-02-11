@@ -42,6 +42,7 @@ import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
 import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
+import { OficioEnviado } from './entities/oficio-enviado.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -68,6 +69,7 @@ import { DocumentosConsultaController } from './controllers/documentos-consulta.
 import { CorreosJuridicosController } from './controllers/correos-juridicos.controller';
 import { ProcesoCoactivoController } from './controllers/proceso-coactivo.controller';
 import { ConfigurationsController } from './controllers/configurations.controller';
+import { OficiosController } from './controllers/oficios.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -99,6 +101,7 @@ import { ConfigurationsService } from './services/configurations.service';
 import { DiasHabilesService } from './services/dias-habiles.service';
 import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
 import { SmartClassificationService } from './services/smart-classification.service';
+import { OficiosService } from './services/oficios.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -156,7 +159,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Historial Consultas
       ConsultaJuridicaHistorial,
       // System Configurations
-      SystemConfiguration
+      SystemConfiguration,
+      // Oficios Enviados
+      OficioEnviado
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -190,7 +195,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Procesos Coactivos
     ProcesoCoactivoController,
     // Configurations
-    ConfigurationsController
+    ConfigurationsController,
+    // Oficios
+    OficiosController
     // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
     // but if it was here in HEAD, I should check. 
     // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
@@ -228,7 +235,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     ConfigurationsService,
     // Días Hábiles y Alertas
     DiasHabilesService,
-    AlertasVencimientoService
+    AlertasVencimientoService,
+    // Oficios
+    OficiosService
   ],
 })
 export class AppModule { }

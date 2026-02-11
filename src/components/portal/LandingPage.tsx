@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import esapStudentsReal from 'figma:asset/9366aaa7d27856d9aef10bd134f20dbe9d256906.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { 
   ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
   CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck
@@ -14,6 +13,9 @@ import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
 import { PublicTitleVerification } from './PublicTitleVerification';
 import { EnrollmentActivationModal } from './EnrollmentActivationModal';
 import { ValidadorCertificadosPublico } from './ValidadorCertificadosPublico';
+
+// Imagen principal hero section - Estudiantes latinos jóvenes estudiando en biblioteca
+const STUDENTS_IMAGE_URL = 'https://images.unsplash.com/photo-1769092992447-18050cf9bd26?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx5b3VuZyUyMGxhdGluJTIwc3R1ZGVudHMlMjBzdHVkeWluZyUyMGxpYnJhcnklMjBncm91cHxlbnwxfHx8fDE3Njk2NDcwMDZ8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
 interface LandingPageProps {
   onIrALogin?: () => void;
@@ -187,10 +189,9 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+              <ESAPLogo 
+                variant="white"
+                className="h-8 sm:h-10 w-auto"
               />
               <div className="hidden sm:block">
                 <p className="text-[9px] font-medium text-white/90 -mt-0.5">ComUNIdad</p>
@@ -446,7 +447,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   )}
                   
                   <img
-                    src={esapStudentsReal}
+                    src={STUDENTS_IMAGE_URL}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
                     className={`w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                     loading="lazy"

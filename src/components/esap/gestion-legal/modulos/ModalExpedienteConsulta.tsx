@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { useConfirmation } from '../../../ui/confirmation-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
@@ -51,6 +52,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
   console.log('📋 estadosActivos en modal:', estadosActivos);
 
+  // Hook de confirmación personalizado
+  const { confirm, ConfirmationComponent } = useConfirmation();
+
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
@@ -58,6 +62,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   // Estados para modales
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false);
+  const [motivoArchivo, setMotivoArchivo] = useState('');
+
 
   // Estados para documentos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -121,9 +128,16 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
-    if (!confirm(`¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`)) {
-      return;
-    }
+    // Reemplazo de confirmación nativa por personalizada
+    const confirmado = await confirm({
+      title: 'Plataforma ESAP',
+      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      variant: 'info',
+      confirmText: 'Aceptar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
 
     try {
       toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
@@ -379,6 +393,32 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
+
+
+  const handleArchivar = async () => {
+    if (!consulta?.uuid) return;
+    if (!motivoArchivo.trim()) {
+      toast.error('Debe ingresar un motivo para archivar');
+      return;
+    }
+
+    try {
+      toast.loading('Archivando consulta...');
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+
+      await legalService.archivarConsulta(consulta.uuid || consulta.id, motivoArchivo, usuarioNombre);
+      toast.dismiss();
+      toast.success('Consulta archivada exitosamente');
+      setShowArchivarModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.dismiss();
+      toast.error('Error al archivar la consulta');
+    }
+  };
+
   // ==================== HANDLERS ====================
 
   /**
@@ -430,7 +470,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   const handleEliminarDocumento = async (doc: any) => {
-    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) return;
+    // Eliminación inmediata sin confirmación
+    // const confirmado = await confirm({ ... }); 
+    // if (!confirmado) return;
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -620,6 +662,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[95vh] flex flex-col p-0">
+          <ConfirmationComponent />
           <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa del expediente de consulta jurídica
@@ -1225,8 +1268,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
           {/* FOOTER CON ACCIONES */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-            <div className="flex items-center justify-end">
-              <Button onClick={onClose}>
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                onClick={(e: React.MouseEvent) => {
+                  e.preventDefault();
+                  console.log('Click en Archivar');
+                  setShowArchivarModal(true);
+                }}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archivar
+              </Button>
+              <Button type="button" onClick={onClose}>
                 Cerrar
               </Button>
             </div>
@@ -1284,6 +1340,52 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {loadingEtapa ? 'Guardando...' : 'Confirmar Cambio'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Archivar */}
+      <Dialog open={showArchivarModal} onOpenChange={setShowArchivarModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archivar Consulta</DialogTitle>
+            <DialogDescription>
+              ¿Está seguro de archivar esta consulta? Desaparecerá de la lista activa y se moverá a la pestaña de Archivados.
+            </DialogDescription>
+          </DialogHeader>
+
+
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Motivo del Archivo
+            </label>
+            <Textarea
+              placeholder="Indique la razón por la cual se archiva este expediente..."
+              value={motivoArchivo}
+              onChange={(e) => setMotivoArchivo(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+
+
+
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowArchivarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="bg-orange-600 hover:bg-orange-700 text-white border-none"
+              onClick={handleArchivar}
+            >
+              <Archive className="w-4 h-4 mr-2" />
+              Confirmar Archivo
             </Button>
           </div>
         </DialogContent>

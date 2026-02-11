@@ -65,6 +65,9 @@ export class Expediente {
     @Column({ name: 'termino_procesal_dias', nullable: true })
     terminoProcesalDias: number;
 
+    @Column({ name: 'tipo_conteo_termino', default: 'HABILES' })
+    tipoConteoTermino: string; // 'HABILES' (business days) or 'CALENDARIO' (calendar days)
+
     @Column({ name: 'ultima_actuacion', nullable: true })
     ultimaActuacion: string;
 
@@ -170,6 +173,19 @@ export class Expediente {
 
     @Column({ name: 'datos_requeridos', type: 'text', nullable: true })
     datosRequeridos: string | null;
+
+    // Campos para archivado/eliminado (soft-delete)
+    @Column({ name: 'estado_archivo', default: 'ACTIVO' })
+    estadoArchivo: string; // 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO'
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date;
+
+    @Column({ name: 'usuario_archivo', nullable: true })
+    usuarioArchivo: string;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string;
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

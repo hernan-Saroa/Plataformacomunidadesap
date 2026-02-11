@@ -1,30 +1,7 @@
 /**
  * ModuleFilters.tsx - COMPONENTE REUTILIZABLE PARA FILTROS
  * Parte del Design System ESAP - Backoffice Gestión Legal
- * 
- * PROPÓSITO:
- * Estandarizar las barras de filtros en todos los módulos
- * Eliminar ~400 líneas de código duplicado
- * 
- * USO:
- * <ModuleFilters
- *   searchValue={busqueda}
- *   onSearchChange={setBusqueda}
- *   filters={[
- *     { 
- *       type: 'select',
- *       value: filtroEtapa,
- *       onChange: setFiltroEtapa,
- *       options: [
- *         { value: 'TODAS', label: 'Todas las etapas' },
- *         { value: 'ACTIVA', label: 'Activa' }
- *       ]
- *     }
- *   ]}
- *   totalItems={100}
- *   filteredItems={45}
- *   onClearFilters={() => {...}}
- * />
+ * ✅ RESPONSIVE MOBILE-FIRST mejorado
  */
 
 import React from 'react';
@@ -32,6 +9,7 @@ import { Card } from '../../../ui/card';
 import { Input } from '../../../ui/input';
 import { Button } from '../../../ui/button';
 import { Filter, Search, XCircle } from 'lucide-react';
+import { useResponsive } from '../../../../hooks/useResponsive';
 
 // ==================== TYPES ====================
 
@@ -116,6 +94,9 @@ export function ModuleFilters({
   hideHeader = false,
   className = ''
 }: ModuleFiltersProps) {
+  // ✅ Hook responsive
+  const { isMobile, isTablet } = useResponsive();
+
   // Verificar si hay filtros activos
   const hasActiveFilters = React.useMemo(() => {
     return searchValue !== '' || filters.some(f => {
@@ -127,18 +108,28 @@ export function ModuleFilters({
     });
   }, [searchValue, filters]);
 
-  // Calcular grid columns basado en cantidad de filtros
+  // Calcular grid columns basado en cantidad de filtros - MEJORADO
   const gridCols = React.useMemo(() => {
     const totalFilters = filters.length + 1; // +1 por búsqueda
+    
+    // Mobile: stack vertical siempre
+    if (isMobile) return 'grid-cols-1';
+    
+    // Tablet: máximo 2 columnas
+    if (isTablet) {
+      if (totalFilters <= 2) return 'grid-cols-1 md:grid-cols-2';
+      return 'grid-cols-1 md:grid-cols-2';
+    }
+    
+    // Desktop: responsive según cantidad
     if (totalFilters <= 2) return 'grid-cols-1 md:grid-cols-2';
-    if (totalFilters === 3) return 'grid-cols-1 md:grid-cols-3';
-    if (totalFilters === 4) return 'grid-cols-1 md:grid-cols-4'; // 4 elementos = 4 columnas
-    return 'grid-cols-1 md:grid-cols-4';
-  }, [filters.length]);
+    if (totalFilters === 3) return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-4';
+  }, [filters.length, isMobile, isTablet]);
 
   return (
     <Card className={`bg-white border border-gray-200 ${className}`}>
-      <div className="p-4 space-y-3">
+      <div className="p-3 sm:p-4 space-y-3">
         {/* Header */}
         {!hideHeader && (
           <div className="flex items-center gap-2">
@@ -147,37 +138,37 @@ export function ModuleFilters({
           </div>
         )}
 
-        {/* Grid de filtros */}
-        <div className={`grid ${gridCols} gap-3`}>
+        {/* Grid de filtros - RESPONSIVE MEJORADO */}
+        <div className={`grid ${gridCols} gap-2 sm:gap-3`}>
           {/* Campo de búsqueda */}
           <div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <Input
-                placeholder={searchPlaceholder}
+                placeholder={isMobile ? 'Buscar...' : searchPlaceholder}
                 value={searchValue}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="pl-9"
+                className="pl-9 text-sm h-10 sm:h-11"
               />
             </div>
           </div>
 
           {/* Filtros adicionales */}
           {filters.map((filter, index) => (
-            <FilterField key={index} filter={filter} />
+            <FilterField key={index} filter={filter} isMobile={isMobile} />
           ))}
         </div>
 
         {/* Contador y botón limpiar */}
         {(showCounter || onClearFilters) && (
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3 pt-1">
             {/* Contador de resultados */}
             {showCounter && totalItems !== undefined && filteredItems !== undefined && (
-              <p className="text-sm text-gray-600">
+              <p className="text-xs sm:text-sm text-gray-600">
                 {counterText || (
                   <>
                     Mostrando <span className="font-bold">{filteredItems}</span> de{' '}
-                    <span className="font-bold">{totalItems}</span> resultados
+                    <span className="font-bold">{totalItems}</span> resultado{totalItems !== 1 ? 's' : ''}
                   </>
                 )}
               </p>
@@ -189,7 +180,7 @@ export function ModuleFilters({
                 onClick={onClearFilters}
                 variant="ghost"
                 size="sm"
-                className="text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 h-8 sm:h-9"
               >
                 <XCircle className="w-3 h-3 mr-1" />
                 Limpiar filtros
@@ -206,9 +197,10 @@ export function ModuleFilters({
 
 interface FilterFieldProps {
   filter: FilterConfig;
+  isMobile: boolean;
 }
 
-function FilterField({ filter }: FilterFieldProps) {
+function FilterField({ filter, isMobile }: FilterFieldProps) {
   const colSpanClass = filter.colSpan ? `md:col-span-${filter.colSpan}` : '';
 
   if (filter.type === 'custom') {

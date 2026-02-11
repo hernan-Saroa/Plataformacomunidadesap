@@ -482,7 +482,10 @@ interface LogCambio {
 
 
 
+const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
+
 const fuentesDisponibles = [
+  { value: DEFAULT_CERTIFICATE_FONT, label: 'Arial Narrow (Predeterminada)' },
 
 
 
@@ -510,23 +513,25 @@ const fuentesDisponibles = [
 
 
 
-  { value: 'Montserrat', label: 'Montserrat' },
-
-
-
-  { value: 'Open Sans', label: 'Open Sans' },
-
-
-
-  { value: 'Lato', label: 'Lato' },
-
-
-
-  { value: 'Poppins', label: 'Poppins' },
-
-
-
 ];
+
+const normalizarFuenteTipografica = (value?: string | null): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_CERTIFICATE_FONT;
+  const normalized = raw
+    .replace(/["']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const found = fuentesDisponibles.find((fuente) =>
+    fuente.value
+      .replace(/["']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase() === normalized,
+  );
+  return found?.value || DEFAULT_CERTIFICATE_FONT;
+};
 
 
 
@@ -581,16 +586,15 @@ const coloresDisponibles = [
 const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
   '[DOCUMENTO]': 'Numero de documento',
-  '[CARGO]': 'Cargo del empleado',
-  '[CARGO DATO6]': 'Tipo vinculacion',
+  '[CARGO]': 'Cargo calculado (categoria + codigo + grado)',
+  '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia donde trabaja',
   '[DATO1]': 'Dato 1 (nombre empleado)',
   '[DATO2]': 'Dato 2 (documento)',
-  '[DATO3]': 'Dato 3 (tipo vinculacion)',
   '[DATO4]': 'Dato 4 (fecha de inicio)',
-  '[DATO5]': 'Dato 5 (cargo)',
+  '[DATO5]': 'Cargo del empleado',
   '[DATO6]': 'Dato 6 (dato adicional)',
-  '[DATO7]': 'Ubicacion',
+  '[UBICACIÓN]': 'Ubicacion',
   '[DATO8]': 'Dato 8 (salario en letras)',
   '[FECHA_INICIO]': 'Fecha de inicio del contrato',
   '[FECHA_FIN]': 'Fecha de finalizacion',
@@ -606,7 +610,7 @@ const descripcionVariables: Record<string, string> = {
 
 
 
-const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [DATO3] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO DATO6] ubicado en [DATO7].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [UBICACIÓN].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
 
 
 
@@ -695,7 +699,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const variablesDisponibles = useMemo(() => {
     const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
-    const tokens = contenidoBase.match(/\[[A-Z0-9_]+(?: [A-Z0-9_]+)*\]/g) || [];
+    const tokens = contenidoBase.match(/\[[A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*\]/g) || [];
     const vistos = new Set<string>();
     const ordenados: string[] = [];
     for (const token of tokens) {
@@ -751,7 +755,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   useEffect(() => {
     if (borrador?.contenidoCertificado.texto) {
       // Normalizar las variables para que todas tengan el formato compacto
-      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto);
+      const contenidoNormalizado = normalizarVariables(
+        normalizarEspaciadoVisualEditor(borrador.contenidoCertificado.texto),
+      );
       setEditorContent(contenidoNormalizado);
     }
   }, [borrador?.contenidoCertificado.texto]);
@@ -774,7 +780,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       // Actualizar el contenido del editor, normalizando las variables
       let currentContent = editorContent || borrador?.contenidoCertificado.texto || '';
-      currentContent = normalizarVariables(currentContent);
+      currentContent = normalizarVariables(normalizarEspaciadoVisualEditor(currentContent));
       console.log('Restaurando contenido del editor:', currentContent.substring(0, 50) + '...');
 
       if (editor.innerHTML !== currentContent && currentContent) {
@@ -812,11 +818,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [CARGO DATO6], etc.
+    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [CARGO], etc.
 
 
 
-    const patron = /\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\]/g;
+    const patron = /\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\]/g;
 
 
 
@@ -857,13 +863,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
     // Paso 2: Normalizar todos los spans con clase variable-token
     resultado = resultado.replace(
-      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\][^<]*)<\/span>/g,
+      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\][^<]*)<\/span>/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$2]</span>'
     );
 
     // Paso 3: Envolver variables sueltas que no tienen span
     resultado = resultado.replace(
-      /(-<!<span[^>]*>)\[([A-Z0-9_]+(?: [A-Z0-9_]+)*)\](-![^<]*<\/span>)/g,
+      /(-<!<span[^>]*>)\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\](-![^<]*<\/span>)/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
     );
 
@@ -871,6 +877,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
 
     return resultado;
+  };
+
+  /**
+   * Ajusta solo el espaciado visual del editor para que plantillas con HTML
+   * equivalente (p/div + br) se muestren de forma consistente.
+   * No altera palabras ni tokens.
+   */
+  const normalizarEspaciadoVisualEditor = (html: string): string => {
+    if (!html) return html;
+
+    return html
+      .replace(/>\s*\r?\n\s*</g, '><')
+      .replace(/(<br\s*\/?>\s*){2,}(?=<\/?(div|p)\b)/gi, '')
+      .replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
   };
 
 
@@ -1217,7 +1237,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fuente: 'Arial Narrow, Arial, sans-serif', // Misma fuente que los PDFs generados
+        fuente: normalizarFuenteTipografica(
+          config?.typography?.font || config?.typographyFont || DEFAULT_CERTIFICATE_FONT,
+        ),
 
 
 
@@ -1797,7 +1819,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'tipografia': 'Cambio de TipografAa',
+      'tipografia': 'Cambio de Tipografía',
 
 
 
@@ -3006,7 +3028,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Guardar tipografAa, tAtulo del cargo y contenido HTML si cambiaron
+      // Guardar tipografía, título del cargo y contenido HTML si cambiaron
 
 
 
@@ -3030,7 +3052,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        cambiosGuardados.push('tipografAa');
+        cambiosGuardados.push('tipografía');
 
 
 
@@ -3686,7 +3708,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `TipografAa: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
+          `Tipografía: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
 
 
 
@@ -4997,7 +5019,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          {/* TipografAa y Contenido del Certificado */}
+          {/* Tipografía y Contenido del Certificado */}
 
 
 
@@ -5021,7 +5043,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  TipografAa y Contenido del Certificado
+                  Tipografía y Contenido del Certificado
 
 
 
@@ -5033,7 +5055,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Configura la tipografAa general y el contenido del certificado con formato enriquecido
+                  Configura la tipografía general y el contenido del certificado con formato enriquecido
 
 
 
@@ -5049,7 +5071,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* TipografAa General - Solo Fuente */}
+              {/* Tipografía General - Solo Fuente */}
 
 
 
@@ -5061,7 +5083,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Fuente TipogrAfica
+                  Fuente Tipográfica
 
 
 
@@ -5089,7 +5111,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      tipografia: { ...borrador.tipografia, fuente: value }
+                      tipografia: { ...borrador.tipografia, fuente: normalizarFuenteTipografica(value) }
 
 
 
@@ -5628,7 +5650,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      <strong>Variables disponibles:</strong> Usa el menAo desplegable "Insertar Variable" para agregar campos dinAmicos como
+                      <strong>Variables disponibles:</strong> Usa el menú desplegable "Insertar Variable" para agregar campos dinámicos como
 
 
 
@@ -5644,7 +5666,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      Las variables se mostrarAn resaltadas en amarillo y serAn reemplazadas automAticamente al generar cada certificado.
+                      Las variables se mostrarán resaltadas en amarillo y serán reemplazadas automáticamente al generar cada certificado.
 
 
 
@@ -6423,11 +6445,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Esta es una vista previa de como se vera el certificado. Los datos del funcionario
+                  Esta es una vista previa de cómo se verá el certificado. Los datos del funcionario
 
 
 
-                  se reemplazarAn automAticamente al generar cada certificado individual.
+                  se reemplazarán automáticamente al generar cada certificado individual.
 
 
 

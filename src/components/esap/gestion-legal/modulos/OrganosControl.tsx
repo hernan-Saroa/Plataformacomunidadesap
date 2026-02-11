@@ -37,6 +37,8 @@ import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumen
 import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
 import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
 import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // Tipo para drag and drop
 const ItemTypes = {
@@ -64,7 +66,28 @@ export interface Requerimiento {
   docRespuestas?: number;
   docSoportes?: number;
   docInternos?: number;
+  actuaciones?: number;
+  descripcion?: string;
+  areaResponsable?: string;
 }
+
+// Datos mock - REDUCIDO
+const MOCK_DATA: Requerimiento[] = [
+  {
+    id: 'REQ-CGR-2024-001',
+    numeroOficio: 'CGR-OF-2024-00125',
+    organismo: 'CGR',
+    asunto: 'Solicitud de información sobre contratación 2024',
+    responsable: 'Dra. María Fernández',
+    fechaRadicacion: new Date('2024-12-10'),
+    fechaVencimiento: new Date('2024-12-30'),
+    diasRestantes: 5,
+    diasTotales: 20,
+    etapa: 'EN_RESPUESTA',
+    ultimaActuacion: 'Proyecto de respuesta en revisión',
+    documentos: 8
+  }
+];
 
 // Función auxiliar para colores de semáforo
 const getSemaforoColor = (dias: number) => {
@@ -74,7 +97,10 @@ const getSemaforoColor = (dias: number) => {
 };
 
 export function OrganosControl() {
-  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
+  const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('');
@@ -137,8 +163,10 @@ export function OrganosControl() {
           fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
           diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
           diasTotales: req.plazoOtorgado || 0,
+          descripcion: req.descripcion || '',
+          areaResponsable: req.areaResponsable || 'Oficina Jurídica',
           etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
-          ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
+          ultimaActuacion: req.ultimaActuacion || 'Sin información reciente', // TODO: Traer última actuación real
           documentos: req.documentosCount || 0,
           // Map document categories
           docRequerimientos: req.docRequerimientos || 0,
@@ -149,6 +177,29 @@ export function OrganosControl() {
       });
 
       setRequerimientos(mappedData);
+
+      // Cargar archivados
+      const archivadosData = await ocService.getArchivados();
+
+      const mappedArchivados: ItemArchivado[] = archivadosData.map((req: any) => ({
+        id: req.id,
+        codigo: req.radicadoExterno || req.radicadoInterno,
+        nombre: req.asunto,
+        tipo: 'Requerimiento Órgano Control',
+        estado: req.estadoArchivo as EstadoArchivado,
+        fechaArchivado: req.fechaArchivo ? new Date(req.fechaArchivo) : new Date(),
+        usuarioArchivo: req.usuarioArchivo || 'Desconocido',
+        motivoArchivo: req.motivoArchivo || 'Sin motivo',
+        metadatos: {
+          'Organismo': req.organismo?.nombre || 'Desconocido',
+          'Número Oficio': req.radicadoExterno || 'S/N',
+          'Tipo Requerimiento': req.tipoRequerimiento || 'General',
+          'Fecha Radicación': req.fechaRecepcion ? new Date(req.fechaRecepcion).toLocaleDateString() : 'N/A'
+        }
+      }));
+
+      setItemsArchivados(mappedArchivados);
+
     } catch (error) {
       console.error('Error cargando requerimientos:', error);
       toast.error('Error al cargar datos', {
@@ -158,6 +209,55 @@ export function OrganosControl() {
       setLoading(false);
     }
   };
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // ✅ Función para restaurar un requerimiento archivado
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      await ocService.restaurarRequerimiento(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento restaurado', {
+        description: 'El requerimiento ha vuelto al tablero principal.'
+      });
+      fetchRequerimientos(); // Recargar ambas listas
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.error('Error al restaurar', {
+        description: 'No se pudo restaurar el requerimiento.'
+      });
+    }
+  };
+
+  // ✅ Función para eliminar permanentemente un requerimiento
+  const handleEliminarPermanente = async (itemId: string) => {
+    try {
+      await ocService.eliminarRequerimientoPermanente(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento eliminado', {
+        description: 'El requerimiento ha sido eliminado permanentemente.'
+      });
+      fetchRequerimientos();
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('Error al eliminar', {
+        description: 'No se pudo eliminar el requerimiento.'
+      });
+    }
+  };
+
+  // Handler para mover requerimientos entre etapas
+  // const handleMoverRequerimiento = (requerimientoId: string, nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => {
+  //   setRequerimientos((prevRequerimientos) => 
+  //     prevRequerimientos.map((req) => 
+  //       req.id === requerimientoId 
+  //         ? { ...req, etapa: nuevaEtapa }
+  //         : req
+  //     )
+  //   );
+
+  //   toast.success('Requerimiento movido exitosamente', {
+  //     description: `Cambiado a etapa: ${nuevaEtapa}`
+  //   });
+  // };
 
   useEffect(() => {
     fetchRequerimientos();
@@ -283,10 +383,11 @@ export function OrganosControl() {
         subtitle="Gestión de requerimientos de órganos de control"
         toggleView={{
           current: tipoVista,
-          onChange: (view) => setTipoVista(view as 'kanban' | 'lista'),
+          onChange: (view) => setTipoVista(view as 'kanban' | 'lista' | 'archivados'),
           options: [
             { label: 'Kanban', icon: <Columns3 className="w-4 h-4" />, value: 'kanban' },
-            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' }
+            { label: 'Lista', icon: <List className="w-4 h-4" />, value: 'lista' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
         buttons={addBtnsPermission()}
@@ -378,6 +479,16 @@ export function OrganosControl() {
         />
       )}
 
+      {/* Vista Archivados */}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Órganos de Control"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+        />
+      )}
+
       {/* Modales */}
       {modalNuevoOpen && (
         <ModalNuevoRequerimiento
@@ -402,8 +513,7 @@ export function OrganosControl() {
           isOpen={modalDocsOpen}
           onClose={() => setModalDocsOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
-          tituloContexto="Gestión de Documentos"
-          nombreRequerimiento={`Requerimiento ${requerimientoSeleccionado.numeroOficio}`}
+          nombreRequerimiento={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -413,10 +523,7 @@ export function OrganosControl() {
           onClose={() => setModalRespuestaOpen(false)}
           requerimientoId={requerimientoSeleccionado.id}
           organismoNombre={requerimientoSeleccionado.organismo}
-          onSuccess={() => {
-            fetchRequerimientos();
-            setModalRespuestaOpen(false);
-          }}
+          onSuccess={fetchRequerimientos}
         />
       )}
 
@@ -650,7 +757,7 @@ function TarjetaRequerimiento({
               className="w-full text-xs font-bold"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Eye className="w-3 h-3 mr-1" />
+              <Archive className="w-3 h-3 mr-1" />
               Ver Requerimiento
             </Button>
 
@@ -661,7 +768,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <FileCheck className="w-3 h-3" />
+                <FileCheck className="w-3 h-3 mr-0.5" />
+                Docs
               </Button>
 
               <Button
@@ -670,7 +778,8 @@ function TarjetaRequerimiento({
                 variant="outline"
                 className="text-[11px] px-1 justify-center"
               >
-                <Send className="w-3 h-3" />
+                <Send className="w-3 h-3 mr-0.5" />
+                Respuesta
               </Button>
             </div>
 
@@ -827,7 +936,7 @@ function VistaLista({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">RADICADO</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Organismo</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Asunto</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responsable</th>
@@ -842,7 +951,7 @@ function VistaLista({
             {requerimientosPaginados.map(req => (
               <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
-                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</span>
+                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.numeroOficio}</span>
                 </td>
                 <td className="px-4 py-3">
                   <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
@@ -905,14 +1014,7 @@ function VistaLista({
                     >
                       <Send className="w-4 h-4 text-blue-600" />
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onInsumo(req)}
-                      title="Solicitar Insumo"
-                    >
-                      <User className="w-4 h-4 text-orange-600" />
-                    </Button>
+
                   </div>
                 </td>
               </tr>
@@ -953,3 +1055,4 @@ function VistaLista({
     </Card>
   );
 }
+

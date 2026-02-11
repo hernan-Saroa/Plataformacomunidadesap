@@ -109,6 +109,8 @@ export interface ExpedienteJudicial {
   fechaVencimiento?: Date | string; // Add optional
   diasTotales: number;
   diasRestantes: number;
+  tipoConteoTermino?: 'HABILES' | 'CALENDARIO'; // Tipo de conteo de días
+  tiempoRestante?: string; // String formateado para mostrar (ej: "28 días hábiles")
 
   // Responsable
   abogadoAsignado: string;
@@ -238,6 +240,11 @@ export type TemaJuridico =
   | 'Disciplinario'
   | 'Presupuestal'
   | 'Administrativo'
+  | 'Constitucional'
+  | 'Penal'
+  | 'Civil'
+  | 'Propiedad Intelectual'
+  | 'Ambiental'
   | 'Otros';
 
 export type PrioridadConsulta = 'URGENTE' | 'ALTA' | 'MEDIA' | 'BAJA';

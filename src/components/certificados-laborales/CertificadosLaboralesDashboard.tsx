@@ -5,7 +5,7 @@
  * - Campos: Nombre, Identificación, Tipo vinculación, Fecha vinculación, Cargo, Grado, Dependencia, Salario, Fecha solicitud
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Search,
@@ -45,16 +45,18 @@ interface CertificadoLaboral {
   position_location?: string;
   observations?: string;
   department?: string;
-  department_parent?: string;
-  department_son?: string;
+  cod_cargo?: string;
+  cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
+  estadoLaboral?: 'activo' | 'inactivo';
   empleado: {
     nombre: string;
     documento: string;
     cargo: string;
+    cargo_calculado?: string;
     dependencia: string;
     dependenciaPadre: string;
     tipoVinculacion: string;
@@ -63,7 +65,7 @@ interface CertificadoLaboral {
     salario: number;
     email: string; // Email donde se envía el certificado
   };
-  estado: 'activo' | 'revocado' | 'expirado';
+  estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
   fechaSolicitud: string;
   fechaGeneracion: string;
   cantidadEscaneos: number;
@@ -88,12 +90,227 @@ interface CertificadosLaboralesDashboardProps {
 }
 
 export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
+  const resolverTemplateType = (value?: string) => {
+    const base = String(value || '').toLowerCase();
+    const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    const texto = normalizado
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!texto) return 'administrador';
+    return /\bdocen\w*\b|\bdoc\b/.test(texto) ? 'docente' : 'administrador';
+  };
+
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+    return 'activo';
+  };
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
     const lower = cleaned.toLowerCase();
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
+  };
+
+  const transformarCertificado = (cert: any): CertificadoLaboral => {
+    const templateTypeRaw =
+      cert.template_type ||
+      cert.templateType ||
+      cert.template_snapshot?.templateType ||
+      cert.template_snapshot?.template_type ||
+      undefined;
+    const dependenciaPadreRaw =
+      cert.request?.cod_cargo ||
+      cert.request?.codCargo ||
+      cert.cod_cargo ||
+      cert.codCargo ||
+      '';
+    const cargoVariable = construirCargoVariable(
+      cert.request?.career_category || cert.career_category || cert.position_category || '',
+      cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
+      cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+    );
+
+    const employmentStatusRaw = String(
+      cert.employment_status ||
+      cert.request?.status ||
+      cert.request_status ||
+      ''
+    ).trim().toUpperCase();
+    const hiringDate =
+      cert.request?.hiring_date ||
+      cert.request?.hiringDate ||
+      cert.hiring_date ||
+      cert.hiringDate ||
+      null;
+    const endDate =
+      cert.request?.request_date ||
+      cert.request?.requestDate ||
+      cert.request_date ||
+      cert.requestDate ||
+      null;
+    const employmentEstado = resolverEstadoLaboral(hiringDate, endDate, employmentStatusRaw);
+    const certificadoEstado =
+      cert.status === 'REVOKED'
+        ? 'revocado'
+        : cert.status === 'EXPIRED'
+          ? 'expirado'
+          : employmentEstado;
+    const templateTypeNormalizado =
+      templateTypeRaw ||
+      resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
+    const ubicacionRaw = normalizarDependencia(
+      cert.department ||
+      cert.request?.department ||
+      cert.request?.departmentName ||
+      cert.request?.position_location ||
+      cert.request?.positionLocation ||
+      cert.position_location ||
+      cert.positionLocation ||
+      '',
+    );
+
+    return {
+      id: cert.id,
+      consecutivo: cert.certificate_number,
+      certificateHash: cert.verification_code,
+      qrCode: cert.verification_code,
+      position_location: ubicacionRaw,
+      observations: cert.observations || cert.request?.observations,
+      department: ubicacionRaw,
+      cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
+      cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+      campus: cert.campus,
+      technical_bonus: cert.technical_bonus,
+      templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
+      templateType: templateTypeNormalizado,
+      estadoLaboral: employmentEstado,
+      empleado: {
+        nombre: cert.full_name,
+        documento: cert.id_number,
+        cargo: cert.career_category,
+        cargo_calculado: cargoVariable || cert.career_category,
+        dependencia: ubicacionRaw,
+        dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
+        tipoVinculacion: cert.position_category,
+        fechaVinculacion: cert.hiring_date,
+        grado: ubicacionRaw,
+        salario: Number(cert.monthly_salary),
+        email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
+      },
+      estado: certificadoEstado,
+      fechaSolicitud: cert.created_at,
+      fechaGeneracion: cert.issuance_timestamp,
+      cantidadEscaneos: cert.validation_count || 0,
+      pdfUrl: cert.pdf_url,
+      firmante: {
+        nombre: cert.signer_name,
+        cargo: cert.signer_position,
+        dependencia: cert.signer_department
+      }
+    };
   };
   const normalizarFiltro = (value?: string | null) => {
     const base = String(value || '').toLowerCase();
@@ -128,7 +345,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   // Estado para certificados y loading
   const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
   const [certificadosRaw, setCertificadosRaw] = useState<CertificadoLaboral[]>([]);
+  const [certificadosMetricas, setCertificadosMetricas] = useState<CertificadoLaboral[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMetricasLoading, setIsMetricasLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -199,60 +418,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => {
-        const dependenciaPadreRaw =
-          cert.request?.department_parent ||
-          cert.request?.departmentParent ||
-          cert.department_parent ||
-          cert.departmentParent ||
-          '';
-        return {
-          id: cert.id,
-          consecutivo: cert.certificate_number,
-          certificateHash: cert.verification_code,
-          qrCode: cert.verification_code,
-          position_location:
-            cert.request?.position_location ||
-            cert.request?.positionLocation ||
-            cert.position_location ||
-            cert.positionLocation,
-          observations: cert.observations || cert.request?.observations,
-          department: cert.department,
-          department_parent: dependenciaPadreRaw || cert.department_parent || cert.departmentParent,
-          department_son: cert.department_son || cert.departmentSon,
-          campus: cert.campus,
-          technical_bonus: cert.technical_bonus,
-          templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
-          templateType:
-            cert.template_type ||
-            cert.templateType ||
-            cert.template_snapshot?.templateType ||
-            cert.template_snapshot?.template_type ||
-            undefined,
-          empleado: {
-            nombre: cert.full_name,
-            documento: cert.id_number,
-            cargo: cert.career_category,
-            dependencia: normalizarDependencia(cert.department_son || cert.departmentSon),
-            dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
-            tipoVinculacion: cert.position_category,
-            fechaVinculacion: cert.hiring_date,
-            grado: cert.department || '',
-            salario: Number(cert.monthly_salary),
-            email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
-          },
-          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
-          fechaSolicitud: cert.created_at,
-          fechaGeneracion: cert.issuance_timestamp,
-          cantidadEscaneos: cert.validation_count || 0,
-          pdfUrl: cert.pdf_url,
-          firmante: {
-            nombre: cert.signer_name,
-            cargo: cert.signer_position,
-            dependencia: cert.signer_department
-          }
-        };
-      });
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -271,7 +437,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       }
       setStats({
         certificadosEmitidos: serverStats?.totalEmitidos ?? total,
-        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => cert.estado === 'activo').length,
+        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => !['revocado', 'expirado'].includes(cert.estado)).length,
         escaneosQR: serverStats?.escaneosQR ?? certificadosTransformados.reduce((sum, cert) => sum + cert.cantidadEscaneos, 0),
         solicitudesHoy: serverStats?.solicitudesHoy ?? 1,
       });
@@ -291,6 +457,66 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const fetchCertificadosMetricas = async () => {
+    setIsMetricasLoading(true);
+    try {
+      const limit = 10;
+      let page = 1;
+      let totalEsperado = 0;
+      const baseParams: Record<string, any> = {
+        page,
+        limit,
+      };
+      if (searchQuery.trim()) {
+        baseParams.search = searchQuery.trim();
+      }
+      if (cargoFilter.trim()) {
+        baseParams.cargo = cargoFilter.trim();
+      }
+      if (tipoVinculacionFilter.trim()) {
+        baseParams.tipoVinculacion = tipoVinculacionFilter.trim();
+      }
+
+      const items: any[] = [];
+      while (true) {
+        const response = await certificadosService.laborales.listar({
+          ...baseParams,
+          page,
+          limit,
+        });
+        const chunk = Array.isArray(response) ? response : (response.items || []);
+
+        if (page === 1) {
+          totalEsperado = Array.isArray(response) ? chunk.length : (response.total || 0);
+        }
+
+        items.push(...chunk);
+
+        if (Array.isArray(response)) {
+          break;
+        }
+        if (!chunk.length) {
+          break;
+        }
+        if (totalEsperado && items.length >= totalEsperado) {
+          break;
+        }
+        const totalPages = totalEsperado ? Math.ceil(totalEsperado / limit) : null;
+        if (totalPages && page >= totalPages) {
+          break;
+        }
+        page += 1;
+      }
+
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      setCertificadosMetricas(certificadosTransformados);
+    } catch (err) {
+      console.error('❌ Error al cargar métricas de certificados:', err);
+    } finally {
+      setIsMetricasLoading(false);
+    }
+  };
+
   // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
     const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
@@ -301,6 +527,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   }, [currentPage, searchQuery, cargoFilter, tipoVinculacionFilter]);
 
   useEffect(() => {
+    fetchCertificadosMetricas();
+  }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
 
@@ -309,7 +539,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     const tipoNeedle = normalizarFiltro(tipoVinculacionFilter);
     const certificadosFiltrados = (cargoNeedle || tipoNeedle)
       ? certificadosRaw.filter((cert) => {
-        const cargoTexto = normalizarFiltro(cert.empleado.cargo);
+        const cargoTexto = normalizarFiltro(cert.empleado.cargo_calculado || cert.empleado.cargo);
         const tipoTexto = normalizarFiltro(cert.empleado.tipoVinculacion);
         const cargoOk = !cargoNeedle || cargoTexto.includes(cargoNeedle);
         const tipoOk = !tipoNeedle || tipoTexto.includes(tipoNeedle);
@@ -329,6 +559,32 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const paginatedCertificados = certificados;
+
+  const empleadosUnicos = useMemo(() => {
+    const map = new Map<string, CertificadoLaboral>();
+    certificadosMetricas.forEach((cert) => {
+      const documentoRaw = String(cert.empleado.documento || '').trim();
+      const documentoKey = documentoRaw.replace(/\D+/g, '') || documentoRaw;
+      const fallbackKey = `${cert.empleado.nombre || ''}-${cert.empleado.email || ''}`.trim().toLowerCase();
+      const key = documentoKey || fallbackKey;
+      if (!key) return;
+      const existente = map.get(key);
+      if (!existente) {
+        map.set(key, cert);
+        return;
+      }
+      const fechaActual = new Date(existente.fechaSolicitud || 0).getTime();
+      const fechaNueva = new Date(cert.fechaSolicitud || 0).getTime();
+      if (fechaNueva > fechaActual) {
+        map.set(key, cert);
+      }
+    });
+    return Array.from(map.values());
+  }, [certificadosMetricas]);
+
+  const empleadosElegibles = empleadosUnicos.length;
+  const docentesActivos = empleadosUnicos.filter((cert) => cert.templateType === 'docente' && cert.estadoLaboral === 'activo').length;
+  const administrativosActivos = empleadosUnicos.filter((cert) => cert.templateType === 'administrador' && cert.estadoLaboral === 'activo').length;
 
   const hasActiveFilters = Boolean(searchQuery.trim() || cargoFilter.trim() || tipoVinculacionFilter.trim());
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
@@ -351,6 +607,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', label: 'Activo' },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', label: 'Inactivo' },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', label: 'Revocado' },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Expirado' }
     };
@@ -594,7 +851,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Empleados Elegibles</p>
-                  <p className="text-lg font-bold text-gray-900">{isLoading ? '...' : certificados.length}</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {isLoading || isMetricasLoading ? '...' : empleadosElegibles}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -604,9 +863,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Docentes Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {isLoading ? '...' : certificados.filter(cert =>
-                      cert.empleado.cargo.toLowerCase().includes('docente')
-                    ).length}
+                    {isLoading || isMetricasLoading ? '...' : docentesActivos}
                   </p>
                 </div>
               </div>
@@ -617,9 +874,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Administrativos Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {isLoading ? '...' : certificados.filter(cert =>
-                      !cert.empleado.cargo.toLowerCase().includes('docente')
-                    ).length}
+                    {isLoading || isMetricasLoading ? '...' : administrativosActivos}
                   </p>
                 </div>
               </div>
@@ -928,7 +1183,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         {/* Cargo */}
                         <td className="px-4 py-4">
                           <p className="text-sm text-gray-900 font-medium">
-                            {cert.empleado.cargo}
+                          {cert.empleado.cargo_calculado || cert.empleado.cargo}
                           </p>
                         </td>
 
@@ -946,7 +1201,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Ubicación */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.position_location || ''}</p>
+                          <p className="text-sm text-gray-900">{cert.department || cert.position_location || ''}</p>
                         </td>
 
                         {/* Fecha Solicitud */}

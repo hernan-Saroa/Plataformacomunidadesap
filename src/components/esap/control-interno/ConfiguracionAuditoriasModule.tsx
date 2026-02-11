@@ -45,6 +45,9 @@ import {
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ====================================
 // TIPOS
 // ====================================

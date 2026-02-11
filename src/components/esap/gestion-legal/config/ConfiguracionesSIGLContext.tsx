@@ -71,6 +71,40 @@ export interface TipoRequerimiento {
   orden: number;
 }
 
+export interface TipoActuacion {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface MedioControl {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface TipoExcepcionProcesal {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  icono: string;
+  activo: boolean;
+  orden: number;
+}
+
+export interface CausalEspecifica {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  icono: string;
+  activo: boolean;
+  orden: number;
+}
+
 export interface OrganismoControl {
   id: string;
   nombre: string;
@@ -85,6 +119,10 @@ export interface ConfiguracionModulo {
   tiempos: ConfiguracionTiempo[];
   tiposProcesos?: TipoProcesoJudicial[];
   tiposAutos?: TipoAuto[];
+  tiposActuaciones?: TipoActuacion[];
+  mediosControl?: MedioControl[];
+  tiposExcepcionesProcesal?: TipoExcepcionProcesal[];
+  causalesEspecificas?: CausalEspecifica[];
 }
 
 // ============ DATOS DE CASOS POR ESTADO ============
@@ -132,7 +170,8 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'ALEGATOS', nombre: 'Alegatos', color: '#EC4899', orden: 4, activo: true },
       { id: 'SENTENCIA', nombre: 'Sentencia', color: '#10B981', orden: 5, activo: true },
       { id: 'APELACIÓN', nombre: 'Apelación', color: '#F59E0B', orden: 6, activo: true },
-      { id: 'CUMPLIMIENTO', nombre: 'Cumplimiento', color: '#6B7280', orden: 7, activo: true },
+      { id: 'FALLO_2A_INSTANCIA', nombre: 'Fallo 2ª Instancia', color: '#EF4444', orden: 7, activo: true },
+      { id: 'CUMPLIMIENTO', nombre: 'Cumplimiento', color: '#6B7280', orden: 8, activo: true },
     ],
     tiempos: [
       { id: 'estudio-inicial', tipo: 'Estudio Inicial', dias: 5, alertaDias: 2, activo: true },
@@ -160,6 +199,15 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Auto que resuelve incidentes o cuestiones de trámite', activo: true },
       { id: 'auto-sustanciacion', nombre: 'Auto de Sustanciación', descripcion: 'Auto que impulsa el proceso y ordena trámites', activo: true },
     ],
+    mediosControl: [
+      { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización por daño antijurídico', activo: true, orden: 1 },
+      { id: 'nulidad-restablecimiento', nombre: 'Nulidad y Restablecimiento', descripcion: 'Acción contra actos administrativos', activo: true, orden: 2 },
+      { id: 'accion-grupo', nombre: 'Acción de Grupo', descripcion: 'Acción para protección de derechos colectivos de grupos', activo: true, orden: 3 },
+      { id: 'accion-popular', nombre: 'Acción Popular', descripcion: 'Acción para protección de derechos e intereses colectivos', activo: true, orden: 4 },
+      { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias de contratos estatales', activo: true, orden: 5 },
+      { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para protección inmediata de derechos fundamentales', activo: true, orden: 6 },
+      { id: 'otro', nombre: 'Otro', descripcion: 'Otros medios de control no categorizados', activo: true, orden: 7 },
+    ],
   },
   {
     id: 'juzgamiento',
@@ -177,6 +225,35 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'indagacion-preliminar', tipo: 'Indagación Preliminar', dias: 6, alertaDias: 2, activo: true },
       { id: 'descargos-investigado', tipo: 'Descargos Investigado', dias: 10, alertaDias: 3, activo: true },
       { id: 'fallo-primera-instancia', tipo: 'Fallo Primera Instancia', dias: 30, alertaDias: 7, activo: true },
+    ],
+    tiposActuaciones: [
+      { id: 'auto-apertura', nombre: 'Auto de Apertura', descripcion: 'Auto que da inicio formal a la investigación disciplinaria', activo: true, orden: 1 },
+      { id: 'notificacion', nombre: 'Notificación', descripcion: 'Comunicación oficial de actuaciones procesales al investigado', activo: true, orden: 2 },
+      { id: 'solicitud-informes', nombre: 'Solicitud de Informes', descripcion: 'Requerimiento de información a dependencias o terceros', activo: true, orden: 3 },
+      { id: 'recepcion-pruebas', nombre: 'Recepción de Pruebas', descripcion: 'Incorporación de elementos probatorios al expediente', activo: true, orden: 4 },
+      { id: 'auto-descargos', nombre: 'Auto de Descargos', descripcion: 'Auto que otorga traslado al investigado para presentar descargos', activo: true, orden: 5 },
+      { id: 'audiencia', nombre: 'Audiencia', descripcion: 'Diligencia procesal para práctica de pruebas o alegatos', activo: true, orden: 6 },
+      { id: 'auto-practica-pruebas', nombre: 'Auto de Práctica de Pruebas', descripcion: 'Auto que ordena la práctica de pruebas solicitadas', activo: true, orden: 7 },
+      { id: 'alegatos-conclusion', nombre: 'Alegatos de Conclusión', descripcion: 'Presentación de argumentos finales antes del fallo', activo: true, orden: 8 },
+      { id: 'auto-cierre', nombre: 'Auto de Cierre', descripcion: 'Auto que cierra la etapa probatoria', activo: true, orden: 9 },
+      { id: 'fallo-primera-instancia', nombre: 'Fallo de Primera Instancia', descripcion: 'Decisión de fondo que resuelve el proceso disciplinario', activo: true, orden: 10 },
+      { id: 'recurso-apelacion', nombre: 'Recurso de Apelación', descripcion: 'Impugnación del fallo de primera instancia', activo: true, orden: 11 },
+      { id: 'fallo-segunda-instancia', nombre: 'Fallo de Segunda Instancia', descripcion: 'Decisión que resuelve el recurso de apelación', activo: true, orden: 12 },
+      { id: 'archivo-proceso', nombre: 'Archivo del Proceso', descripcion: 'Actuación que ordena el archivo definitivo del expediente', activo: true, orden: 13 },
+      { id: 'otro', nombre: 'Otro', descripcion: 'Otras actuaciones procesales no categorizadas', activo: true, orden: 14 },
+    ],
+    tiposExcepcionesProcesal: [
+      { id: 'prescripcion', nombre: 'Prescripción', descripcion: 'Pérdida ejecutoria o derecho legal para juzgar', icono: '📋', activo: true, orden: 1 },
+      { id: 'otra-excepcion', nombre: 'Otra Excepción Previa', descripcion: 'Según el Código General del Proceso', icono: '📄', activo: true, orden: 2 },
+    ],
+    causalesEspecificas: [
+      { id: 'impedimento', nombre: 'Impedimento', descripcion: 'Si existe relación de afinidad', icono: '🚫', activo: true, orden: 1 },
+      { id: 'falta-competencia', nombre: 'Falta de Competencia', descripcion: 'El funcionario no tiene competencia para conocer el asunto', icono: '⚖️', activo: true, orden: 2 },
+      { id: 'falta-jurisdiccion', nombre: 'Falta de Jurisdicción', descripcion: 'El asunto no corresponde a la jurisdicción disciplinaria', icono: '🏛️', activo: true, orden: 3 },
+      { id: 'caducidad', nombre: 'Caducidad', descripcion: 'Término perentorio para iniciar el proceso', icono: '⏰', activo: true, orden: 4 },
+      { id: 'cosa-juzgada', nombre: 'Cosa Juzgada', descripcion: 'Ya existe una decisión en firme sobre el mismo asunto', icono: '✓', activo: true, orden: 5 },
+      { id: 'indebida-representacion', nombre: 'Indebida Representación', descripcion: 'Problemas con la representación legal', icono: '👤', activo: true, orden: 6 },
+      { id: 'otra', nombre: 'Otra', descripcion: 'Otras causales específicas', icono: '📝', activo: true, orden: 7 },
     ],
   },
   {
@@ -356,28 +433,24 @@ interface ConfiguracionesSIGLContextType {
   tiposRequerimientos: TipoRequerimiento[];
   organismosControl: OrganismoControl[];
   cambiosPendientes: boolean;
-
-  // Getters
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
   getTiposProcesosActivos: (moduloId: string) => TipoProcesoJudicial[];
   getTiposAutosActivos: (moduloId: string) => TipoAuto[];
+  getTiposActuacionesActivos: (moduloId: string) => TipoActuacion[];
+  getMediosControlActivos: (moduloId: string) => MedioControl[];
+  getTiposExcepcionesActivos: (moduloId: string) => TipoExcepcionProcesal[];
+  getCausalesEspecificasActivas: (moduloId: string) => CausalEspecifica[];
   getEjesEstrategicosActivos: () => EjeEstrategico[];
   getTiposIndicadoresActivos: () => TipoIndicador[];
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
-  getOrganismosControlActivos: () => OrganismoControl[];
-
-  // Updaters
-  actualizarConfiguraciones: (nuevasConfig: ConfiguracionModulo[]) => void;
+  actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
-  actualizarTiposIndicadores: (nuevosIndicadores: TipoIndicador[]) => void;
-  actualizarTiposRequerimientos: (nuevosRequerimientos: TipoRequerimiento[]) => void;
-  actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
-
-  // Actions
-  guardarConfiguraciones: () => Promise<void>;
+  actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
+  actualizarTiposRequerimientos: (nuevosTipos: TipoRequerimiento[]) => void;
+  guardarConfiguraciones: () => void;
   restablecerDefecto: () => void;
-  setCambiosPendientes: (valor: boolean) => void;
+  setCambiosPendientes: (value: boolean) => void;
 }
 
 // ============ CONTEXT ============
@@ -509,6 +582,30 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return modulo?.tiposAutos?.filter(t => t.activo) || [];
   };
 
+  // ✅ Obtener solo los tipos de actuaciones activos
+  const getTiposActuacionesActivos = (moduloId: string): TipoActuacion[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.tiposActuaciones?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
+  // ✅ Obtener solo los medios de control activos
+  const getMediosControlActivos = (moduloId: string): MedioControl[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.mediosControl?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
+  // ✅ Obtener solo los tipos de excepciones activos
+  const getTiposExcepcionesActivos = (moduloId: string): TipoExcepcionProcesal[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.tiposExcepcionesProcesal?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
+  // ✅ Obtener solo las causales específicas activas
+  const getCausalesEspecificasActivas = (moduloId: string): CausalEspecifica[] => {
+    const modulo = getConfiguracionModulo(moduloId);
+    return modulo?.causalesEspecificas?.filter(t => t.activo).sort((a, b) => a.orden - b.orden) || [];
+  };
+
   // Obtener solo los ejes estratégicos activos
   const getEjesEstrategicosActivos = (): EjeEstrategico[] => {
     return ejesEstrategicos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
@@ -619,6 +716,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getEstadosActivos,
     getTiposProcesosActivos,
     getTiposAutosActivos,
+    getTiposActuacionesActivos,
+    getMediosControlActivos,
+    getTiposExcepcionesActivos,
+    getCausalesEspecificasActivas,
     getEjesEstrategicosActivos,
     getTiposIndicadoresActivos,
     getTiposRequerimientosActivos,
@@ -657,7 +758,7 @@ export function useConfiguracionesSIGL() {
 // ============ HOOK PARA MÓDULO ESPECÍFICO ============
 
 export function useConfiguracionModulo(moduloId: string) {
-  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos } = useConfiguracionesSIGL();
+  const { getConfiguracionModulo, getEstadosActivos, getTiposProcesosActivos, getTiposAutosActivos, getTiposActuacionesActivos, getMediosControlActivos, getTiposExcepcionesActivos, getCausalesEspecificasActivas } = useConfiguracionesSIGL();
 
   return {
     configuracion: getConfiguracionModulo(moduloId),
@@ -665,5 +766,9 @@ export function useConfiguracionModulo(moduloId: string) {
     tiposProcesosActivos: getTiposProcesosActivos(moduloId),
     tiempos: getConfiguracionModulo(moduloId)?.tiempos || [],
     tiposAutosActivos: getTiposAutosActivos(moduloId),
+    tiposActuacionesActivos: getTiposActuacionesActivos(moduloId),
+    mediosControlActivos: getMediosControlActivos(moduloId),
+    tiposExcepcionesActivos: getTiposExcepcionesActivos(moduloId),
+    causalesEspecificasActivas: getCausalesEspecificasActivas(moduloId),
   };
 }

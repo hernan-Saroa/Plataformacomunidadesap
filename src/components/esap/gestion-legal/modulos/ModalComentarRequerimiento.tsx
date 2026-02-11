@@ -36,20 +36,13 @@ export function ModalComentarRequerimiento({
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock de comentarios existentes
+  // Mock de comentarios existentes (REDUCIDOS)
   const [comentariosExistentes] = useState<Comentario[]>([
     {
       id: '1',
-      usuario: 'Dra. María Fernández',
+      usuario: 'Usuario Ejemplo',
       fecha: new Date('2024-12-20T10:30:00'),
-      contenido: 'Solicité información complementaria al área de Contratación. Esperando respuesta para consolidar datos.',
-      tipo: 'interno',
-    },
-    {
-      id: '2',
-      usuario: 'Dr. Carlos Pérez',
-      fecha: new Date('2024-12-21T14:15:00'),
-      contenido: 'Revisé la normatividad aplicable. El término para responder vence el 8 de enero. Prioridad alta.',
+      contenido: 'Comentario de ejemplo para referencia',
       tipo: 'interno',
     },
   ]);

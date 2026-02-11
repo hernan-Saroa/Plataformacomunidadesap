@@ -14,18 +14,25 @@
  * Fecha: 2026-01-03
  */
 
-import type { UserWithSedes } from '../data/mockUsersWithSedes';
-import type {
-  DocentePTA,
-  ResultadoSincronizacion,
-  TipoVinculacion,
-  EstadoVinculacion
-} from '../types/integracion-personas-pta';
 import {
   calcularHorasProgramables,
-  MAPEO_ESTADOS
+  MAPEO_ESTADOS,
+  esDocente,
+  puedeAprobarPTA,
+  obtenerNivelAprobacion,
+  obtenerSedePrincipal,
+  obtenerNombreCompleto,
+  type DocentePTA,
+  type UserWithSedes,
+  type BusquedaDocente,
+  type RutaAprobacion,
+  type NivelAprobacion,
+  type AprobadorPTA,
+  type ResultadoSincronizacion,
+  type AuditoriaIntegracion,
+  type NotificacionPersonasPTA
 } from '../types/integracion-personas-pta';
-import { USUARIOS_EJEMPLO } from '../data/mockUsersWithSedes';
+import { MOCK_USERS_WITH_SEDES } from '../data/mockUsersWithSedes';
 import { periodParametersService } from './periodParametersService';
 
 // ============================================================================
@@ -98,13 +105,13 @@ class PersonasPTAIntegrationService {
     let persona: UserWithSedes | undefined;
 
     if (criterios.personId) {
-      persona = USUARIOS_EJEMPLO.find(u => u.personId === criterios.personId);
+      persona = MOCK_USERS_WITH_SEDES.find(u => u.personId === criterios.personId);
     } else if (criterios.userId) {
-      persona = USUARIOS_EJEMPLO.find(u => u.id === criterios.userId);
+      persona = MOCK_USERS_WITH_SEDES.find(u => u.id === criterios.userId);
     } else if (criterios.email) {
-      persona = USUARIOS_EJEMPLO.find(u => u.email === criterios.email);
+      persona = MOCK_USERS_WITH_SEDES.find(u => u.email === criterios.email);
     } else if (criterios.documentNumber) {
-      persona = USUARIOS_EJEMPLO.find(u => u.documentNumber === criterios.documentNumber);
+      persona = MOCK_USERS_WITH_SEDES.find(u => u.documentNumber === criterios.documentNumber);
     }
 
     if (!persona) {
@@ -119,7 +126,7 @@ class PersonasPTAIntegrationService {
    * Obtener todos los docentes del sistema
    */
   obtenerTodosLosDocentes(): DocentePTA[] {
-    return USUARIOS_EJEMPLO
+    return MOCK_USERS_WITH_SEDES
       .filter(esDocente)
       .map(persona => this.convertirPersonaADocente(persona))
       .filter((docente): docente is DocentePTA => docente !== null);
@@ -129,7 +136,7 @@ class PersonasPTAIntegrationService {
    * Obtener docentes por territorial
    */
   obtenerDocentesPorTerritorial(territorialId: string): DocentePTA[] {
-    return USUARIOS_EJEMPLO
+    return MOCK_USERS_WITH_SEDES
       .filter(esDocente)
       .filter(persona => {
         const sedeTerritorial = persona.sedes.find(s => s.nivel === 'territorial');
@@ -143,7 +150,7 @@ class PersonasPTAIntegrationService {
    * Obtener docentes por sede
    */
   obtenerDocentesPorSede(sedeId: string): DocentePTA[] {
-    return USUARIOS_EJEMPLO
+    return MOCK_USERS_WITH_SEDES
       .filter(esDocente)
       .filter(persona => persona.sedes.some(s => s.id === sedeId))
       .map(persona => this.convertirPersonaADocente(persona))
@@ -208,7 +215,7 @@ class PersonasPTAIntegrationService {
     const subdirectores: AprobadorPTA[] = [];
 
     // Buscar coordinadores del mismo núcleo/sede
-    const coordinadoresEncontrados = USUARIOS_EJEMPLO.filter(persona => {
+    const coordinadoresEncontrados = MOCK_USERS_WITH_SEDES.filter(persona => {
       const nivel = obtenerNivelAprobacion(persona);
       if (nivel !== 'coordinador-nucleo') return false;
       
@@ -221,7 +228,7 @@ class PersonasPTAIntegrationService {
     coordinadores.push(...coordinadoresEncontrados.map(p => this.convertirAAprobador(p, 'coordinador-nucleo')));
 
     // Buscar directores territoriales
-    const directoresEncontrados = USUARIOS_EJEMPLO.filter(persona => {
+    const directoresEncontrados = MOCK_USERS_WITH_SEDES.filter(persona => {
       const nivel = obtenerNivelAprobacion(persona);
       if (nivel !== 'director-territorial') return false;
       
@@ -233,7 +240,7 @@ class PersonasPTAIntegrationService {
     directores.push(...directoresEncontrados.map(p => this.convertirAAprobador(p, 'director-territorial')));
 
     // Buscar subdirectores académicos (nivel nacional)
-    const subdirectoresEncontrados = USUARIOS_EJEMPLO.filter(persona => {
+    const subdirectoresEncontrados = MOCK_USERS_WITH_SEDES.filter(persona => {
       const nivel = obtenerNivelAprobacion(persona);
       return nivel === 'subdirector-academico';
     });
@@ -270,7 +277,7 @@ class PersonasPTAIntegrationService {
    */
   async sincronizarDocente(personId: string): Promise<ResultadoSincronizacion> {
     try {
-      const persona = USUARIOS_EJEMPLO.find(u => u.personId === personId);
+      const persona = MOCK_USERS_WITH_SEDES.find(u => u.personId === personId);
       
       if (!persona) {
         return {
@@ -322,7 +329,7 @@ class PersonasPTAIntegrationService {
    * Sincronizar todos los docentes
    */
   async sincronizarTodosLosDocentes(): Promise<ResultadoSincronizacion[]> {
-    const docentes = USUARIOS_EJEMPLO.filter(esDocente);
+    const docentes = MOCK_USERS_WITH_SEDES.filter(esDocente);
     const resultados: ResultadoSincronizacion[] = [];
 
     for (const persona of docentes) {
@@ -398,7 +405,7 @@ class PersonasPTAIntegrationService {
    * Verificar si un usuario puede aprobar PTA
    */
   puedeAprobarPTAs(personId: string): boolean {
-    const persona = USUARIOS_EJEMPLO.find(u => u.personId === personId);
+    const persona = MOCK_USERS_WITH_SEDES.find(u => u.personId === personId);
     return persona ? puedeAprobarPTA(persona) : false;
   }
 
@@ -406,7 +413,7 @@ class PersonasPTAIntegrationService {
    * Obtener el nivel de aprobación de un usuario
    */
   obtenerNivelAprobacionUsuario(personId: string): NivelAprobacion | null {
-    const persona = USUARIOS_EJEMPLO.find(u => u.personId === personId);
+    const persona = MOCK_USERS_WITH_SEDES.find(u => u.personId === personId);
     return persona ? obtenerNivelAprobacion(persona) : null;
   }
 

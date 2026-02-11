@@ -41,7 +41,8 @@ const initialFormState = {
   etapa: 'IDENTIFICADO',
   moduloOrigen: '',
   procesoId: '',
-  procesoRadicado: ''
+  procesoRadicado: '',
+  cuantiaEstimada: '0'
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
@@ -72,7 +73,8 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         etapa: riesgoEditar.etapa || 'IDENTIFICADO',
         moduloOrigen: riesgoEditar.moduloOrigen || '',
         procesoId: riesgoEditar.procesoId || '',
-        procesoRadicado: riesgoEditar.procesoRadicado || ''
+        procesoRadicado: riesgoEditar.procesoRadicado || '',
+        cuantiaEstimada: String(riesgoEditar.cuantiaEstimada || 0)
       });
       // Cargar controles existentes
       if (Array.isArray(riesgoEditar.controlesExistentes)) {
@@ -364,8 +366,11 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                         handleChange('procesoId', e.target.value);
                         handleChange('procesoRadicado', selected?.radicado || '');
 
+                        handleChange('procesoId', e.target.value);
                         handleChange('procesoRadicado', selected?.radicado || '');
-
+                        if (selected?.cuantia) {
+                          handleChange('cuantiaEstimada', String(selected.cuantia));
+                        }
                       }}
                       className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
                       disabled={!formData.moduloOrigen || loadingProcesos}
@@ -400,8 +405,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
 
               {/* Campo oculto para mantener compatibilidad con riesgos antiguos */}
-              <input type="hidden" value={formData.proceso} />
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
@@ -422,6 +425,28 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                 </div>
               </div>
 
+              {/* Campo de Cuantía (Visible para Riesgo Fiscal o si hay cuantía) */}
+              {(formData.tipoRiesgo === 'FISCAL' || Number(formData.cuantiaEstimada) > 0) && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <Label htmlFor="cuantiaEstimada" className="text-sm font-semibold text-gray-700">
+                    Cuantía Estimada del Riesgo
+                  </Label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                    <Input
+                      id="cuantiaEstimada"
+                      type="number"
+                      placeholder="0"
+                      value={formData.cuantiaEstimada}
+                      onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
+                      className="pl-7 border-2 border-gray-300 focus:border-green-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Para riesgos fiscales, ingrese el valor estimado de la posible pérdida.
+                  </p>
+                </div>
+              )}
 
             </div>
 

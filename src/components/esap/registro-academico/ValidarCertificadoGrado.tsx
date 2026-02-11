@@ -24,6 +24,7 @@ import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogoSVG } from '../../assets/ESAPLogoSVG';
 import graduadosService, { CertificadoGraduado } from '../../../services/api/graduados.service';
 
 interface ValidacionResult {
@@ -39,10 +40,7 @@ interface ValidacionResult {
       cohorte: string;
     };
     fechaGrado: string;
-    numeroActa: string;
-    numeroFolio: string;
-    tituloOtorgado: string;
-    firmadoPor: string;
+    registroFolioLibro: string;
     estado: 'VIGENTE' | 'REVOCADO' | 'ANULADO';
   };
   error?: string;
@@ -76,10 +74,7 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
       cohorte: 'No especificado'
     },
     fechaGrado: certificado.graduationDate,
-    numeroActa: certificado.actaNumber || 'No especificado',
-    numeroFolio: certificado.diplomaNumber || 'No especificado',
-    tituloOtorgado: certificado.degreeTitle,
-    firmadoPor: [certificado.signerName, certificado.signerPosition].filter(Boolean).join(' - ') || 'No especificado',
+    registroFolioLibro: certificado.actaNumber || 'No especificado',
     estado: mapEstadoCertificado(certificado.status)
   });
 
@@ -183,10 +178,13 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
                 <div className="flex items-center justify-between">
                   {/* Logo */}
                   <div className="flex items-center gap-3">
-                    <img 
+                    {/* <img 
                       src={esapLogoWhite} 
                       alt="ESAP Logo" 
                       className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+                    /> */}
+                    <ESAPLogoSVG
+                      variant="color"
                     />
                     <div className="hidden sm:block">
                       <p className="text-xs font-semibold text-white">Validador de Certificados</p>
@@ -484,37 +482,10 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
 
                                 <div>
                                   <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Acta
+                                    Registro/Folio/Libro
                                   </label>
                                   <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroActa}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Folio
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroFolio}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Título Otorgado
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.tituloOtorgado}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Firmado por
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.firmadoPor}
+                                    {validationResult.certificado.registroFolioLibro}
                                   </p>
                                 </div>
                               </div>

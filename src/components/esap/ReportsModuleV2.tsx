@@ -48,8 +48,12 @@ import { toast } from 'sonner';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { ReportBuilderModal } from './ReportBuilderModal';
-import { ScheduleReportModal } from './ScheduleReportModal';
 import { ScheduledReportsView } from './ScheduledReportsView';
+import { ScheduleReportModal } from './ScheduleReportModal';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
 import { UnifiedStatsCards, StatCardData } from './UnifiedStatsCards';
 
 // ═══════════════════════════════════════════════════════════════
@@ -679,66 +683,27 @@ export function ReportsModuleV2() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)',
-              }}
-            >
-              <FileBarChart className="w-6 h-6 text-white" strokeWidth={2.5} />
-            </div>
-            <h1
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: '32px',
-                lineHeight: '40px',
-                letterSpacing: '-0.25px',
-                color: '#1F2937',
-              }}
-            >
-              Motor de Reportes V2
-            </h1>
-          </div>
-          <p
-            className="font-normal"
-            style={{
-              fontSize: '14px',
-              lineHeight: '20px',
-              color: '#6B7280',
-            }}
-          >
-            Sistema empresarial de generación de informes con {REPORTES_PREDEFINIDOS.length}+ reportes predefinidos cubriendo todos los módulos
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowReportBuilder(true)}
-            className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-[#003DA5] to-[#0052CC] text-white rounded-lg hover:shadow-lg transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="font-semibold">Crear Reporte</span>
-          </button>
-          <button
-            onClick={() => setShowScheduleModal(true)}
-            className="flex items-center gap-2 px-4 py-3 border-2 border-gray-200 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition-all"
-          >
-            <CalendarClock className="w-4 h-4" />
-            <span className="font-semibold">Programar</span>
-          </button>
-        </div>
-      </motion.div>
+    <Container4K className="space-y-6">
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Motor de Reportes V2"
+        description={`Sistema empresarial de generación de informes con ${REPORTES_PREDEFINIDOS.length}+ reportes predefinidos cubriendo todos los módulos`}
+        icon={FileBarChart}
+        primaryAction={{
+          label: "Crear Reporte",
+          icon: Plus,
+          onClick: () => setShowReportBuilder(true),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Programar",
+            icon: CalendarClock,
+            onClick: () => setShowScheduleModal(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Stats */}
       {/* <StatsCards /> */}
@@ -920,6 +885,6 @@ export function ReportsModuleV2() {
           onScheduleCreated={handleScheduleReport}
         />
       )}
-    </div>
+    </Container4K>
   );
 }

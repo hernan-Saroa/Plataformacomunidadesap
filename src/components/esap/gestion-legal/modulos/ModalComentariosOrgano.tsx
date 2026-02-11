@@ -77,6 +77,17 @@ export function ModalComentariosOrgano({
       setLoading(false);
     }
   };
+  // Mock data de comentarios (REDUCIDOS)
+  const comentariosMock: Comentario[] = [
+    {
+      id: 'com-001',
+      usuario: 'Dra. Responsable',
+      cargo: 'Jefa Área Jurídica',
+      contenido: 'Comentario de ejemplo para referencia',
+      fecha: new Date('2024-12-11T09:30:00'),
+      tipo: 'actuacion'
+    },
+  ];
 
   // Filtrar comentarios
   const comentariosFiltrados = filtroTipo === 'todos'

@@ -249,21 +249,19 @@ export function ModalNuevoRequerimiento({
                                         <Building2 className="w-3 h-3" />
                                         Órgano de Control *
                                     </Label>
-                                    <Select
+                                    <Input
+                                        id="organismoId"
+                                        placeholder="Ingrese el nombre del órgano de control"
                                         value={formData.organismoId}
-                                        onValueChange={(value) => handleChange('organismoId', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Seleccione organismo..." />
-                                        </SelectTrigger>
-                                        <SelectContent className="z-[9999]">
-                                            {organismos.map((org: Organismo) => (
-                                                <SelectItem key={String(org.id)} value={String(org.id)}>
-                                                    {org.sigla ? `${org.sigla} - ${org.nombre}` : org.nombre}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            // Validar solo letras y espacios (incluyendo tildes)
+                                            if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
+                                                handleChange('organismoId', value);
+                                            }
+                                        }}
+                                        required
+                                    />
                                 </div>
                             </div>
 

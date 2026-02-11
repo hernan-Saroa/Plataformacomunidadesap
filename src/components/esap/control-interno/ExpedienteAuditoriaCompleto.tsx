@@ -301,195 +301,157 @@ interface EventoHistorial {
 const AUDITORIA_EJEMPLO: Auditoria = {
   id: 'aud-001',
   codigo: 'AUD-2025-001',
-  nombre: 'Auditoría Interna de Gestión Financiera y Presupuestal',
+  nombre: 'Auditoría de Gestión Académica',
   tipo: 'Sede',
   estado: 'ejecucion',
-  areaAuditable: 'Dirección Financiera',
-  procesoNombre: 'Gestión Presupuestal y Contabilidad',
+  areaAuditable: 'Dirección Académica Nacional',
+  procesoNombre: 'Gestión Académica',
   nivelRiesgo: 'Alto',
   
   responsableArea: {
-    id: 'per-001',
-    nombre: 'María Fernanda González Ruiz',
-    cargo: 'Directora Financiera',
-    email: 'maria.gonzalez@esap.edu.co',
-    telefono: '+57 (1) 220-2790 Ext. 1205',
+    id: 'u1',
+    nombre: 'María González',
+    cargo: 'Directora Académica',
+    email: 'mgonzalez@esap.edu.co',
+    telefono: '+57 300 123 4567'
   },
   
   auditorLider: {
-    id: 'aud-001',
-    nombre: 'Carlos Andrés Ramírez Torres',
-    email: 'carlos.ramirez@esap.edu.co',
+    id: 'u2',
+    nombre: 'Carlos Rodríguez',
+    email: 'crodriguez@esap.edu.co',
+    foto: undefined
   },
   
   equipoAuditores: [
     {
-      id: 'aud-002',
-      nombre: 'Ana María Martínez López',
-      rol: 'Auditora Senior',
-      email: 'ana.martinez@esap.edu.co',
+      id: 'u3',
+      nombre: 'Ana Martínez',
+      rol: 'Auditor Senior',
+      email: 'amartinez@esap.edu.co',
+      foto: undefined
     },
     {
-      id: 'aud-003',
-      nombre: 'Pedro Luis Sánchez Mora',
+      id: 'u4',
+      nombre: 'Luis Pérez',
       rol: 'Auditor Junior',
-      email: 'pedro.sanchez@esap.edu.co',
-    },
+      email: 'lperez@esap.edu.co',
+      foto: undefined
+    }
   ],
   
   cronograma: {
-    fechaCreacion: new Date(2025, 0, 5),
-    fechaInicio: new Date(2025, 0, 15),
-    fechaFin: new Date(2025, 1, 15),
-    duracionDias: 30,
-    diasTranscurridos: 12,
+    fechaCreacion: new Date('2025-01-01'),
+    fechaInicio: new Date('2025-01-15'),
+    fechaFin: new Date('2025-02-28'),
+    fechaFinReal: undefined,
+    duracionDias: 45,
+    diasTranscurridos: 25
   },
   
   progreso: {
-    general: 45,
+    general: 65,
     planeacion: 100,
     ejecucion: 60,
-    comunicacion: 0,
+    comunicacion: 0
   },
   
   estadisticas: {
-    totalHallazgos: 12,
+    totalHallazgos: 8,
     hallazgosCriticos: 2,
-    hallazgosMayores: 5,
-    hallazgosMenores: 5,
-    documentosCargados: 28,
-    notificacionesEnviadas: 15,
+    hallazgosMayores: 3,
+    hallazgosMenores: 3,
+    documentosCargados: 12,
+    notificacionesEnviadas: 5
   },
   
   fechasClave: {
-    planeacionInicio: new Date(2025, 0, 15),
-    planeacionFin: new Date(2025, 0, 22),
-    ejecucionInicio: new Date(2025, 0, 23),
-    informePreliminar: new Date(2025, 1, 5),
+    planeacionInicio: new Date('2025-01-15'),
+    planeacionFin: new Date('2025-01-22'),
+    ejecucionInicio: new Date('2025-01-23'),
+    ejecucionFin: undefined,
+    comunicacionInicio: undefined,
+    comunicacionFin: undefined,
+    informePreliminar: undefined,
+    informeFinal: undefined
   },
   
   metadata: {
-    creadoPor: 'Carlos Ramírez',
-    fechaCreacion: new Date(2025, 0, 5),
-    ultimaModificacion: new Date(2025, 0, 27),
-    modificadoPor: 'Ana Martínez',
-    version: 3,
-  },
+    creadoPor: 'Carlos Rodríguez',
+    fechaCreacion: new Date('2025-01-10'),
+    ultimaModificacion: new Date('2025-02-09'),
+    modificadoPor: 'Carlos Rodríguez',
+    version: 1
+  }
 };
 
 const DOCUMENTOS_EJEMPLO: DocumentoExpediente[] = [
   {
     id: 'doc-001',
-    nombre: 'Oficio de Anuncio de Auditoría',
-    tipo: 'Oficio',
+    nombre: 'Programa de Auditoría 2025.pdf',
+    tipo: 'Informe',
     fase: 'planeacion',
-    fechaCarga: new Date(2025, 0, 15),
-    cargadoPor: 'Carlos Ramírez',
-    size: '245 KB',
+    fechaCarga: new Date('2025-01-15'),
+    cargadoPor: 'Carlos Rodríguez',
+    size: '2.5 MB',
     version: 1,
+    descripcion: 'Programa anual de auditorías'
   },
   {
     id: 'doc-002',
-    nombre: 'Carta de Compromiso - Responsable del Área',
-    tipo: 'Carta',
+    nombre: 'Acta Reunión Apertura.pdf',
+    tipo: 'Acta',
     fase: 'planeacion',
-    fechaCarga: new Date(2025, 0, 15),
-    cargadoPor: 'Carlos Ramírez',
-    size: '180 KB',
+    fechaCarga: new Date('2025-01-16'),
+    cargadoPor: 'Carlos Rodríguez',
+    size: '1.2 MB',
     version: 1,
+    descripcion: 'Acta de reunión de apertura'
   },
   {
     id: 'doc-003',
-    nombre: 'Acta de Reunión de Apertura',
-    tipo: 'Acta',
-    fase: 'planeacion',
-    fechaCarga: new Date(2025, 0, 22),
-    cargadoPor: 'Ana Martínez',
-    size: '520 KB',
-    version: 2,
-  },
-  {
-    id: 'doc-004',
-    nombre: 'Lista de Chequeo - Gestión Presupuestal',
+    nombre: 'Lista de Chequeo - Gestión Académica.pdf',
     tipo: 'Lista-Chequeo',
     fase: 'ejecucion',
-    fechaCarga: new Date(2025, 0, 25),
-    cargadoPor: 'Pedro Sánchez',
-    size: '340 KB',
-    version: 1,
-  },
-  {
-    id: 'doc-005',
-    nombre: 'Evidencia Fotográfica - Archivo Documental',
-    tipo: 'Evidencia',
-    fase: 'ejecucion',
-    fechaCarga: new Date(2025, 0, 26),
+    fechaCarga: new Date('2025-01-25'),
     cargadoPor: 'Ana Martínez',
-    size: '2.3 MB',
-  },
+    size: '3.8 MB',
+    version: 1,
+    descripcion: 'Lista de chequeo aplicada'
+  }
 ];
 
 const HISTORIAL_EJEMPLO: EventoHistorial[] = [
   {
     id: 'evt-001',
-    tipo: 'accion',
-    titulo: 'Auditoría creada',
-    descripcion: 'Se creó la auditoría en el sistema',
-    usuario: 'Carlos Ramírez',
-    fecha: new Date(2025, 0, 5, 10, 30),
-    icono: <Sparkles className="w-4 h-4" />,
-    color: '#10B981',
+    tipo: 'cambio-estado',
+    titulo: 'Auditoría iniciada',
+    descripcion: 'Se inició la auditoría de Gestión Académica',
+    usuario: 'Carlos Rodríguez',
+    fecha: new Date('2025-01-15T08:00:00'),
+    icono: <CheckCircle className="w-5 h-5" />,
+    color: '#10b981'
   },
   {
     id: 'evt-002',
-    tipo: 'notificacion',
-    titulo: 'Notificación enviada',
-    descripcion: 'Oficio de anuncio enviado a María González',
-    usuario: 'Sistema',
-    fecha: new Date(2025, 0, 15, 9, 15),
-    icono: <Mail className="w-4 h-4" />,
-    color: '#3B82F6',
+    tipo: 'documento',
+    titulo: 'Documento cargado',
+    descripcion: 'Se cargó el Programa de Auditoría',
+    usuario: 'Carlos Rodríguez',
+    fecha: new Date('2025-01-15T09:30:00'),
+    icono: <FileText className="w-5 h-5" />,
+    color: '#3b82f6'
   },
   {
     id: 'evt-003',
-    tipo: 'cambio-estado',
-    titulo: 'Cambio a Planeación',
-    descripcion: 'La auditoría inició la fase de planeación',
-    usuario: 'Carlos Ramírez',
-    fecha: new Date(2025, 0, 15, 14, 0),
-    icono: <Activity className="w-4 h-4" />,
-    color: '#8B5CF6',
-  },
-  {
-    id: 'evt-004',
-    tipo: 'documento',
-    titulo: 'Documento cargado',
-    descripcion: 'Acta de Reunión de Apertura (v2)',
-    usuario: 'Ana Martínez',
-    fecha: new Date(2025, 0, 22, 16, 45),
-    icono: <Upload className="w-4 h-4" />,
-    color: '#F59E0B',
-  },
-  {
-    id: 'evt-005',
-    tipo: 'cambio-estado',
-    titulo: 'Cambio a Ejecución',
-    descripcion: 'Planeación completada. Inicio de ejecución',
-    usuario: 'Carlos Ramírez',
-    fecha: new Date(2025, 0, 23, 8, 0),
-    icono: <CheckCircle className="w-4 h-4" />,
-    color: '#10B981',
-  },
-  {
-    id: 'evt-006',
-    tipo: 'comentario',
-    titulo: 'Comentario agregado',
-    descripcion: 'Hallazgo crítico identificado en manejo presupuestal',
-    usuario: 'Pedro Sánchez',
-    fecha: new Date(2025, 0, 26, 11, 20),
-    icono: <MessageSquare className="w-4 h-4" />,
-    color: '#EF4444',
-  },
+    tipo: 'notificacion',
+    titulo: 'Notificación enviada',
+    descripcion: 'Se envió notificación al área auditada',
+    usuario: 'Sistema',
+    fecha: new Date('2025-01-15T10:00:00'),
+    icono: <Send className="w-5 h-5" />,
+    color: '#8b5cf6'
+  }
 ];
 
 // ============ FUNCIONES HELPER ============
@@ -961,11 +923,12 @@ export function ExpedienteAuditoriaCompleto({
 
   // Cálculos
   const diasRestantes = useMemo(() => {
+    if (!auditoria.cronograma?.fechaFin) return 0;
     const hoy = new Date();
     const fin = new Date(auditoria.cronograma.fechaFin);
     const diff = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
-  }, [auditoria.cronograma.fechaFin]);
+  }, [auditoria.cronograma?.fechaFin]);
 
   // Calcular días transcurridos basado en fecha actual vs fecha inicio
   const diasTranscurridosCalculados = useMemo(() => {
@@ -981,6 +944,7 @@ export function ExpedienteAuditoriaCompleto({
   }, [auditoria.cronograma.fechaInicio, auditoria.cronograma.duracionDias]);
 
   const progresoTiempo = useMemo(() => {
+    if (!auditoria.cronograma?.diasTranscurridos || !auditoria.cronograma?.duracionDias) return 0;
     return Math.round(
       (diasTranscurridosCalculados / auditoria.cronograma.duracionDias) * 100
     );
@@ -1224,12 +1188,12 @@ export function ExpedienteAuditoriaCompleto({
       />
       
       {/* Modal Container */}
-      <div className="fixed inset-0 z-[111] flex items-start justify-center p-4 pt-20 overflow-y-auto pointer-events-none">
+      <div className="fixed inset-0 z-[111] flex items-center justify-center p-6 overflow-y-auto pointer-events-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[calc(100vh-6rem)] overflow-hidden flex flex-col my-4 pointer-events-auto"
+          className="bg-white rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col my-auto pointer-events-auto"
         >
           {/* Indicador de carga */}
           {loading && (

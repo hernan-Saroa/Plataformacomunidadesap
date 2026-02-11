@@ -21,6 +21,7 @@ import { Textarea } from '../../../ui/textarea';
 import { Label } from '../../../ui/label';
 import { ConsultaJuridica } from '../core/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { useConfirmation } from '../../../ui/confirmation-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -35,13 +36,20 @@ import { Permissions } from '../../../../enums/permissions';
 
 // ✅ Importar configuraciones centralizadas
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
-type VistaModulo = 'tabla' | 'tarjetas';
+type VistaModulo = 'tabla' | 'tarjetas' | 'archivados';
 type OrdenColumna = 'id' | 'fecha' | 'dias' | 'tema' | 'etapa';
 
 export function ModuloAsesoriaJuridicaV3() {
   // ✅ Obtener configuraciones desde el Context API
   const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('tabla');
   const [busqueda, setBusqueda] = useState('');
@@ -208,7 +216,7 @@ export function ModuloAsesoriaJuridicaV3() {
       return;
     }
     // ✅ Validación de formato de email
-    if (newConsultaData.emailSolicitante && !isValidEmail(newConsultaData.emailSolicitante)) {
+    if (newConsultaData.emailSolicitante && !isValidEmail(newConsultaData.emailSolicitante || '')) {
       toast.error('El correo debe contener @ y un dominio válido (.com, .co, etc.)');
       return;
     }
@@ -243,17 +251,106 @@ export function ModuloAsesoriaJuridicaV3() {
   };
 
   const handleDeleteConsulta = async (uuid: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta consulta? Esta acción no se puede deshacer.')) return;
+    const confirmado = await confirm({
+      title: 'Archivar Consulta',
+      description: '¿Estás seguro de archivar esta consulta? Se moverá a la pestaña de Archivados y podrá ser consultada allí.',
+      variant: 'warning',
+      confirmText: 'Archivar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
     const toastId = toast.loading('Eliminando consulta...');
     try {
       await legalService.deleteConsultaJuridica(uuid);
-      toast.success('Consulta eliminada', { id: toastId });
+      toast.success('Consulta eliminada (movida a archivados)', { id: toastId });
       setModalExpedienteOpen(false);
       setConsultaSeleccionada(null);
       loadConsultas();
     } catch (error) {
       console.error(error);
       toast.error('Error al eliminar', { id: toastId });
+    }
+  };
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+  const [loadingArchivados, setLoadingArchivados] = useState(false);
+
+  // Hook de confirmación
+  const { confirm, ConfirmationComponent } = useConfirmation();
+
+  const loadArchivados = async () => {
+    try {
+      setLoadingArchivados(true);
+      const data = await legalService.getConsultasArchivadas();
+
+      // Mapear a formato ItemArchivado
+      const mappedItems: ItemArchivado[] = data.map((c: any) => ({
+        id: c.id,
+        codigo: c.radicado || c.numeroRadicado || 'S/N',
+        nombre: c.materiaJuridica ? `Consulta sobre ${c.materiaJuridica} - ${c.dependenciaSolicitante}` : 'Consulta Jurídica',
+        tipo: 'Consulta Jurídica',
+        estado: c.estadoArchivo || 'ARCHIVADO',
+        fechaArchivado: c.fechaArchivo ? new Date(c.fechaArchivo) : new Date(),
+        usuarioArchivo: c.usuarioArchivo || 'Desconocido',
+        motivoArchivo: c.motivoArchivo || 'Sin motivo registrado',
+        metadatos: {
+          'Tema Jurídico': c.materiaJuridica || 'No registrado',
+          'Solicitante': c.nombreSolicitante || 'Desconocido',
+          'Dependencia': c.dependenciaSolicitante || 'Desconocida',
+          'Abogado': c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+          'Fecha Radicación': c.fechaRecepcion ? new Date(c.fechaRecepcion).toLocaleDateString() : 'N/A'
+        }
+      }));
+
+      setItemsArchivados(mappedItems);
+    } catch (error) {
+      console.error('Error cargando archivados:', error);
+      toast.error('Error al cargar consultas archivadas');
+    } finally {
+      setLoadingArchivados(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tipoVista === 'archivados') {
+      loadArchivados();
+    }
+  }, [tipoVista]);
+
+  // ✅ Función para restaurar una consulta archivada
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      toast.loading('Restaurando consulta...');
+      const usuarioNombre = usuario ? usuario.nombre : 'Usuario Sistema';
+      await legalService.restaurarConsulta(itemId, usuarioNombre);
+      toast.dismiss();
+      toast.success('Consulta restaurada exitosamente');
+      toast.success('Consulta restaurada exitosamente');
+      loadArchivados(); // Recargar lista
+      loadConsultas(); // Actualizar lista principal
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.dismiss();
+      toast.error('Error al restaurar consulta');
+    }
+  };
+
+  // ✅ Función para eliminar permanentemente una consulta
+  const handleEliminarPermanente = async (itemId: string) => {
+    // No pedir confirmación aquí porque VistaArchivados ya lo hace
+    try {
+      toast.loading('Eliminando permanentemente...');
+      await legalService.eliminarConsultaPermanente(itemId);
+      toast.dismiss();
+      toast.success('Consulta eliminada permanentemente');
+      loadArchivados(); // Recargar lista
+      loadConsultas(); // Actualizar lista principal
+    } catch (error) {
+      console.error('Error eliminando permanente:', error);
+      toast.dismiss();
+      toast.error('Error al eliminar permanentemente');
     }
   };
 
@@ -334,7 +431,7 @@ export function ModuloAsesoriaJuridicaV3() {
         icon: <Plus className="w-4 h-4" />,
         // onClick: () => setIsCreateOpen(true),
         onClick: () => setModalNuevaConsultaOpen(true),
-        variant: 'primary'
+        variant: 'outline' as const
       }]
     }
     return []
@@ -346,6 +443,15 @@ export function ModuloAsesoriaJuridicaV3() {
       <ModuleHeader
         title="Asesoría Jurídica"
         subtitle="Seguimiento a consultas y términos de respuesta"
+        toggleView={{
+          current: tipoVista,
+          onChange: (view) => setTipoVista(view as VistaModulo),
+          options: [
+            { label: 'Tabla', icon: <Columns3 className="w-4 h-4" />, value: 'tabla' },
+            { label: 'Tarjetas', icon: <List className="w-4 h-4" />, value: 'tarjetas' },
+            { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
+          ]
+        }}
         buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
@@ -408,17 +514,20 @@ export function ModuloAsesoriaJuridicaV3() {
           {
             icon: <FileQuestion className="w-5 h-5 text-purple-600" />,
             value: consultas.length,
-            label: 'Consultas Totales'
+            label: 'Consultas Totales',
+            color: 'purple'
           },
           {
             icon: <AlertCircle className="w-5 h-5 text-red-600" />,
             value: consultasFiltradas.filter(c => c.diasRestantes <= 3).length,
-            label: 'Críticas'
+            label: 'Críticas',
+            color: 'red'
           },
           {
             icon: <CheckCircle className="w-5 h-5 text-green-600" />,
             value: consultasFiltradas.filter(c => c.diasRestantes > 5).length,
-            label: 'En Término'
+            label: 'En Término',
+            color: 'green'
           }
         ]}
       />
@@ -464,7 +573,7 @@ export function ModuloAsesoriaJuridicaV3() {
       />
 
       {/* Tabla o Tarjetas */}
-      {tipoVista === 'tabla' ? (
+      {tipoVista === 'tabla' && (
         <TablaConsultas
           consultas={consultasFiltradas}
           orden={orden}
@@ -473,11 +582,20 @@ export function ModuloAsesoriaJuridicaV3() {
           onAbrirExpediente={handleAbrirExpediente}
           onEliminar={handleDeleteConsulta}
         />
-      ) : (
+      )}
+      {tipoVista === 'tarjetas' && (
         <TarjetasConsultas
           consultas={consultasFiltradas}
           onAbrirExpediente={handleAbrirExpediente}
           onEliminar={handleDeleteConsulta}
+        />
+      )}
+      {tipoVista === 'archivados' && (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Asesoría Jurídica"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
         />
       )}
 
@@ -660,7 +778,10 @@ export function ModuloAsesoriaJuridicaV3() {
         </DialogContent>
       </Dialog>
 
-    </div>
+
+
+      <ConfirmationComponent />
+    </div >
   );
 }
 
@@ -790,7 +911,7 @@ function TablaConsultas({ consultas, orden, direccionOrden, onOrdenar, onAbrirEx
                 </Button>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_DELETE) && (
                   <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
                     size="sm"
                     variant="outline"
                     className="mt-1 w-full text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200"
@@ -873,24 +994,15 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
               </Badge>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+            <div className="grid grid-cols-2 gap-1.5 mb-1.5">
               <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
                 <p className="text-xs font-bold text-gray-700">{consulta.documentosAdjuntos?.length || 0}</p>
                 <p className="text-xs text-gray-500">Docs</p>
               </div>
               <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
-                <p className="text-xs font-bold text-gray-700">{consulta.normativaAplicable?.length || 0}</p>
-                <p className="text-xs text-gray-500">Normas</p>
-              </div>
-              <div className="text-center p-1.5 rounded-lg bg-gray-50 border border-gray-100">
                 <p className="text-xs font-bold text-gray-700">{Math.round(((consulta.diasTotales - consulta.diasRestantes) / consulta.diasTotales) * 100)}%</p>
                 <p className="text-xs text-gray-500">Tiempo</p>
               </div>
-            </div>
-
-            <div className="mb-1.5">
-              <p className="text-xs text-gray-500 mb-0.5">Normativa:</p>
-              <p className="text-xs text-gray-700 line-clamp-1">{consulta.normativaAplicable?.[0] || 'N/A'}</p>
             </div>
 
             <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
@@ -904,63 +1016,13 @@ function TarjetasConsultas({ consultas, onAbrirExpediente, onEliminar }: Tarjeta
                   <Archive className="w-3 h-3 mr-1 flex-shrink-0" /><span className="truncate">Expediente</span>
                 </Button>
                 <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid); }}
+                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEliminar(consulta.uuid || consulta.id); }}
                   size="sm"
                   variant="outline"
                   className="px-2 bg-red-50 hover:bg-red-100 text-red-600 border-red-200"
                   title="Eliminar Consulta"
                 >
                   <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <div className="space-y-1">
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Documentos Soporte', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <FileText className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Soporte</span>
-                  </Button>
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Normativa Aplicable', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Archive className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Normativa</span>
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Oficios', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Mail className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Oficios</span>
-                  </Button>
-                  <Button
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Respuesta', { description: consulta.id }); }}
-                    size="sm"
-                    variant="outline"
-                    className="text-[11px] px-2 justify-start truncate min-w-0"
-                  >
-                    <Send className="w-3 h-3 mr-0.5 flex-shrink-0" /><span className="truncate">Respuesta</span>
-                  </Button>
-                </div>
-
-                <Button
-                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); toast.info('Comentarios de la Consulta', { description: consulta.id }); }}
-                  size="sm"
-                  className="w-full text-[11px] py-2 font-bold"
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
-                  <span className="truncate">💬 Comentarios de la Consulta</span>
                 </Button>
               </div>
             </div>

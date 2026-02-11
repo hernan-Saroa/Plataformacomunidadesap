@@ -1066,12 +1066,12 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
   const config = estadoConfig[plan.estado];
 
   return (
-    <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-start justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
       {/* Overlay con efecto blur */}
       <div className="absolute inset-0" onClick={onClose} />
 
       {/* Modal - Tamaño optimizado con mejor responsive */}
-      <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-8 mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-4rem)] z-[9999]">
+      <div className="relative w-full max-w-[95vw] lg:max-w-[85vw] xl:max-w-7xl my-auto mx-4 bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-[9999]">
         {/* Header */}
         <div className="flex-shrink-0 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6 rounded-t-2xl">
           <div className="flex items-start justify-between gap-4">

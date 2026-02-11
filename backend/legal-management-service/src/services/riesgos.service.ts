@@ -238,16 +238,17 @@ export class RiesgosService {
         return saved;
     }
 
-    async archivar(id: string): Promise<Riesgo> {
+    async archivar(id: string, motivo?: string): Promise<Riesgo> {
         const riesgo = await this.findOne(id);
         riesgo.estado = 'ARCHIVADO';
+        riesgo.motivoArchivo = motivo || null;
         const saved = await this.riesgoRepo.save(riesgo);
 
         // Registrar archivado
         await this.registrarEvento(
             id,
             'ARCHIVADO',
-            `Riesgo ${riesgo.codigo} archivado`,
+            `Riesgo ${riesgo.codigo} archivado${motivo ? `: ${motivo}` : ''}`,
             'estado',
             'ACTIVO',
             'ARCHIVADO',
@@ -255,6 +256,48 @@ export class RiesgosService {
         );
 
         return saved;
+    }
+
+    async findArchived(): Promise<Riesgo[]> {
+        return this.riesgoRepo.find({
+            where: { estado: 'ARCHIVADO' as EstadoRiesgo },
+            order: { updatedAt: 'DESC' }
+        });
+    }
+
+    async restaurar(id: string): Promise<Riesgo> {
+        const riesgo = await this.findOne(id);
+        if (riesgo.estado !== 'ARCHIVADO') {
+            throw new NotFoundException(`Riesgo ${id} no está archivado`);
+        }
+        riesgo.estado = 'ACTIVO';
+        const saved = await this.riesgoRepo.save(riesgo);
+
+        // Registrar restauración
+        await this.registrarEvento(
+            id,
+            'ACTUALIZACION',
+            `Riesgo ${riesgo.codigo} restaurado del archivo`,
+            'estado',
+            'ARCHIVADO',
+            'ACTIVO',
+            'Sistema'
+        );
+
+        return saved;
+    }
+
+    async eliminarPermanente(id: string): Promise<void> {
+        const riesgo = await this.findOne(id);
+        if (riesgo.estado !== 'ARCHIVADO') {
+            throw new NotFoundException(`Riesgo ${id} debe estar archivado para eliminarse permanentemente`);
+        }
+
+        // Primero eliminar el historial asociado
+        await this.historialRepo.delete({ riesgoId: id });
+
+        // Luego eliminar el riesgo
+        await this.riesgoRepo.remove(riesgo);
     }
 
     async findByProceso(proceso: string): Promise<Riesgo[]> {

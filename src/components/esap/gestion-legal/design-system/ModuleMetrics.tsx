@@ -1,21 +1,13 @@
 /**
  * ModuleMetrics.tsx - COMPONENTE REUTILIZABLE PARA MÉTRICAS
  * Parte del Design System ESAP - Backoffice Gestión Legal
- * 
- * PROPÓSITO:
- * Estandarizar las métricas (KPIs) mostradas en todos los módulos
- * Eliminar ~300 líneas de código duplicado
- * 
- * USO:
- * <ModuleMetrics metrics={[
- *   { value: 248, label: 'Total', icon: <Scale />, color: 'blue' },
- *   { value: 12, label: 'Críticos', icon: <AlertCircle />, color: 'red' }
- * ]} />
+ * ✅ RESPONSIVE MOBILE-FIRST con useResponsive hook
  */
 
 import React from 'react';
 import { Card } from '../../../ui/card';
 import { LucideIcon } from 'lucide-react';
+import { useResponsive } from '../../../../hooks/useResponsive';
 
 // ==================== TYPES ====================
 
@@ -106,33 +98,22 @@ export function ModuleMetrics({
   metrics, 
   columns = { mobile: 2, tablet: 3 } 
 }: ModuleMetricsProps) {
-  const [isMobile, setIsMobile] = React.useState(false);
-  const [isTablet, setIsTablet] = React.useState(false);
-
-  React.useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1024);
-    };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // ✅ Hook responsive mejorado
+  const { isMobile, isTablet, isDesktop, isLarge } = useResponsive();
 
   // Determinar columnas según breakpoint
   const getGridCols = () => {
     if (isMobile) return columns.mobile || 2;
     if (isTablet) return columns.tablet || 3;
-    return columns.desktop || metrics.length;
+    if (isDesktop) return columns.desktop || metrics.length;
+    return columns.desktop || metrics.length; // 4K usa mismo que desktop
   };
 
   const gridCols = getGridCols();
-  const gridColsClass = `grid-cols-${gridCols}`;
 
   return (
     <div 
-      className={`grid gap-3`}
+      className="grid gap-2 sm:gap-3"
       style={{
         gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`
       }}
@@ -143,6 +124,7 @@ export function ModuleMetrics({
           metric={metric} 
           isMobile={isMobile}
           isTablet={isTablet}
+          isLarge={isLarge}
         />
       ))}
     </div>
@@ -155,9 +137,10 @@ interface MetricCardProps {
   metric: MetricConfig;
   isMobile: boolean;
   isTablet: boolean;
+  isLarge: boolean;
 }
 
-function MetricCard({ metric, isMobile, isTablet }: MetricCardProps) {
+function MetricCard({ metric, isMobile, isTablet, isLarge }: MetricCardProps) {
   const colorScheme = typeof metric.color === 'string' && COLOR_SCHEMES[metric.color as keyof typeof COLOR_SCHEMES]
     ? COLOR_SCHEMES[metric.color as keyof typeof COLOR_SCHEMES]
     : { bg: '#F3F4F6', iconColor: '#6B7280', textColor: '#6B7280' };

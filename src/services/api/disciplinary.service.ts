@@ -110,6 +110,39 @@ export interface LegalAuto {
     createdAt: string;
 }
 
+// Tipo para configuración de autos
+export interface AutoConfiguration {
+    id: string;
+    tipo: string;
+    nombre: string;
+    estado: string;
+    plantilla?: string;
+    stage: string | null;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// DTO para crear configuración de auto
+export interface CreateAutoConfigurationDto {
+    tipo: string;
+    nombre: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
+// DTO para actualizar configuración de auto
+export interface UpdateAutoConfigurationDto {
+    tipo?: string;
+    nombre?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
 export interface CreateNewsDto {
     origen: string;
     fechaQueja?: string;
@@ -474,8 +507,8 @@ class DisciplinaryService {
         });
     }
 
-    async firmarAuto(id: string, userId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, {});
+    async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, data || {});
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {
@@ -666,6 +699,64 @@ class DisciplinaryService {
 
     async deleteActaReal(id: string): Promise<void> {
         return apiClient.delete<void>(`/legal/api/v1/actas/${id}`);
+    }
+
+    // ==================== CONFIGURACIÓN DE AUTOS ====================
+
+    /**
+     * Obtener todas las configuraciones de autos
+     */
+    async getAutosConfiguration(): Promise<AutoConfiguration[]> {
+        return apiClient.get<AutoConfiguration[]>(`${SERVICE_PREFIX}/autos-configuration`);
+    }
+
+    /**
+     * Obtener solo las configuraciones de autos activas
+     */
+    async getAutosConfigurationActive(): Promise<AutoConfiguration[]> {
+        return apiClient.get<AutoConfiguration[]>(`${SERVICE_PREFIX}/autos-configuration/active`);
+    }
+
+    /**
+     * Obtener una configuración de auto por ID
+     */
+    async getAutosConfigurationById(id: string): Promise<AutoConfiguration> {
+        return apiClient.get<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
+    }
+
+    /**
+     * Obtener una configuración de auto por tipo
+     */
+    async getAutosConfigurationByTipo(tipo: string): Promise<AutoConfiguration> {
+        return apiClient.get<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/tipo/${tipo}`);
+    }
+
+    /**
+     * Crear nueva configuración de auto
+     */
+    async createAutosConfiguration(data: CreateAutoConfigurationDto): Promise<AutoConfiguration> {
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration`, data);
+    }
+
+    /**
+     * Actualizar configuración de auto
+     */
+    async updateAutosConfiguration(id: string, data: UpdateAutoConfigurationDto): Promise<AutoConfiguration> {
+        return apiClient.put<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}`, data);
+    }
+
+    /**
+     * Eliminar configuración de auto
+     */
+    async deleteAutosConfiguration(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
+    }
+
+    /**
+     * Activar/desactivar configuración de auto
+     */
+    async toggleAutosConfigurationEstado(id: string): Promise<AutoConfiguration> {
+        return apiClient.patch<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/toggle-estado`, {});
     }
 }
 

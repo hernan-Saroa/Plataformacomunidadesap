@@ -63,6 +63,9 @@ import { CoactivoHistorial } from './entities/coactivo-historial.entity';
 // System Configurations
 import { SystemConfiguration } from './entities/system-configuration.entity';
 
+// Oficios Enviados
+import { OficioEnviado } from './entities/oficio-enviado.entity';
+
 const envPath = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envPath });
 
@@ -102,7 +105,9 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Procesos Coactivos
         ProcesoCoactivo, ProcesoCoactivoAdjunto, PagoCoactivo, CoactivoHistorial,
         // System Configurations
-        SystemConfiguration
+        SystemConfiguration,
+        // Oficios Enviados
+        OficioEnviado
     ],
     synchronize: false, // ⚠️ Reverted to false to avoid conflicts
     logging: ['error'], // Solo mostrar errores, no queries

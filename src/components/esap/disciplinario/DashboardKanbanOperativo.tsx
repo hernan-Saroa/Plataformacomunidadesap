@@ -212,6 +212,7 @@ const mergeStages = (stages: { nombre: string; dias: number }[]) => {
 };
 
 // ==================== MOCK DATA ====================
+// ⚠️ Datos mock reducidos - 1 ejemplo por tipo para reducir tamaño del proyecto
 const NOTICIAS_MOCK: Noticia[] = [
   {
     id: 'n1',

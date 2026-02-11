@@ -66,6 +66,10 @@ export class CreateExpedienteDto {
     terminoProcesalDias?: number;
 
     @IsOptional()
+    @IsString()
+    tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
     documentosInicialesUrls?: string[];

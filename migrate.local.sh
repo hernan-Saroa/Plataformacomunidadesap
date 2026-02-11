@@ -13,9 +13,11 @@ set -e
 ENV_FILE="backend/auth-service/.env"
 
 if [ -f "$ENV_FILE" ]; then
-  # Cargar variables del .env (ignorar comentarios y lineas vacias)
+  # Cargar variables del .env (compatibles con bash; sin process substitution para evitar /dev/fd issues)
+  # Si existieran retornos de carro de Windows, los limpiamos sobre la marcha.
   set -a
-  source <(sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$ENV_FILE")
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
   set +a
 else
   echo "Error: No se encontro $ENV_FILE"

@@ -3,10 +3,10 @@
  * GESTIÓN DE AUDITORÍAS - TABLERO KANBAN OPERATIVO
  * ============================================
  * 
- * VERSIÓN: 3.0 - DISEÑO IDÉNTICO A CONTROL INTERNO DISCIPLINARIO
- * ÚLTIMA ACTUALIZACIÓN: 20 Diciembre 2025 - 16:30
+ * VERSIÓN: 4.0 - UNIFICACIÓN CON DISEÑO AUTORIZADO OCIG
+ * ÚLTIMA ACTUALIZACIÓN: 30 Enero 2025 - 10:00
  * 
- * DISEÑO 100% UNIFORME con Control Interno Disciplinario
+ * DISEÑO AUTORIZADO POR CLIENTE + FUNCIONALIDADES COMPLETAS
  * 
  * ============================================
  * 📊 DATOS DE PRUEBA INCLUIDOS (13 AUDITORÍAS)
@@ -71,11 +71,20 @@ import { ModalAprobacionAuditoria } from './ModalAprobacionAuditoria';
 import { ModalSolicitarAmpliacionPlazo } from './ModalSolicitarAmpliacionPlazo';
 import { BandejaAmpliacionesPendientes } from './BandejaAmpliacionesPendientes';
 import { ModalAgregarHallazgoRapido } from './ModalAgregarHallazgoRapido';
+
+// ✅ Importar modales desde carpeta modales/
+import { 
+  ModalDetalleAuditoria,
+  ModalHistorial,
+  ModalNotas,
+  ModalAsignarAuditor,
+  ModalAprobarAuditoria,
+  ModalCambiarEstado,
+  ModalFormularioAuditoria,
+  type Auditoria as AuditoriaModal
+} from './modales';
+
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
-import { ModalAsignarAuditorWorldClass } from './ModalAsignarAuditorWorldClass';
-import { ModalCambiarEstadoAuditoria } from './ModalCambiarEstadoAuditoria';
-import { ModalConfirmacionAccion } from './ModalConfirmacionAccion';
-import { ModalFormularioAuditoriaWorldClass } from './ModalFormularioAuditoriaWorldClass';
 import { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
 import { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
 import { LoadingSpinner, CardLoading } from '../../ui/loading-spinner';
@@ -84,6 +93,9 @@ import { EmptyState } from '../../ui/empty-state';
 import type { AuditoriaFormData } from '../../../utils/validation';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
+
+// ✅ FASE 1 DÍA 2: Componentes responsive
+import { useResponsive } from '@/hooks/useResponsive';
 
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
@@ -1885,9 +1897,9 @@ function ColumnaKanban({
     return (
       <motion.div
         ref={drop}
-        className="flex-shrink-0 h-full"
-        initial={{ width: 64 }}
-        animate={{ width: 64 }}
+        className="w-full lg:w-16 flex-shrink-0 lg:h-full"
+        initial={{ width: '100%' }}
+        animate={{ width: '100%' }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         <Card 
@@ -1974,9 +1986,9 @@ function ColumnaKanban({
 
   // Versión expandida normal
   return (
-    <Card className="flex-shrink-0 flex flex-col" style={{ width: '320px', height: 'calc(100vh - 320px)' }}>
+    <div className="w-full lg:w-80 flex-shrink-0">
       {/* Header Columna - ESTILO DISCIPLINARIO EXACTO */}
-      <div className="p-4 border-b bg-gray-50 flex-shrink-0">
+      <div className="p-4 border-b bg-gray-50 sticky top-0 z-10 lg:min-h-[80px]">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2 flex-1">
             <div className="p-2 rounded-lg bg-white border border-gray-200">
@@ -2056,7 +2068,7 @@ function ColumnaKanban({
           </div>
         )}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -2078,7 +2090,7 @@ export function GestionAuditoriasKanbanSimple() {
   const [error, setError] = useState<string | null>(null);
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
-  const { contarTareas, contarTareasPendientes, contarTareasCompletadas } = useTareas();
+  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase } = useTareas();
   
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
   const [etapasKanban, setEtapasKanban] = useState<EtapaKanban[]>([]);
@@ -3049,17 +3061,32 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
-    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
-    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
+    const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
+      'Planeación': 'Planeación',
+      'Ejecución': 'Ejecución',
+      'Comunicación': 'Comunicación',
+      'Seguimiento': 'Seguimiento',
+      'Finalizada': 'Seguimiento'
+    };
+
+    const faseActual = estadoAFase[estadoAnterior];
     
-    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
-    // Usa el campo `estado` y `orden` de la etapa si está disponible
-    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
-      nuevoEstado, 
-      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
-    );
+    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
+      const faseCompleta = verificarFaseCompleta(item.id, faseActual);
+      const tareasPendientes = contarTareasPendientesPorFase(item.id, faseActual);
+      
+      if (!faseCompleta) {
+        toast.error('⚠️ No se puede cambiar de estado', {
+          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
+          duration: 6000,
+        });
+        return;
+      }
+    }
     
-    // Actualizar estado localmente primero (optimistic update)
+    // Si la validación pasa, proceder con el cambio de estado
     setAuditorias(prev =>
       prev.map(aud =>
         aud.id === item.id
@@ -3071,6 +3098,15 @@ export function GestionAuditoriasKanbanSimple() {
             }
           : aud
       )
+    );
+
+    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
+
+    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
+    // Usa el campo `estado` y `orden` de la etapa si está disponible
+    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
+      nuevoEstado, 
+      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
     );
 
     try {
@@ -3169,17 +3205,36 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
-    // Buscar la etapa completa en etapasKanban para obtener su estado y orden
-    const etapaCompleta = etapasKanban.find(e => e.nombre === nuevoEstado);
-    
-    // Mapear la etapa al valor del enum EstadoKanban que espera el backend
-    // Usa el campo `estado` y `orden` de la etapa si está disponible
-    const estadoKanbanMapeado = mapearEtapaAEstadoKanban(
-      nuevoEstado,
-      etapaCompleta ? { estado: etapaCompleta.estado, orden: etapaCompleta.orden } : undefined
-    );
+    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
+    // Mapeo de estados a fases de checklist
+    const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
+      'Planeación': 'Planeación',
+      'Ejecución': 'Ejecución',
+      'Comunicación': 'Comunicación',
+      'Seguimiento': 'Seguimiento',
+      'Finalizada': 'Seguimiento'
+    };
 
-    // Actualizar estado localmente primero (optimistic update)
+    const faseActual = estadoAFase[estadoAnterior];
+    
+    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
+      const faseCompleta = verificarFaseCompleta(auditoriaId, faseActual);
+      const tareasPendientes = contarTareasPendientesPorFase(auditoriaId, faseActual);
+      
+      if (!faseCompleta) {
+        toast.error('⚠️ No se puede cambiar de estado', {
+          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
+          duration: 6000,
+        });
+        
+        setModalCambiarEstadoOpen(false);
+        setAuditoriaSeleccionada(null);
+        return;
+      }
+    }
+
+    // Si la validación pasa, proceder con el cambio de estado
     setAuditorias(prev =>
       prev.map(aud =>
         aud.id === auditoriaId
@@ -4712,37 +4767,48 @@ export function GestionAuditoriasKanbanSimple() {
         )}
 
         {/* MODAL DE NOTAS */}
-        <ModalNotasAuditoria
-          auditoria={auditoriaSeleccionada}
-          open={modalNotasOpen}
-          onClose={() => {
-            setModalNotasOpen(false);
-            setAuditoriaSeleccionada(null);
-          }}
-        />
+        {auditoriaSeleccionada && (
+          <ModalNotas
+            isOpen={modalNotasOpen}
+            onClose={() => {
+              setModalNotasOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            onGuardar={(nota) => {
+              console.log('Nota guardada:', nota);
+              toast.success('Nota guardada exitosamente');
+            }}
+          />
+        )}
 
         {/* MODAL DE HISTORIAL */}
-        <ModalHistorialAuditoria
-          auditoria={auditoriaSeleccionada}
-          open={modalHistorialOpen}
-          onClose={() => {
-            setModalHistorialOpen(false);
-            setAuditoriaSeleccionada(null);
-          }}
-        />
+        {auditoriaSeleccionada && (
+          <ModalHistorial
+            isOpen={modalHistorialOpen}
+            onClose={() => {
+              setModalHistorialOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+          />
+        )}
 
         {/* MODAL DE APROBACIÓN */}
-        <ModalAprobacionAuditoria
-          auditoria={auditoriaSeleccionada}
-          open={modalAprobacionOpen}
-          onClose={() => {
-            setModalAprobacionOpen(false);
-            setAuditoriaSeleccionada(null);
-          }}
-          onAprobado={handleAprobado}
-          onRechazado={handleRechazado}
-          onModificacion={handleModificacion}
-        />
+        {auditoriaSeleccionada && (
+          <ModalAprobarAuditoria
+            isOpen={modalAprobacionOpen}
+            onClose={() => {
+              setModalAprobacionOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            onAprobar={() => {
+              handleAprobado();
+              setModalAprobacionOpen(false);
+            }}
+          />
+        )}
 
         {/* MODAL DE FORMULARIO UNIFICADO - CREAR */}
         <FormularioAuditoriaUnificado
@@ -4756,46 +4822,44 @@ export function GestionAuditoriasKanbanSimple() {
         />
 
         {/* MODAL DE FORMULARIO - EDITAR - WORLD CLASS */}
-        {auditoriaParaEditar && (() => {
-          // Si no hay auditorLiderId, intentar buscar por numeroIdentificacion del objeto auditorLider
-          let auditorLiderIdStr = '';
-          let auditorAsignadoIdStr = '';
-          
-          if (auditoriaParaEditar.auditorLiderId) {
-            auditorLiderIdStr = String(auditoriaParaEditar.auditorLiderId);
-          }
-          
-          if (auditoriaParaEditar.auditorAsignadoId) {
-            auditorAsignadoIdStr = String(auditoriaParaEditar.auditorAsignadoId);
-          } 
-          
-          return (
-          <ModalFormularioAuditoriaWorldClass
-            open={modalEdicionOpen}
+        {auditoriaParaEditar && (
+          <ModalFormularioAuditoria
+            isOpen={modalEdicionOpen}
             onClose={() => {
               setModalEdicionOpen(false);
               setAuditoriaParaEditar(null);
             }}
-            onSubmit={handleActualizarAuditoria}
-            mode="edit"
-            initialData={{
+            auditoria={{
+              id: auditoriaParaEditar.id,
               codigo: auditoriaParaEditar.codigo,
-              titulo: auditoriaParaEditar.titulo,
-              descripcion: auditoriaParaEditar.descripcion || '',
-              territorial: auditoriaParaEditar.territorial,
-              riesgo: auditoriaParaEditar.riesgo || 'Medio',
-              fechaInicio: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaInicio || ''),
-              fechaFin: convertirFechaDDMMYYYYaISO(auditoriaParaEditar.fechaFin || ''),
-              objetivos: auditoriaParaEditar.objetivos?.map(obj => obj.descripcion) || [],
-              // Pasar numeroIdentificacion para que el modal busque el ID
-              auditorLider: auditorLiderIdStr || auditoriaParaEditar.auditorLider?.numeroIdentificacion || '',
-              auditorAsignado: auditorAsignadoIdStr || auditoriaParaEditar.auditorAsignado?.numeroIdentificacion || '',
-              tipo: (auditoriaParaEditar as any).tipo || 'Gestión',
-              alcance: auditoriaParaEditar.alcance || (auditoriaParaEditar as any).alcance || ''
+              nombre: auditoriaParaEditar.titulo,
+              tipo: auditoriaParaEditar.territorial || 'SEDE',
+              proceso: auditoriaParaEditar.descripcion,
+              responsable: auditoriaParaEditar.auditorLider?.nombre || 'Sin asignar',
+              fechaInicio: auditoriaParaEditar.fechaInicio,
+              fechaFin: auditoriaParaEditar.fechaFin,
+              estado: auditoriaParaEditar.estado,
+              progreso: auditoriaParaEditar.progreso || 0,
+              objetivo: auditoriaParaEditar.objetivos?.[0] || '',
+              alcance: auditoriaParaEditar.descripcion || '',
+              criterios: ''
+            }}
+            onSave={(data) => {
+              // Convertir datos del modal al formato esperado por handleActualizarAuditoria
+              const formData = {
+                titulo: data.nombre,
+                descripcion: data.proceso || data.alcance || '',
+                territorial: data.tipo,
+                riesgo: auditoriaParaEditar.riesgo || 'Medio',
+                fechaInicio: data.fechaInicio,
+                fechaFin: data.fechaFin,
+                objetivos: data.objetivo ? [data.objetivo] : []
+              };
+              
+              handleActualizarAuditoria(formData as any);
             }}
           />
-          );
-        })()}
+        )}
 
         {/* MODAL INICIO DE AUDITORÍA - WORLD CLASS */}
         {modalInicioAuditoriaOpen && auditoriaSeleccionada && (
@@ -4854,29 +4918,40 @@ export function GestionAuditoriasKanbanSimple() {
         )}
 
         {/* MODAL DE ASIGNACIÓN DE AUDITORES */}
-        <ModalAsignarAuditorWorldClass
-          isOpen={modalAsignarAuditorOpen}
-          onClose={() => {
-            setModalAsignarAuditorOpen(false);
-            setAuditoriaSeleccionada(null);
-          }}
-          auditoria={auditoriaSeleccionada}
-          onAsignar={handleGuardarAsignacionAuditores}
-        />
+        {auditoriaSeleccionada && (
+          <ModalAsignarAuditor
+            isOpen={modalAsignarAuditorOpen}
+            onClose={() => {
+              setModalAsignarAuditorOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            onAsignar={(auditorId) => {
+              console.log('Auditor asignado:', auditorId);
+              handleGuardarAsignacionAuditores(auditorId);
+            }}
+          />
+        )}
 
         {/* MODAL DE CAMBIO DE ESTADO */}
-        <ModalCambiarEstadoAuditoria
-          isOpen={modalCambiarEstadoOpen}
-          onClose={() => {
-            setModalCambiarEstadoOpen(false);
-            setAuditoriaSeleccionada(null);
-          }}
-          auditoria={auditoriaSeleccionada}
-          onCambiarEstado={handleGuardarCambioEstado}
-        />
+        {auditoriaSeleccionada && (
+          <ModalCambiarEstado
+            isOpen={modalCambiarEstadoOpen}
+            onClose={() => {
+              setModalCambiarEstadoOpen(false);
+              setAuditoriaSeleccionada(null);
+            }}
+            auditoriaId={auditoriaSeleccionada.id}
+            estadoActual={'Planeación' as any}
+            onCambiar={(nuevoEstado) => {
+              console.log('Estado cambiado:', nuevoEstado);
+              handleGuardarCambioEstado(auditoriaSeleccionada.id, nuevoEstado);
+            }}
+          />
+        )}
 
         {/* MODAL DE CONFIRMACIÓN (ARCHIVAR / ELIMINAR) */}
-        <ModalConfirmacionAccion
+        {/* <ModalConfirmacionAccion
           isOpen={modalConfirmacionOpen}
           onClose={() => {
             setModalConfirmacionOpen(false);
@@ -4885,7 +4960,7 @@ export function GestionAuditoriasKanbanSimple() {
           auditoria={auditoriaSeleccionada}
           tipoAccion={tipoAccionConfirmacion}
           onConfirmar={handleConfirmarAccion}
-        />
+        /> */}
 
         {/* MODAL SOLICITAR AMPLIACIÓN DE PLAZO */}
         <ModalSolicitarAmpliacionPlazo
