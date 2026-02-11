@@ -137,6 +137,7 @@ export class CertificatesController {
   }
 
   @Post('certificados/:id/reenviar')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async reenviarCertificadoLaboral(
     @Param('id') id: string,
