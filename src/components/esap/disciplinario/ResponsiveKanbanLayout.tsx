@@ -151,9 +151,8 @@ export function ResponsiveKanbanLayout({
                 <button
                   key={column.id}
                   onClick={() => scrollToColumn(index)}
-                  className={`flex-shrink-0 h-1.5 rounded-full transition-all ${
-                    index === activeColumnIndex ? 'w-8' : 'w-1.5'
-                  }`}
+                  className={`flex-shrink-0 h-1.5 rounded-full transition-all ${index === activeColumnIndex ? 'w-8' : 'w-1.5'
+                    }`}
                   style={{
                     backgroundColor:
                       index === activeColumnIndex ? column.color : '#D1D5DB',
@@ -178,20 +177,19 @@ export function ResponsiveKanbanLayout({
       {/* Grid de columnas */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 overflow-x-auto overflow-y-hidden ${
-          isMobile
+        className={`flex-1 overflow-x-auto overflow-y-hidden ${isMobile
             ? 'snap-x snap-mandatory'
             : isTablet
-            ? 'px-4 py-4'
-            : 'px-6 py-4'
-        }`}
+              ? 'px-4 py-4'
+              : 'px-6 py-4'
+          }`}
         style={{
           display: 'grid',
           gridTemplateColumns: isMobile
             ? `repeat(${columns.length}, 100%)`
             : isTablet
-            ? 'repeat(2, 1fr)'
-            : `repeat(${columnsCount}, 1fr)`,
+              ? 'repeat(2, minmax(300px, 1fr))'
+              : `repeat(${columnsCount}, minmax(320px, 1fr))`,
           gap: isMobile ? '0' : isTablet ? '12px' : '16px',
           gridAutoFlow: 'column',
           WebkitOverflowScrolling: 'touch',
@@ -203,11 +201,10 @@ export function ResponsiveKanbanLayout({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
-            className={`flex flex-col ${
-              isMobile
+            className={`flex flex-col ${isMobile
                 ? 'snap-start px-4'
                 : 'min-w-0'
-            }`}
+              }`}
             style={{
               height: '100%',
             }}
@@ -237,9 +234,8 @@ export function ResponsiveKanbanLayout({
 
             {/* Contenido de la columna con scroll */}
             <div
-              className={`flex-1 overflow-y-auto ${
-                isMobile ? 'pt-2 pb-4' : 'p-3 bg-gray-50/50'
-              }`}
+              className={`flex-1 overflow-y-auto ${isMobile ? 'pt-2 pb-4' : 'p-3 bg-gray-50/50'
+                }`}
               style={{
                 WebkitOverflowScrolling: 'touch',
               }}
