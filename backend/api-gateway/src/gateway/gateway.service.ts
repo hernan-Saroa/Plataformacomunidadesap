@@ -72,8 +72,20 @@ export class GatewayService {
     
     // Reenviar headers existentes sin modificarlos
     // NO modificar x-forwarded-for ni x-real-ip (eliminado módulo de cambio de IP)
+    const user = (req as any).user;
+    const userHeaders = user
+      ? {
+          'x-user-id': user.userId,
+          'x-user-username': user.username,
+          'x-user-roles': Array.isArray(user.roles)
+            ? (user.roles as any[]).join(',')
+            : user.roles,
+        }
+      : {};
+
     const forwardHeaders = {
       ...req.headers,
+      ...userHeaders,
       host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),
