@@ -1,14 +1,28 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { LandingPage } from "./components/portal/LandingPage";
-import { LoginPage } from "./components/portal/LoginPage";
-import { PortalDashboard } from "./components/portal/PortalDashboard";
-import { BackofficeApp } from "./components/esap/BackofficeApp";
-import { GestionProfesoralApp } from "./components/gestion-profesoral/GestionProfesoralApp";
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from "react";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner@2.0.3";
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock, Loader2 } from "lucide-react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/responsive.css"; // ✅ IMPORTAR CSS RESPONSIVE
+
+// Lazy load de componentes principales
+const LandingPage = lazy(() => import("./components/portal/LandingPage").then(module => ({ default: module.LandingPage })));
+const LoginPage = lazy(() => import("./components/portal/LoginPage").then(module => ({ default: module.LoginPage })));
+const PortalDashboard = lazy(() => import("./components/portal/PortalDashboard").then(module => ({ default: module.PortalDashboard })));
+const BackofficeApp = lazy(() => import("./components/esap/BackofficeApp").then(module => ({ default: module.BackofficeApp })));
+const GestionProfesoralApp = lazy(() => import("./components/gestion-profesoral/GestionProfesoralApp").then(module => ({ default: module.GestionProfesoralApp })));
+
+/**
+ * Loading Fallback
+ */
+const LoadingSpinner = () => (
+  <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+    <div className="flex flex-col items-center gap-4">
+      <Loader2 className="h-12 w-12 animate-spin text-[#003DA5]" />
+      <p className="text-sm font-medium text-gray-500">Cargando módulo...</p>
+    </div>
+  </div>
+);
 
 /**
  * APP PRINCIPAL ESAP v2.2.0 🟢 ACTUALIZADO
@@ -274,185 +288,191 @@ export default function App() {
   // RENDERIZADO CONDICIONAL POR VISTA
 
   const renderVista = () => {
-    switch (vistaActual) {
-      case "landing":
-        return <LandingPage onIrALogin={handleIrALogin} />;
+    return (
+      <Suspense fallback={<LoadingSpinner />}>
+        {(() => {
+          switch (vistaActual) {
+            case "landing":
+              return <LandingPage onIrALogin={handleIrALogin} />;
 
-      case "login":
-        return (
-          <LoginPage
-            onLoginExitoso={handleLoginExitoso}
-            onVolver={handleVolverALanding}
-          />
-        );
+            case "login":
+              return (
+                <LoginPage
+                  onLoginExitoso={handleLoginExitoso}
+                  onVolver={handleVolverALanding}
+                />
+              );
 
-      case "portal":
-        // Determinar roles según el email del usuario
-        const userRoles =
-          usuarioActual?.email ===
-          "gestion.profesoral@esap.edu.co"
-            ? ["Docente"]
-            : usuarioActual?.email === "estudiantes@esap.edu.co"
-              ? ["Estudiante"]
-              : usuarioActual?.email ===
-                  "funcionario@esap.edu.co"
-                ? ["Administrativo"]
-                : ["Estudiante"]; // Default
+            case "portal":
+              // Determinar roles según el email del usuario
+              const userRoles =
+                usuarioActual?.email ===
+                  "gestion.profesoral@esap.edu.co"
+                  ? ["Docente"]
+                  : usuarioActual?.email === "estudiantes@esap.edu.co"
+                    ? ["Estudiante"]
+                    : usuarioActual?.email ===
+                      "funcionario@esap.edu.co"
+                      ? ["Administrativo"]
+                      : ["Estudiante"]; // Default
 
-        const teacherData =
-          usuarioActual?.email ===
-          "gestion.profesoral@esap.edu.co"
-            ? {
-                tipo_vinculacion: "Carrera",
-                dedicacion: "Tiempo Completo",
-                area: "Administración Pública",
-                codigo_docente: "DOC-GP-001",
-                clases_asignadas: 5,
-                estudiantes_totales: 120,
-                nivel_educativo: "Doctorado",
-                anos_experiencia: 12,
-              }
-            : undefined;
+              const teacherData =
+                usuarioActual?.email ===
+                  "gestion.profesoral@esap.edu.co"
+                  ? {
+                    tipo_vinculacion: "Carrera",
+                    dedicacion: "Tiempo Completo",
+                    area: "Administración Pública",
+                    codigo_docente: "DOC-GP-001",
+                    clases_asignadas: 5,
+                    estudiantes_totales: 120,
+                    nivel_educativo: "Doctorado",
+                    anos_experiencia: 12,
+                  }
+                  : undefined;
 
-        const adminData =
-          usuarioActual?.email === "funcionario@esap.edu.co"
-            ? {
-                area: "Planeación",
-                cargo: "Funcionario Administrativo",
-                dependencia: "Oficina de Control Interno",
-                codigo_empleado: "FUNC-001",
-                solicitudes_pendientes: 5,
-                reportes_generados: 12,
-              }
-            : undefined;
+              const adminData =
+                usuarioActual?.email === "funcionario@esap.edu.co"
+                  ? {
+                    area: "Planeación",
+                    cargo: "Funcionario Administrativo",
+                    dependencia: "Oficina de Control Interno",
+                    codigo_empleado: "FUNC-001",
+                    solicitudes_pendientes: 5,
+                    reportes_generados: 12,
+                  }
+                  : undefined;
 
-        console.log("📊 Datos para Portal Dashboard:", {
-          userName: usuarioActual!.nombre,
-          userEmail: usuarioActual!.email,
-          userRoles,
-          adminData,
-        });
+              console.log("📊 Datos para Portal Dashboard:", {
+                userName: usuarioActual!.nombre,
+                userEmail: usuarioActual!.email,
+                userRoles,
+                adminData,
+              });
 
-        return (
-          <PortalDashboard
-            userName={usuarioActual!.nombre}
-            userEmail={usuarioActual!.email}
-            userPersonId={usuarioActual!.id}
-            userRoles={userRoles}
-            userData={{
-              rol_principal: userRoles[0],
-              datos_por_rol: {
-                Docente: teacherData,
-                Administrativo: adminData,
-              },
-            }}
-            onLogout={handleLogout}
-          />
-        );
+              return (
+                <PortalDashboard
+                  userName={usuarioActual!.nombre}
+                  userEmail={usuarioActual!.email}
+                  userPersonId={usuarioActual!.id}
+                  userRoles={userRoles}
+                  userData={{
+                    rol_principal: userRoles[0],
+                    datos_por_rol: {
+                      Docente: teacherData,
+                      Administrativo: adminData,
+                    },
+                  }}
+                  onLogout={handleLogout}
+                />
+              );
 
-      case "backoffice":
-        // Determinar si el usuario tiene acceso restringido a un módulo específico
-        const userData =
-          usuarioActual?.email === "OCIG@esap.edu.co" ||
-          usuarioActual?.email === "ocig@esap.edu.co"
-            ? {
-                name: usuarioActual.nombre,
-                email: usuarioActual.email,
-                personId: "ci-001",
-                restrictedAccess: true,
-                module: "control-interno",
-              }
-            : usuarioActual?.email ===
-                "c.disciplinario@esap.edu.co"
-              ? {
-                  name: usuarioActual.nombre,
-                  email: usuarioActual.email,
-                  personId: "cd-001",
-                  restrictedAccess: true,
-                  module: "control-disciplinario",
-                }
-              : usuarioActual?.email ===
-                  "registro.academico@esap.edu.co"
-                ? {
+            case "backoffice":
+              // Determinar si el usuario tiene acceso restringido a un módulo específico
+              const userData =
+                usuarioActual?.email === "OCIG@esap.edu.co" ||
+                  usuarioActual?.email === "ocig@esap.edu.co"
+                  ? {
                     name: usuarioActual.nombre,
                     email: usuarioActual.email,
-                    personId: "ra-001",
+                    personId: "ci-001",
                     restrictedAccess: true,
-                    module: "registro-academico",
+                    module: "control-interno",
                   }
-                : usuarioActual?.email ===
-                    "cerlaboral@esap.edu.co"
-                  ? {
+                  : usuarioActual?.email ===
+                    "c.disciplinario@esap.edu.co"
+                    ? {
                       name: usuarioActual.nombre,
                       email: usuarioActual.email,
-                      personId: "cl-001",
+                      personId: "cd-001",
                       restrictedAccess: true,
-                      module: "certificados-laborales",
+                      module: "control-disciplinario",
                     }
-                  : usuarioActual?.email ===
-                      "gestion.legal@esap.edu.co"
-                    ? {
+                    : usuarioActual?.email ===
+                      "registro.academico@esap.edu.co"
+                      ? {
                         name: usuarioActual.nombre,
                         email: usuarioActual.email,
-                        personId: "gl-001",
+                        personId: "ra-001",
                         restrictedAccess: true,
-                        module: "gestion-legal",
+                        module: "registro-academico",
                       }
-                    : usuarioActual?.email ===
-                        "gestion.profesoral@esap.edu.co"
-                      ? {
+                      : usuarioActual?.email ===
+                        "cerlaboral@esap.edu.co"
+                        ? {
                           name: usuarioActual.nombre,
                           email: usuarioActual.email,
-                          personId: "gp-001",
+                          personId: "cl-001",
                           restrictedAccess: true,
-                          module: "gestion-profesoral",
+                          module: "certificados-laborales",
                         }
-                      : usuarioActual?.email ===
-                          "funcionario@esap.edu.co"
-                        ? {
+                        : usuarioActual?.email ===
+                          "gestion.legal@esap.edu.co"
+                          ? {
                             name: usuarioActual.nombre,
                             email: usuarioActual.email,
-                            personId: "func-001",
+                            personId: "gl-001",
                             restrictedAccess: true,
-                            module: "procesos",
+                            module: "gestion-legal",
                           }
-                        : usuarioActual?.email ===
-                            "superuser@esap.edu.co"
-                          ? {
+                          : usuarioActual?.email ===
+                            "gestion.profesoral@esap.edu.co"
+                            ? {
                               name: usuarioActual.nombre,
                               email: usuarioActual.email,
-                              personId: "super-001",
-                              hasBothSystemsAccess: true,
-                            } // ✅ Acceso dual Backoffice + Portal
-                          : undefined;
+                              personId: "gp-001",
+                              restrictedAccess: true,
+                              module: "gestion-profesoral",
+                            }
+                            : usuarioActual?.email ===
+                              "funcionario@esap.edu.co"
+                              ? {
+                                name: usuarioActual.nombre,
+                                email: usuarioActual.email,
+                                personId: "func-001",
+                                restrictedAccess: true,
+                                module: "procesos",
+                              }
+                              : usuarioActual?.email ===
+                                "superuser@esap.edu.co"
+                                ? {
+                                  name: usuarioActual.nombre,
+                                  email: usuarioActual.email,
+                                  personId: "super-001",
+                                  hasBothSystemsAccess: true,
+                                } // ✅ Acceso dual Backoffice + Portal
+                                : undefined;
 
-        return (
-          <BackofficeApp
-            usuario={usuarioActual!}
-            userData={userData}
-            onLogout={handleLogout}
-            onSystemChange={(system) => {
-              if (system === "portal") {
-                setVistaActual("portal");
-                toast.success(
-                  "Cambiado al Portal Transaccional",
-                );
-              }
-            }}
-          />
-        );
+              return (
+                <BackofficeApp
+                  usuario={usuarioActual!}
+                  userData={userData}
+                  onLogout={handleLogout}
+                  onSystemChange={(system) => {
+                    if (system === "portal") {
+                      setVistaActual("portal");
+                      toast.success(
+                        "Cambiado al Portal Transaccional",
+                      );
+                    }
+                  }}
+                />
+              );
 
-      case "pta-demo":
-        return (
-          <GestionProfesoralApp
-            usuario={usuarioActual!}
-            onLogout={handleLogout}
-          />
-        );
+            case "pta-demo":
+              return (
+                <GestionProfesoralApp
+                  usuario={usuarioActual!}
+                  onLogout={handleLogout}
+                />
+              );
 
-      default:
-        return <LandingPage onIrALogin={handleIrALogin} />;
-    }
+            default:
+              return <LandingPage onIrALogin={handleIrALogin} />;
+          }
+        })()}
+      </Suspense>
+    );
   };
 
   return (
