@@ -22,7 +22,7 @@ export interface LoginResponse {
     nombre: string;
     roles: string[];
     sistema: 'backoffice' | 'portal';
-    accesoD ual: boolean;
+    accesoDual: boolean;
   };
   seleccionarSistema?: boolean;
 }
@@ -107,14 +107,14 @@ export interface CrearUsuarioRequest {
   segundoApellido?: string;
   fechaNacimiento?: string;
   genero?: string;
-  
+
   // Contacto
   email: string;
   telefonoMovil: string;
   direccion?: string;
   ciudad: string;
   departamento: string;
-  
+
   // Roles
   roles: {
     rol: string;
@@ -124,7 +124,7 @@ export interface CrearUsuarioRequest {
     fechaInicio: string;
     fechaFin?: string;
   }[];
-  
+
   // Configuración
   estado: 'Activo' | 'Inactivo';
   enviarEmailBienvenida: boolean;
