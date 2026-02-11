@@ -212,23 +212,23 @@ export function UsersPersonsModulePremium() {
         ...user,
         territorial: territorial
           ? {
-            nombre: territorial.nombre,
-            codigo: territorial.codigo,
-            departamento: user.location, // Usando location como departamento
-          }
+              nombre: territorial.nombre,
+              codigo: territorial.codigo,
+              departamento: user.location, // Usando location como departamento
+            }
           : null,
         cetap: cetap
           ? {
-            nombre: cetap.nombre,
-            codigo: cetap.codigo,
-            ciudad: user.location,
-          }
+              nombre: cetap.nombre,
+              codigo: cetap.codigo,
+              ciudad: user.location,
+            }
           : null,
         sedeCentral: sedeCentral
           ? {
-            nombre: sedeCentral.nombre,
-            codigo: sedeCentral.codigo,
-          }
+              nombre: sedeCentral.nombre,
+              codigo: sedeCentral.codigo,
+            }
           : null,
       };
     });
@@ -312,7 +312,7 @@ export function UsersPersonsModulePremium() {
     };
 
     const data = passwordData[userId] || { lastChange: new Date(), expiresIn: 90 };
-
+    
     if (data.expiresIn < 0) {
       return {
         status: 'expired',
@@ -778,7 +778,7 @@ export function UsersPersonsModulePremium() {
         {quickFiltersData.map((filter) => {
           const Icon = filter.icon;
           const isActive = roleFilter === filter.role;
-
+          
           return (
             <motion.button
               key={filter.code}
@@ -801,8 +801,8 @@ export function UsersPersonsModulePremium() {
               style={{
                 backgroundColor: isActive ? filter.bgColor : '#FFFFFF',
                 borderColor: isActive ? filter.borderColor : '#E5E7EB',
-                boxShadow: isActive
-                  ? `0 4px 12px ${filter.color}20`
+                boxShadow: isActive 
+                  ? `0 4px 12px ${filter.color}20` 
                   : '0 1px 3px rgba(0, 0, 0, 0.05)',
               }}
             >
@@ -813,7 +813,7 @@ export function UsersPersonsModulePremium() {
                   animate={{ scale: 1 }}
                   className="absolute top-2 right-2"
                 >
-                  <div
+                  <div 
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: filter.color }}
                   />
@@ -821,15 +821,15 @@ export function UsersPersonsModulePremium() {
               )}
 
               {/* Icono */}
-              <div
+              <div 
                 className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
-                style={{
+                style={{ 
                   backgroundColor: filter.bgColor,
                   border: `2px solid ${filter.borderColor}20`
                 }}
               >
-                <Icon
-                  className="w-5 h-5"
+                <Icon 
+                  className="w-5 h-5" 
                   style={{ color: filter.color }}
                   strokeWidth={2.5}
                 />
@@ -837,9 +837,9 @@ export function UsersPersonsModulePremium() {
 
               {/* Contenido */}
               <div>
-                <p
+                <p 
                   className="font-semibold mb-1"
-                  style={{
+                  style={{ 
                     fontSize: '14px',
                     color: isActive ? filter.color : '#1F2937'
                   }}
@@ -847,16 +847,16 @@ export function UsersPersonsModulePremium() {
                   {filter.role}
                 </p>
                 <div className="flex items-center gap-2">
-                  <span
+                  <span 
                     className="font-bold"
-                    style={{
+                    style={{ 
                       fontSize: '24px',
                       color: filter.color
                     }}
                   >
                     {filter.count}
                   </span>
-                  <span
+                  <span 
                     className="text-xs"
                     style={{ color: '#6B7280' }}
                   >
@@ -866,9 +866,9 @@ export function UsersPersonsModulePremium() {
               </div>
 
               {/* Indicador hover */}
-              <div
+              <div 
                 className="absolute bottom-0 left-0 right-0 h-1 transition-all"
-                style={{
+                style={{ 
                   backgroundColor: filter.color,
                   opacity: isActive ? 1 : 0
                 }}
@@ -1051,7 +1051,7 @@ export function UsersPersonsModulePremium() {
               <tbody style={{ background: "#FFFFFF" }}>
                 {paginatedUsers.flatMap((user, index) => {
                   const isExpanded = expandedUserId === user.id;
-
+                  
                   const mainRow = (
                     <motion.tr
                       key={`user-row-${user.id}`}
@@ -1077,85 +1077,85 @@ export function UsersPersonsModulePremium() {
                           "#FFFFFF";
                       }}
                     >
-                      {/* Celda Usuario */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-10 h-10 flex-shrink-0">
-                            <AvatarFallback
-                              className="font-semibold"
-                              style={{
-                                background: "#E0EDFF",
-                                color: "#003DA5",
-                              }}
-                            >
-                              {user.firstName[0]}
-                              {user.lastName[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p
-                              className="font-semibold group-hover:text-[#003DA5] transition-colors"
-                              style={{
-                                fontSize: "14px",
-                                lineHeight: "20px",
-                                color: "#1F2937",
-                              }}
-                            >
-                              {user.firstName} {user.lastName}
-                            </p>
-                            <p
-                              style={{
-                                fontSize: "12px",
-                                lineHeight: "16px",
-                                color: "#6B7280",
-                              }}
-                            >
-                              {user.email}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Celda Roles - Mostrar todos los roles simultáneos */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div className="flex flex-wrap gap-1.5">
-                          {user.roles.map((role, idx) => (
-                            <div key={idx}>
-                              {getRoleBadge(
-                                role.name,
-                                role.color,
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* ✅ Celda Territorial */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        {user.territorial ? (
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-green-600" />
+                        {/* Celda Usuario */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="w-10 h-10 flex-shrink-0">
+                              <AvatarFallback
+                                className="font-semibold"
+                                style={{
+                                  background: "#E0EDFF",
+                                  color: "#003DA5",
+                                }}
+                              >
+                                {user.firstName[0]}
+                                {user.lastName[0]}
+                              </AvatarFallback>
+                            </Avatar>
                             <div>
-                              <p className="text-sm font-medium text-gray-900">
-                                {user.territorial.nombre}
+                              <p
+                                className="font-semibold group-hover:text-[#003DA5] transition-colors"
+                                style={{
+                                  fontSize: "14px",
+                                  lineHeight: "20px",
+                                  color: "#1F2937",
+                                }}
+                              >
+                                {user.firstName} {user.lastName}
                               </p>
-                              {user.territorial
-                                .departamento && (
+                              <p
+                                style={{
+                                  fontSize: "12px",
+                                  lineHeight: "16px",
+                                  color: "#6B7280",
+                                }}
+                              >
+                                {user.email}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Celda Roles - Mostrar todos los roles simultáneos */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div className="flex flex-wrap gap-1.5">
+                            {user.roles.map((role, idx) => (
+                              <div key={idx}>
+                                {getRoleBadge(
+                                  role.name,
+                                  role.color,
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+
+                        {/* ✅ Celda Territorial */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          {user.territorial ? (
+                            <div className="flex items-center gap-2">
+                              <Building2 className="w-4 h-4 text-green-600" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {user.territorial.nombre}
+                                </p>
+                                {user.territorial
+                                  .departamento && (
                                   <p className="text-xs text-gray-500">
                                     {
                                       user.territorial
@@ -1163,314 +1163,314 @@ export function UsersPersonsModulePremium() {
                                     }
                                   </p>
                                 )}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            Sin territorial
-                          </span>
-                        )}
-                      </td>
-
-                      {/* ✅ Celda CETAP */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {user.cetap ? (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-orange-600" />
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">
-                                {user.cetap.nombre}
-                              </p>
-                              {user.cetap.ciudad && (
-                                <p className="text-xs text-gray-500">
-                                  {user.cetap.ciudad}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ) : user.sedeCentral ? (
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-blue-600" />
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">
-                                Sede Central
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Bogotá D.C.
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400">
-                            Sin CETAP
-                          </span>
-                        )}
-                      </td>
-
-                      {/* ✅ Celda Carpeta Digital */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedUser(user);
-                              setViewMode("digital-folder");
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all hover:shadow-md"
-                            style={{
-                              background:
-                                "linear-gradient(135deg, #E0EDFF 0%, #F0F6FF 100%)",
-                              border: "1px solid #DBEAFE",
-                            }}
-                          >
-                            <FolderOpen
-                              className="w-4 h-4"
-                              style={{ color: "#003DA5" }}
-                            />
-                            <span
-                              className="font-bold text-sm"
-                              style={{ color: "#003DA5" }}
-                            >
-                              {Math.floor(
-                                Math.random() * 15,
-                              ) + 5}
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              Sin territorial
                             </span>
-                          </button>
-                        </div>
-                      </td>
+                          )}
+                        </td>
 
-                      {/* Celda Estado */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div className="flex flex-col gap-2">
-                          {getStatusBadge(user.status)}
-                          {/* ✅ Indicador de contraseña */}
-                          {(() => {
-                            const pwdStatus = getPasswordStatus(user.id);
-                            const Icon = pwdStatus.icon;
-                            return (
-                              <Badge
-                                className={`${pwdStatus.className} border hover:${pwdStatus.className} w-fit`}
-                                title={`Contraseña: ${pwdStatus.label}`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <Lock className="w-3 h-3" />
-                                  <span className="text-xs font-semibold">
-                                    {pwdStatus.label}
-                                  </span>
-                                </div>
-                              </Badge>
-                            );
-                          })()}
-                        </div>
-                      </td>
-
-                      {/* Celda Última Actividad */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Clock
-                            className="w-4 h-4"
-                            style={{ color: "#9CA3AF" }}
-                          />
-                          <span
-                            style={{
-                              fontSize: "14px",
-                              lineHeight: "20px",
-                              color: "#4B5563",
-                            }}
-                          >
-                            {formatLastActivity(
-                              user.lastActivity,
-                            )}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Celda Acciones */}
-                      <td
-                        style={{
-                          padding: "16px",
-                          verticalAlign: "middle",
-                        }}
-                      >
-                        <div
-                          className="flex items-center justify-end gap-2"
+                        {/* ✅ Celda CETAP */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                className="p-2 rounded-lg transition-colors"
-                                style={{
-                                  border: "1px solid #E5E7EB",
-                                  background: "#FFFFFF",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background =
-                                    "#F9FAFB";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background =
-                                    "#FFFFFF";
-                                }}
-                              >
-                                <MoreVertical
-                                  className="w-5 h-5"
-                                  style={{ color: "#6B7280" }}
-                                />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="w-56"
+                          {user.cetap ? (
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-4 h-4 text-orange-600" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {user.cetap.nombre}
+                                </p>
+                                {user.cetap.ciudad && (
+                                  <p className="text-xs text-gray-500">
+                                    {user.cetap.ciudad}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ) : user.sedeCentral ? (
+                            <div className="flex items-center gap-2">
+                              <Building2 className="w-4 h-4 text-blue-600" />
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  Sede Central
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Bogotá D.C.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              Sin CETAP
+                            </span>
+                          )}
+                        </td>
+
+                        {/* ✅ Celda Carpeta Digital */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUser(user);
+                                setViewMode("digital-folder");
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all hover:shadow-md"
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, #E0EDFF 0%, #F0F6FF 100%)",
+                                border: "1px solid #DBEAFE",
+                              }}
                             >
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleViewDetails(user)
-                                }
-                              >
-                                <Eye className="w-4 h-4 mr-2" />
-                                Ver Detalles
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedUser(user);
-                                  setViewMode(
-                                    "digital-folder",
-                                  );
-                                }}
-                                className="bg-blue-50 hover:bg-blue-100"
+                              <FolderOpen
+                                className="w-4 h-4"
+                                style={{ color: "#003DA5" }}
+                              />
+                              <span
+                                className="font-bold text-sm"
                                 style={{ color: "#003DA5" }}
                               >
-                                <FolderOpen className="w-4 h-4 mr-2" />
-                                Ver Carpeta Digital
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleEdit(user)
-                                }
-                              >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar Usuario
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleAssignAccess(user)
-                                }
-                                className="bg-amber-50 hover:bg-amber-100"
-                                style={{ color: "#D97706" }}
-                              >
-                                <Shield className="w-4 h-4 mr-2" />
-                                Asignar Accesos
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {/* ✅ Acciones de Contraseña */}
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleSendPasswordReminder(user)
-                                }
-                                className="bg-orange-50 hover:bg-orange-100"
-                                style={{ color: "#EA580C" }}
-                              >
-                                <Mail className="w-4 h-4 mr-2" />
-                                Enviar Recordatorio
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleForcePasswordChange(user)
-                                }
-                                className="bg-yellow-50 hover:bg-yellow-100"
-                                style={{ color: "#D97706" }}
-                              >
-                                <Lock className="w-4 h-4 mr-2" />
-                                Restablecer Contraseña
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleViewPasswordHistory(user)
-                                }
-                                className="bg-blue-50 hover:bg-blue-100"
-                                style={{ color: "#2563EB" }}
-                              >
-                                <Clock className="w-4 h-4 mr-2" />
-                                Ver Historial Contraseñas
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleDelete(user)
-                                }
-                                style={{ color: "#EF4444" }}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Eliminar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                                {Math.floor(
+                                  Math.random() * 15,
+                                ) + 5}
+                              </span>
+                            </button>
+                          </div>
+                        </td>
 
-                          <button
-                            onClick={() =>
-                              handleViewDetails(user)
-                            }
-                            className="p-2 rounded-lg transition-all"
-                            style={{
-                              border: "1px solid #E5E7EB",
-                              background: "#FFFFFF",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background =
-                                "#003DA5";
-                              const icon =
-                                e.currentTarget.querySelector(
-                                  "svg",
-                                );
-                              if (icon)
-                                (
-                                  icon as SVGElement
-                                ).style.color = "#FFFFFF";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background =
-                                "#FFFFFF";
-                              const icon =
-                                e.currentTarget.querySelector(
-                                  "svg",
-                                );
-                              if (icon)
-                                (
-                                  icon as SVGElement
-                                ).style.color = "#6B7280";
-                            }}
-                          >
-                            <ChevronDown
-                              className={`w-5 h-5 transition-transform ${expandedUserId === user.id ? "rotate-180" : ""}`}
-                              style={{ color: "#6B7280" }}
+                        {/* Celda Estado */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div className="flex flex-col gap-2">
+                            {getStatusBadge(user.status)}
+                            {/* ✅ Indicador de contraseña */}
+                            {(() => {
+                              const pwdStatus = getPasswordStatus(user.id);
+                              const Icon = pwdStatus.icon;
+                              return (
+                                <Badge
+                                  className={`${pwdStatus.className} border hover:${pwdStatus.className} w-fit`}
+                                  title={`Contraseña: ${pwdStatus.label}`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <Lock className="w-3 h-3" />
+                                    <span className="text-xs font-semibold">
+                                      {pwdStatus.label}
+                                    </span>
+                                  </div>
+                                </Badge>
+                              );
+                            })()}
+                          </div>
+                        </td>
+
+                        {/* Celda Última Actividad */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Clock
+                              className="w-4 h-4"
+                              style={{ color: "#9CA3AF" }}
                             />
-                          </button>
-                        </div>
-                      </td>
-                    </motion.tr>
+                            <span
+                              style={{
+                                fontSize: "14px",
+                                lineHeight: "20px",
+                                color: "#4B5563",
+                              }}
+                            >
+                              {formatLastActivity(
+                                user.lastActivity,
+                              )}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Celda Acciones */}
+                        <td
+                          style={{
+                            padding: "16px",
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <div
+                            className="flex items-center justify-end gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  className="p-2 rounded-lg transition-colors"
+                                  style={{
+                                    border: "1px solid #E5E7EB",
+                                    background: "#FFFFFF",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background =
+                                      "#F9FAFB";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background =
+                                      "#FFFFFF";
+                                  }}
+                                >
+                                  <MoreVertical
+                                    className="w-5 h-5"
+                                    style={{ color: "#6B7280" }}
+                                  />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-56"
+                              >
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleViewDetails(user)
+                                  }
+                                >
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  Ver Detalles
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedUser(user);
+                                    setViewMode(
+                                      "digital-folder",
+                                    );
+                                  }}
+                                  className="bg-blue-50 hover:bg-blue-100"
+                                  style={{ color: "#003DA5" }}
+                                >
+                                  <FolderOpen className="w-4 h-4 mr-2" />
+                                  Ver Carpeta Digital
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleEdit(user)
+                                  }
+                                >
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Editar Usuario
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleAssignAccess(user)
+                                  }
+                                  className="bg-amber-50 hover:bg-amber-100"
+                                  style={{ color: "#D97706" }}
+                                >
+                                  <Shield className="w-4 h-4 mr-2" />
+                                  Asignar Accesos
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {/* ✅ Acciones de Contraseña */}
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleSendPasswordReminder(user)
+                                  }
+                                  className="bg-orange-50 hover:bg-orange-100"
+                                  style={{ color: "#EA580C" }}
+                                >
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  Enviar Recordatorio
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleForcePasswordChange(user)
+                                  }
+                                  className="bg-yellow-50 hover:bg-yellow-100"
+                                  style={{ color: "#D97706" }}
+                                >
+                                  <Lock className="w-4 h-4 mr-2" />
+                                  Restablecer Contraseña
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleViewPasswordHistory(user)
+                                  }
+                                  className="bg-blue-50 hover:bg-blue-100"
+                                  style={{ color: "#2563EB" }}
+                                >
+                                  <Clock className="w-4 h-4 mr-2" />
+                                  Ver Historial Contraseñas
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleDelete(user)
+                                  }
+                                  style={{ color: "#EF4444" }}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            <button
+                              onClick={() =>
+                                handleViewDetails(user)
+                              }
+                              className="p-2 rounded-lg transition-all"
+                              style={{
+                                border: "1px solid #E5E7EB",
+                                background: "#FFFFFF",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background =
+                                  "#003DA5";
+                                const icon =
+                                  e.currentTarget.querySelector(
+                                    "svg",
+                                  );
+                                if (icon)
+                                  (
+                                    icon as SVGElement
+                                  ).style.color = "#FFFFFF";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background =
+                                  "#FFFFFF";
+                                const icon =
+                                  e.currentTarget.querySelector(
+                                    "svg",
+                                  );
+                                if (icon)
+                                  (
+                                    icon as SVGElement
+                                  ).style.color = "#6B7280";
+                              }}
+                            >
+                              <ChevronDown
+                                className={`w-5 h-5 transition-transform ${expandedUserId === user.id ? "rotate-180" : ""}`}
+                                style={{ color: "#6B7280" }}
+                              />
+                            </button>
+                          </div>
+                        </td>
+                      </motion.tr>
                   );
 
                   // Return array with main row and conditionally expanded row
@@ -1497,7 +1497,7 @@ export function UsersPersonsModulePremium() {
                     );
                     return [mainRow, expandedRow];
                   }
-
+                  
                   return [mainRow];
                 })}
               </tbody>

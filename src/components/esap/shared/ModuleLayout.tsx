@@ -28,15 +28,15 @@ interface ModuleLayoutProps {
   moduleDescription?: string; // Opcional para ocultar header
   moduleIcon: ReactNode;
   moduleColor: string; // Color principal del módulo (#F97316, #003DA5, #8B5CF6)
-
+  
   // Menú y navegación
   menuItems: MenuItem[];
   activeSection: string;
   onSectionChange: (section: string) => void;
-
+  
   // Contenido
   children: ReactNode;
-
+  
   // Opciones
   initialSidebarCollapsed?: boolean;
 }
@@ -56,7 +56,7 @@ export function ModuleLayout({
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1024
   );
-
+  
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
@@ -65,7 +65,7 @@ export function ModuleLayout({
 
   const isMobile = windowWidth < 768;
   const isSmallTablet = windowWidth >= 768 && windowWidth < 1024;
-
+  
   // Auto-colapsar en pantallas pequeñas (tablets)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     initialSidebarCollapsed || isSmallTablet
@@ -120,7 +120,7 @@ export function ModuleLayout({
             exit={{ x: -280 }}
             transition={{ type: 'tween', duration: 0.3 }}
             className="fixed left-0 top-0 bottom-0 w-[280px] z-50 flex flex-col"
-            style={{
+            style={{ 
               background: '#FFFFFF',
               boxShadow: '4px 0 12px rgba(0, 0, 0, 0.1)'
             }}
@@ -169,7 +169,7 @@ export function ModuleLayout({
                 {menuItems.map((item) => {
                   const isActive = activeSection === item.id;
                   const itemColor = item.color || moduleColor;
-
+                  
                   return (
                     <button
                       key={item.id}
@@ -188,9 +188,9 @@ export function ModuleLayout({
                           {item.label}
                         </span>
                         {item.badge && (
-                          <Badge
+                          <Badge 
                             className="text-xs font-bold"
-                            style={{
+                            style={{ 
                               background: itemColor,
                               color: '#FFFFFF'
                             }}
@@ -219,12 +219,12 @@ export function ModuleLayout({
       {/* SIDEBAR DESKTOP/TABLET */}
       <motion.aside
         initial={false}
-        animate={{
+        animate={{ 
           width: sidebarCollapsed ? 64 : (isSmallTablet ? 200 : 280)
         }}
         transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
         className="hidden md:flex flex-shrink-0 border-r-2 flex-col relative h-screen"
-        style={{
+        style={{ 
           background: '#FFFFFF',
           borderColor: '#E5E7EB'
         }}
@@ -265,8 +265,8 @@ export function ModuleLayout({
                 className="w-full flex items-center justify-center"
               >
                 {/* ✅ Ícono del módulo cuando está colapsado (centrado y más grande) */}
-                <div
-                  className="p-3 rounded-xl"
+                <div 
+                  className="p-3 rounded-xl" 
                   style={{ background: `${moduleColor}15` }}
                 >
                   <div style={{ color: moduleColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -276,18 +276,18 @@ export function ModuleLayout({
               </motion.div>
             )}
           </AnimatePresence>
-
+          
           {/* ✅ Botón Toggle Premium - SIEMPRE VISIBLE (Igual que SidebarPremium) */}
           <motion.button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="absolute -right-3 w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-xl border-2 z-10"
-            style={{
-              top: '50%',
-              transform: 'translateY(-50%)',
+            style={{ 
+              top: '50%', 
+              transform: 'translateY(-50%)', 
               borderColor: '#E5E7EB',
               color: moduleColor
             }}
-            whileHover={{
+            whileHover={{ 
               scale: 1.15,
               boxShadow: `0 8px 24px ${moduleColor}30`
             }}
@@ -320,13 +320,14 @@ export function ModuleLayout({
             {menuItems.map((item) => {
               const isActive = activeSection === item.id;
               const itemColor = item.color || moduleColor;
-
+              
               return (
                 <motion.button
                   key={item.id}
                   onClick={() => onSectionChange(item.id)}
-                  className={`w-full rounded-xl transition-all relative group ${sidebarCollapsed ? 'p-2.5' : 'p-3'
-                    }`}
+                  className={`w-full rounded-xl transition-all relative group ${
+                    sidebarCollapsed ? 'p-2.5' : 'p-3'
+                  }`}
                   style={{
                     background: isActive ? `${itemColor}15` : 'transparent',
                     color: isActive ? itemColor : '#6B7280'
@@ -349,9 +350,9 @@ export function ModuleLayout({
                         {item.label}
                       </span>
                       {item.badge && (
-                        <Badge
+                        <Badge 
                           className="text-xs font-bold"
-                          style={{
+                          style={{ 
                             background: itemColor,
                             color: '#FFFFFF'
                           }}
@@ -374,8 +375,8 @@ export function ModuleLayout({
 
                   {/* Tooltip para sidebar colapsado */}
                   {sidebarCollapsed && (
-                    <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg whitespace-nowrap"
-                      style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px', maxWidth: '250px' }}>
+                    <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg whitespace-nowrap" 
+                         style={{ background: '#1F2937', color: '#FFFFFF', fontSize: '12px', maxWidth: '250px' }}>
                       <div className="font-semibold">{item.label}</div>
                       {item.subtitle && (
                         <div className="text-xs opacity-80 mt-0.5 whitespace-normal">{item.subtitle}</div>

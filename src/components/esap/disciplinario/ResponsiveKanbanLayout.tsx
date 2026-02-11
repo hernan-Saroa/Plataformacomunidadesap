@@ -27,27 +27,39 @@ export function ResponsiveKanbanLayout({
   columns,
   showMobileNavigation = true,
 }: ResponsiveKanbanLayoutProps) {
-  const { isMobile, isTablet, isDesktop, width } = useResponsive();
+  const { isMobile: windowIsMobile } = useResponsive();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null); // ✅ Nuevo ref para el contenedor padre
   const [activeColumnIndex, setActiveColumnIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [containerWidth, setContainerWidth] = useState(1200); // Default seguro
 
-  // Calcular número de columnas según ancho
-  const getColumnsCount = () => {
-    if (isMobile) return 1;
-    if (isTablet) return 2;
-    if (width < 1366) return 3;
-    if (width < 1920) return 4;
-    return 5; // Large desktop
-  };
+  // ✅ RESIZE OBSERVER: Detectar ancho real del contenedor (ignorando sidebars)
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-  const columnsCount = getColumnsCount();
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  // ✅ LÓGICA SMART: Si el contenedor es pequeño (< 700px), activar modo móvil (Carrusel)
+  // incluso si estamos en Desktop. Esto arregla el problema con los sidebars abiertos.
+  const isEffectiveMobile = windowIsMobile || containerWidth < 700;
 
   // Scroll a columna específica en móvil
   const scrollToColumn = (index: number) => {
-    if (scrollContainerRef.current && isMobile) {
+    if (scrollContainerRef.current) {
       const container = scrollContainerRef.current;
-      const columnWidth = container.clientWidth;
+      // En modo móvil, el ancho de columna es el ancho del contenedor
+      // En modo desktop, calculamos basado en el scroll
+      const columnWidth = isEffectiveMobile ? container.clientWidth : 320;
+
       container.scrollTo({
         left: index * columnWidth,
         behavior: 'smooth',
@@ -56,26 +68,28 @@ export function ResponsiveKanbanLayout({
     }
   };
 
-  // Detectar scroll en móvil para actualizar columna activa
+  // Detectar scroll para actualizar columna activa
   useEffect(() => {
-    if (!isMobile || !scrollContainerRef.current) return;
-
     const container = scrollContainerRef.current;
+    if (!container) return;
+
     const handleScroll = () => {
-      const scrollLeft = container.scrollLeft;
-      const columnWidth = container.clientWidth;
-      const newIndex = Math.round(scrollLeft / columnWidth);
-      setActiveColumnIndex(newIndex);
+      if (isEffectiveMobile) {
+        const scrollLeft = container.scrollLeft;
+        const columnWidth = container.clientWidth;
+        const newIndex = Math.round(scrollLeft / columnWidth);
+        setActiveColumnIndex(newIndex);
+      }
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [isMobile]);
+  }, [isEffectiveMobile]);
 
-  // Vista de lista para móvil (alternativa al Kanban)
-  if (isMobile && viewMode === 'list') {
+  // Vista de lista (alternativa)
+  if (isEffectiveMobile && viewMode === 'list') {
     return (
-      <div className="flex flex-col h-full bg-gray-50">
+      <div ref={containerRef} className="flex flex-col h-full bg-gray-50">
         {/* Toggle de vista */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
           <h3 className="text-sm font-bold text-gray-900">Vista de Lista</h3>
@@ -114,29 +128,29 @@ export function ResponsiveKanbanLayout({
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header con navegación móvil */}
-      {isMobile && showMobileNavigation && (
-        <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-2">
+    <div ref={containerRef} className="flex flex-col h-full w-full overflow-hidden">
+      {/* Header de Navegación (Solo visible en modo 'Compacto/Móvil') */}
+      {isEffectiveMobile && showMobileNavigation && (
+        <div className="flex-shrink-0 bg-white border-b border-gray-200 px-3 py-2">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-gray-900">
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="text-sm font-bold text-gray-900 truncate">
                 {columns[activeColumnIndex]?.title}
               </h3>
-              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold flex-shrink-0">
                 {columns[activeColumnIndex]?.count || 0}
               </span>
             </div>
             <button
               onClick={() => setViewMode('list')}
-              className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold flex items-center gap-1.5 hover:bg-gray-200 transition"
+              className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold flex items-center gap-1.5 hover:bg-gray-200 transition flex-shrink-0"
             >
               <List className="w-4 h-4" />
               Lista
             </button>
           </div>
 
-          {/* Indicadores de columnas */}
+          {/* Indicadores y Flechas */}
           <div className="flex items-center justify-between gap-2">
             <button
               onClick={() => scrollToColumn(Math.max(0, activeColumnIndex - 1))}
@@ -146,17 +160,18 @@ export function ResponsiveKanbanLayout({
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-1.5 flex-1 overflow-x-auto">
+            <div className="flex items-center justify-center gap-1.5 flex-1 overflow-hidden">
               {columns.map((column, index) => (
                 <button
                   key={column.id}
                   onClick={() => scrollToColumn(index)}
-                  className={`flex-shrink-0 h-1.5 rounded-full transition-all ${index === activeColumnIndex ? 'w-8' : 'w-1.5'
+                  className={`flex-shrink-0 h-1.5 rounded-full transition-all ${index === activeColumnIndex ? 'w-6' : 'w-1.5'
                     }`}
                   style={{
                     backgroundColor:
-                      index === activeColumnIndex ? column.color : '#D1D5DB',
+                      index === activeColumnIndex ? column.color : '#E5E7EB',
                   }}
+                  aria-label={`Ir a columna ${column.title}`}
                 />
               ))}
             </div>
@@ -174,47 +189,38 @@ export function ResponsiveKanbanLayout({
         </div>
       )}
 
-      {/* Grid de columnas */}
+      {/* 
+          ✅ GRID/SCROLL CONTAINER
+          - En Móvil (<700px): Snap Scroll horizontal (1 columna a la vez).
+          - En Desktop (>700px): Flex horizontal estándar con scroll si es necesario.
+      */}
       <div
         ref={scrollContainerRef}
-        className={`flex-1 overflow-x-auto overflow-y-hidden ${isMobile
-            ? 'snap-x snap-mandatory'
-            : isTablet
-              ? 'px-4 py-4'
-              : 'px-6 py-4'
+        className={`flex-1 w-full overflow-x-auto overflow-y-hidden ${isEffectiveMobile
+            ? 'snap-x snap-mandatory flex'
+            : 'flex px-4 py-4 gap-4' // Flex estándar para desktop
           }`}
         style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile
-            ? `repeat(${columns.length}, 100%)`
-            : isTablet
-              ? 'repeat(2, 1fr)'
-              : `repeat(${columnsCount}, 1fr)`,
-          gap: isMobile ? '0' : isTablet ? '12px' : '16px',
-          gridAutoFlow: 'column',
+          scrollBehavior: 'smooth',
           WebkitOverflowScrolling: 'touch',
         }}
       >
         {columns.map((column, index) => (
           <motion.div
             key={column.id}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
-            className={`flex flex-col ${isMobile
-                ? 'snap-start px-4'
-                : 'min-w-0'
+            className={`flex flex-col h-full flex-shrink-0 transition-all ${isEffectiveMobile
+                ? 'w-full snap-center px-4 pt-2 pb-4' // ✅ Móvil: Ancho completo + Snap
+                : 'w-[320px] 2xl:w-[350px]' // ✅ Desktop: Ancho fijo óptimo (NO minmax grid)
               }`}
-            style={{
-              height: '100%',
-            }}
           >
-            {/* Header de columna */}
-            {!isMobile && (
+            {/* Header de columna (Solo Desktop - En móvil está arriba) */}
+            {!isEffectiveMobile && (
               <div
-                className="flex-shrink-0 rounded-t-xl px-4 py-3 border-b-4"
+                className="flex-shrink-0 rounded-t-xl px-4 py-3 border-b-4 bg-white shadow-sm border border-gray-100 mb-3"
                 style={{
-                  background: `linear-gradient(135deg, ${column.color}15 0%, ${column.color}08 100%)`,
                   borderBottomColor: column.color,
                 }}
               >
@@ -223,7 +229,7 @@ export function ResponsiveKanbanLayout({
                     {column.title}
                   </h3>
                   <span
-                    className="px-2.5 py-1 rounded-full text-xs font-bold text-white flex-shrink-0"
+                    className="px-2.5 py-1 rounded-full text-xs font-bold text-white flex-shrink-0 shadow-sm"
                     style={{ backgroundColor: column.color }}
                   >
                     {column.count}
@@ -232,15 +238,14 @@ export function ResponsiveKanbanLayout({
               </div>
             )}
 
-            {/* Contenido de la columna con scroll */}
+            {/* Contenido de la columna con scroll vertical */}
             <div
-              className={`flex-1 overflow-y-auto ${isMobile ? 'pt-2 pb-4' : 'p-3 bg-gray-50/50'
+              className={`flex-1 overflow-y-auto rounded-b-xl ${!isEffectiveMobile && 'custom-scrollbar pr-1'
                 }`}
-              style={{
-                WebkitOverflowScrolling: 'touch',
-              }}
             >
-              {column.children}
+              <div className="space-y-3 pb-2">
+                {column.children}
+              </div>
             </div>
           </motion.div>
         ))}

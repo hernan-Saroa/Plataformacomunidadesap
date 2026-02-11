@@ -85,26 +85,26 @@ const MODULOS_SISTEMA = [
   'Roles y Permisos',
   'Auditoría del Sistema',
   'Reportes y Análisis',
-
+  
   // Estructura y Organización
   'Estructura Organizacional',
-
+  
   // Gestión Académica
   'Programas Académicos',
   'Gestión Profesoral',
   'Aspirantes',
-
+  
   // Graduados
   'Verificación de Graduados',
   'Certificados Académicos',
   'Solicitudes de Revisión',
-
+  
   // Comunidad Universitaria
   'Comunidad - Publicaciones',
   'Comunidad - Eventos',
   'Comunidad - Anuncios',
   'Bolsa de Empleo',
-
+  
   // Control Interno de Gestión
   'Control Interno - Plan Anual',
   'Control Interno - Universo Auditorías',
@@ -122,18 +122,18 @@ const MODULOS_SISTEMA = [
   'Control Interno - Comunicaciones',
   'Control Interno - Aprobaciones',
   'Control Interno - Historial',
-
+  
   // Control Disciplinario
   'Control Disciplinario - Quejas',
   'Control Disciplinario - Procesos',
   'Control Disciplinario - Investigaciones',
   'Control Disciplinario - Sanciones',
-
+  
   // Gestión Legal
   'Gestión Legal - Juzgamiento',
   'Gestión Legal - Expedientes',
   'Gestión Legal - Sentencias',
-
+  
   // Certificados y Documentos
   'Certificados Laborales',
   'Carpeta Digital'
@@ -175,35 +175,35 @@ const ROLES_SISTEMA: Rol[] = [
     permisos: [
       { id: 'perm-dash', modulo: 'Dashboard Ejecutivo', acciones: ['leer', 'exportar'], descripcion: 'Visualización de métricas' },
       { id: 'perm-rep', modulo: 'Reportes y Análisis', acciones: ['leer', 'exportar'], descripcion: 'Generación de reportes' },
-
+      
       // Planificación
       { id: 'perm-ci1', modulo: 'Control Interno - Plan Anual', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci2', modulo: 'Control Interno - Universo Auditorías', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci3', modulo: 'Control Interno - Programa Anual', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-
+      
       // Auditorías y Hallazgos
       { id: 'perm-ci4', modulo: 'Control Interno - Auditorías', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci5', modulo: 'Control Interno - Hallazgos', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-
+      
       // Planes de Mejoramiento
       { id: 'perm-ci6', modulo: 'Control Interno - Planes de Mejoramiento', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci7', modulo: 'Control Interno - Seguimiento', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-
+      
       // Gestión Documental y Expedientes
       { id: 'perm-ci8', modulo: 'Control Interno - Gestión Documental', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci9', modulo: 'Control Interno - Expedientes', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
-
+      
       // Configuraciones y Administración
       { id: 'perm-ci10', modulo: 'Control Interno - Configuraciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci11', modulo: 'Control Interno - Notificaciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci12', modulo: 'Control Interno - Dashboard Kanban', acciones: ['leer', 'actualizar', 'exportar'], descripcion: 'Gestión del Kanban' },
-
+      
       // Trazabilidad y Comunicaciones
       { id: 'perm-ci13', modulo: 'Control Interno - Trazabilidad', acciones: ['leer', 'exportar'], descripcion: 'Visualización de trazabilidad' },
       { id: 'perm-ci14', modulo: 'Control Interno - Comunicaciones', acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], descripcion: 'Gestión completa' },
       { id: 'perm-ci15', modulo: 'Control Interno - Aprobaciones', acciones: ['leer', 'aprobar', 'exportar'], descripcion: 'Aprobación de documentos' },
       { id: 'perm-ci16', modulo: 'Control Interno - Historial', acciones: ['leer', 'exportar'], descripcion: 'Consulta de historial' },
-
+      
       // Gestión de Personas y Roles
       { id: 'perm-usr', modulo: 'Gestión de Personas', acciones: ['leer'], descripcion: 'Solo consulta' },
       { id: 'perm-roles', modulo: 'Roles y Permisos', acciones: ['leer'], descripcion: 'Solo consulta' }
@@ -621,7 +621,7 @@ export function RolesYPermisosActualizado() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'Todos' | TipoRol>('Todos');
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoRol>('Todos');
-
+  
   // Modales
   const [modalCrearRol, setModalCrearRol] = useState(false);
   const [modalEditarRol, setModalEditarRol] = useState(false);
@@ -632,7 +632,7 @@ export function RolesYPermisosActualizado() {
   // Filtrar roles
   const rolesFiltrados = roles.filter(rol => {
     const cumpleBusqueda = rol.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      rol.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+                          rol.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleTipo = filtroTipo === 'Todos' || rol.tipo === filtroTipo;
     const cumpleEstado = filtroEstado === 'Todos' || rol.estado === filtroEstado;
     return cumpleBusqueda && cumpleTipo && cumpleEstado;
@@ -670,30 +670,33 @@ export function RolesYPermisosActualizado() {
       <div className="flex items-center gap-2 border-b">
         <button
           onClick={() => setVistaActual('roles')}
-          className={`px-4 py-2 font-bold border-b-2 transition-colors ${vistaActual === 'roles'
+          className={`px-4 py-2 font-bold border-b-2 transition-colors ${
+            vistaActual === 'roles'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+          }`}
         >
           <Shield className="w-4 h-4 inline mr-2" />
           Lista de Roles ({stats.totalRoles})
         </button>
         <button
           onClick={() => setVistaActual('usuarios')}
-          className={`px-4 py-2 font-bold border-b-2 transition-colors ${vistaActual === 'usuarios'
+          className={`px-4 py-2 font-bold border-b-2 transition-colors ${
+            vistaActual === 'usuarios'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+          }`}
         >
           <Users className="w-4 h-4 inline mr-2" />
           Usuarios Asignados ({stats.totalUsuarios})
         </button>
         <button
           onClick={() => setVistaActual('auditoria')}
-          className={`px-4 py-2 font-bold border-b-2 transition-colors ${vistaActual === 'auditoria'
+          className={`px-4 py-2 font-bold border-b-2 transition-colors ${
+            vistaActual === 'auditoria'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+          }`}
         >
           <Activity className="w-4 h-4 inline mr-2" />
           Auditoría de Accesos
@@ -1255,8 +1258,9 @@ function Modal({ titulo, children, onCerrar, size = 'default' }: { titulo: strin
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className={`bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ${size === 'large' ? 'max-w-6xl' : 'max-w-2xl'
-          }`}
+        className={`bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ${
+          size === 'large' ? 'max-w-6xl' : 'max-w-2xl'
+        }`}
       >
         <div className="p-6 border-b sticky top-0 bg-white z-10">
           <div className="flex items-center justify-between">
