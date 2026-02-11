@@ -262,11 +262,13 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
     >
       <Card
         className={`bg-white border transition-all flex flex-col w-full ${noticia.procesoAsociado
-          ? 'border-purple-300 hover:shadow-lg hover:shadow-purple-100'
-          : 'border-gray-200 hover:shadow-md'
+            ? 'border-purple-300 hover:shadow-lg hover:shadow-purple-100'
+            : 'border-gray-200 hover:shadow-md'
           }`}
         style={{
-          minHeight: vistaCompacta ? '200px' : '280px'
+          height: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
+          minHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px'),
+          maxHeight: vistaCompacta ? (isMobile ? '340px' : '380px') : (isMobile ? '440px' : '500px')
         }}
       >
         {/* Barra superior - Morado si está asociada, Azul ESAP si no */}
@@ -604,7 +606,9 @@ function TarjetaProceso({
       <Card
         className="bg-white border border-gray-200 hover:shadow-md transition-all flex flex-col w-full"
         style={{
-          minHeight: vistaCompacta ? '250px' : '350px'
+          height: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
+          minHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px'),
+          maxHeight: vistaCompacta ? (isMobile ? '500px' : '560px') : (isMobile ? '600px' : '680px')
         }}
       >
         {/* Barra superior azul ESAP */}
@@ -3213,8 +3217,8 @@ export function DashboardKanbanOperativo({
                 <button
                   onClick={() => setTipoVista('kanban')}
                   className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'kanban'
-                    ? 'bg-white shadow-sm'
-                    : 'hover:bg-gray-200'
+                      ? 'bg-white shadow-sm'
+                      : 'hover:bg-gray-200'
                     }`}
                   style={{
                     color: tipoVista === 'kanban' ? '#003DA5' : '#6B7280'
@@ -3226,8 +3230,8 @@ export function DashboardKanbanOperativo({
                 <button
                   onClick={() => setTipoVista('lista')}
                   className={`${isTablet ? 'px-2 py-1.5' : 'px-3 py-2'} rounded-md text-sm font-semibold flex items-center gap-1.5 transition-all ${tipoVista === 'lista'
-                    ? 'bg-white shadow-sm'
-                    : 'hover:bg-gray-200'
+                      ? 'bg-white shadow-sm'
+                      : 'hover:bg-gray-200'
                     }`}
                   style={{
                     color: tipoVista === 'lista' ? '#003DA5' : '#6B7280'
@@ -3825,7 +3829,7 @@ export function DashboardKanbanOperativo({
                               <div>
                                 <p className="text-gray-600">Prioridad:</p>
                                 <p className={`font-bold ${(itemSeleccionado as Noticia).prioridad === 'alta' ? 'text-red-600' :
-                                  (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
+                                    (itemSeleccionado as Noticia).prioridad === 'media' ? 'text-orange-600' : 'text-gray-600'
                                   } capitalize`}>{(itemSeleccionado as Noticia).prioridad}</p>
                               </div>
                               <div>

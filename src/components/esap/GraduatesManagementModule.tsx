@@ -7,25 +7,25 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Users, 
-  UserPlus, 
-  Download, 
-  Upload, 
-  UserCheck, 
-  UserX, 
-  TrendingUp, 
-  Search, 
-  Filter, 
-  X, 
-  MoreVertical, 
-  ChevronDown, 
-  Mail, 
-  Phone, 
-  Calendar, 
-  MapPin, 
-  FileText, 
-  Clock, 
+import {
+  Users,
+  UserPlus,
+  Download,
+  Upload,
+  UserCheck,
+  UserX,
+  TrendingUp,
+  Search,
+  Filter,
+  X,
+  MoreVertical,
+  ChevronDown,
+  Mail,
+  Phone,
+  Calendar,
+  MapPin,
+  FileText,
+  Clock,
   Shield,
   Edit,
   Trash2,
@@ -79,7 +79,7 @@ export function GraduatesManagementModule() {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  
+
   // ✅ FIX: Manejo defensivo de datos
   const users = MOCK_USERS || [];
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null);
@@ -107,7 +107,7 @@ export function GraduatesManagementModule() {
   });
 
   // Filtrar solo usuarios con rol "Graduado"
-  const graduatesOnly = users.filter(user => 
+  const graduatesOnly = users.filter(user =>
     user.roles.some(role => role.name === 'Graduado')
   );
 
@@ -129,15 +129,15 @@ export function GraduatesManagementModule() {
       `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.document.includes(searchQuery);
-    
+
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
     const matchesProgram = programFilter === 'all' || user.program === programFilter;
     const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
-    
+
     // ✅ NUEVO: Filtro por sede (basado en asignacionesSedes)
-    const matchesSede = sedeFilter === 'all' || 
+    const matchesSede = sedeFilter === 'all' ||
       (user.asignacionesSedes && user.asignacionesSedes.some(asig => asig.nombreSede === sedeFilter));
-    
+
     return matchesSearch && matchesStatus && matchesProgram && matchesLocation && matchesSede;
   });
 
@@ -151,26 +151,26 @@ export function GraduatesManagementModule() {
   // Helpers
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; className: string; icon: any }> = {
-      active: { 
-        label: 'Activo', 
+      active: {
+        label: 'Activo',
         className: 'bg-[#ECFDF5] text-[#065F46] border-[#10B981]',
         icon: CheckCircle
       },
-      blocked: { 
-        label: 'Bloqueado', 
+      blocked: {
+        label: 'Bloqueado',
         className: 'bg-[#FEF2F2] text-[#991B1B] border-[#EF4444]',
         icon: XCircle
       },
-      inactive: { 
-        label: 'Inactivo', 
+      inactive: {
+        label: 'Inactivo',
         className: 'bg-[#F3F4F6] text-[#374151] border-[#D1D5DB]',
         icon: AlertCircle
       }
     };
-    
+
     const config = statusConfig[status] || statusConfig.inactive;
     const Icon = config.icon;
-    
+
     return (
       <Badge className={`${config.className} border hover:${config.className}`}>
         <div className="flex items-center gap-1.5">
@@ -189,7 +189,7 @@ export function GraduatesManagementModule() {
       orange: 'bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]',
       red: 'bg-[#FEE2E2] text-[#991B1B] border-[#EF4444]'
     };
-    
+
     return (
       <Badge className={`${colorConfig[roleColor] || colorConfig.blue} border text-xs font-medium`}>
         {roleName}
@@ -199,26 +199,26 @@ export function GraduatesManagementModule() {
 
   const getEnrollmentBadge = (method: 'qr' | 'manual' | 'massive') => {
     const methodConfig: Record<string, { label: string; className: string; icon: any }> = {
-      qr: { 
-        label: 'QR Code', 
+      qr: {
+        label: 'QR Code',
         className: 'bg-[#EDE9FE] text-[#5B21B6] border-[#8B5CF6]',
         icon: QrCode
       },
-      manual: { 
-        label: 'Manual', 
+      manual: {
+        label: 'Manual',
         className: 'bg-[#EFF6FF] text-[#1E40AF] border-[#3B82F6]',
         icon: UserPlus
       },
-      massive: { 
-        label: 'Carga Masiva', 
+      massive: {
+        label: 'Carga Masiva',
         className: 'bg-[#D1FAE5] text-[#065F46] border-[#10B981]',
         icon: Upload
       }
     };
-    
+
     const config = methodConfig[method];
     const Icon = config.icon;
-    
+
     return (
       <Badge className={`${config.className} border hover:${config.className}`}>
         <div className="flex items-center gap-1.5">
@@ -274,7 +274,7 @@ export function GraduatesManagementModule() {
   };
 
   const handleActivateUser = (user: typeof MOCK_USERS[0]) => {
-    toast.success('Graduado Activado', { 
+    toast.success('Graduado Activado', {
       description: `${user.firstName} ${user.lastName} ha sido activado exitosamente.`
     });
   };
@@ -353,9 +353,9 @@ export function GraduatesManagementModule() {
   return (
     <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
-      <ValidarCertificadoGrado 
-        isOpen={mostrarValidador} 
-        onClose={() => setMostrarValidador(false)} 
+      <ValidarCertificadoGrado
+        isOpen={mostrarValidador}
+        onClose={() => setMostrarValidador(false)}
       />
 
       {/* Header - DÍA 5: ResponsiveHeader */}
@@ -391,7 +391,7 @@ export function GraduatesManagementModule() {
           {/* Input búsqueda */}
           <div className="flex-1">
             <div className="relative">
-              <Search 
+              <Search
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
                 style={{ color: '#9CA3AF' }}
               />
@@ -581,7 +581,7 @@ export function GraduatesManagementModule() {
               No se encontraron graduados
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
-              {hasActiveFilters 
+              {hasActiveFilters
                 ? 'Intenta ajustar los filtros de búsqueda'
                 : 'Aún no hay graduados registrados en el sistema'}
             </p>
@@ -629,7 +629,7 @@ export function GraduatesManagementModule() {
                     <div className="col-span-3">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 flex-shrink-0">
-                          <AvatarFallback 
+                          <AvatarFallback
                             className="text-white font-semibold text-sm"
                             style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}
                           >
@@ -638,7 +638,7 @@ export function GraduatesManagementModule() {
                         </Avatar>
 
                         <div className="flex-1 min-w-0">
-                          <h3 
+                          <h3
                             className="font-semibold truncate mb-0.5"
                             style={{ fontSize: '14px', color: '#1F2937' }}
                           >
@@ -655,7 +655,7 @@ export function GraduatesManagementModule() {
                     {/* Columna 2: Fecha de Grado */}
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
-                        <div 
+                        <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                           style={{ background: '#F0F6FF' }}
                         >
@@ -666,12 +666,12 @@ export function GraduatesManagementModule() {
                             Graduado
                           </p>
                           <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                            {user.roles.find(r => r.name === 'Graduado')?.since 
-                              ? new Date(user.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                                  year: 'numeric', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })
+                            {user.roles.find(r => r.name === 'Graduado')?.since
+                              ? new Date(user.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })
                               : 'N/A'}
                           </p>
                         </div>
@@ -681,7 +681,7 @@ export function GraduatesManagementModule() {
                     {/* Columna 3: Certificados Descargados */}
                     <div className="col-span-2">
                       <div className="flex items-center gap-2">
-                        <div 
+                        <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                           style={{ background: '#ECFDF5' }}
                         >
@@ -779,7 +779,7 @@ export function GraduatesManagementModule() {
                               Activar
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleDelete(user)}
                             className="text-red-600"
                           >
@@ -891,10 +891,10 @@ export function GraduatesManagementModule() {
                           <div className="flex items-center gap-1.5">
                             <Calendar className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {new Date(user.enrollmentDate).toLocaleDateString('es-CO', { 
-                                year: 'numeric', 
-                                month: 'long', 
-                                day: 'numeric' 
+                              {new Date(user.enrollmentDate).toLocaleDateString('es-CO', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
                               })}
                             </p>
                           </div>
@@ -1083,12 +1083,12 @@ export function GraduatesManagementModule() {
                     <p><strong>Graduado:</strong> {selectedUser?.firstName} {selectedUser?.lastName}</p>
                     <p><strong>Documento:</strong> {selectedUser?.document}</p>
                     <p><strong>Programa:</strong> {selectedUser?.program}</p>
-                    <p><strong>Fecha de Grado:</strong> {selectedUser?.roles.find(r => r.name === 'Graduado')?.since 
-                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
-                        })
+                    <p><strong>Fecha de Grado:</strong> {selectedUser?.roles.find(r => r.name === 'Graduado')?.since
+                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })
                       : 'N/A'}</p>
                   </div>
                 </div>
@@ -1163,12 +1163,12 @@ export function GraduatesManagementModule() {
                 <div>
                   <p className="text-gray-600 mb-1">Fecha de Grado</p>
                   <p className="font-semibold text-gray-900">
-                    {selectedUser?.roles.find(r => r.name === 'Graduado')?.since 
-                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', { 
-                          year: 'numeric', 
-                          month: 'short', 
-                          day: 'numeric' 
-                        })
+                    {selectedUser?.roles.find(r => r.name === 'Graduado')?.since
+                      ? new Date(selectedUser.roles.find(r => r.name === 'Graduado')!.since).toLocaleDateString('es-CO', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })
                       : 'N/A'}
                   </p>
                 </div>
@@ -1180,22 +1180,20 @@ export function GraduatesManagementModule() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setCertForm({ ...certForm, format: 'pdf' })}
-                  className={`flex-1 p-3 rounded-lg border-2 text-sm font-medium transition-all ${
-                    certForm.format === 'pdf' 
-                      ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  className={`flex-1 p-3 rounded-lg border-2 text-sm font-medium transition-all ${certForm.format === 'pdf'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 text-gray-700 hover:border-gray-400'
-                  }`}
+                    }`}
                 >
                   <FileText className="w-5 h-5 mx-auto mb-1" />
                   PDF
                 </button>
                 <button
                   onClick={() => setCertForm({ ...certForm, format: 'docx' })}
-                  className={`flex-1 p-3 rounded-lg border-2 text-sm font-medium transition-all ${
-                    certForm.format === 'docx' 
-                      ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                  className={`flex-1 p-3 rounded-lg border-2 text-sm font-medium transition-all ${certForm.format === 'docx'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-300 text-gray-700 hover:border-gray-400'
-                  }`}
+                    }`}
                 >
                   <FileText className="w-5 h-5 mx-auto mb-1" />
                   DOCX
@@ -1205,7 +1203,7 @@ export function GraduatesManagementModule() {
 
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-gray-900">Opciones Adicionales</Label>
-              
+
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                 <input
                   type="checkbox"

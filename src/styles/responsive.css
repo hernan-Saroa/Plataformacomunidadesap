@@ -16,40 +16,57 @@
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
   --breakpoint-2xl: 1536px;
-  
+
   /* ✅ SIDEBAR WIDTHS - Mobile First */
-  --sidebar-mobile: 280px;      /* Mobile overlay */
-  --sidebar-tablet: 240px;       /* Tablet visible */
-  --sidebar-desktop: 260px;      /* Desktop expanded */
-  --sidebar-collapsed: 80px;     /* Collapsed state */
-  
+  --sidebar-mobile: 280px;
+  /* Mobile overlay */
+  --sidebar-tablet: 240px;
+  /* Tablet visible */
+  --sidebar-desktop: 260px;
+  /* Desktop expanded */
+  --sidebar-collapsed: 80px;
+  /* Collapsed state */
+
   /* ✅ GRID COLUMNS - Mobile First */
   --grid-cols-mobile: 1;
   --grid-cols-tablet: 2;
   --grid-cols-desktop: 3;
   --grid-cols-wide: 4;
-  
+
   /* ✅ FONT SIZES - Mobile First (Base para mobile) */
-  --font-xs: 0.75rem;     /* 12px - Mobile base */
-  --font-sm: 0.875rem;    /* 14px */
-  --font-base: 1rem;      /* 16px - Mobile body text */
-  --font-lg: 1.125rem;    /* 18px */
-  --font-xl: 1.25rem;     /* 20px */
-  --font-2xl: 1.5rem;     /* 24px - Mobile headings */
-  --font-3xl: 1.875rem;   /* 30px */
-  
+  --font-xs: 0.75rem;
+  /* 12px - Mobile base */
+  --font-sm: 0.875rem;
+  /* 14px */
+  --font-base: 1rem;
+  /* 16px - Mobile body text */
+  --font-lg: 1.125rem;
+  /* 18px */
+  --font-xl: 1.25rem;
+  /* 20px */
+  --font-2xl: 1.5rem;
+  /* 24px - Mobile headings */
+  --font-3xl: 1.875rem;
+  /* 30px */
+
   /* ✅ SPACING - Mobile First */
-  --space-xs: 0.5rem;     /* 8px - Mobile base */
-  --space-sm: 1rem;       /* 16px */
-  --space-md: 1.5rem;     /* 24px */
-  --space-lg: 2rem;       /* 32px */
-  --space-xl: 3rem;       /* 48px */
-  --space-2xl: 4rem;      /* 64px */
-  
+  --space-xs: 0.5rem;
+  /* 8px - Mobile base */
+  --space-sm: 1rem;
+  /* 16px */
+  --space-md: 1.5rem;
+  /* 24px */
+  --space-lg: 2rem;
+  /* 32px */
+  --space-xl: 3rem;
+  /* 48px */
+  --space-2xl: 4rem;
+  /* 64px */
+
   /* ✅ TOUCH TARGETS (WCAG 2.1 AA) */
   --touch-min: 44px;
   --touch-comfortable: 48px;
-  
+
   /* ✅ CONTAINER - Mobile First */
   --container-mobile: 100%;
   --container-tablet: 768px;
@@ -63,7 +80,8 @@
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 html {
-  font-size: 16px;        /* ✅ Mobile: 16px base para legibilidad */
+  font-size: 16px;
+  /* ✅ Mobile: 16px base para legibilidad */
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -84,7 +102,8 @@ body {
 /* ✅ Flexbox Mobile Base */
 .responsive-flex {
   display: flex;
-  flex-direction: column;  /* Mobile: stack vertical */
+  flex-direction: column;
+  /* Mobile: stack vertical */
   gap: var(--space-sm);
 }
 
@@ -108,16 +127,18 @@ body {
 
 @media (min-width: 768px) {
   html {
-    font-size: 15px;      /* ✅ Tablet: Reducir ligeramente */
+    font-size: 16px;
+    /* ✅ Tablet: mantener 16px para que Tailwind funcione correctamente */
   }
-  
+
   .responsive-grid {
     grid-template-columns: repeat(var(--grid-cols-tablet), 1fr);
     gap: var(--space-md);
   }
-  
+
   .responsive-flex {
-    flex-direction: row;  /* Tablet: horizontal */
+    flex-direction: row;
+    /* Tablet: horizontal */
     gap: var(--space-md);
   }
 }
@@ -128,9 +149,10 @@ body {
 
 @media (min-width: 1024px) {
   html {
-    font-size: 14px;      /* ✅ Laptop: Compacto para 1366px */
+    font-size: 16px;
+    /* ✅ Laptop: mantener 16px para Tailwind */
   }
-  
+
   .responsive-grid {
     grid-template-columns: repeat(var(--grid-cols-desktop), 1fr);
     gap: var(--space-lg);
@@ -143,9 +165,10 @@ body {
 
 @media (min-width: 1280px) {
   html {
-    font-size: 14px;      /* ✅ Desktop estándar */
+    font-size: 16px;
+    /* ✅ Desktop estándar: mantener 16px */
   }
-  
+
   .responsive-grid {
     grid-template-columns: repeat(var(--grid-cols-wide), 1fr);
     gap: var(--space-xl);
@@ -158,7 +181,8 @@ body {
 
 @media (min-width: 1536px) {
   html {
-    font-size: 15px;      /* ✅ Wide: Más espacio, más legibilidad */
+    font-size: 16px;
+    /* ✅ Wide: mantener consistente */
   }
 }
 
@@ -192,6 +216,7 @@ body {
 }
 
 @media (min-width: 640px) {
+
   .stats-grid-2,
   .stats-grid-3,
   .stats-grid-4 {
@@ -205,7 +230,7 @@ body {
     grid-template-columns: repeat(3, 1fr);
     gap: var(--space-lg);
   }
-  
+
   .stats-grid-4 {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -220,71 +245,83 @@ body {
 
 /* ✅ Card Responsive Paddings */
 .card-padding {
-  padding: 1rem;              /* Mobile: 16px */
+  padding: 1rem;
+  /* Mobile: 16px */
 }
 
 @media (min-width: 640px) {
   .card-padding {
-    padding: 1.25rem;         /* Tablet: 20px */
+    padding: 1.25rem;
+    /* Tablet: 20px */
   }
 }
 
 @media (min-width: 768px) {
   .card-padding {
-    padding: 1.5rem;          /* Desktop: 24px */
+    padding: 1.5rem;
+    /* Desktop: 24px */
   }
 }
 
 /* ✅ Responsive Typography Scales */
 .text-stat-title {
-  font-size: 0.75rem;         /* Mobile: 12px */
+  font-size: 0.75rem;
+  /* Mobile: 12px */
   line-height: 1.2;
 }
 
 @media (min-width: 640px) {
   .text-stat-title {
-    font-size: 0.875rem;      /* Tablet: 14px */
+    font-size: 0.875rem;
+    /* Tablet: 14px */
   }
 }
 
 .text-stat-value {
-  font-size: 1.5rem;          /* Mobile: 24px */
+  font-size: 1.5rem;
+  /* Mobile: 24px */
   line-height: 1;
   font-weight: 800;
 }
 
 @media (min-width: 640px) {
   .text-stat-value {
-    font-size: 1.875rem;      /* Tablet: 30px */
+    font-size: 1.875rem;
+    /* Tablet: 30px */
   }
 }
 
 @media (min-width: 768px) {
   .text-stat-value {
-    font-size: 2.25rem;       /* Desktop: 36px */
+    font-size: 2.25rem;
+    /* Desktop: 36px */
   }
 }
 
 @media (min-width: 1024px) {
   .text-stat-value {
-    font-size: 3rem;          /* Large: 48px */
+    font-size: 3rem;
+    /* Large: 48px */
   }
 }
 
 /* ✅ Card Min Heights Responsive */
 .card-min-height {
-  min-height: 120px;          /* Mobile: compacto */
+  min-height: 120px;
+  /* Mobile: compacto */
 }
 
 @media (min-width: 640px) {
   .card-min-height {
-    min-height: 140px;        /* Tablet: medio */
+    min-height: 140px;
+    /* Tablet: medio */
   }
 }
 
 @media (min-width: 1024px) {
   .card-min-height {
-    min-height: 160px;        /* Desktop: amplio */
+    min-height: 160px;
+    /* Desktop: amplio */
   }
 }
 
@@ -294,26 +331,31 @@ body {
 
 /* ✅ Responsive Spacing - Adaptive Padding */
 .spacing-mobile {
-  padding: 12px;              /* Mobile: compacto */
+  padding: 12px;
+  /* Mobile: compacto */
 }
 
 .spacing-tablet {
-  padding: 12px;              /* Mobile base */
+  padding: 12px;
+  /* Mobile base */
 }
 
 .spacing-desktop {
-  padding: 12px;              /* Mobile base */
+  padding: 12px;
+  /* Mobile base */
 }
 
 .spacing-adaptive {
-  padding: 12px;              /* Mobile: compacto */
+  padding: 12px;
+  /* Mobile: compacto */
 }
 
 @media (min-width: 768px) {
   .spacing-tablet {
-    padding: 16px;            /* Tablet: medio */
+    padding: 16px;
+    /* Tablet: medio */
   }
-  
+
   .spacing-adaptive {
     padding: 16px;
   }
@@ -321,9 +363,10 @@ body {
 
 @media (min-width: 1024px) {
   .spacing-desktop {
-    padding: 24px;            /* Desktop: amplio */
+    padding: 24px;
+    /* Desktop: amplio */
   }
-  
+
   .spacing-adaptive {
     padding: 20px;
   }
@@ -331,7 +374,8 @@ body {
 
 @media (min-width: 1280px) {
   .spacing-adaptive {
-    padding: 24px;            /* Wide: máximo */
+    padding: 24px;
+    /* Wide: máximo */
   }
 }
 
@@ -421,7 +465,7 @@ body {
   .text-mobile-h1 {
     font-size: 32px;
   }
-  
+
   .text-mobile-body {
     font-size: 15px;
   }
@@ -431,7 +475,7 @@ body {
   .text-mobile-h1 {
     font-size: 40px;
   }
-  
+
   .text-mobile-body {
     font-size: 16px;
   }
@@ -831,7 +875,7 @@ body {
   scroll-padding: 16px;
 }
 
-.scroll-snap-mobile > * {
+.scroll-snap-mobile>* {
   scroll-snap-align: start;
 }
 
@@ -859,11 +903,11 @@ body {
   .aspect-16-9 {
     padding-bottom: 56.25%;
   }
-  
+
   .aspect-4-3 {
     padding-bottom: 75%;
   }
-  
+
   .aspect-square {
     padding-bottom: 100%;
   }

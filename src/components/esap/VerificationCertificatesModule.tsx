@@ -13,15 +13,15 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Search, 
-  X, 
-  Download, 
-  FileText, 
-  Award, 
-  Eye, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Search,
+  X,
+  Download,
+  FileText,
+  Award,
+  Eye,
+  CheckCircle,
+  XCircle,
   AlertCircle,
   QrCode,
   Mail,
@@ -314,10 +314,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       cert.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       cert.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       cert.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
     const matchesType = requesterTypeFilter === 'all' || cert.requester.type === requesterTypeFilter;
-    
+
     return matchesSearch && matchesStatus && matchesType;
   });
 
@@ -331,29 +331,29 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   // Helpers
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; className: string; icon: any; description: string }> = {
-      active: { 
-        label: 'Activo', 
+      active: {
+        label: 'Activo',
         className: 'bg-[#ECFDF5] text-[#065F46] border-[#10B981]',
         icon: CheckCircle,
         description: 'QR válido para escaneo'
       },
-      revoked: { 
-        label: 'Revocado', 
+      revoked: {
+        label: 'Revocado',
         className: 'bg-[#FEF2F2] text-[#991B1B] border-[#EF4444]',
         icon: XCircle,
         description: 'Certificado inválido'
       },
-      expired: { 
-        label: 'Expirado', 
+      expired: {
+        label: 'Expirado',
         className: 'bg-[#F3F4F6] text-[#374151] border-[#D1D5DB]',
         icon: AlertCircle,
         description: 'Fuera de vigencia'
       }
     };
-    
+
     const config = statusConfig[status] || statusConfig.active;
     const Icon = config.icon;
-    
+
     return (
       <div className="space-y-1">
         <Badge className={`${config.className} border hover:${config.className}`}>
@@ -381,10 +381,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         icon: User
       }
     };
-    
+
     const config = typeConfig[type] || typeConfig.entidad;
     const Icon = config.icon;
-    
+
     return (
       <Badge className={`${config.className} border text-xs font-medium`}>
         <div className="flex items-center gap-1.5">
@@ -477,10 +477,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.font = 'bold 48px Arial';
       ctx.textAlign = 'center';
       ctx.fillText('ESAP', width / 2, 70);
-      
+
       ctx.font = '20px Arial';
       ctx.fillText('Escuela Superior de Administración Pública', width / 2, 110);
-      
+
       ctx.font = 'bold 24px Arial';
       ctx.fillText('Código QR de Validación', width / 2, 150);
 
@@ -555,9 +555,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       // Footer
       ctx.fillStyle = '#9CA3AF';
       ctx.font = '12px Arial';
-      ctx.fillText(`Generado el ${new Date().toLocaleDateString('es-CO', { 
-        year: 'numeric', 
-        month: 'long', 
+      ctx.fillText(`Generado el ${new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -566,7 +566,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       // Convertir canvas a blob y descargar
       canvas.toBlob((blob) => {
         if (!blob) return;
-        
+
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
@@ -600,7 +600,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   return (
     <div className="space-y-6">
       {/* Descripción específica de verificación */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.1 }}
@@ -608,7 +608,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       >
         <div className="flex items-start gap-3">
           <QrCode className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-          <p 
+          <p
             className="font-normal"
             style={{
               fontSize: '13px',
@@ -621,33 +621,33 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </div>
       </motion.div>
 
-          <div className="flex justify-end">
-            <button
-              onClick={() => toast.info('Exportar solicitudes de certificados')}
-              className="inline-flex items-center justify-center gap-2 transition-all"
-              style={{
-                background: '#FFFFFF',
-                color: '#003DA5',
-                border: '2px solid #003DA5',
-                borderRadius: '8px',
-                padding: '12px 20px',
-                fontSize: '14px',
-                fontWeight: 500,
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#F0F6FF';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#FFFFFF';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <Download className="w-5 h-5" strokeWidth={2} />
-              <span>Exportar</span>
-            </button>
-          </div>
+      <div className="flex justify-end">
+        <button
+          onClick={() => toast.info('Exportar solicitudes de certificados')}
+          className="inline-flex items-center justify-center gap-2 transition-all"
+          style={{
+            background: '#FFFFFF',
+            color: '#003DA5',
+            border: '2px solid #003DA5',
+            borderRadius: '8px',
+            padding: '12px 20px',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: 'pointer'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#F0F6FF';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#FFFFFF';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+        >
+          <Download className="w-5 h-5" strokeWidth={2} />
+          <span>Exportar</span>
+        </button>
+      </div>
 
       {/* Info Banner */}
       <motion.div
@@ -665,9 +665,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               🔄 Lógica de QR Único (Reutilizable)
             </h3>
             <p className="text-sm text-gray-700">
-              <strong>1)</strong> Se solicita certificado (graduado + entidad) → 
-              <strong> 2)</strong> Sistema verifica si YA existe esa combinación → 
-              <strong> 3a)</strong> Si NO existe: genera certificado + QR nuevo · 
+              <strong>1)</strong> Se solicita certificado (graduado + entidad) →
+              <strong> 2)</strong> Sistema verifica si YA existe esa combinación →
+              <strong> 3a)</strong> Si NO existe: genera certificado + QR nuevo ·
               <strong> 3b)</strong> Si SÍ existe: reutiliza QR existente (no genera nuevo)
             </p>
           </div>
@@ -686,7 +686,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           {/* Input búsqueda */}
           <div className="flex-1">
             <div className="relative">
-              <Search 
+              <Search
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
                 style={{ color: '#9CA3AF' }}
               />
@@ -820,7 +820,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               No se encontraron solicitudes de certificados
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
-              {hasActiveFilters 
+              {hasActiveFilters
                 ? 'Intenta ajustar los filtros de búsqueda'
                 : 'Aún no hay solicitudes de certificados procesadas en el sistema'}
             </p>
@@ -868,7 +868,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     <div className="col-span-3">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10 flex-shrink-0">
-                          <AvatarFallback 
+                          <AvatarFallback
                             className="text-white font-semibold text-sm"
                             style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' }}
                           >
@@ -877,7 +877,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </Avatar>
 
                         <div className="flex-1 min-w-0">
-                          <h3 
+                          <h3
                             className="font-semibold truncate mb-0.5"
                             style={{ fontSize: '14px', color: '#1F2937' }}
                           >
@@ -1020,7 +1020,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             Descargar PDF
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleRevokeCertificate(cert)}
                             className="text-red-600"
                           >
@@ -1226,7 +1226,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               {cert.scanHistory.length} registros
                             </Badge>
                           </div>
-                          
+
                           {cert.scanHistory.length === 0 ? (
                             <div className="text-center py-6">
                               <Monitor className="w-10 h-10 mx-auto mb-2 text-gray-300" />
@@ -1235,8 +1235,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           ) : (
                             <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                               {cert.scanHistory.map((scan, idx) => (
-                                <div 
-                                  key={scan.id} 
+                                <div
+                                  key={scan.id}
                                   className="bg-gray-50 p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors"
                                 >
                                   <div className="flex items-start justify-between mb-2">
@@ -1307,11 +1307,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                       <div>
                                         <p className="text-gray-600">Dispositivo</p>
                                         <p className="text-gray-700">
-                                          {scan.userAgent.includes('Mobile') ? '📱 Móvil' : 
-                                           scan.userAgent.includes('iPhone') ? '📱 iPhone' :
-                                           scan.userAgent.includes('Android') ? '📱 Android' :
-                                           scan.userAgent.includes('Windows') ? '💻 Windows' :
-                                           scan.userAgent.includes('Mac') ? '🍎 Mac' : '💻 PC'}
+                                          {scan.userAgent.includes('Mobile') ? '📱 Móvil' :
+                                            scan.userAgent.includes('iPhone') ? '📱 iPhone' :
+                                              scan.userAgent.includes('Android') ? '📱 Android' :
+                                                scan.userAgent.includes('Windows') ? '💻 Windows' :
+                                                  scan.userAgent.includes('Mac') ? '🍎 Mac' : '💻 PC'}
                                         </p>
                                       </div>
                                     </div>
@@ -1454,16 +1454,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-6`}>
               <div className="flex flex-col items-center text-center">
                 {/* QR Placeholder */}
-                <div 
+                <div
                   className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{ 
+                  style={{
                     background: qrPreviewCertificate?.status === 'active' ? '#FFFFFF' : '#F3F4F6',
                     border: `2px solid ${qrPreviewCertificate?.status === 'active' ? '#10B981' : '#D1D5DB'}`
                   }}
                 >
                   <div className="text-center p-4">
-                    <QrCode 
-                      className="w-32 h-32 mx-auto mb-2" 
+                    <QrCode
+                      className="w-32 h-32 mx-auto mb-2"
                       style={{ color: qrPreviewCertificate?.status === 'active' ? '#10B981' : '#9CA3AF' }}
                     />
                     <p className="text-xs font-mono font-semibold" style={{ color: '#6B7280' }}>

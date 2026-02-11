@@ -24,6 +24,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLoginClick = () => {
     if (onIrALogin) {
@@ -224,18 +225,59 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
             {/* Botón Login */}
             <Button
               onClick={handleLoginClick}
-              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
+              className="hidden sm:inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
             >
-              <span className="hidden sm:inline">Iniciar Sesión</span>
-              <span className="sm:hidden">Entrar</span>
+              <span>Iniciar Sesión</span>
               <ArrowRight className="w-4 h-4" />
             </Button>
+
+            {/* Hamburger Button - Mobile */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-white hover:bg-white/10 rounded-xl transition-colors"
+              aria-label="Menú"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
+
+          {/* Mobile Menu Overlay */}
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden mt-3 pt-3 border-t border-white/20"
+            >
+              <div className="flex flex-col gap-2 pb-2">
+                <a href="#hero" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 text-sm font-semibold text-white/90 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                  Inicio
+                </a>
+                <a href="#servicios" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 text-sm font-semibold text-white/90 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                  Servicios
+                </a>
+                <button
+                  onClick={() => { setVistaActual('validador-certificados'); setMobileMenuOpen(false); }}
+                  className="flex items-center gap-2 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 rounded-xl transition-colors text-left"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  Validar Certificados
+                </button>
+                <Button
+                  onClick={() => { handleLoginClick(); setMobileMenuOpen(false); }}
+                  className="mx-4 mt-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full font-semibold text-sm bg-white text-[#003DA5] hover:bg-blue-50 shadow-lg"
+                >
+                  Iniciar Sesión
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
         </div>
       </motion.nav>
 
       {/* Hero Section - World Class */}
-      <section id="hero" className="relative h-screen max-h-[900px] min-h-[600px] flex items-center overflow-hidden pt-20 sm:pt-24 lg:pt-16">
+      <section id="hero" className="relative h-screen min-h-[550px] flex items-center overflow-hidden pt-16 sm:pt-20">
         {/* Animated Background - OPTIMIZADO */}
         <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
           {/* Gradient Base */}
@@ -657,7 +699,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               transition={{ delay: 0.2 }}
             >
               <Card className="h-full bg-white/95 backdrop-blur-sm border-2 border-white/50 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:-translate-y-2">
-                <CardContent className="p-8">
+                <CardContent className="p-5 md:p-8">
                   <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                     <Users className="w-8 h-8 text-white" />
                   </div>
@@ -729,7 +771,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               transition={{ delay: 0.4 }}
             >
               <Card className="h-full bg-white/95 backdrop-blur-sm border-2 border-white/50 shadow-2xl hover:shadow-3xl transition-all duration-300 hover:-translate-y-2">
-                <CardContent className="p-8">
+                <CardContent className="p-5 md:p-8">
                   <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                     <Shield className="w-8 h-8 text-white" />
                   </div>
