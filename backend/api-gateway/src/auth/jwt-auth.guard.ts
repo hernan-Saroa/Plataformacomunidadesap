@@ -12,6 +12,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/register/i,
     /^\/certificados\/api\/v\d+\/validate/i,
     /^\/certificates\/api\/v\d+\/validate/i,
+    // Autoservicio certificados laborales (públicos)
+    /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/verificar-documento/i,
+    /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
+    /^\/certificados\/api\/v\d+\/certificados\/verify\/.+/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
   ];
