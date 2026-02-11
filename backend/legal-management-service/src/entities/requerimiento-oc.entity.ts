@@ -97,6 +97,19 @@ export class RequerimientoOC {
     @OneToMany(() => DocumentoOC, (doc: DocumentoOC) => doc.requerimiento)
     documentos: DocumentoOC[];
 
+    // Campos para sistema de archivo (Igual que Asesoría Jurídica y Procesos Coactivos)
+    @Column({ name: 'estado_archivo', type: 'varchar', default: 'ACTIVO' })
+    estadoArchivo: string; // ACTIVO, ARCHIVADO, ELIMINADO
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date | null;
+
+    @Column({ name: 'usuario_archivo', type: 'varchar', nullable: true })
+    usuarioArchivo: string | null;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string | null;
+
     // Campos calculados (no en BD)
     documentosCount?: number;
     diasRestantes?: number;

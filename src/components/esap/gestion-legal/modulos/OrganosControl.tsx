@@ -31,11 +31,11 @@ import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
 
 // Modales
-// import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
-// import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
-// import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
-// import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
-// import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
+import { ModalNuevoRequerimiento } from './ModalNuevoRequerimiento';
+import { ModalVerRequerimientoOrgano as ModalVerRequerimiento } from './ModalVerRequerimientoOrgano';
+import { ModalGestionDocumentos as ModalDocumentos } from './ModalGestionDocumentos';
+import { ModalRespuestaOrgano as ModalRespuesta } from './ModalRespuestaOrgano';
+import { ModalComentariosOrgano as ModalComentarios } from './ModalComentariosOrgano';
 import { ModalSolicitudInsumo } from './ModalSolicitudInsumo';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
 import { usePermisos, PERMISOS } from '../config/PermisosContext';
@@ -66,6 +66,9 @@ export interface Requerimiento {
   docRespuestas?: number;
   docSoportes?: number;
   docInternos?: number;
+  actuaciones?: number;
+  descripcion?: string;
+  areaResponsable?: string;
 }
 
 // Datos mock - REDUCIDO
@@ -80,7 +83,7 @@ const MOCK_DATA: Requerimiento[] = [
     fechaVencimiento: new Date('2024-12-30'),
     diasRestantes: 5,
     diasTotales: 20,
-    etapa: 'RESPUESTA',
+    etapa: 'EN_RESPUESTA',
     ultimaActuacion: 'Proyecto de respuesta en revisión',
     documentos: 8
   }
@@ -96,7 +99,7 @@ const getSemaforoColor = (dias: number) => {
 export function OrganosControl() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista' | 'archivados'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroOrganismo, setFiltroOrganismo] = useState<string>('');
@@ -160,8 +163,10 @@ export function OrganosControl() {
           fechaVencimiento: req.fechaVencimiento ? new Date(req.fechaVencimiento) : new Date(),
           diasRestantes: req.diasRestantes !== undefined ? req.diasRestantes : 0,
           diasTotales: req.plazoOtorgado || 0,
+          descripcion: req.descripcion || '',
+          areaResponsable: req.areaResponsable || 'Oficina Jurídica',
           etapa: req.estado as 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO',
-          ultimaActuacion: 'Sin información reciente', // TODO: Traer última actuación real
+          ultimaActuacion: req.ultimaActuacion || 'Sin información reciente', // TODO: Traer última actuación real
           documentos: req.documentosCount || 0,
           // Map document categories
           docRequerimientos: req.docRequerimientos || 0,
@@ -172,6 +177,29 @@ export function OrganosControl() {
       });
 
       setRequerimientos(mappedData);
+
+      // Cargar archivados
+      const archivadosData = await ocService.getArchivados();
+
+      const mappedArchivados: ItemArchivado[] = archivadosData.map((req: any) => ({
+        id: req.id,
+        codigo: req.radicadoExterno || req.radicadoInterno,
+        nombre: req.asunto,
+        tipo: 'Requerimiento Órgano Control',
+        estado: req.estadoArchivo as EstadoArchivado,
+        fechaArchivado: req.fechaArchivo ? new Date(req.fechaArchivo) : new Date(),
+        usuarioArchivo: req.usuarioArchivo || 'Desconocido',
+        motivoArchivo: req.motivoArchivo || 'Sin motivo',
+        metadatos: {
+          'Organismo': req.organismo?.nombre || 'Desconocido',
+          'Número Oficio': req.radicadoExterno || 'S/N',
+          'Tipo Requerimiento': req.tipoRequerimiento || 'General',
+          'Fecha Radicación': req.fechaRecepcion ? new Date(req.fechaRecepcion).toLocaleDateString() : 'N/A'
+        }
+      }));
+
+      setItemsArchivados(mappedArchivados);
+
     } catch (error) {
       console.error('Error cargando requerimientos:', error);
       toast.error('Error al cargar datos', {
@@ -182,87 +210,38 @@ export function OrganosControl() {
     }
   };
   // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'REQ-PGN-2023-999',
-      codigo: 'PGN-OF-2023-08765',
-      nombre: 'Solicitud información procesos disciplinarios 2020-2023 - Procuraduría General',
-      tipo: 'Requerimiento Órgano Control',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-10T14:30:00'),
-      usuarioArchivo: 'Dra. María Fernández',
-      motivoArchivo: 'Requerimiento respondido completamente y aceptado por el órgano de control. Oficio de respuesta radicado PGN-RESP-2024-001',
-      metadatos: {
-        'Organismo': 'Procuraduría General de la Nación',
-        'Número Oficio': 'PGN-OF-2023-08765',
-        'Responsable': 'Dra. María Fernández',
-        'Fecha Radicación': '15/10/2023',
-        'Fecha Respuesta': '05/12/2024',
-        'Resultado': 'Respondido satisfactoriamente'
-      }
-    },
-    {
-      id: 'REQ-CGR-2023-888',
-      codigo: 'CGR-OF-2023-05432',
-      nombre: 'Auditoría contratos de prestación de servicios 2022-2023 - Contraloría',
-      tipo: 'Requerimiento Órgano Control',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-11-25T10:15:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Auditoría culminada. Informe final de Contraloría recibido sin observaciones ni hallazgos',
-      metadatos: {
-        'Organismo': 'Contraloría General de la República',
-        'Número Oficio': 'CGR-OF-2023-05432',
-        'Responsable': 'Dr. Juan Carlos Pérez',
-        'Tipo Auditoría': 'Contratos',
-        'Fecha Radicación': '20/08/2023',
-        'Resultado': 'Sin hallazgos'
-      }
-    },
-    {
-      id: 'REQ-FGN-2023-777',
-      codigo: 'FGN-OF-2023-09876',
-      nombre: 'Investigación preliminar caso denunciado - Fiscalía',
-      tipo: 'Requerimiento Órgano Control',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-10-18T16:45:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Requerimiento duplicado - El caso real está bajo radicado FGN-OF-2023-09877. Error en radicación múltiple',
-      metadatos: {
-        'Organismo': 'Fiscalía General de la Nación',
-        'Número Oficio': 'FGN-OF-2023-09876',
-        'Motivo Eliminación': 'Duplicado'
-      }
-    },
-    {
-      id: 'REQ-PGN-2023-666',
-      codigo: 'PGN-OF-2023-07654',
-      nombre: 'Requerimiento información selección directivos académicos - Procuraduría',
-      tipo: 'Requerimiento Órgano Control',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-09-30T11:20:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Proceso de vigilancia superior cerrado por la Procuraduría. Oficio de cierre recibido el 28/09/2024',
-      metadatos: {
-        'Organismo': 'Procuraduría General de la Nación',
-        'Número Oficio': 'PGN-OF-2023-07654',
-        'Responsable': 'Dra. Ana María López',
-        'Fecha Radicación': '05/06/2023',
-        'Resultado': 'Proceso cerrado - Sin irregularidades'
-      }
-    }
-  ]);
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
 
   // ✅ Función para restaurar un requerimiento archivado
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando requerimiento:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    try {
+      await ocService.restaurarRequerimiento(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento restaurado', {
+        description: 'El requerimiento ha vuelto al tablero principal.'
+      });
+      fetchRequerimientos(); // Recargar ambas listas
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.error('Error al restaurar', {
+        description: 'No se pudo restaurar el requerimiento.'
+      });
+    }
   };
 
   // ✅ Función para eliminar permanentemente un requerimiento
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente requerimiento:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    try {
+      await ocService.eliminarRequerimientoPermanente(itemId, usuario?.nombre || 'Usuario Sistema');
+      toast.success('Requerimiento eliminado', {
+        description: 'El requerimiento ha sido eliminado permanentemente.'
+      });
+      fetchRequerimientos();
+    } catch (error) {
+      console.error('Error eliminando:', error);
+      toast.error('Error al eliminar', {
+        description: 'No se pudo eliminar el requerimiento.'
+      });
+    }
   };
 
   // Handler para mover requerimientos entre etapas
@@ -274,7 +253,7 @@ export function OrganosControl() {
   //         : req
   //     )
   //   );
-    
+
   //   toast.success('Requerimiento movido exitosamente', {
   //     description: `Cambiado a etapa: ${nuevaEtapa}`
   //   });
@@ -513,36 +492,47 @@ export function OrganosControl() {
       {/* Modales */}
       {modalNuevoOpen && (
         <ModalNuevoRequerimiento
+          isOpen={modalNuevoOpen}
           onClose={() => setModalNuevoOpen(false)}
+          onSuccess={fetchRequerimientos}
         />
       )}
 
       {modalVerOpen && requerimientoSeleccionado && (
         <ModalVerRequerimiento
+          isOpen={modalVerOpen}
           requerimiento={requerimientoSeleccionado}
           onClose={() => setModalVerOpen(false)}
+          onUpdate={fetchRequerimientos}
         />
       )}
 
       {/* TODO: Implementar integración en estos modales si es necesario */}
       {modalDocsOpen && requerimientoSeleccionado && (
         <ModalDocumentos
-          requerimiento={requerimientoSeleccionado}
+          isOpen={modalDocsOpen}
           onClose={() => setModalDocsOpen(false)}
+          requerimientoId={requerimientoSeleccionado.id}
+          nombreRequerimiento={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
       {modalRespuestaOpen && requerimientoSeleccionado && (
         <ModalRespuesta
-          requerimiento={requerimientoSeleccionado}
+          isOpen={modalRespuestaOpen}
           onClose={() => setModalRespuestaOpen(false)}
+          requerimientoId={requerimientoSeleccionado.id}
+          organismoNombre={requerimientoSeleccionado.organismo}
+          onSuccess={fetchRequerimientos}
         />
       )}
 
       {modalComentariosOpen && requerimientoSeleccionado && (
         <ModalComentarios
-          requerimiento={requerimientoSeleccionado}
+          isOpen={modalComentariosOpen}
           onClose={() => setModalComentariosOpen(false)}
+          requerimientoId={requerimientoSeleccionado.id}
+          radicado={requerimientoSeleccionado.numeroOficio}
         />
       )}
 
@@ -946,7 +936,7 @@ function VistaLista({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">ID</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">RADICADO</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Organismo</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Asunto</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responsable</th>
@@ -961,7 +951,7 @@ function VistaLista({
             {requerimientosPaginados.map(req => (
               <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
-                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.id}</span>
+                  <span className="font-bold text-sm" style={{ color: '#003DA5' }}>{req.numeroOficio}</span>
                 </td>
                 <td className="px-4 py-3">
                   <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
@@ -1024,14 +1014,7 @@ function VistaLista({
                     >
                       <Send className="w-4 h-4 text-blue-600" />
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onInsumo(req)}
-                      title="Solicitar Insumo"
-                    >
-                      <User className="w-4 h-4 text-orange-600" />
-                    </Button>
+
                   </div>
                 </td>
               </tr>
@@ -1073,436 +1056,3 @@ function VistaLista({
   );
 }
 
-// Modal Nuevo Requerimiento
-function ModalNuevoRequerimiento({ onClose }: { onClose: () => void }) {
-  const [numeroOficio, setNumeroOficio] = useState('');
-  const [organismo, setOrganismo] = useState('');
-  const [asunto, setAsunto] = useState('');
-  const [responsable, setResponsable] = useState('');
-  const [fechaRadicacion, setFechaRadicacion] = useState('');
-  const [fechaVencimiento, setFechaVencimiento] = useState('');
-  const [etapa, setEtapa] = useState('RECIBIDO');
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-[95vw] max-w-[900px] max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Nuevo Requerimiento"
-          subtitulo="Registro de requerimiento de órgano de control"
-          icono={Building2}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 lg:p-8 space-y-5 lg:space-y-6">
-          {/* Grid de 2 columnas en pantallas grandes */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
-            <div>
-              <label className="text-sm font-bold text-gray-700 block mb-2">Número de Oficio</label>
-              <Input
-                value={numeroOficio}
-                onChange={(e) => setNumeroOficio(e.target.value)}
-                placeholder="Ej. CGR-OF-2024-00125"
-                className="text-base"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-bold text-gray-700 block mb-2">Organismo</label>
-              <Input
-                value={organismo}
-                onChange={(e) => setOrganismo(e.target.value)}
-                placeholder="Ej. CGR"
-                className="text-base"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-bold text-gray-700 block mb-2">Asunto</label>
-            <Textarea
-              value={asunto}
-              onChange={(e) => setAsunto(e.target.value)}
-              placeholder="Ej. Solicitud de información sobre contratación 2024"
-              rows={4}
-              className="w-full text-base"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-bold text-gray-700 block mb-2">Responsable</label>
-            <Input
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Ej. Dra. María Fernández"
-              className="text-base"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-6">
-            <div>
-              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Radicación</label>
-              <Input
-                type="date"
-                value={fechaRadicacion}
-                onChange={(e) => setFechaRadicacion(e.target.value)}
-                className="text-base"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-bold text-gray-700 block mb-2">Fecha Vencimiento</label>
-              <Input
-                type="date"
-                value={fechaVencimiento}
-                onChange={(e) => setFechaVencimiento(e.target.value)}
-                className="text-base"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-bold text-gray-700 block mb-2">Etapa</label>
-            <select
-              value={etapa}
-              onChange={(e) => setEtapa(e.target.value as 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO')}
-              className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="RECIBIDO">Recibido</option>
-              <option value="ANALISIS">Análisis</option>
-              <option value="RESPUESTA">Respuesta</option>
-              <option value="ENVIADO">Enviado</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 lg:p-6 flex gap-3 justify-end">
-          <Button onClick={onClose} variant="outline" className="px-6 py-3 text-base">
-            Cancelar
-          </Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            className="px-6 py-3 text-base"
-            onClick={() => {
-              toast.success('Requerimiento creado correctamente');
-              onClose();
-            }}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Crear Requerimiento
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Ver Requerimiento
-function ModalVerRequerimiento({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo={requerimiento.id}
-          subtitulo={`${requerimiento.organismo} • ${requerimiento.numeroOficio}`}
-          icono={Eye}
-          colorIcono="blue"
-          badgePrincipal={requerimiento.etapa}
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">ID Requerimiento</label>
-              <p className="text-sm font-bold mt-1" style={{ color: '#003DA5' }}>{requerimiento.id}</p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Número de Oficio</label>
-              <p className="text-sm font-bold mt-1">{requerimiento.numeroOficio}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Organismo</label>
-              <Badge className="mt-1 bg-blue-50 text-blue-700 border-blue-200">
-                {requerimiento.organismo}
-              </Badge>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Etapa</label>
-              <Badge className="mt-1" variant="outline">
-                {requerimiento.etapa}
-              </Badge>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Asunto</label>
-            <p className="text-sm mt-1 font-medium">{requerimiento.asunto}</p>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Responsable</label>
-            <div className="flex items-center gap-2 mt-1">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                  {requerimiento.responsable.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium">{requerimiento.responsable}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Radicación</label>
-              <p className="text-sm mt-1">{requerimiento.fechaRadicacion.toLocaleDateString('es-CO')}</p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Fecha Vencimiento</label>
-              <p className="text-sm mt-1">{requerimiento.fechaVencimiento.toLocaleDateString('es-CO')}</p>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Días Restantes</label>
-            <Badge className="mt-1 text-sm flex items-center gap-2 w-fit" style={{ 
-              color: getSemaforoColor(requerimiento.diasRestantes),
-              backgroundColor: `${getSemaforoColor(requerimiento.diasRestantes)}20`,
-              border: `1px solid ${getSemaforoColor(requerimiento.diasRestantes)}`
-            }}>
-              <div className="w-3 h-3 rounded-full" style={{ background: getSemaforoColor(requerimiento.diasRestantes) }} />
-              {Math.abs(requerimiento.diasRestantes)} días {requerimiento.diasRestantes < 0 ? 'vencido' : 'restantes'}
-            </Badge>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase">Última Actuación</label>
-            <div className="mt-2 p-3 rounded-lg" style={{ backgroundColor: '#F0F7FF', border: '1px solid #BFDBFE' }}>
-              <p className="text-sm">{requerimiento.ultimaActuacion || 'Sin actuaciones'}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">{requerimiento.documentos || 0}</p>
-              <p className="text-xs text-gray-500 mt-1">Documentos</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">{requerimiento.diasTotales - requerimiento.diasRestantes}</p>
-              <p className="text-xs text-gray-500 mt-1">Días transcurridos</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-gray-50 border">
-              <p className="text-2xl font-bold text-gray-700">
-                {Math.round(((requerimiento.diasTotales - requerimiento.diasRestantes) / requerimiento.diasTotales) * 100)}%
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Progreso</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
-          <Button style={{ background: '#003DA5', color: '#FFFFFF' }}>
-            <Download className="w-4 h-4 mr-2" />
-            Exportar PDF
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Documentos
-function ModalDocumentos({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const documentosMock = [
-    { nombre: 'Oficio Original CGR-OF-2024-00125.pdf', fecha: new Date(), tipo: 'PDF', tamaño: '2.4 MB' },
-    { nombre: 'Anexo 1 - Contratos 2024.xlsx', fecha: new Date(), tipo: 'EXCEL', tamaño: '1.1 MB' },
-    { nombre: 'Respuesta Preliminar.docx', fecha: new Date(), tipo: 'WORD', tamaño: '850 KB' },
-  ];
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Documentos del Requerimiento"
-          subtitulo={`${requerimiento.id} • ${requerimiento.documentos || 0} archivos`}
-          icono={FileText}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Total de documentos: <span className="font-bold">{requerimiento.documentos || 0}</span>
-            </p>
-            <Button size="sm" style={{ background: '#003DA5', color: '#FFFFFF' }}>
-              <Upload className="w-4 h-4 mr-2" />
-              Cargar Documento
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Respuesta
-function ModalRespuesta({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const [contenido, setContenido] = useState('');
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Redactar Respuesta"
-          subtitulo={`${requerimiento.id} - ${requerimiento.organismo}`}
-          icono={Send}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Destinatario</label>
-              <Input value={requerimiento.organismo} readOnly />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Referencia</label>
-              <Input value={requerimiento.numeroOficio} readOnly />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Asunto</label>
-            <Input value={`Respuesta a: ${requerimiento.asunto}`} readOnly />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Contenido de la Respuesta</label>
-            <Textarea
-              placeholder="Redacte aquí la respuesta al requerimiento..."
-              value={contenido}
-              onChange={(e) => setContenido(e.target.value)}
-              rows={12}
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Adjuntar Documentos</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
-              <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-sm font-semibold text-gray-600">Haga clic o arrastre archivos aquí</p>
-              <p className="text-xs text-gray-500 mt-1">PDF, Word, Excel - Máx. 10MB</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cancelar</Button>
-          <Button variant="outline" onClick={() => toast.success('Guardado como borrador')}>
-            <Save className="w-4 h-4 mr-2" />
-            Guardar Borrador
-          </Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            onClick={() => {
-              toast.success('Respuesta enviada correctamente');
-              onClose();
-            }}
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Enviar Respuesta
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// Modal Comentarios
-function ModalComentarios({ requerimiento, onClose }: { requerimiento: Requerimiento; onClose: () => void }) {
-  const [nuevoComentario, setNuevoComentario] = useState('');
-
-  const comentariosMock = [
-    {
-      autor: 'Dra. María Fernández',
-      fecha: new Date('2024-12-28 10:30'),
-      texto: 'Se está revisando la documentación solicitada. Falta el certificado de contratos.'
-    },
-    {
-      autor: 'Dr. Carlos Méndez',
-      fecha: new Date('2024-12-27 15:45'),
-      texto: 'Coordinado con el área de contratación para obtener la información requerida.'
-    }
-  ];
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <ModalHeaderClean
-          titulo="Comentarios y Seguimiento"
-          subtitulo={`${requerimiento.id} • ${comentariosMock.length} comentarios`}
-          icono={MessageSquare}
-          colorIcono="blue"
-          onClose={onClose}
-        />
-
-        <div className="p-6 space-y-4">
-          <div className="space-y-3">
-            {comentariosMock.map((comentario, idx) => (
-              <Card key={idx} className="p-4 bg-gray-50">
-                <div className="flex items-start gap-3">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                      {comentario.autor.split(' ').map(n => n[0]).join('').substring(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="font-semibold text-sm">{comentario.autor}</p>
-                      <p className="text-xs text-gray-500">
-                        {comentario.fecha.toLocaleDateString('es-CO')} {comentario.fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                    <p className="text-sm text-gray-700">{comentario.texto}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          <div className="border-t pt-4">
-            <label className="text-xs font-semibold text-gray-500 uppercase block mb-2">Nuevo Comentario</label>
-            <Textarea
-              placeholder="Escriba su comentario..."
-              value={nuevoComentario}
-              onChange={(e) => setNuevoComentario(e.target.value)}
-              rows={4}
-              className="w-full"
-            />
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-gray-50 border-t p-4 flex gap-2 justify-end">
-          <Button onClick={onClose} variant="outline">Cerrar</Button>
-          <Button 
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            onClick={() => {
-              toast.success('Comentario agregado');
-              setNuevoComentario('');
-            }}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Agregar Comentario
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-}

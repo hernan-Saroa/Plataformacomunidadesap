@@ -16,6 +16,7 @@ import {
   Archive,
   Trash2,
   RotateCcw,
+  ArrowLeft,
   AlertTriangle,
   Search,
   Filter,
@@ -58,6 +59,7 @@ interface VistaArchivadosProps {
     nombre: string;
     permisos: string[];
   };
+  onVolver?: () => void;
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
@@ -70,7 +72,8 @@ export function VistaArchivados({
   usuarioActual = {
     nombre: 'Dr. Carlos Méndez',
     permisos: ['VER_ARCHIVADOS', 'RESTAURAR_ITEMS', 'ELIMINAR_PERMANENTE']
-  }
+  },
+  onVolver
 }: VistaArchivadosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoArchivado | 'TODOS'>('TODOS');
@@ -185,6 +188,15 @@ export function VistaArchivados({
         <div className="flex items-start justify-between mb-4">
           <div>
             <h2 className="text-lg sm:text-xl font-black text-gray-900 flex items-center gap-2">
+              {onVolver && (
+                <button
+                  onClick={onVolver}
+                  className="mr-2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                  title="Volver"
+                >
+                  <ArrowLeft className="w-5 h-5 text-gray-600" />
+                </button>
+              )}
               <Archive className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#F57C00' }} />
               Archivados y Eliminados
             </h2>

@@ -304,7 +304,7 @@ export function ModalGestionDocumentos({
   };
 
   const handleEliminarCargado = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este documento?')) return;
+    // if (!confirm('¿Estás seguro de eliminar este documento?')) return;
     try {
       await ocService.deleteDocumento(id);
       toast.success('Documento eliminado del expediente');

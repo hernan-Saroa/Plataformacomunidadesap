@@ -796,6 +796,23 @@ class OCService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/reasignar`, { nuevoAbogadoId });
     }
 
+    // Sistema de Archivo
+    async getArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/archivados/list`);
+    }
+
+    async archivarRequerimiento(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/archivar`, { motivo, usuario });
+    }
+
+    async restaurarRequerimiento(id: string, usuario: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/restaurar`, { usuario });
+    }
+
+    async eliminarRequerimientoPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}/permanente`, { params: { usuario, motivo } });
+    }
+
     // Solicitudes de Insumos (Delegación)
     async getSolicitudesInsumo(requerimientoId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/insumos`);

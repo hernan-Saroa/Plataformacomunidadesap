@@ -1,24 +1,24 @@
 /**
  * ============================================
- * DIÁLOGO DE CONFIRMACIÓN REUTILIZABLE
+ * DIÁLOGO DE CONFIRMACIÓN REUTILIZABLE (PORTAL GLOBAL)
  * ============================================
  * 
- * Componente genérico para confirmar acciones destructivas
- * o irreversibles en todo el sistema SIGL.
+ * Componente genérico para confirmar acciones destructivas.
  * 
- * CARACTERÍSTICAS:
- * 1. Variantes por tipo de acción (danger, warning, info)
- * 2. Animaciones suaves con Framer Motion
- * 3. Mensajes personalizables
- * 4. Botones con estados de carga
- * 5. Accesibilidad con teclado (Escape para cancelar)
+ * REFACTORIZADO 3: Implementación "Portal Global"
+ * - Se usa `createPortal` para renderizar el modal directamente en `document.body`.
+ * - Esto "saca" el modal de cualquier contexto de apilamiento (stacking context)
+ *   del modal padre (Expediente, Tabs, transformaciones, etc.).
+ * - Se asegura de estar SIEMPRE encima de todo con z-[100000].
  */
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, AlertCircle, Info, Trash2, XCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Info, Trash2, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from './button';
+import { Input } from './input';
+import { cn } from './utils';
 
 // ============ TIPOS ============
 
@@ -36,6 +36,7 @@ export interface ConfirmationDialogProps {
   loading?: boolean;
   requiresTyping?: boolean;
   confirmationWord?: string;
+  showDataLossWarning?: boolean;
 }
 
 // ============ CONFIGURACIÓN DE VARIANTES ============
@@ -45,7 +46,7 @@ const VARIANT_CONFIG = {
     icon: Trash2,
     iconBg: 'bg-red-100',
     iconColor: 'text-red-600',
-    borderColor: 'border-red-500',
+    borderColor: 'border-red-200',
     confirmBg: 'bg-red-600 hover:bg-red-700',
     confirmText: 'text-white',
     title: 'text-red-900',
@@ -55,7 +56,7 @@ const VARIANT_CONFIG = {
     icon: AlertTriangle,
     iconBg: 'bg-yellow-100',
     iconColor: 'text-yellow-600',
-    borderColor: 'border-yellow-500',
+    borderColor: 'border-yellow-200',
     confirmBg: 'bg-yellow-600 hover:bg-yellow-700',
     confirmText: 'text-white',
     title: 'text-yellow-900',
@@ -65,7 +66,7 @@ const VARIANT_CONFIG = {
     icon: Info,
     iconBg: 'bg-blue-100',
     iconColor: 'text-blue-600',
-    borderColor: 'border-blue-500',
+    borderColor: 'border-blue-200',
     confirmBg: 'bg-blue-600 hover:bg-blue-700',
     confirmText: 'text-white',
     title: 'text-blue-900',
@@ -75,7 +76,7 @@ const VARIANT_CONFIG = {
     icon: CheckCircle,
     iconBg: 'bg-green-100',
     iconColor: 'text-green-600',
-    borderColor: 'border-green-500',
+    borderColor: 'border-green-200',
     confirmBg: 'bg-green-600 hover:bg-green-700',
     confirmText: 'text-white',
     title: 'text-green-900',
@@ -98,11 +99,17 @@ export function ConfirmationDialog({
   requiresTyping = false,
   confirmationWord = 'ELIMINAR',
   showDataLossWarning = true
-}: ConfirmationDialogProps & { showDataLossWarning?: boolean }) {
+}: ConfirmationDialogProps) {
   const [isConfirming, setIsConfirming] = useState(false);
   const [typedWord, setTypedWord] = useState('');
+  const [mounted, setMounted] = useState(false);
 
-  const config = VARIANT_CONFIG[variant];
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  const config = VARIANT_CONFIG[variant || 'danger'];
   const Icon = config.icon;
 
   // Resetear estado al cerrar
@@ -120,13 +127,17 @@ export function ConfirmationDialog({
         onClose();
       }
     };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    if (open) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
   }, [open, isConfirming, onClose]);
 
   // Manejar confirmación
-  const handleConfirm = async () => {
+  const handleConfirm = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (requiresTyping && typedWord !== confirmationWord) {
       return;
     }
@@ -144,117 +155,112 @@ export function ConfirmationDialog({
 
   const canConfirm = requiresTyping ? typedWord === confirmationWord : true;
 
-  // Only render the portal when open to avoid invisible overlays blocking other elements
-  if (!open) return null;
+  if (!mounted) return null;
 
-  // Use Portal to avoid z-index and focus trap issues with other modals
   return createPortal(
     <AnimatePresence>
-      {/* OVERLAY */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 z-[99998]"
-        onClick={!isConfirming ? onClose : undefined}
-      />
+      {open && (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center pointer-events-auto">
+          {/* OVERLAY */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isConfirming) onClose();
+            }}
+          />
 
-      {/* DIALOG */}
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          transition={{ duration: 0.2 }}
-          className={`bg-white rounded-lg shadow-2xl w-full max-w-md border-2 ${config.borderColor}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* CONTENIDO */}
-          <div className="p-6">
-            {/* ICONO */}
-            <div className="flex justify-center mb-4">
-              <div className={`w-16 h-16 rounded-full ${config.iconBg} flex items-center justify-center`}>
-                <Icon className={`w-8 h-8 ${config.iconColor}`} />
+          {/* DIALOG BOX */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2 }}
+            className={`relative z-10 bg-white rounded-xl shadow-2xl w-full max-w-sm border p-0 overflow-hidden pointer-events-auto ${config.borderColor}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6">
+              {/* ICONO */}
+              <div className="flex justify-center mb-4">
+                <div className={`w-12 h-12 rounded-full ${config.iconBg} flex items-center justify-center`}>
+                  <Icon className={`w-6 h-6 ${config.iconColor}`} />
+                </div>
               </div>
-            </div>
 
-            {/* TÍTULO */}
-            <h2 className={`text-xl font-black text-center mb-3 ${config.title}`}>
-              {title}
-            </h2>
+              {/* TÍTULO */}
+              <h2 className={`text-lg font-bold text-center mb-2 ${config.title}`}>
+                {title}
+              </h2>
 
-            {/* DESCRIPCIÓN */}
-            <p className={`text-sm text-center mb-6 ${config.description}`}>
-              {description}
-            </p>
+              {/* DESCRIPCIÓN */}
+              <p className="text-sm text-center text-gray-600 mb-6">
+                {description}
+              </p>
 
-            {/* CAMPO DE TIPEO (OPCIONAL) */}
-            {requiresTyping && (
-              <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Para confirmar, escribe <span className="font-mono text-red-600">{confirmationWord}</span>
-                </label>
-                <input
-                  type="text"
-                  value={typedWord}
-                  onChange={(e) => setTypedWord(e.target.value.toUpperCase())}
-                  placeholder={`Escribe "${confirmationWord}"`}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 font-mono ${typedWord && typedWord !== confirmationWord
-                    ? 'border-red-500'
-                    : 'border-gray-300'
-                    }`}
-                  disabled={isConfirming}
-                  autoFocus
-                />
-                {typedWord && typedWord !== confirmationWord && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    El texto no coincide
+              {/* ADVERTENCIA DE PÉRDIDA DE DATOS */}
+              {variant === 'danger' && showDataLossWarning && (
+                <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-100">
+                  <p className="text-xs text-red-600 flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span className="leading-tight">
+                      Esta acción no se puede deshacer.
+                    </span>
                   </p>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* ADVERTENCIA ADICIONAL */}
-            {variant === 'danger' && showDataLossWarning && (
-              <div className="mb-6 p-3 bg-red-50 rounded-lg border border-red-200">
-                <p className="text-xs text-red-700 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Advertencia:</strong> Esta acción no se puede deshacer. Los datos se eliminarán permanentemente.
-                  </span>
-                </p>
-              </div>
-            )}
+              {/* INPUT PARA ESCRIBIR PALABRA (SI SE REQUIERE) */}
+              {requiresTyping && (
+                <div className="mb-4">
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">
+                    Escribe <span className="text-red-600">"{confirmationWord}"</span>
+                  </label>
+                  <Input
+                    value={typedWord}
+                    onChange={(e) => setTypedWord(e.target.value.toUpperCase())}
+                    placeholder={confirmationWord}
+                    className={cn(
+                      "font-mono text-center uppercase tracking-widest",
+                      typedWord && typedWord !== confirmationWord ? "border-red-500 focus-visible:ring-red-500" : ""
+                    )}
+                    autoFocus
+                  />
+                </div>
+              )}
 
-            {/* BOTONES */}
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={onClose}
-                disabled={isConfirming}
-                className="flex-1"
-              >
-                {cancelText}
-              </Button>
-              <Button
-                onClick={handleConfirm}
-                disabled={!canConfirm || isConfirming}
-                className={`flex-1 text-white ${config.confirmBg}`}
-              >
-                {isConfirming ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Procesando...
-                  </>
-                ) : (
-                  confirmText
-                )}
-              </Button>
+              {/* BOTONES */}
+              <div className="flex gap-3 mt-2">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={isConfirming}
+                  className="flex-1"
+                >
+                  {cancelText}
+                </Button>
+                <Button
+                  onClick={handleConfirm}
+                  disabled={!canConfirm || isConfirming}
+                  className={`flex-1 text-white shadow-sm ${config.confirmBg.split(' ')[0]} ${config.confirmBg.split(' ')[1] || ''}`}
+                >
+                  {isConfirming ? (
+                    <>
+                      <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                      ...
+                    </>
+                  ) : (
+                    confirmText
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        </motion.div>
-      </div>
+          </motion.div>
+        </div>
+      )}
     </AnimatePresence>,
     document.body
   );
@@ -279,11 +285,11 @@ export function useConfirmation() {
           ...props,
           onConfirm: async () => {
             if (props.onConfirm) await props.onConfirm();
-            resolve(true);
+            resolve(true); // Confirmado
           },
           onClose: () => {
             setConfirmationState({ open: false, props: {} });
-            resolve(false);
+            resolve(false); // Cancelado
           }
         }
       });
@@ -293,10 +299,14 @@ export function useConfirmation() {
   const ConfirmationComponent = () => (
     <ConfirmationDialog
       open={confirmationState.open}
-      onClose={() => setConfirmationState({ open: false, props: {} })}
+      onClose={() => {
+        const onCloseProp = confirmationState.props.onClose;
+        if (onCloseProp) onCloseProp();
+        else setConfirmationState({ open: false, props: {} });
+      }}
       title=""
       description=""
-      onConfirm={() => { }}
+      onConfirm={async () => { }}
       {...confirmationState.props}
     />
   );

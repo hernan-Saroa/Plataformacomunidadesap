@@ -63,10 +63,21 @@ export class RequerimientosOCService {
             .loadRelationCountAndMap('req.docInternos', 'req.documentos', 'docInt', qb =>
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
+            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
             .orderBy('req.fechaVencimiento', 'ASC')
             .getMany();
 
         return reqs.map(r => this.calcularDiasRestantes(r));
+    }
+
+    async findAllArchivados(): Promise<RequerimientoOC[]> {
+        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+            .leftJoinAndSelect('req.abogadoAsignado', 'abogado')
+            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'")
+            .orderBy('req.fechaArchivo', 'DESC')
+            .getMany();
+
+        return reqs;
     }
 
     async findOne(id: string): Promise<RequerimientoOC> {
@@ -355,6 +366,65 @@ export class RequerimientosOCService {
         }
 
         return fecha;
+    }
+
+    // ============================================
+    // SISTEMA DE ARCHIVO
+    // ============================================
+    async archivar(id: string, data: { motivo: string; usuario: string }): Promise<RequerimientoOC> {
+        const req = await this.findOne(id);
+        req.estadoArchivo = 'ARCHIVADO';
+        req.fechaArchivo = new Date();
+        req.usuarioArchivo = data.usuario;
+        req.motivoArchivo = data.motivo;
+        req.estado = 'CERRADO'; // Al archivar, se cierra automáticamente si no lo estaba
+
+        await this.comentariosService.createComentario({
+            requerimientoId: id,
+            contenido: `Requerimiento archivado. Motivo: ${data.motivo}`,
+            tipo: 'seguimiento',
+            autorNombre: data.usuario
+        });
+
+        return this.requerimientoRepo.save(req);
+    }
+
+    async restaurar(id: string, usuario: string): Promise<RequerimientoOC> {
+        const req = await this.findOne(id);
+        req.estadoArchivo = 'ACTIVO';
+        req.fechaArchivo = null;
+        req.usuarioArchivo = null;
+        req.motivoArchivo = null;
+
+        // Al restaurar, devolvemos al estado inicial para que aparezca en el tablero
+        req.estado = 'RECIBIDO';
+
+        await this.comentariosService.createComentario({
+            requerimientoId: id,
+            contenido: 'Requerimiento restaurado del archivo',
+            tipo: 'seguimiento',
+            autorNombre: usuario
+        });
+
+        return this.requerimientoRepo.save(req);
+    }
+
+    async eliminarPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        const req = await this.findOne(id);
+
+        // Si ya está eliminado (soft delete), procedemos a borrarlo físicamente (hard delete)
+        if (req.estadoArchivo === 'ELIMINADO') {
+            await this.requerimientoRepo.delete(id);
+            return;
+        }
+
+        // Si no, hacemos Soft Delete (marcar como ELIMINADO para auditoría)
+        req.estadoArchivo = 'ELIMINADO';
+        req.fechaArchivo = new Date();
+        req.usuarioArchivo = usuario;
+        req.motivoArchivo = motivo;
+
+        await this.requerimientoRepo.save(req);
     }
 
     private calcularPrioridadAutomatica(plazo: number, unidad: UnidadTiempo): Prioridad {

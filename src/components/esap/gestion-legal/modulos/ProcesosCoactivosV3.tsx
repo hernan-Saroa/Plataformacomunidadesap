@@ -102,10 +102,10 @@ export function ModuloProcesosCoactivosV3() {
   const [stats, setStats] = useState<ProcesoCoactivoStats>({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} });
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   // ✅ Estado para cambiar entre vista normal y archivados
   const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
-  
+
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [modalNuevoProceso, setModalNuevoProceso] = useState(false);
@@ -170,6 +170,16 @@ export function ModuloProcesosCoactivosV3() {
     console.log('Eliminando permanentemente proceso:', itemId);
     setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
     toast.success('Proceso eliminado permanentemente');
+  };
+
+  const handlePagar = (proceso: ProcesoCoactivo) => {
+    setProcesoParaPago(proceso);
+    setModalPagos(true);
+  };
+
+  const handleHistorial = (proceso: ProcesoCoactivo) => {
+    setProcesoParaHistorial(proceso);
+    setModalHistorial(true);
   };
 
   // Detectar tamaño de pantalla
@@ -266,6 +276,7 @@ export function ModuloProcesosCoactivosV3() {
       {vistaActual === 'archivados' ? (
         <VistaArchivados
           items={itemsArchivados}
+          moduloNombre="Procesos Coactivos"
           onRestaurar={handleRestaurar}
           onEliminarPermanente={handleEliminarPermanente}
           onVolver={() => setVistaActual('activos')}
@@ -299,7 +310,7 @@ export function ModuloProcesosCoactivosV3() {
                 <button
                   onClick={() => setModalNuevoProceso(true)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{ 
+                  style={{
                     background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
                     boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
                   }}
@@ -371,6 +382,8 @@ export function ModuloProcesosCoactivosV3() {
                     onVerDetalle={handleVerDetalle}
                     onEliminar={handleEliminarProceso}
                     onEditar={handleEditarProceso}
+                    onPagar={handlePagar}
+                    onHistorial={handleHistorial}
                   />
                 </motion.div>
               ))}\n        </AnimatePresence>
@@ -408,6 +421,35 @@ export function ModuloProcesosCoactivosV3() {
               }}
             />
           )}
+
+          {/* Modal Gestionar Pagos */}
+          {procesoParaPago && (
+            <ModalGestionarPagos
+              isOpen={modalPagos}
+              onClose={() => setModalPagos(false)}
+              proceso={{
+                id: procesoParaPago.id,
+                deudor: procesoParaPago.deudor.nombre,
+                radicado: procesoParaPago.radicado,
+                valorTotal: procesoParaPago.obligacion.valor,
+                valorPagado: procesoParaPago.obligacion.valorPagado
+              }}
+              onRegistrarPago={() => {
+                loadProcesos(); // Recargar para actualizar saldos
+                setModalPagos(false);
+              }}
+            />
+          )}
+
+          {/* Modal Historial */}
+          {procesoParaHistorial && (
+            <ModalHistorialCoactivo
+              isOpen={modalHistorial}
+              onClose={() => setModalHistorial(false)}
+              procesoId={procesoParaHistorial.id}
+              radicado={procesoParaHistorial.radicado}
+            />
+          )}
         </>
       )}
     </div>
@@ -417,16 +459,20 @@ export function ModuloProcesosCoactivosV3() {
 // ============ COMPONENTES AUXILIARES ============
 
 // Tarjeta de Proceso
-function TarjetaProceso({ 
-  proceso, 
+function TarjetaProceso({
+  proceso,
   onVerDetalle,
   onEliminar,
-  onEditar 
-}: { 
+  onEditar,
+  onPagar,
+  onHistorial
+}: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
   onEliminar: (id: string) => void;
   onEditar: (proceso: ProcesoCoactivo) => void;
+  onPagar: (proceso: ProcesoCoactivo) => void;
+  onHistorial: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -460,7 +506,7 @@ function TarjetaProceso({
             <p className="text-sm text-gray-600 mb-1">{proceso.deudor.nombre}</p>
             <p className="text-xs text-gray-500">CC: {proceso.deudor.identificacion}</p>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${estadoConfig.color}`}>
               {estadoConfig.label}
@@ -478,6 +524,12 @@ function TarjetaProceso({
             <p className="text-xs text-gray-500 mb-1">Valor</p>
             <p className="text-lg font-bold text-[#003DA5]">
               ${proceso.obligacion.valor.toLocaleString('es-CO')}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Saldo Pendiente</p>
+            <p className="text-lg font-bold text-orange-600">
+              ${proceso.obligacion.saldoPendiente.toLocaleString('es-CO')}
             </p>
           </div>
           <div>
@@ -534,7 +586,7 @@ function TarjetaProceso({
           <button
             onClick={() => onVerDetalle(proceso)}
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-            style={{ 
+            style={{
               background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
               boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
             }}
@@ -542,6 +594,25 @@ function TarjetaProceso({
             <Eye className="w-4 h-4" />
             Ver Detalle
           </button>
+
+          <button
+            onClick={() => onPagar(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-green-200 text-green-700 hover:bg-green-50 transition-all"
+            title="Gestionar Pagos"
+          >
+            <CreditCard className="w-4 h-4" />
+            Pagos
+          </button>
+
+          <button
+            onClick={() => onHistorial(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-blue-200 text-blue-700 hover:bg-blue-50 transition-all"
+            title="Ver Historial"
+          >
+            <History className="w-4 h-4" />
+            Historial
+          </button>
+
           <button
             onClick={() => onEditar(proceso)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
@@ -603,6 +674,7 @@ function ModalNuevoProceso({
 
     switch (field) {
       case 'deudorNombre':
+      case 'responsable':
         filteredValue = onlyLetters(value);
         break;
       case 'deudorIdentificacion':
@@ -802,7 +874,7 @@ function ModalNuevoProceso({
                 <input
                   type="text"
                   value={formData.deudorNombre}
-                  onChange={(e) => setFormData({ ...formData, deudorNombre: e.target.value })}
+                  onChange={(e) => handleInputChange('deudorNombre', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: Juan Carlos Pérez Gómez"
                 />
@@ -814,7 +886,7 @@ function ModalNuevoProceso({
                 <input
                   type="text"
                   value={formData.deudorIdentificacion}
-                  onChange={(e) => setFormData({ ...formData, deudorIdentificacion: e.target.value })}
+                  onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: 1.012.345.678"
                 />
@@ -824,7 +896,7 @@ function ModalNuevoProceso({
                 <input
                   type="text"
                   value={formData.deudorTelefono}
-                  onChange={(e) => setFormData({ ...formData, deudorTelefono: e.target.value })}
+                  onChange={(e) => handleInputChange('deudorTelefono', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: +57 312 456 7890"
                 />
@@ -873,9 +945,9 @@ function ModalNuevoProceso({
                   Valor (COP) <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   value={formData.valor}
-                  onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
+                  onChange={(e) => handleInputChange('valor', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: 3250000"
                 />
@@ -903,7 +975,7 @@ function ModalNuevoProceso({
                 <input
                   type="text"
                   value={formData.responsable}
-                  onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
+                  onChange={(e) => handleInputChange('responsable', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: Dra. María Fernández López"
                 />
@@ -933,7 +1005,7 @@ function ModalNuevoProceso({
             onClick={handleSubmit}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-            style={{ 
+            style={{
               background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
               boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
             }}
@@ -975,7 +1047,7 @@ function ModalDetalleProceso({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{zIndex: 101}}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ zIndex: 101 }}>
       <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Proceso {proceso.radicado}</h2>
@@ -996,10 +1068,10 @@ function ModalDetalleProceso({
             <div className="text-right">
               <p className="text-xs text-gray-500">Fecha creación</p>
               <p className="text-sm font-medium text-gray-900">
-                {proceso.fechaCreacion.toLocaleDateString('es-CO', { 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
+                {proceso.fechaCreacion.toLocaleDateString('es-CO', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
                 })}
               </p>
             </div>
@@ -1122,7 +1194,7 @@ function ModalDetalleProceso({
           <button
             onClick={() => toast.info('Función en desarrollo')}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
-            style={{ 
+            style={{
               background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
               boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
             }}

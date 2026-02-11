@@ -470,13 +470,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   const handleEliminarDocumento = async (doc: any) => {
-    const confirmado = await confirm({
-      title: 'Eliminar Documento',
-      description: `¿Estás seguro de eliminar el documento "${doc.nombre}"?`,
-      variant: 'danger',
-      confirmText: 'Eliminar'
-    });
-    if (!confirmado) return;
+    // Eliminación inmediata sin confirmación
+    // const confirmado = await confirm({ ... }); 
+    // if (!confirmado) return;
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
