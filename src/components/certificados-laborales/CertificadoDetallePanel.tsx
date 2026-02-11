@@ -50,6 +50,7 @@ interface CertificadoDetallePanelProps {
     fechaSolicitud: string;
     fechaGeneracion: string;
     position_location?: string;
+    department?: string;
     campus?: string;
     cod_cargo?: string;
     cod_grade?: string;
@@ -134,7 +135,13 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
 
     return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
-  const ubicacionCargo = normalizarDependencia(certificado.position_location) || '';
+  const ubicacionCargo =
+    normalizarDependencia(
+      certificado.department ||
+      certificado.position_location ||
+      certificado.empleado.dependencia ||
+      '',
+    ) || '';
   const cargoCalculado = (
     certificado.empleado.cargo_calculado ||
     construirCargoVariable(

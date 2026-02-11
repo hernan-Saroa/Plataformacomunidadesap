@@ -70,7 +70,7 @@ export class CertificatesService {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
   }
 
-  private resolveEmploymentStatus(
+  private resolveEmploymentStatusByDates(
     hiringDate?: Date | string | null,
     endDate?: Date | string | null,
   ): 'ACTIVO' | 'INACTIVO' {
@@ -82,6 +82,42 @@ export class CertificatesService {
     if (today < start) return 'INACTIVO';
     if (!end) return 'ACTIVO';
     return today <= end ? 'ACTIVO' : 'INACTIVO';
+  }
+
+  private normalizeEmploymentStatus(statusRaw?: string | null): 'ACTIVO' | 'INACTIVO' | null {
+    const status = String(statusRaw || '').trim().toUpperCase();
+    if (!status) return null;
+    if (status === 'A' || status === 'ACTIVO' || status === 'ACTIVE') return 'ACTIVO';
+    if (status === 'I' || status === 'INACTIVO' || status === 'INACTIVE') return 'INACTIVO';
+    return null;
+  }
+
+  private resolveEmploymentStatus(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+    statusRaw?: string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const statusByDate = this.resolveEmploymentStatusByDates(hiringDate, endDate);
+    const statusByCode = this.normalizeEmploymentStatus(statusRaw);
+
+    // Regla de negocio: status (A/I) es la fuente principal y la fecha valida como respaldo.
+    if (statusByCode) {
+      return statusByCode;
+    }
+
+    return statusByDate;
+  }
+
+  private resolveStatusForPersistence(
+    statusRaw?: string | null,
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): string {
+    const explicitStatus = String(statusRaw || '').trim();
+    if (explicitStatus) {
+      return explicitStatus.toUpperCase();
+    }
+    return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO' ? 'A' : 'I';
   }
 
   private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
@@ -352,7 +388,7 @@ export class CertificatesService {
       }
     }
 
-    const status = this.resolveEmploymentStatus(data.hiring_date, data.request_date);
+    const status = this.resolveStatusForPersistence(data.status, data.hiring_date, data.request_date);
     const request = this.requestRepo.create({
       ...data,
       status,
@@ -362,11 +398,19 @@ export class CertificatesService {
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
     const patch: Partial<CertificateRequest> = { ...data };
-    if ('hiring_date' in data || 'request_date' in data) {
+    if ('status' in data) {
       const existing = await this.requestRepo.findOne({ where: { id } });
       const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
       const requestDate = data.request_date ?? existing?.request_date ?? null;
-      patch.status = this.resolveEmploymentStatus(hiringDate, requestDate);
+      patch.status = this.resolveStatusForPersistence(data.status, hiringDate, requestDate);
+    } else if ('hiring_date' in data || 'request_date' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const currentStatus = String(existing?.status || '').trim();
+      if (!currentStatus) {
+        const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+        const requestDate = data.request_date ?? existing?.request_date ?? null;
+        patch.status = this.resolveStatusForPersistence(undefined, hiringDate, requestDate);
+      }
     }
     await this.requestRepo.update(id, patch);
     return await this.findSolicitudById(id);
@@ -390,11 +434,8 @@ export class CertificatesService {
         const employmentStatus = this.resolveEmploymentStatus(
           cert.request?.hiring_date || cert.hiring_date,
           cert.request?.request_date,
+          cert.request?.status,
         );
-        if (cert.request && cert.request.status !== employmentStatus) {
-          await this.requestRepo.update(cert.request.id, { status: employmentStatus });
-          cert.request.status = employmentStatus;
-        }
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -468,11 +509,8 @@ export class CertificatesService {
         const employmentStatus = this.resolveEmploymentStatus(
           cert.request?.hiring_date || cert.hiring_date,
           cert.request?.request_date,
+          cert.request?.status,
         );
-        if (cert.request && cert.request.status !== employmentStatus) {
-          await this.requestRepo.update(cert.request.id, { status: employmentStatus });
-          cert.request.status = employmentStatus;
-        }
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
@@ -597,11 +635,6 @@ export class CertificatesService {
     });
 
     const saved = await this.certificateRepo.save(certificate);
-
-    // Update request employment status based on dates
-    const employmentStatus = this.resolveEmploymentStatus(request.hiring_date, request.request_date);
-    await this.updateSolicitud(request.id, { status: employmentStatus });
-
     return saved;
   }
 
@@ -988,6 +1021,15 @@ export class CertificatesService {
       throw new BadRequestException('Error al recuperar informacion de la solicitud');
     }
 
+    const employmentStatus = this.resolveEmploymentStatus(
+      verificacion.solicitud.hiring_date,
+      verificacion.solicitud.request_date,
+      verificacion.solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+    }
+
     // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
@@ -1013,6 +1055,8 @@ export class CertificatesService {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
         email: verificacion.solicitud.email,
+        status: verificacion.solicitud.status,
+        employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,
         hiring_date: verificacion.solicitud.hiring_date,
         position_category: verificacion.solicitud.position_category,
@@ -1047,6 +1091,15 @@ export class CertificatesService {
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
       throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
+    }
+
+    const employmentStatus = this.resolveEmploymentStatus(
+      solicitud.hiring_date,
+      solicitud.request_date,
+      solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
     }
 
     // Generar el certificado

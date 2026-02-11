@@ -106,6 +106,10 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     endDate?: string | number | Date | null,
     statusRaw?: string | null,
   ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
     const start = normalizarFechaContrato(hiringDate);
     const end = normalizarFechaContrato(endDate);
     const today = normalizarFechaContrato(new Date());
@@ -116,10 +120,6 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       if (!end) return 'activo';
       return today <= end ? 'activo' : 'inactivo';
     }
-
-    const statusUpper = String(statusRaw || '').trim().toUpperCase();
-    if (statusUpper === 'INACTIVO') return 'inactivo';
-    if (statusUpper === 'ACTIVO') return 'activo';
     return 'activo';
   };
 
@@ -214,6 +214,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cert.codCargo ||
           '';
         const ubicacionRaw =
+          cert.department ||
+          cert.request?.department ||
+          cert.request?.departmentName ||
           cert.request?.position_location ||
           cert.request?.positionLocation ||
           cert.position_location ||
@@ -250,7 +253,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificateHash: cert.verification_code,
           qrCode: cert.verification_code,
           position_location: ubicacionRaw,
-          department: cert.department,
+          department: cert.department || cert.request?.department || cert.request?.departmentName || '',
           cod_cargo: dependenciaPadreRaw,
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,

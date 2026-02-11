@@ -143,6 +143,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     endDate?: string | number | Date | null,
     statusRaw?: string | null,
   ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
     const start = normalizarFechaContrato(hiringDate);
     const end = normalizarFechaContrato(endDate);
     const today = normalizarFechaContrato(new Date());
@@ -153,10 +157,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       if (!end) return 'activo';
       return today <= end ? 'activo' : 'inactivo';
     }
-
-    const statusUpper = String(statusRaw || '').trim().toUpperCase();
-    if (statusUpper === 'INACTIVO') return 'inactivo';
-    if (statusUpper === 'ACTIVO') return 'activo';
     return 'activo';
   };
 
@@ -261,19 +261,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     const templateTypeNormalizado =
       templateTypeRaw ||
       resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
+    const ubicacionRaw = normalizarDependencia(
+      cert.department ||
+      cert.request?.department ||
+      cert.request?.departmentName ||
+      cert.request?.position_location ||
+      cert.request?.positionLocation ||
+      cert.position_location ||
+      cert.positionLocation ||
+      '',
+    );
 
     return {
       id: cert.id,
       consecutivo: cert.certificate_number,
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
-      position_location:
-        cert.request?.position_location ||
-        cert.request?.positionLocation ||
-        cert.position_location ||
-        cert.positionLocation,
+      position_location: ubicacionRaw,
       observations: cert.observations || cert.request?.observations,
-      department: cert.department,
+      department: ubicacionRaw,
       cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
       cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       campus: cert.campus,
@@ -286,11 +292,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         documento: cert.id_number,
         cargo: cert.career_category,
         cargo_calculado: cargoVariable || cert.career_category,
-        dependencia: normalizarDependencia(cert.cod_grade || cert.codGrade),
+        dependencia: ubicacionRaw,
         dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
         tipoVinculacion: cert.position_category,
         fechaVinculacion: cert.hiring_date,
-        grado: cert.department || '',
+        grado: ubicacionRaw,
         salario: Number(cert.monthly_salary),
         email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
       },
@@ -1195,7 +1201,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Ubicación */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.position_location || ''}</p>
+                          <p className="text-sm text-gray-900">{cert.department || cert.position_location || ''}</p>
                         </td>
 
                         {/* Fecha Solicitud */}

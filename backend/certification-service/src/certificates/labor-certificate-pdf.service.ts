@@ -17,7 +17,23 @@ type PdfOptions = {
 
 @Injectable()
 export class LaborCertificatePdfService {
+  private readonly defaultTypographyFont = 'Arial Narrow, Arial, sans-serif';
+
   constructor(private readonly templateConfigService: TemplateConfigService) {}
+
+  private sanitizeTypographyFont(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return this.defaultTypographyFont;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return this.defaultTypographyFont;
+    }
+    return sanitized;
+  }
 
   async generateCertificatePdf(
     certificate: Certificate,
@@ -38,6 +54,9 @@ export class LaborCertificatePdfService {
     const includeTechnicalBonus = options.includeTechnicalBonus === true;
 
     const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
+    const typographyFont = this.sanitizeTypographyFont(
+      config?.typography?.font || config?.typographyFont,
+    );
 
     const logoDataUrl = await this.resolveAssetDataUrl(config?.logo?.url);
     const signatureDataUrl = await this.resolveAssetDataUrl(
@@ -66,6 +85,7 @@ export class LaborCertificatePdfService {
       certificate,
       contentHtml,
       cargoTitle: config?.cargoTitle || '',
+      typographyFont,
       logoDataUrl,
       signatureDataUrl,
       qrCodeDataUrl,
@@ -237,6 +257,9 @@ export class LaborCertificatePdfService {
     const requestObservations =
       (certificate as Certificate & { request?: { observations?: string } }).request
         ?.observations || certificateExtras.observations || '';
+    const requestDepartment =
+      (certificate as Certificate & { request?: { department?: string } }).request
+        ?.department || '';
     const requestPositionLocation =
       (certificate as Certificate & { request?: { position_location?: string } }).request
         ?.position_location || '';
@@ -276,7 +299,7 @@ export class LaborCertificatePdfService {
       tipoVinculacion ||
       '';
     const grado = certificate.position_location || '';
-    const dependenciaHijo = certificate.department || '';
+    const dependenciaHijo = requestDepartment || certificate.department || '';
     const dependenciaPadre =
       (certificate as Certificate & { request?: { cod_cargo?: string } }).request?.cod_cargo ||
       certificateExtras.cod_cargo ||
@@ -284,12 +307,12 @@ export class LaborCertificatePdfService {
       '';
 
     const ubicacion =
+      dependenciaHijo ||
       certificate.position_location ||
       certificate.campus ||
-      dependenciaHijo ||
       dependenciaPadre ||
       '';
-    const ubicacionCargo = certificate.position_location || ubicacion;
+    const ubicacionCargo = dependenciaHijo || certificate.position_location || ubicacion;
 
     const cargoPlantilla =
       templateType === 'docente'
@@ -300,7 +323,12 @@ export class LaborCertificatePdfService {
         : (cargoTexto || grado || tipoVinculacion || '');
 
     const dato6 = templateType === 'docente' ? ubicacionCargo : requestObservations;
-    const dato7 = requestPositionLocation || certificate.position_location || '';
+    const dato7 =
+      requestDepartment ||
+      certificate.department ||
+      requestPositionLocation ||
+      certificate.position_location ||
+      '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = Number(certificate.monthly_salary || 0);
@@ -482,12 +510,23 @@ export class LaborCertificatePdfService {
     certificate: Certificate;
     contentHtml: string;
     cargoTitle: string;
+    typographyFont: string;
     logoDataUrl?: string | null;
     signatureDataUrl?: string | null;
     qrCodeDataUrl?: string | null;
     signerName: string;
   }): string {
-    const { certificate, contentHtml, cargoTitle, logoDataUrl, signatureDataUrl, qrCodeDataUrl, signerName } = params;
+    const {
+      certificate,
+      contentHtml,
+      cargoTitle,
+      typographyFont,
+      logoDataUrl,
+      signatureDataUrl,
+      qrCodeDataUrl,
+      signerName,
+    } = params;
+    const effectiveTypographyFont = this.sanitizeTypographyFont(typographyFont);
     const cargoTitleHtml = (cargoTitle || '').replace(/\n/g, '<br/>');
     const logoTag = logoDataUrl
       ? `<img src="${logoDataUrl}" alt="Logo ESAP" class="logo" />`
@@ -511,8 +550,11 @@ export class LaborCertificatePdfService {
               margin: 0;
               padding: 0;
               background: #ffffff;
-              font-family: 'Arial Narrow', Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
               color: #000000;
+            }
+            .certificate, .certificate * {
+              font-family: ${effectiveTypographyFont} !important;
             }
             .certificate {
               position: relative;
@@ -584,7 +626,7 @@ export class LaborCertificatePdfService {
               width: 250px;
               font-size: 7pt;
               line-height: 1.3;
-              font-family: Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
             }
             .footer-right {
               position: absolute;
@@ -597,7 +639,7 @@ export class LaborCertificatePdfService {
               gap: 6px;
               font-size: 12pt;
               color: #0066cc;
-              font-family: Arial, sans-serif;
+              font-family: ${effectiveTypographyFont};
             }
             .qr-code {
               width: 99px;

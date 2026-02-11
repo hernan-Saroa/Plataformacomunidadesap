@@ -11,6 +11,7 @@ import { Firmante } from './firmante.entity';
 export class TemplateConfigService {
   private readonly defaultLogoUrl = '/uploads/logos/logo-esap-default.png';
   private readonly defaultLogoFilename = 'logo-esap-default.png';
+  private readonly defaultTypographyFont = 'Arial Narrow, Arial, sans-serif';
   private readonly defaultLogoPath = join(
     __dirname,
     '..',
@@ -33,6 +34,20 @@ export class TemplateConfigService {
   private stripVariableBold(content: string): string {
     if (!content) return content;
     return content.replace(/<(b|strong)>\s*(\[[^\]]+\])\s*<\/\1>/gi, '$2');
+  }
+
+  private normalizeTypographyFont(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return this.defaultTypographyFont;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return this.defaultTypographyFont;
+    }
+    return sanitized;
   }
 
   private getDefaultCargoTitle(_templateType: string): string {
@@ -91,7 +106,7 @@ export class TemplateConfigService {
         : null,
       logo: await this.ensureLogoInfo(config),
       typography: {
-        font: config.typographyFont || 'Times New Roman',
+        font: this.normalizeTypographyFont(config.typographyFont),
       },
       cargoTitle: config.cargoTitle || this.getDefaultCargoTitle(templateType),
       certificateContentHtml: this.stripVariableBold(
@@ -512,8 +527,8 @@ export class TemplateConfigService {
     }
 
     if (fieldName === 'typography_font') {
-      const currentFont = config.typographyFont || 'Times New Roman';
-      const nextFont = oldValue || 'Times New Roman';
+      const currentFont = this.normalizeTypographyFont(config.typographyFont);
+      const nextFont = this.normalizeTypographyFont(oldValue);
       config.typographyFont = nextFont;
       config.updatedBy = updatedBy;
       await this.templateConfigRepository.save(config);
@@ -594,14 +609,18 @@ export class TemplateConfigService {
     }> = [];
 
     // Actualizar tipografía si cambió
-    if (data.typographyFont && data.typographyFont !== config.typographyFont) {
+    if (data.typographyFont) {
+      const currentFont = this.normalizeTypographyFont(config.typographyFont);
+      const incomingFont = this.normalizeTypographyFont(data.typographyFont);
+      if (incomingFont !== currentFont) {
       changes.push({
         changeType: 'tipografia',
         fieldName: 'typography_font',
-        oldValue: config.typographyFont || 'Times New Roman',
-        newValue: data.typographyFont,
+        oldValue: currentFont,
+        newValue: incomingFont,
       });
-      config.typographyFont = data.typographyFont;
+      config.typographyFont = incomingFont;
+      }
     }
 
     // Actualizar título del cargo si cambió
@@ -714,6 +733,7 @@ export class TemplateConfigService {
       templateType,
       certificateContentHtml: this.getDefaultContent(templateType),
       cargoTitle: this.getDefaultCargoTitle(templateType),
+      typographyFont: this.defaultTypographyFont,
     });
 
     return await this.templateConfigRepository.save(config);

@@ -243,6 +243,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
     endDate?: string | number | Date | null,
     statusRaw?: string | null,
   ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
     const start = normalizarFechaContrato(hiringDate);
     const end = normalizarFechaContrato(endDate);
     const today = normalizarFechaContrato(new Date());
@@ -253,10 +257,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
       if (!end) return 'activo';
       return today <= end ? 'activo' : 'inactivo';
     }
-
-    const statusUpper = String(statusRaw || '').trim().toUpperCase();
-    if (statusUpper === 'INACTIVO') return 'inactivo';
-    if (statusUpper === 'ACTIVO') return 'activo';
     return 'activo';
   };
 
@@ -310,7 +310,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
             cod_grade: cert.cod_grade || cert.codGrade,
             tipoVinculacion: cert.position_category || 'Administrativo',
             fechaVinculacion: cert.hiring_date,
-            grado: cert.position_location || 'N/A',
+            grado: cert.department || cert.position_location || 'N/A',
             salario: salarioBase,
             salarioOriginal: salarioBase,
             salarioTexto: salarioTextoBase,
@@ -324,7 +324,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location: cert.position_location,
+        position_location: cert.department || cert.position_location,
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -715,7 +715,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
           cod_grade: cert.cod_grade || cert.codGrade,
           tipoVinculacion: cert.position_category || 'Administrativo',
           fechaVinculacion: cert.hiring_date,
-          grado: cert.position_location || 'N/A',
+          grado: cert.department || cert.position_location || 'N/A',
           salario: salarioBase,
           salarioOriginal: salarioBase,
           salarioTexto: salarioTextoBase,
@@ -729,7 +729,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location: cert.position_location,
+          position_location: cert.department || cert.position_location,
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,

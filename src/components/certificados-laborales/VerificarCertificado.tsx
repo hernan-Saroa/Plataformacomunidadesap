@@ -243,9 +243,11 @@ export function VerificarCertificado() {
     : '';
   const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';
   const dependenciaMostrar =
+    certificado?.department ||
+    certificado?.request?.department ||
+    certificado?.request?.departmentName ||
     certificado?.position_location ||
     certificado?.positionLocation ||
-    certificado?.department ||
     '';
 
   return (

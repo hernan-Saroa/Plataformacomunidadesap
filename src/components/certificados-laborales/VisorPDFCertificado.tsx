@@ -74,6 +74,7 @@ interface VisorPDFCertificadoProps {
 
 const CERTIFICATE_WIDTH = 816;
 const CERTIFICATE_HEIGHT = 1056;
+const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
 
 export function VisorPDFCertificado({
   isOpen,
@@ -96,6 +97,20 @@ export function VisorPDFCertificado({
     const baseWidth = window.innerWidth || CERTIFICATE_WIDTH;
     return Math.min(1, Math.max(0.25, (baseWidth - 24) / CERTIFICATE_WIDTH));
   });
+
+  const normalizarTipografia = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw) return DEFAULT_CERTIFICATE_FONT;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return DEFAULT_CERTIFICATE_FONT;
+    }
+    return sanitized;
+  };
 
   const normalizarTexto = (value: string) => {
     const baseTexto = String(value || '').toLowerCase();
@@ -199,7 +214,7 @@ export function VisorPDFCertificado({
         console.error('Error al cargar configuración de plantilla:', error);
         // Si falla, usar valores por defecto
         setPlantillaConfig({
-          typography: { font: 'Times New Roman' },
+          typography: { font: DEFAULT_CERTIFICATE_FONT },
           cargoTitle: 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP',
           certificateContentHtml: '',
           logo: null,
@@ -222,6 +237,9 @@ export function VisorPDFCertificado({
   ]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
+  const typographyFont = normalizarTipografia(
+    plantillaConfig?.typography?.font || plantillaConfig?.typographyFont,
+  );
   const salarioBase =
     (certificado.empleado as any)?.salarioOriginal ??
     certificado.empleado.salario ??
@@ -267,16 +285,16 @@ export function VisorPDFCertificado({
       certificado.empleado.dependenciaPadre || certificado.cod_cargo || ''
     );
     const dependenciaPlantilla = dependenciaPadre;
-    const ubicacion = certificado.position_location || certificado.campus || dependenciaHijo || dependenciaPadre || '';
-    const ubicacionCargo = certificado.position_location || ubicacion;
+    const ubicacion = dependenciaHijo || certificado.position_location || certificado.campus || dependenciaPadre || '';
+    const ubicacionCargo = dependenciaHijo || certificado.position_location || ubicacion;
 
     const cargoPlantilla =
       templateType === 'docente'
         ? (
             cargoTexto && tipoVinculacion &&
             cargoTexto.toLowerCase() === tipoVinculacion.toLowerCase()
-              ? (grado || dependencia || cargoTexto)
-              : (cargoTexto || grado || tipoVinculacion || dependencia || '')
+              ? (grado || dependenciaHijo || cargoTexto)
+              : (cargoTexto || grado || tipoVinculacion || dependenciaHijo || '')
           )
         : (cargoTexto || grado || tipoVinculacion || '');
 
@@ -285,7 +303,7 @@ export function VisorPDFCertificado({
         ? ubicacionCargo
         : (certificado.observations || '');
 
-    const dato7 = certificado.position_location || '';
+    const dato7 = dependenciaHijo || certificado.position_location || '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
@@ -643,9 +661,12 @@ export function VisorPDFCertificado({
         min-height: 100%;
       }
       body {
-        font-family: Arial Narrow, Arial, sans-serif;
+        font-family: ${typographyFont};
         display: flex;
         justify-content: center;
+      }
+      #certificado-print, #certificado-print * {
+        font-family: ${typographyFont} !important;
       }
       .print-wrapper {
         width: ${CERTIFICATE_WIDTH}px;
@@ -874,7 +895,7 @@ export function VisorPDFCertificado({
       style={{
         width: `${CERTIFICATE_WIDTH}px`,
         minHeight: `${CERTIFICATE_HEIGHT}px`,
-        fontFamily: 'Arial Narrow, Arial, sans-serif',
+        fontFamily: typographyFont,
         fontSize: '12pt',
         padding: '72px 72px 72px 72px',
         position: 'relative',
@@ -990,7 +1011,7 @@ export function VisorPDFCertificado({
             fontSize: '12pt',
             margin: '0 0 12pt 0'
           }}>
-            Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || ''}.
+            Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.empleado.dependencia || certificado.department || certificado.position_location || ''}.
           </p>
 
           {incluirSalario && (
@@ -1066,7 +1087,7 @@ export function VisorPDFCertificado({
         width: '250px',
         fontSize: '7pt',
         lineHeight: '1.3',
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: typographyFont,
         color: '#000000'
       }}>
         <p style={{ margin: '0 0 2px 0' }}>Sede principal</p>
@@ -1106,7 +1127,7 @@ export function VisorPDFCertificado({
           margin: 0,
           fontSize: '12pt',
           color: '#0066cc',
-          fontFamily: 'Arial, sans-serif'
+          fontFamily: typographyFont
         }}>
           www.esap.edu.co
         </p>

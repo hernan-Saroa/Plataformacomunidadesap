@@ -482,7 +482,10 @@ interface LogCambio {
 
 
 
+const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
+
 const fuentesDisponibles = [
+  { value: DEFAULT_CERTIFICATE_FONT, label: 'Arial Narrow (Predeterminada)' },
 
 
 
@@ -510,23 +513,25 @@ const fuentesDisponibles = [
 
 
 
-  { value: 'Montserrat', label: 'Montserrat' },
-
-
-
-  { value: 'Open Sans', label: 'Open Sans' },
-
-
-
-  { value: 'Lato', label: 'Lato' },
-
-
-
-  { value: 'Poppins', label: 'Poppins' },
-
-
-
 ];
+
+const normalizarFuenteTipografica = (value?: string | null): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_CERTIFICATE_FONT;
+  const normalized = raw
+    .replace(/["']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const found = fuentesDisponibles.find((fuente) =>
+    fuente.value
+      .replace(/["']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase() === normalized,
+  );
+  return found?.value || DEFAULT_CERTIFICATE_FONT;
+};
 
 
 
@@ -750,7 +755,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   useEffect(() => {
     if (borrador?.contenidoCertificado.texto) {
       // Normalizar las variables para que todas tengan el formato compacto
-      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto);
+      const contenidoNormalizado = normalizarVariables(
+        normalizarEspaciadoVisualEditor(borrador.contenidoCertificado.texto),
+      );
       setEditorContent(contenidoNormalizado);
     }
   }, [borrador?.contenidoCertificado.texto]);
@@ -773,7 +780,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       // Actualizar el contenido del editor, normalizando las variables
       let currentContent = editorContent || borrador?.contenidoCertificado.texto || '';
-      currentContent = normalizarVariables(currentContent);
+      currentContent = normalizarVariables(normalizarEspaciadoVisualEditor(currentContent));
       console.log('Restaurando contenido del editor:', currentContent.substring(0, 50) + '...');
 
       if (editor.innerHTML !== currentContent && currentContent) {
@@ -870,6 +877,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
 
     return resultado;
+  };
+
+  /**
+   * Ajusta solo el espaciado visual del editor para que plantillas con HTML
+   * equivalente (p/div + br) se muestren de forma consistente.
+   * No altera palabras ni tokens.
+   */
+  const normalizarEspaciadoVisualEditor = (html: string): string => {
+    if (!html) return html;
+
+    return html
+      .replace(/>\s*\r?\n\s*</g, '><')
+      .replace(/(<br\s*\/?>\s*){2,}(?=<\/?(div|p)\b)/gi, '')
+      .replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
   };
 
 
@@ -1216,7 +1237,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fuente: 'Arial Narrow, Arial, sans-serif', // Misma fuente que los PDFs generados
+        fuente: normalizarFuenteTipografica(
+          config?.typography?.font || config?.typographyFont || DEFAULT_CERTIFICATE_FONT,
+        ),
 
 
 
@@ -1796,7 +1819,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'tipografia': 'Cambio de TipografAa',
+      'tipografia': 'Cambio de Tipografía',
 
 
 
@@ -3005,7 +3028,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Guardar tipografAa, tAtulo del cargo y contenido HTML si cambiaron
+      // Guardar tipografía, título del cargo y contenido HTML si cambiaron
 
 
 
@@ -3029,7 +3052,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        cambiosGuardados.push('tipografAa');
+        cambiosGuardados.push('tipografía');
 
 
 
@@ -3685,7 +3708,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `TipografAa: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
+          `Tipografía: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
 
 
 
@@ -4996,7 +5019,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          {/* TipografAa y Contenido del Certificado */}
+          {/* Tipografía y Contenido del Certificado */}
 
 
 
@@ -5020,7 +5043,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  TipografAa y Contenido del Certificado
+                  Tipografía y Contenido del Certificado
 
 
 
@@ -5032,7 +5055,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Configura la tipografAa general y el contenido del certificado con formato enriquecido
+                  Configura la tipografía general y el contenido del certificado con formato enriquecido
 
 
 
@@ -5048,7 +5071,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* TipografAa General - Solo Fuente */}
+              {/* Tipografía General - Solo Fuente */}
 
 
 
@@ -5060,7 +5083,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Fuente TipogrAfica
+                  Fuente Tipográfica
 
 
 
@@ -5088,7 +5111,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      tipografia: { ...borrador.tipografia, fuente: value }
+                      tipografia: { ...borrador.tipografia, fuente: normalizarFuenteTipografica(value) }
 
 
 
@@ -5627,7 +5650,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      <strong>Variables disponibles:</strong> Usa el menAo desplegable "Insertar Variable" para agregar campos dinAmicos como
+                      <strong>Variables disponibles:</strong> Usa el menú desplegable "Insertar Variable" para agregar campos dinámicos como
 
 
 
@@ -5643,7 +5666,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      Las variables se mostrarAn resaltadas en amarillo y serAn reemplazadas automAticamente al generar cada certificado.
+                      Las variables se mostrarán resaltadas en amarillo y serán reemplazadas automáticamente al generar cada certificado.
 
 
 
@@ -6422,11 +6445,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Esta es una vista previa de como se vera el certificado. Los datos del funcionario
+                  Esta es una vista previa de cómo se verá el certificado. Los datos del funcionario
 
 
 
-                  se reemplazarAn automAticamente al generar cada certificado individual.
+                  se reemplazarán automáticamente al generar cada certificado individual.
 
 
 
