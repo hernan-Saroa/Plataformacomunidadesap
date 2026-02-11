@@ -1,5 +1,4 @@
-// import { ApiClient } from './apiClient';
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway

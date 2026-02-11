@@ -3,7 +3,7 @@
  * Maneja todas las peticiones HTTP al microservicio academic-registration-service
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway (rutea al servicio registro-academico)
 const SERVICE_PREFIX = '/registro-academico/api/v1';

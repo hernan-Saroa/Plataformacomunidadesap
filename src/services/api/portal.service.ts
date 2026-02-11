@@ -6,7 +6,7 @@
  * URL: /auth/api/v1/portal -> auth-service:3001/portal
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type {
   Publicacion,
   Comentario,

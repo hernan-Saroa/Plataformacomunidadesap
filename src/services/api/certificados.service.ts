@@ -6,7 +6,7 @@
  * URL: /certificados/api/v1/* -> certification-service:3004/*
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type { PaginatedResponse } from './config';
 import type {
   CertificadoGraduado,

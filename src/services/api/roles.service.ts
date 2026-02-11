@@ -6,7 +6,7 @@
  * URL: /auth/api/v1/roles -> auth-service:3001/roles
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
