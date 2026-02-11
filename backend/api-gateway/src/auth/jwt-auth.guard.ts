@@ -15,6 +15,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // Autoservicio certificados laborales (públicos)
     /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/verificar-documento/i,
     /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
+    /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
     /^\/certificados\/api\/v\d+\/certificados\/verify\/.+/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
