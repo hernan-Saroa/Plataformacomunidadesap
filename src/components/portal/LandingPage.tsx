@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ESAPLogo } from '../assets/ESAPLogo';
-import { 
-  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
+import {
+  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp,
   CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck, Menu, X
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -24,7 +24,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  
+
   const handleLoginClick = () => {
     if (onIrALogin) {
       onIrALogin();
@@ -46,9 +46,9 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   const handleActivateNowClick = () => {
     setIsEnrollmentModalOpen(true);
   };
-  
+
   const prefersReducedMotion = useReducedMotion();
-  
+
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
@@ -73,26 +73,26 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   ];
 
   const stats = [
-    { 
-      value: '+17 mil', 
+    {
+      value: '+17 mil',
       label: 'Estudiantes',
       icon: <Users className="w-6 h-6" />,
       trend: 'Comunidad universitaria'
     },
-    { 
-      value: '66', 
+    {
+      value: '66',
       label: 'Años de Trayectoria',
       icon: <Award className="w-6 h-6" />,
       trend: 'Desde 1958'
     },
-    { 
-      value: '84%', 
+    {
+      value: '84%',
       label: 'Cobertura Nacional',
       icon: <Globe className="w-6 h-6" />,
       trend: 'Todo el país'
     },
-    { 
-      value: '348', 
+    {
+      value: '348',
       label: 'Entidades Aliadas',
       icon: <Star className="w-6 h-6" />,
       trend: 'Red institucional'
@@ -137,7 +137,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   // Renderizar vista de certificados laborales si está activa
   if (vistaActual === 'certificados-laborales') {
     return (
-      <SolicitarCertificadoLaboral 
+      <SolicitarCertificadoLaboral
         onBack={() => setVistaActual('landing')}
         onLoginClick={handleLoginClick}
       />
@@ -147,7 +147,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   // Renderizar vista de certificados de graduados si está activa
   if (vistaActual === 'certificados-graduados') {
     return (
-      <PublicTitleVerification 
+      <PublicTitleVerification
         onBack={() => setVistaActual('landing')}
         onLoginClick={handleLoginClick}
       />
@@ -157,7 +157,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   // Renderizar vista de validador de certificados si está activa
   if (vistaActual === 'validador-certificados') {
     return (
-      <ValidadorCertificadosPublico 
+      <ValidadorCertificadosPublico
         onBack={() => setVistaActual('landing')}
       />
     );
@@ -166,7 +166,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">
       {/* Navbar Superior Flotante - Diseño Moderno con Azul Medio */}
-      <motion.nav 
+      <motion.nav
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -180,12 +180,12 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <ESAPLogo 
+              <ESAPLogo
                 variant="white"
                 className="h-8 sm:h-10 w-auto"
               />
               <div className="hidden sm:block">
-                
+
               </div>
             </div>
 
@@ -197,7 +197,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               <a href="#servicios" className="text-sm font-semibold text-white/90 hover:text-white transition-colors">
                 Servicios
               </a>
-              
+
               {/* Botón Validar Certificados - DESTACADO */}
               <button
                 onClick={() => setVistaActual('validador-certificados')}
@@ -235,21 +235,21 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
       </motion.nav>
 
       {/* Hero Section - World Class */}
-      <section id="hero" className="relative min-h-[85vh] sm:min-h-[80vh] lg:min-h-screen flex items-center justify-center overflow-hidden pt-20 sm:pt-24 lg:pt-16">
+      <section id="hero" className="relative h-screen max-h-[900px] min-h-[600px] flex items-center overflow-hidden pt-20 sm:pt-24 lg:pt-16">
         {/* Animated Background - OPTIMIZADO */}
         <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
           {/* Gradient Base */}
-          <div 
+          <div
             className="absolute inset-0"
             style={{
               background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #1e5da8 50%, #2563eb 75%, #3b82f6 100%)',
               transform: 'translateZ(0)', // Forzar GPU acceleration
             }}
           />
-          
+
           {/* Animated Gradient Overlay - OPTIMIZADO: Reducida duración y solo si no prefiere movimiento reducido */}
           {!prefersReducedMotion && (
-            <motion.div 
+            <motion.div
               className="absolute inset-0 opacity-30"
               style={{ willChange: 'opacity, transform' }}
               animate={{
@@ -263,9 +263,9 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               transition={{ duration: 20, repeat: Infinity, ease: "linear" }} // Aumentado a 20s para reducir re-renders
             />
           )}
-          
+
           {/* Grid Pattern */}
-          <div 
+          <div
             className="absolute inset-0 opacity-10"
             style={{
               backgroundImage: `
@@ -275,7 +275,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               backgroundSize: '50px 50px'
             }}
           />
-          
+
           {/* Floating Elements - OPTIMIZADO: Solo si no prefiere movimiento reducido */}
           {!prefersReducedMotion && (
             <>
@@ -304,17 +304,17 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
         </div>
 
         {/* Hero Content - OPTIMIZADO */}
-        <motion.div 
-          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl"
-          style={{ 
-            opacity: heroOpacity, 
+        <motion.div
+          className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-2 sm:py-4 lg:py-6 max-w-7xl h-full flex items-center"
+          style={{
+            opacity: heroOpacity,
             scale: heroScale,
             willChange: 'transform, opacity',
-            transform: 'translateZ(0)', // GPU acceleration
+            transform: 'translateZ(0)',
           }}
         >
-          <div className="grid md:grid-cols-2 gap-8 sm:gap-8 lg:gap-10 items-center pb-4 sm:pb-4 lg:pb-8">
-            
+          <div className="grid md:grid-cols-2 gap-6 sm:gap-8 lg:gap-12 items-center w-full">
+
             {/* Left Column - Text Content */}
             <motion.div
               initial={{ opacity: 0, x: -50 }}
@@ -339,7 +339,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               </motion.div>
 
               {/* Main Heading */}
-              <h1 className="text-4xl xs:text-5xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-black text-white mb-3 sm:mb-4 lg:mb-6 tracking-tight leading-tight break-words">
+              <h1 className="text-3xl sm:text-5xl md:text-6xl xl:text-7xl font-black text-white mb-3 sm:mb-4 lg:mb-6 tracking-tight leading-tight break-words">
                 La Escuela
                 <span className="block bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mt-1 sm:mt-2">
                   del Futuro, Hoy
@@ -347,8 +347,8 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               </h1>
 
               {/* Subtitle */}
-              <p className="text-sm xs:text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia. 
+              <p className="text-base sm:text-lg md:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
+                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia.
                 Todos tus trámites, servicios académicos y comunidad <span className="font-semibold text-white">en un solo lugar</span>.
               </p>
 
@@ -369,14 +369,14 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col xs:flex-row gap-3 justify-center lg:justify-start">
+              <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     onClick={handleActivateNowClick}
                     size="lg"
-                    className="w-full xs:w-auto px-6 py-3 xs:px-7 xs:py-4 sm:px-8 sm:py-6 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
+                    className="w-full sm:w-auto px-7 py-4 sm:px-8 sm:py-5 bg-white text-[#1e5da8] hover:bg-blue-50 shadow-2xl shadow-blue-500/50 group relative overflow-hidden"
                   >
-                    <span className="relative z-10 flex items-center justify-center gap-2 font-bold text-sm xs:text-base sm:text-lg">
+                    <span className="relative z-10 flex items-center justify-center gap-2 font-bold text-base sm:text-lg">
                       Actívate Ahora
                       <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
                     </span>
@@ -436,17 +436,17 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
                       </div>
                     </div>
                   )}
-                  
+
                   <img
                     src={STUDENTS_IMAGE_URL}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
-                    className={`w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    className={`w-full h-[280px] sm:h-[320px] md:h-[380px] lg:h-[440px] xl:h-[500px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                     loading="lazy"
                     decoding="async"
                     onLoad={() => setImageLoaded(true)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
-                  
+
                   {/* Floating Stats - Solo mostrar cuando la imagen ha cargado */}
                   {imageLoaded && (
                     <motion.div
@@ -540,7 +540,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
       {/* Services Section - Interactive Cards */}
       <section id="servicios" className="py-8 sm:py-10 lg:py-12 xl:py-16 bg-gradient-to-b from-white to-gray-50 scroll-mt-24">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          
+
           {/* Section Header */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -579,7 +579,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
                 <Card className="h-full border-2 border-gray-200 hover:border-transparent transition-all duration-300 overflow-hidden relative">
                   {/* Gradient Background */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${service.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                  
+
                   <CardContent className="p-6 lg:p-8 xl:p-10 relative z-10">
                     {/* Badge */}
                     <div className="absolute top-6 right-6">
@@ -625,7 +625,7 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
           backgroundImage: `radial-gradient(circle at 50% 50%, white 1px, transparent 1px)`,
           backgroundSize: '40px 40px'
         }} />
-        
+
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -668,10 +668,10 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
                     </span>
                   </h3>
                   <p className="text-gray-600 mb-6 leading-relaxed">
-                    Para <strong>estudiantes, docentes, administrativos y graduados</strong>. 
+                    Para <strong>estudiantes, docentes, administrativos y graduados</strong>.
                     Mucho más que trámites: es el corazón comunitario de ESAP.
                   </p>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -740,10 +740,10 @@ export function LandingPage({ onIrALogin, onLoginClick }: LandingPageProps) {
                     </span>
                   </h3>
                   <p className="text-gray-600 mb-6 leading-relaxed">
-                    Para <strong>personal administrativo y directivo</strong>. 
+                    Para <strong>personal administrativo y directivo</strong>.
                     Herramientas avanzadas para gestión eficiente de ESAP.
                   </p>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
