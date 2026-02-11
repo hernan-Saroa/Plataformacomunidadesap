@@ -50,6 +50,9 @@ services:
       NODE_ENV: production
       PORT: 3000
 
+      # JWT - debe igualar al auth-service para validar tokens
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+
       # CORS - Permitir acceso desde el frontend
       CORS_ORIGIN: "http://4.156.71.181"
 
