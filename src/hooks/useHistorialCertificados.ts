@@ -39,6 +39,13 @@ interface UseHistorialCertificadosReturn {
 }
 
 export function useHistorialCertificados(): UseHistorialCertificadosReturn {
+  const normalizarDocumento = (value?: string | number | null) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.toLowerCase();
+  };
+
   const normalizarFechaContrato = (value?: string | number | Date | null) => {
     if (!value) return null;
     if (value instanceof Date) {
@@ -171,9 +178,15 @@ export function useHistorialCertificados(): UseHistorialCertificadosReturn {
       });
 
       const items = Array.isArray(response) ? response : (response.items || []);
-      
+      const documentoSeleccionado = normalizarDocumento(empleado.documento);
+      const itemsFiltrados = items.filter((cert: any) => {
+        const documentoCertificado = normalizarDocumento(cert?.id_number);
+        if (!documentoSeleccionado || !documentoCertificado) return false;
+        return documentoCertificado === documentoSeleccionado;
+      });
+
       // Transformar los datos al formato del historial
-      const historialTransformado: CertificadoHistorial[] = items
+      const historialTransformado: CertificadoHistorial[] = itemsFiltrados
         .map((cert: any) => {
           const employmentStatusRaw = String(
             cert.employment_status ||

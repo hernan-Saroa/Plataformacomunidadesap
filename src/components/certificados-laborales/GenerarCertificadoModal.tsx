@@ -253,7 +253,13 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificateHash: cert.verification_code,
           qrCode: cert.verification_code,
           position_location: ubicacionRaw,
-          department: cert.department || cert.request?.department || cert.request?.departmentName || '',
+          department: normalizarTexto(
+            cert.department ||
+            cert.request?.department ||
+            cert.request?.departmentName ||
+            ubicacionRaw ||
+            ''
+          ),
           cod_cargo: dependenciaPadreRaw,
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
@@ -268,7 +274,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             nombre: cert.full_name,
             documento: cert.id_number,
             cargo: cert.career_category,
-            dependencia: normalizarTexto(cert.cod_grade || cert.codGrade),
+            dependencia: normalizarTexto(ubicacionRaw),
             dependenciaPadre: normalizarTexto(dependenciaPadreRaw),
             tipoVinculacion: cert.position_category,
             fechaVinculacion: cert.hiring_date,

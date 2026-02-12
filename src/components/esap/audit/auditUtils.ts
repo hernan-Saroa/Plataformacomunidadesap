@@ -56,6 +56,17 @@ export const mapLogToEvent = (log: AuditLog): AuditEvent => {
     location: 'N/A',
     duration: `${(log.responseTimeMs / 1000).toFixed(2)}s`,
     details: log.errorMessage || displayAction + ` - ${log.statusCode}`,
+    // Mapear campos de tracking de cambios
+    entityName: log.entityName,
+    entityId: log.entityId,
+    previousData: log.previousData,
+    newData: log.newData,
+    // Mapear changes del backend al formato del frontend
+    changes: log.changes?.map(c => ({
+      field: c.field,
+      before: c.oldValue !== undefined ? JSON.stringify(c.oldValue) : 'N/A',
+      after: c.newValue !== undefined ? JSON.stringify(c.newValue) : 'N/A',
+    })),
   };
 };
 
