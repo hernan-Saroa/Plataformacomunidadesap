@@ -24,7 +24,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificados\/[^/]+\/reenviar/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
-
   ];
 
   constructor(private readonly reflector: Reflector) {
