@@ -265,9 +265,8 @@ export const certificadosService = {
      */
     async actualizarNombreFirmante(signerName: string, updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       return apiClient.post(
-        `${SERVICE_PREFIX}/certificates/template-config/signer-name`,
+        `${SERVICE_PREFIX}/certificates/template-config/signer-name?tipo=${tipo}`,
         { signerName, updatedBy },
-        { params: { tipo } },
       );
     },
 
@@ -282,9 +281,8 @@ export const certificadosService = {
       }
 
       return apiClient.upload(
-        `${SERVICE_PREFIX}/certificates/template-config/upload-signature`,
+        `${SERVICE_PREFIX}/certificates/template-config/upload-signature?tipo=${tipo}`,
         formData,
-        { params: { tipo } },
       );
     },
 
@@ -299,9 +297,8 @@ export const certificadosService = {
       }
 
       return apiClient.upload(
-        `${SERVICE_PREFIX}/certificates/template-config/upload-logo`,
+        `${SERVICE_PREFIX}/certificates/template-config/upload-logo?tipo=${tipo}`,
         formData,
-        { params: { tipo } },
       );
     },
 
@@ -321,9 +318,8 @@ export const certificadosService = {
       */
     async resetFirma(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       return apiClient.post(
-        `${SERVICE_PREFIX}/certificates/template-config/reset-signature`,
+        `${SERVICE_PREFIX}/certificates/template-config/reset-signature?tipo=${tipo}`,
         { updatedBy },
-        { params: { tipo } },
       );
     },
 
@@ -333,9 +329,8 @@ export const certificadosService = {
     async resetNombreFirmante(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       try {
         return await apiClient.post(
-          `${SERVICE_PREFIX}/certificates/template-config/reset-signer`,
+          `${SERVICE_PREFIX}/certificates/template-config/reset-signer?tipo=${tipo}`,
           { updatedBy },
-          { params: { tipo } },
         );
       } catch (error: any) {
         if (error.status === 404) {
@@ -350,9 +345,8 @@ export const certificadosService = {
       */
     async resetTituloCargo(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       return apiClient.post(
-        `${SERVICE_PREFIX}/certificates/template-config/reset-cargo-title`,
+        `${SERVICE_PREFIX}/certificates/template-config/reset-cargo-title?tipo=${tipo}`,
         { updatedBy },
-        { params: { tipo } },
       );
     },
 
@@ -361,9 +355,8 @@ export const certificadosService = {
       */
     async resetContenido(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       return apiClient.post(
-        `${SERVICE_PREFIX}/certificates/template-config/reset-content`,
+        `${SERVICE_PREFIX}/certificates/template-config/reset-content?tipo=${tipo}`,
         { updatedBy },
-        { params: { tipo } },
       );
     },
 
@@ -399,9 +392,8 @@ export const certificadosService = {
       updatedBy?: string;
     }, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
       return apiClient.post(
-        `${SERVICE_PREFIX}/certificates/template-config/content`,
+        `${SERVICE_PREFIX}/certificates/template-config/content?tipo=${tipo}`,
         data,
-        { params: { tipo } },
       );
     },
   },
