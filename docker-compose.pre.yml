@@ -25,7 +25,6 @@ services:
       - superapp-net-pre
     restart: unless-stopped
     volumes:
-      - ./build:/usr/share/nginx/html
       - ./backend/certification-service/uploads:/usr/share/nginx/uploads:ro
 
     # ============ ONLYOFFICE DOCUMENT SERVER ============
