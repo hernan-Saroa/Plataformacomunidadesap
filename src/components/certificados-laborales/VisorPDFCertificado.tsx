@@ -266,6 +266,27 @@ export function VisorPDFCertificado({
     }
   };
 
+  const normalizarEstructuraParrafos = (html: string): string => {
+    if (!html) return html;
+
+    let resultado = html.replace(/\r\n?/g, '\n');
+    resultado = resultado.replace(/<div\b[^>]*>/gi, '<p>');
+    resultado = resultado.replace(/<\/div>/gi, '</p>');
+    resultado = resultado.replace(/(?:<br\s*\/?>\s*){2,}/gi, '</p><p>');
+    resultado = resultado.replace(/<p>\s*<\/p>/gi, '');
+
+    if (!/<p[\s>]/i.test(resultado)) {
+      resultado = `<p>${resultado}</p>`;
+    }
+
+    resultado = resultado.replace(/<p>\s*(?:<br\s*\/?>\s*)+/gi, '<p>');
+    resultado = resultado.replace(/(?:<br\s*\/?>\s*)+\s*<\/p>/gi, '</p>');
+    resultado = resultado.replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*<\/p>/gi, '');
+    resultado = resultado.replace(/<\/p>\s*<p>/gi, '</p><p>');
+
+    return resultado.trim();
+  };
+
   // Función para reemplazar variables en el contenido HTML Y LIMPIAR ESTILOS DE RESALTADO
   const reemplazarVariables = (html: string): string => {
     if (!html) return '';
@@ -410,7 +431,7 @@ export function VisorPDFCertificado({
     // Eliminar espacio antes de signos de puntuación
     resultado = resultado.replace(/\s+([.,;:])/g, '$1');
 
-    return resultado;
+    return normalizarEstructuraParrafos(resultado);
   };
 
   // Función para convertir números a palabras en español
@@ -887,6 +908,7 @@ export function VisorPDFCertificado({
       return `${contenidoNormalizado}${primaTecnicaParrafo}`;
     }
   })();
+  const contenidoFinalNormalizado = normalizarEstructuraParrafos(contenidoFinal);
 
   const renderCertificate = (ref?: React.Ref<HTMLDivElement>, extraStyle?: React.CSSProperties) => (
     <div
@@ -903,6 +925,28 @@ export function VisorPDFCertificado({
       }}
       data-template-type={templateType}
     >
+      <style>{`
+        .certificate-content-block p,
+        .certificate-content-block div,
+        .certificate-content-block li {
+          margin: 0 0 12pt 0;
+          text-align: justify;
+          text-align-last: left;
+          text-indent: 0;
+          letter-spacing: normal;
+        }
+        .certificate-content-block p:last-child,
+        .certificate-content-block div:last-child,
+        .certificate-content-block li:last-child {
+          margin-bottom: 0;
+        }
+        .certificate-content-block span {
+          letter-spacing: normal;
+          padding: 0;
+          margin: 0;
+        }
+      `}</style>
+
       {/* Header - Logo ESAP (desde plantilla o por defecto) */}
       {plantillaConfig.logo?.url ? (
         <img
@@ -989,7 +1033,7 @@ export function VisorPDFCertificado({
         <div
           className="certificate-content-block"
           dangerouslySetInnerHTML={{
-            __html: contenidoFinal
+            __html: contenidoFinalNormalizado
           }}
           style={{
             textAlign: 'justify',
