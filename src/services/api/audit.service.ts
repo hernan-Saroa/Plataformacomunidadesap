@@ -28,6 +28,16 @@ export interface AuditLog {
   responseBodySize?: number;
   errorMessage?: string;
   errorStack?: string;
+  // Campos de tracking de cambios (datos viejos y nuevos)
+  entityName?: string;
+  entityId?: string;
+  previousData?: any;
+  newData?: any;
+  changes?: Array<{
+    field: string;
+    oldValue: any;
+    newValue: any;
+  }>;
   timestamp: string;
   createdAt: string;
 }
@@ -40,6 +50,8 @@ export interface QueryAuditLogsParams {
   userId?: number;
   ipAddress?: string;
   statusCode?: number;
+  entityName?: string;
+  entityId?: string;
   limit?: number;
   offset?: number;
 }
