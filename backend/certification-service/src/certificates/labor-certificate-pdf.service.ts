@@ -369,6 +369,7 @@ export class LaborCertificatePdfService {
     let result = this.normalizeTemplateHtml(templateHtml || '');
     result = this.replaceVariables(result, replacements);
     result = this.normalizeSpacing(result);
+    result = this.normalizeParagraphStructure(result);
 
     if (!includeSalary) {
       result = this.stripSalarySections(result);
@@ -381,7 +382,7 @@ export class LaborCertificatePdfService {
       }
     }
 
-    return result;
+    return this.normalizeParagraphStructure(result);
   }
 
   private normalizeTemplateHtml(html: string): string {
@@ -438,6 +439,29 @@ export class LaborCertificatePdfService {
     result = result.replace(/\s{2,}/g, ' ');
     result = result.replace(/\s+([.,;:])/g, '$1');
     return result;
+  }
+
+  private normalizeParagraphStructure(html: string): string {
+    if (!html) {
+      return html;
+    }
+
+    let result = html.replace(/\r\n?/g, '\n');
+    result = result.replace(/<div\b[^>]*>/gi, '<p>');
+    result = result.replace(/<\/div>/gi, '</p>');
+    result = result.replace(/(?:<br\s*\/?>\s*){2,}/gi, '</p><p>');
+    result = result.replace(/<p>\s*<\/p>/gi, '');
+
+    if (!/<p[\s>]/i.test(result)) {
+      result = `<p>${result}</p>`;
+    }
+
+    result = result.replace(/<p>\s*(?:<br\s*\/?>\s*)+/gi, '<p>');
+    result = result.replace(/(?:<br\s*\/?>\s*)+\s*<\/p>/gi, '</p>');
+    result = result.replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*<\/p>/gi, '');
+    result = result.replace(/<\/p>\s*<p>/gi, '</p><p>');
+
+    return result.trim();
   }
 
   private stripSalarySections(html: string): string {
@@ -592,12 +616,19 @@ export class LaborCertificatePdfService {
               font-weight: bold;
               margin: 0;
             }
-            .certificate-content-block p {
+            .certificate-content-block p,
+            .certificate-content-block div,
+            .certificate-content-block li {
               margin: 0 0 12pt 0;
               text-align: justify;
               text-align-last: left;
               text-indent: 0;
               letter-spacing: normal;
+            }
+            .certificate-content-block p:last-child,
+            .certificate-content-block div:last-child,
+            .certificate-content-block li:last-child {
+              margin-bottom: 0;
             }
             .certificate-content-block span {
               letter-spacing: normal;
