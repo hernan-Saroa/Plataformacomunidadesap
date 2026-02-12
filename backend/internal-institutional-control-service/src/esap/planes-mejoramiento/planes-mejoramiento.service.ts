@@ -76,14 +76,29 @@ export class PlanesMejoramientoService {
   /**
    * Valida que el plan de mejoramiento cumpla las condiciones necesarias para registrar seguimiento.
    * Regla de negocio: Los seguimientos solo se pueden registrar cuando:
-   * 1. El hallazgo está formalizado (notificado, ratificado, modificado o cerrado)
-   * 2. La auditoría está en etapa de Comunicación, Seguimiento o Finalizada
+   * 1. El plan de mejoramiento está APROBADO o EN_EJECUCION
+   * 2. El hallazgo está formalizado (notificado, ratificado, modificado o cerrado)
+   * 3. La auditoría está en etapa de Comunicación, Seguimiento o Finalizada
    * 
    * @param plan El plan de mejoramiento a validar
    * @throws BadRequestException si no se cumplen las condiciones
    */
   private async validarCondicionesParaSeguimiento(plan: PlanMejoramiento): Promise<void> {
-    // Si el plan tiene un hallazgo asociado, validar su estado y la etapa de la auditoría
+    // VALIDACIÓN 1: El plan debe estar APROBADO o EN_EJECUCION para registrar seguimientos
+    const estadosPermitidosParaSeguimiento = [
+      PlanMejoramientoEstado.APROBADO,
+      PlanMejoramientoEstado.EN_EJECUCION,
+    ];
+    
+    if (!estadosPermitidosParaSeguimiento.includes(plan.estado)) {
+      throw new BadRequestException(
+        `No se puede registrar seguimiento. El plan "${plan.codigo}" debe estar ` +
+        `APROBADO antes de realizar seguimientos trimestrales. Estado actual: "${plan.estado}". ` +
+        `Flujo correcto: Comunicación → Formulación del Plan → Revisión → APROBACIÓN → Seguimiento.`
+      );
+    }
+
+    // VALIDACIÓN 2: Si el plan tiene un hallazgo asociado, validar su estado y la etapa de la auditoría
     if (plan.hallazgoId) {
       const hallazgo = await this.hallazgoRepository.findOne({
         where: { id: plan.hallazgoId },
@@ -115,7 +130,7 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Si el plan tiene auditoría directa (sin hallazgo), validar la etapa
+    // VALIDACIÓN 3: Si el plan tiene auditoría directa (sin hallazgo), validar la etapa
     if (plan.auditoriaId && !plan.hallazgoId) {
       const auditoria = await this.auditoriaRepository.findOne({
         where: { id: plan.auditoriaId },

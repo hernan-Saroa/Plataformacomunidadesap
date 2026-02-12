@@ -84,10 +84,17 @@ interface PlanMejoramiento {
   auditoriaNombre: string;
   areaResponsable: string;
   responsableArea: string;
-  estado: 'EJECUCION' | 'SEGUIMIENTO' | 'COMPLETADO';
+  estado: 'BORRADOR' | 'REVISION' | 'APROBADO' | 'EN_EJECUCION' | 'COMPLETADO' | 'VENCIDO' | 'RECHAZADO';
+  etapaAuditoria?: 'BACKLOG' | 'PLANEACION' | 'EJECUCION' | 'COMUNICACION' | 'SEGUIMIENTO' | 'FINALIZADA';
   acciones: AccionCorrectiva[];
   seguimientos: SeguimientoPlan[];
 }
+
+// Estados del plan que permiten acceso a seguimientos
+const ESTADOS_PLAN_PERMITEN_SEGUIMIENTO = ['APROBADO', 'EN_EJECUCION', 'COMPLETADO'];
+
+// Etapas de auditoría que permiten acceso a seguimientos
+const ETAPAS_AUDITORIA_PERMITEN_SEGUIMIENTO = ['COMUNICACION', 'SEGUIMIENTO', 'FINALIZADA'];
 
 type VistaActual = 'PORTAL_AREA' | 'AUDITOR' | 'JEFE_OCI';
 
@@ -108,7 +115,8 @@ export const SeguimientoPlanMejoramientoModule: React.FC<{ planId?: string; rol?
     auditoriaNombre: 'Auditoría Gestión Financiera',
     areaResponsable: 'Dirección Administrativa y Financiera',
     responsableArea: 'María González',
-    estado: 'SEGUIMIENTO',
+    estado: 'APROBADO', // Estado correcto para permitir seguimientos
+    etapaAuditoria: 'COMUNICACION', // Etapa que permite seguimientos
     acciones: [
       {
         id: 'acc1',
@@ -255,6 +263,114 @@ export const SeguimientoPlanMejoramientoModule: React.FC<{ planId?: string; rol?
   });
 
   const [seguimientoActual, setSeguimientoActual] = useState<SeguimientoPlan>(plan.seguimientos[1]); // Seguimiento actual (Oct)
+
+  // ====================================
+  // VALIDACIONES DE ACCESO AL MÓDULO
+  // ====================================
+
+  // Validar si el plan permite acceso a seguimientos
+  const planPermiteAcceso = ESTADOS_PLAN_PERMITEN_SEGUIMIENTO.includes(plan.estado);
+  
+  // Validar si la etapa de la auditoría permite seguimientos
+  const etapaPermiteAcceso = plan.etapaAuditoria 
+    ? ETAPAS_AUDITORIA_PERMITEN_SEGUIMIENTO.includes(plan.etapaAuditoria)
+    : true; // Si no hay etapa definida, permitir (caso de planes sin auditoría)
+
+  // Acceso completo solo si ambas condiciones se cumplen
+  const accesoPermitido = planPermiteAcceso && etapaPermiteAcceso;
+
+  // Mensajes de error específicos
+  const getMensajeBloqueo = () => {
+    if (!planPermiteAcceso) {
+      return {
+        titulo: 'Plan de Mejoramiento no aprobado',
+        mensaje: `El Plan de Mejoramiento está en estado "${plan.estado}". Solo se puede acceder a Seguimientos cuando el plan está APROBADO o EN EJECUCIÓN.`,
+        flujo: 'Flujo correcto: Comunicación → Formulación del Plan → Revisión → APROBACIÓN → Seguimiento'
+      };
+    }
+    if (!etapaPermiteAcceso) {
+      return {
+        titulo: 'Etapa de auditoría no permite seguimientos',
+        mensaje: `La auditoría está en etapa "${plan.etapaAuditoria}". Solo se puede acceder a Seguimientos desde las etapas: Comunicación, Seguimiento o Finalizada.`,
+        flujo: 'Flujo correcto: Planeación → Ejecución → COMUNICACIÓN → Seguimiento'
+      };
+    }
+    return null;
+  };
+
+  const mensajeBloqueo = getMensajeBloqueo();
+
+  // ====================================
+  // RENDER DE BLOQUEO SI NO TIENE ACCESO
+  // ====================================
+
+  if (!accesoPermitido && mensajeBloqueo) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-red-50 to-slate-50 p-6">
+        <div className="max-w-2xl mx-auto">
+          <CardSIGL className="border-red-200 bg-white">
+            <div className="p-8 text-center space-y-6">
+              {/* Icono de bloqueo */}
+              <div className="mx-auto w-20 h-20 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-10 h-10 text-red-600" />
+              </div>
+              
+              {/* Título */}
+              <h2 className="text-2xl font-bold text-gray-900">
+                {mensajeBloqueo.titulo}
+              </h2>
+              
+              {/* Mensaje */}
+              <p className="text-gray-600 text-lg">
+                {mensajeBloqueo.mensaje}
+              </p>
+              
+              {/* Flujo correcto */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-blue-800 font-medium">
+                  📋 {mensajeBloqueo.flujo}
+                </p>
+              </div>
+              
+              {/* Información del plan */}
+              <div className="bg-gray-50 rounded-lg p-4 text-left space-y-2">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Auditoría:</span> {plan.auditoriaCodigo} - {plan.auditoriaNombre}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Estado del Plan:</span>{' '}
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    planPermiteAcceso ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {plan.estado}
+                  </span>
+                </p>
+                {plan.etapaAuditoria && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Etapa Auditoría:</span>{' '}
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      etapaPermiteAcceso ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}>
+                      {plan.etapaAuditoria}
+                    </span>
+                  </p>
+                )}
+              </div>
+              
+              {/* Botón para volver */}
+              <ButtonSIGL 
+                variant="default" 
+                onClick={() => window.history.back()}
+                className="mt-4"
+              >
+                ← Volver al módulo anterior
+              </ButtonSIGL>
+            </div>
+          </CardSIGL>
+        </div>
+      </div>
+    );
+  }
 
   // ====================================
   // RENDER POR ROL

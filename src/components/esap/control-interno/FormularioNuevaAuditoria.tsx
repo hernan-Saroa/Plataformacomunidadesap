@@ -150,6 +150,38 @@ const HERRAMIENTAS = [
   'Pruebas Sustantivas'
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPEO PROCESO ↔ ÁREA (OBLIGATORIO según modelo OCIG)
+// Cada proceso pertenece a un área específica. Esta relación es obligatoria.
+// ═══════════════════════════════════════════════════════════════════════════
+const PROCESO_AREA_MAP: Record<string, string[]> = {
+  'Gestión Financiera': ['Presupuesto', 'Tesorería', 'Contabilidad', 'Gestión de Cartera', 'Cartera'],
+  'Gestión Administrativa': ['Servicios Generales', 'Correspondencia', 'Archivo', 'Infraestructura', 'Inventarios', 'Almacén', 'Gestión de Bienes'],
+  'Adquisición de Bienes y Servicios': ['Licitaciones', 'Selección Abreviada', 'Mínima Cuantía', 'Contratación Directa', 'Contratación', 'Supervisión de Contratos', 'Liquidación de Contratos'],
+  'Gestión de Talento Humano': ['Nómina', 'Selección', 'Capacitación', 'Evaluación de Desempeño', 'Selección y Vinculación', 'Bienestar Social', 'Seguridad y Salud en el Trabajo'],
+  'Transformación Digital': ['Infraestructura TI', 'Desarrollo de Software', 'Seguridad', 'Soporte', 'Soporte Técnico', 'Seguridad Informática'],
+  // Territoriales - procesos genéricos
+  'Territorial': ['Formación', 'Proyectos', 'Administración', 'CETAP', 'Extensión y Proyección Social']
+};
+
+/**
+ * Obtiene los procesos disponibles para un área específica
+ */
+function getProcesosPorArea(areaNombre: string, areaTipo: 'Sede' | 'Territorial'): string[] {
+  if (areaTipo === 'Territorial') {
+    return PROCESO_AREA_MAP['Territorial'] || [];
+  }
+  return PROCESO_AREA_MAP[areaNombre] || [];
+}
+
+/**
+ * Valida si un proceso pertenece a un área según el modelo OCIG
+ */
+function validarRelacionProcesoArea(proceso: string, areaNombre: string, areaTipo: 'Sede' | 'Territorial'): boolean {
+  const procesosDelArea = getProcesosPorArea(areaNombre, areaTipo);
+  return procesosDelArea.includes(proceso);
+}
+
 const AREAS_AUDITABLES_MOCK = [
   {
     id: 'area-001',
@@ -327,7 +359,28 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   const validarPaso3 = () => {
     const nuevosErrores: Record<string, string> = {};
     
-    if (!areaSeleccionada) nuevosErrores.area = 'Debes seleccionar un área auditable';
+    // Validación obligatoria: Área seleccionada (modelo OCIG)
+    if (!areaSeleccionada) {
+      nuevosErrores.area = 'Debes seleccionar un Área Responsable (obligatorio según modelo OCIG)';
+    }
+    
+    // Validación obligatoria: Al menos un proceso seleccionado
+    if (procesosSeleccionados.length === 0) {
+      nuevosErrores.procesosArea = 'Debes seleccionar al menos un Proceso Auditado (obligatorio según modelo OCIG)';
+    }
+    
+    // Validación obligatoria: Relación Proceso ↔ Área (modelo OCIG)
+    if (areaSeleccionada && procesosSeleccionados.length > 0) {
+      const procesosInvalidos = procesosSeleccionados.filter(
+        proceso => !validarRelacionProcesoArea(proceso, areaSeleccionada.nombre, areaSeleccionada.tipo)
+      );
+      
+      if (procesosInvalidos.length > 0) {
+        nuevosErrores.relacionProcesoArea = 
+          `Los siguientes procesos no pertenecen al área "${areaSeleccionada.nombre}": ${procesosInvalidos.join(', ')}. ` +
+          `Seleccione procesos válidos según el modelo OCIG.`;
+      }
+    }
     
     setErrores(nuevosErrores);
     return Object.keys(nuevosErrores).length === 0;
@@ -515,9 +568,23 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   };
 
   const handleGuardar = () => {
-    if (!validarPaso8()) {
+    // Validar TODOS los pasos antes de guardar (incluye validación Proceso ↔ Área del paso 3)
+    const validaciones = [
+      { paso: 1, valido: validarPaso1(), nombre: 'Información General' },
+      { paso: 2, valido: validarPaso2(), nombre: 'Objetivo y Alcance' },
+      { paso: 3, valido: validarPaso3(), nombre: 'Área y Proceso' },
+      { paso: 4, valido: validarPaso4(), nombre: 'Fechas' },
+      { paso: 5, valido: validarPaso5(), nombre: 'Equipo Auditor' },
+      { paso: 6, valido: validarPaso6(), nombre: 'Riesgo y Prioridad' },
+      { paso: 7, valido: validarPaso7(), nombre: 'Recursos' },
+      { paso: 8, valido: validarPaso8(), nombre: 'Metodología' }
+    ];
+    
+    const pasoInvalido = validaciones.find(v => !v.valido);
+    if (pasoInvalido) {
+      setPaso(pasoInvalido.paso);
       toast.error('Datos incompletos', {
-        description: 'Por favor completa todos los campos obligatorios'
+        description: `Por favor completa los campos obligatorios en el paso "${pasoInvalido.nombre}"`
       });
       return;
     }
@@ -967,7 +1034,18 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                             type="button"
                             onClick={() => {
                               setAreaSeleccionada(area);
-                              setErrores(prev => {const n = {...prev}; delete n.area; return n;});
+                              // Limpiar procesos que no pertenezcan a la nueva área (modelo OCIG)
+                              const procesosValidosNuevaArea = getProcesosPorArea(area.nombre, area.tipo);
+                              setProcesosSeleccionados(prev => 
+                                prev.filter(p => procesosValidosNuevaArea.includes(p))
+                              );
+                              setErrores(prev => {
+                                const n = {...prev}; 
+                                delete n.area; 
+                                delete n.relacionProcesoArea;
+                                delete n.procesosArea;
+                                return n;
+                              });
                             }}
                             className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                               areaSeleccionada?.id === area.id
@@ -1016,7 +1094,18 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                             type="button"
                             onClick={() => {
                               setAreaSeleccionada(area);
-                              setErrores(prev => {const n = {...prev}; delete n.area; return n;});
+                              // Limpiar procesos que no pertenezcan a la nueva área (modelo OCIG)
+                              const procesosValidosNuevaArea = getProcesosPorArea(area.nombre, area.tipo);
+                              setProcesosSeleccionados(prev => 
+                                prev.filter(p => procesosValidosNuevaArea.includes(p))
+                              );
+                              setErrores(prev => {
+                                const n = {...prev}; 
+                                delete n.area; 
+                                delete n.relacionProcesoArea;
+                                delete n.procesosArea;
+                                return n;
+                              });
                             }}
                             className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
                               areaSeleccionada?.id === area.id
@@ -1070,6 +1159,106 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                           </p>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* ═══════════════════════════════════════════════════════════════════════════
+                      SELECCIÓN DE PROCESOS FILTRADOS POR ÁREA (OBLIGATORIO - MODELO OCIG)
+                      ═══════════════════════════════════════════════════════════════════════════ */}
+                  {areaSeleccionada && (
+                    <div className="mt-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                          <Target className="w-4 h-4 text-blue-600" />
+                          Proceso(s) Auditado(s) *
+                          <Badge className="bg-red-100 text-red-700 text-[10px]">OBLIGATORIO</Badge>
+                        </label>
+                        <Badge variant="outline" className="text-xs">
+                          {getProcesosPorArea(areaSeleccionada.nombre, areaSeleccionada.tipo).length} procesos disponibles
+                        </Badge>
+                      </div>
+                      
+                      <p className="text-xs text-gray-600 mb-3">
+                        Seleccione los procesos que serán auditados dentro del área "{areaSeleccionada.nombre}".
+                        <span className="font-semibold text-blue-700"> Esta relación Proceso ↔ Área es obligatoria según el modelo OCIG.</span>
+                      </p>
+
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {getProcesosPorArea(areaSeleccionada.nombre, areaSeleccionada.tipo).map((proceso) => (
+                          <button
+                            key={proceso}
+                            type="button"
+                            onClick={() => {
+                              setProcesosSeleccionados(prev =>
+                                prev.includes(proceso)
+                                  ? prev.filter(p => p !== proceso)
+                                  : [...prev, proceso]
+                              );
+                              setErrores(prev => {
+                                const n = {...prev}; 
+                                delete n.procesosArea;
+                                delete n.relacionProcesoArea;
+                                return n;
+                              });
+                            }}
+                            className={`p-3 rounded-lg border-2 text-left transition-all ${
+                              procesosSeleccionados.includes(proceso)
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                                procesosSeleccionados.includes(proceso)
+                                  ? 'border-blue-500 bg-blue-500'
+                                  : 'border-gray-300'
+                              }`}>
+                                {procesosSeleccionados.includes(proceso) && (
+                                  <Check className="w-3 h-3 text-white" />
+                                )}
+                              </div>
+                              <span className="text-sm font-medium text-gray-700">{proceso}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Errores de procesos */}
+                      {errores.procesosArea && (
+                        <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                          <p className="text-xs text-red-700 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {errores.procesosArea}
+                          </p>
+                        </div>
+                      )}
+
+                      {errores.relacionProcesoArea && (
+                        <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                          <p className="text-xs text-red-700 flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {errores.relacionProcesoArea}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Mensaje de relación válida */}
+                      {procesosSeleccionados.length > 0 && !errores.relacionProcesoArea && (
+                        <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                          <div className="flex items-center gap-2">
+                            <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-semibold text-green-800">
+                                Relación Proceso ↔ Área válida (Modelo OCIG)
+                              </p>
+                              <p className="text-xs text-green-700 mt-1">
+                                {procesosSeleccionados.length} proceso(s) seleccionado(s) para el área "{areaSeleccionada.nombre}": 
+                                <span className="font-medium"> {procesosSeleccionados.join(', ')}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

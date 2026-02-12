@@ -460,7 +460,9 @@ export class ProgramaAnualService {
     await this.auditoriaRepository.remove(auditoria);
 
     // Recalcular estadísticas del programa
-    await this.recalcularEstadisticas(programaId);
+    if (programaId) {
+      await this.recalcularEstadisticas(programaId);
+    }
   }
 
   /**

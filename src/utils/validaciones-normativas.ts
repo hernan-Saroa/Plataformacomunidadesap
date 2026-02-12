@@ -340,6 +340,61 @@ export const VALIDACIONES_KANBAN = {
 };
 
 // ============================================
+// VALIDACIONES FLUJO PLAN MEJORAMIENTO → SEGUIMIENTO
+// ============================================
+
+/**
+ * Estados del plan de mejoramiento que permiten acceso a seguimientos.
+ * Regla de negocio: Solo se puede registrar seguimiento cuando el plan está aprobado.
+ */
+export const ESTADOS_PLAN_PERMITEN_SEGUIMIENTO = [
+  'APROBADO',
+  'EN_EJECUCION',
+  'COMPLETADO'
+] as const;
+
+/**
+ * Etapas de auditoría que permiten acceso a seguimientos de planes de mejoramiento.
+ * Regla de negocio: Seguimientos solo desde Comunicación en adelante.
+ */
+export const ETAPAS_AUDITORIA_PERMITEN_SEGUIMIENTO = [
+  'COMUNICACION',
+  'SEGUIMIENTO', 
+  'FINALIZADA'
+] as const;
+
+/**
+ * Valida si un plan de mejoramiento permite acceso a seguimientos
+ * @param estadoPlan Estado actual del plan de mejoramiento
+ * @param etapaAuditoria Etapa actual de la auditoría (opcional)
+ * @returns Objeto con resultado de validación y mensaje de error si aplica
+ */
+export function validarAccesoSeguimiento(
+  estadoPlan: string,
+  etapaAuditoria?: string
+): { permitido: boolean; mensaje?: string } {
+  // Validar estado del plan
+  if (!ESTADOS_PLAN_PERMITEN_SEGUIMIENTO.includes(estadoPlan as any)) {
+    return {
+      permitido: false,
+      mensaje: `El Plan de Mejoramiento debe estar APROBADO para registrar seguimientos. ` +
+        `Estado actual: "${estadoPlan}". Flujo: Comunicación → Formulación → Revisión → APROBACIÓN → Seguimiento.`
+    };
+  }
+
+  // Validar etapa de auditoría si está definida
+  if (etapaAuditoria && !ETAPAS_AUDITORIA_PERMITEN_SEGUIMIENTO.includes(etapaAuditoria as any)) {
+    return {
+      permitido: false,
+      mensaje: `La auditoría debe estar en etapa de Comunicación, Seguimiento o Finalizada. ` +
+        `Etapa actual: "${etapaAuditoria}".`
+    };
+  }
+
+  return { permitido: true };
+}
+
+// ============================================
 // EM-FO-002 - FÓRMULAS DE CUMPLIMIENTO
 // ============================================
 
