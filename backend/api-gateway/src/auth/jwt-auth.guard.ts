@@ -16,6 +16,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/verificar-documento/i,
     /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
     /^\/certificados\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
+    /^\/certificados\/api\/v\d+\/certificates\/certificados\/verify\/.+/i,
     /^\/certificados\/api\/v\d+\/certificados\/verify\/.+/i,
     // Reenvío de certificados laborales (ruta con prefijo /certificates/certificados)
     /^\/certificados\/api\/v\d+\/certificates\/certificados\/[^/]+\/reenviar/i,
@@ -23,6 +24,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificados\/[^/]+\/reenviar/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
+
   ];
 
   constructor(private readonly reflector: Reflector) {
