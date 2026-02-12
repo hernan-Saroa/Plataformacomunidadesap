@@ -97,5 +97,29 @@ export class CreateAuditLogDto {
   @IsOptional()
   @IsString()
   errorStack?: string;
+
+  // Campos para tracking de cambios (datos viejos y nuevos)
+  @IsOptional()
+  @IsString()
+  entityName?: string; // Nombre de la entidad/tabla modificada
+
+  @IsOptional()
+  @IsString()
+  entityId?: string; // ID del registro modificado
+
+  @IsOptional()
+  @IsObject()
+  previousData?: any; // Datos ANTES de la modificación (payload viejo)
+
+  @IsOptional()
+  @IsObject()
+  newData?: any; // Datos DESPUÉS de la modificación (payload nuevo)
+
+  @IsOptional()
+  changes?: Array<{
+    field: string;
+    oldValue: any;
+    newValue: any;
+  }>; // Resumen de cambios específicos
 }
 
