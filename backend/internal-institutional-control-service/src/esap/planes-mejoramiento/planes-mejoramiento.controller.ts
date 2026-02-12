@@ -314,5 +314,96 @@ export class PlanesMejoramientoController {
       throw new NotFoundException(error.message);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENDPOINTS PARA DOCUMENTOS JERÁRQUICOS POR ACCIÓN CORRECTIVA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /planes-mejoramiento/:planId/estructura-jerarquica
+   * Obtiene el plan con estructura jerárquica completa: Plan -> Acciones -> Documentos
+   * Incluye estadísticas de documentos por acción y globales
+   */
+  @Get(':planId/estructura-jerarquica')
+  async getPlanConDocumentosJerarquicos(@Param('planId') planId: string) {
+    try {
+      return await this.planesMejoramientoService.findOneConDocumentosJerarquicos(planId);
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/acciones-documentos
+   * Obtiene todas las acciones del plan con sus documentos anidados
+   */
+  @Get(':planId/acciones-documentos')
+  async getAccionesConDocumentos(@Param('planId') planId: string) {
+    try {
+      const acciones = await this.planesMejoramientoService.getAccionesConDocumentos(planId);
+      return {
+        success: true,
+        planId,
+        acciones,
+        totalAcciones: acciones.length,
+        totalDocumentos: acciones.reduce((sum, a) => sum + a.totalDocumentos, 0),
+      };
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/acciones/:accionId/documentos
+   * Obtiene los documentos de una acción específica (orden cronológico)
+   */
+  @Get(':planId/acciones/:accionId/documentos')
+  async getDocumentosAccion(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+  ) {
+    try {
+      const documentos = await this.planesMejoramientoService.getDocumentosAccion(planId, accionId);
+      return {
+        success: true,
+        planId,
+        accionId,
+        documentos,
+        total: documentos.length,
+      };
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
+  }
+
+  /**
+   * GET /planes-mejoramiento/:planId/acciones/:accionId/detalle-con-documentos
+   * Obtiene una acción específica con todos sus documentos anidados
+   */
+  @Get(':planId/acciones/:accionId/detalle-con-documentos')
+  async getAccionConDocumentos(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+  ) {
+    try {
+      return await this.planesMejoramientoService.getAccionConDocumentos(planId, accionId);
+    } catch (error) {
+      throw new NotFoundException(error.message);
+    }
+  }
+
+  /**
+   * DELETE /planes-mejoramiento/:planId/acciones/:accionId/documentos/:documentoId
+   * Elimina un documento de una acción correctiva
+   */
+  @Delete(':planId/acciones/:accionId/documentos/:documentoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDocumentoAccion(
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Param('documentoId') documentoId: string,
+  ) {
+    return this.planesMejoramientoService.deleteDocumentoAccion(planId, accionId, documentoId);
+  }
 }
 

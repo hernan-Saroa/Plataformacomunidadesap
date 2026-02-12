@@ -9,7 +9,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Res,
+  Header,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { UniversoAuditoriasService } from './universo-auditorias.service';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
@@ -17,6 +20,21 @@ import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
 @Controller('universo-auditorias')
 export class UniversoAuditoriasController {
   constructor(private readonly universoAuditoriasService: UniversoAuditoriasService) {}
+
+  /**
+   * GET /universo-auditorias/exportar
+   * Exporta el universo de auditorías a Excel
+   */
+  @Get('exportar')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportarExcel(@Res() res: Response) {
+    const buffer = await this.universoAuditoriasService.exportarExcel();
+    const fecha = new Date().toISOString().split('T')[0];
+    const filename = `Universo_Auditorias_ESAP_${fecha}.xlsx`;
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
 
   /**
    * GET /universo-auditorias/procesos

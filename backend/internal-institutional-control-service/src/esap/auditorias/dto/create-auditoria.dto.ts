@@ -60,14 +60,14 @@ export class CreateAuditoriaDto {
   @IsOptional()
   prioridad?: PrioridadAuditoria;
 
-  // Campos adicionales del formulario
+  // Campos OBLIGATORIOS según modelo OCIG: Área y Proceso deben estar asociados
   @IsString()
-  @IsOptional()
-  areaObjetivo?: string;
+  @IsNotEmpty({ message: 'El Área Responsable es obligatoria según el modelo OCIG' })
+  areaObjetivo: string;
 
   @IsString()
-  @IsOptional()
-  procesoAuditado?: string;
+  @IsNotEmpty({ message: 'El Proceso Auditado es obligatorio según el modelo OCIG' })
+  procesoAuditado: string;
 
   @IsString()
   @IsOptional()

@@ -243,6 +243,7 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
         limpiarSeleccion,
         auditoriasConHallazgos,
         agregarAuditoriaConHallazgos,
+        limpiarAuditoriasConHallazgos,
         actualizarEstadoPlan,
         planesCreados,
         crearPlan,

@@ -545,6 +545,13 @@ export const universoAuditoriasApi = {
       method: 'DELETE',
     });
   },
+
+  /**
+   * Exportar universo de auditorías a Excel
+   */
+  exportarExcel: (): string => {
+    return `${API_BASE_URL}/universo-auditorias/exportar`;
+  },
 };
 
 // ==================== PROGRAMA ANUAL ====================

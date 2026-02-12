@@ -50,7 +50,8 @@ export interface DetalleAuditoriaData {
   proceso: string;
   tipo: string;
   vigencia: string;
-  estado: EstadoKanban;
+  estado?: EstadoKanban;
+  estadoKanban?: EstadoKanban;  // Campo del backend
   progreso: number;
   objetivo?: string;
   alcance?: string;
@@ -142,6 +143,12 @@ export function DetalleAuditoriaOCIG({
   };
 
   // Configurar tabs
+  // El tab de Hallazgos solo se muestra si la auditoría NO está en Planeación
+  // Según regla de negocio: Hallazgos se identifican en Ejecución y se formalizan en Comunicación
+  const estadoActual = auditoria.estadoKanban || auditoria.estado || '';
+  const estadoNormalizado = estadoActual.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const mostrarTabHallazgos = estadoNormalizado !== 'planeacion' && estadoNormalizado !== 'backlog';
+  
   const tabs: Tab[] = [
     {
       id: 'general',
@@ -179,13 +186,14 @@ export function DetalleAuditoriaOCIG({
         />
       ),
     },
-    {
+    // Tab de Hallazgos solo visible a partir de Ejecución
+    ...(mostrarTabHallazgos ? [{
       id: 'hallazgos',
       label: 'Hallazgos',
       icon: AlertTriangle,
       badge: auditoria.hallazgos || 0,
       content: <TabHallazgos />,
-    },
+    }] : []),
     {
       id: 'papeles',
       label: 'Papeles Trabajo',

@@ -4,7 +4,18 @@ import { Repository } from 'typeorm';
 import { Hallazgo, HallazgoCategoria, HallazgoEstado } from './entities/hallazgo.entity';
 import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
-import { Auditoria } from '../auditorias/entities/auditoria.entity';
+import { Auditoria, EstadoKanban } from '../auditorias/entities/auditoria.entity';
+
+/**
+ * Etapas permitidas para crear/editar hallazgos.
+ * Según regla de negocio: Hallazgos se identifican en Ejecución y se formalizan en Comunicación.
+ * NO se pueden crear ni editar en Planeación.
+ */
+const ETAPAS_PERMITIDAS_HALLAZGOS = [
+  EstadoKanban.EJECUCION,
+  EstadoKanban.COMUNICACION,
+  EstadoKanban.SEGUIMIENTO, // Permitir seguimiento para editar hallazgos ya creados
+];
 
 @Injectable()
 export class HallazgosService {
@@ -14,6 +25,36 @@ export class HallazgosService {
     @InjectRepository(Auditoria)
     private readonly auditoriaRepository: Repository<Auditoria>,
   ) {}
+
+  /**
+   * Valida que la auditoría esté en una etapa que permita operaciones sobre hallazgos
+   * @param auditoria La auditoría a validar
+   * @param operacion Descripción de la operación para el mensaje de error
+   * @throws BadRequestException si la auditoría está en una etapa no permitida
+   */
+  private validarEtapaAuditoriaParaHallazgos(auditoria: Auditoria, operacion: string): void {
+    const estadoActual = auditoria.estadoKanban;
+    
+    // Si no hay estadoKanban, verificar la fase
+    if (!estadoActual) {
+      // Si la auditoría está en fase planeacion, no permitir
+      if (auditoria.fase === 'planeacion') {
+        throw new BadRequestException(
+          `No se puede ${operacion} en la etapa de Planeación. ` +
+          `Los hallazgos solo se pueden registrar a partir de la fase de Ejecución.`
+        );
+      }
+      return; // Permitir si no tiene estadoKanban y no está en planeacion
+    }
+
+    // Verificar si el estado actual está en las etapas permitidas
+    if (!ETAPAS_PERMITIDAS_HALLAZGOS.includes(estadoActual)) {
+      throw new BadRequestException(
+        `No se puede ${operacion} en la etapa "${estadoActual}". ` +
+        `Los hallazgos solo se pueden registrar durante Ejecución, Comunicación o Seguimiento.`
+      );
+    }
+  }
 
   /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
@@ -191,11 +232,22 @@ export class HallazgosService {
 
     // Intentar enlazar la auditoría por ID o por código
     let auditoriaId: string | null = createDto.auditoriaId || null;
-    if (!auditoriaId && createDto.auditoria) {
-      const auditoria = await this.auditoriaRepository.findOne({
+    let auditoria: Auditoria | null = null;
+    
+    if (auditoriaId) {
+      auditoria = await this.auditoriaRepository.findOne({
+        where: { id: auditoriaId },
+      });
+    } else if (createDto.auditoria) {
+      auditoria = await this.auditoriaRepository.findOne({
         where: { codigo: createDto.auditoria },
       });
       auditoriaId = auditoria?.id ?? null;
+    }
+
+    // Validar que la auditoría esté en una etapa que permita crear hallazgos
+    if (auditoria) {
+      this.validarEtapaAuditoriaParaHallazgos(auditoria, 'crear hallazgo');
     }
 
     const hallazgo = this.hallazgoRepository.create({
@@ -224,6 +276,16 @@ export class HallazgosService {
     const hallazgo = await this.findOne(id);
     const auditoriaAnterior = hallazgo.auditoriaId;
 
+    // Validar etapa de auditoría actual antes de permitir edición
+    if (hallazgo.auditoriaId) {
+      const auditoriaActual = await this.auditoriaRepository.findOne({
+        where: { id: hallazgo.auditoriaId },
+      });
+      if (auditoriaActual) {
+        this.validarEtapaAuditoriaParaHallazgos(auditoriaActual, 'editar hallazgo');
+      }
+    }
+
     // Resolver nueva auditoría si se envía
     let nuevoAuditoriaId = hallazgo.auditoriaId;
     let nuevoCodigoAuditoria = hallazgo.auditoria;
@@ -234,6 +296,8 @@ export class HallazgosService {
       if (!auditoria) {
         throw new BadRequestException(`Auditoría con ID ${updateDto.auditoriaId} no existe`);
       }
+      // Validar que la nueva auditoría también esté en una etapa permitida
+      this.validarEtapaAuditoriaParaHallazgos(auditoria, 'vincular hallazgo');
       nuevoAuditoriaId = auditoria.id;
       nuevoCodigoAuditoria = auditoria.codigo;
     } else if (updateDto.auditoria) {
@@ -243,6 +307,8 @@ export class HallazgosService {
       if (!auditoria) {
         throw new BadRequestException(`Auditoría con código ${updateDto.auditoria} no existe`);
       }
+      // Validar que la nueva auditoría también esté en una etapa permitida
+      this.validarEtapaAuditoriaParaHallazgos(auditoria, 'vincular hallazgo');
       nuevoAuditoriaId = auditoria.id;
       nuevoCodigoAuditoria = auditoria.codigo;
     }

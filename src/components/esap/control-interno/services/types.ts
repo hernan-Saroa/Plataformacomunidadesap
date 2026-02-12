@@ -321,7 +321,7 @@ export interface Rol {
 
 export interface PlanAnual5Roles {
   id: string;
-  añoFiscal: number;
+  año: number; // El backend usa "año" no "añoFiscal"
   fechaCreacion: string;
   fechaActualizacion?: string;
   responsable: string;

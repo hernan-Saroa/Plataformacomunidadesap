@@ -215,23 +215,99 @@ const AREAS_INSTITUCIONALES = [
   'Planeación Estratégica'
 ];
 
-const PROCESOS_INSTITUCIONALES = [
-  'Contratación',
-  'Presupuesto',
-  'Tesorería',
-  'Contabilidad',
-  'Nómina',
-  'Selección y Vinculación',
-  'Capacitación',
-  'Evaluación Desempeño',
-  'Admisiones',
-  'Registro Académico',
-  'Infraestructura TI',
-  'Archivo y Correspondencia',
-  'PQRS',
-  'Inventarios',
-  'Almacén'
-];
+// ═══════════════════════════════════════════════════════════════════════════
+// MAPEO PROCESO ↔ ÁREA (OBLIGATORIO según modelo OCIG)
+// Cada proceso pertenece a un área específica. Esta relación es obligatoria.
+// ═══════════════════════════════════════════════════════════════════════════
+const PROCESO_AREA_MAP: Record<string, string[]> = {
+  'Gestión Administrativa': [
+    'Inventarios',
+    'Almacén',
+    'Servicios Generales',
+    'Gestión de Bienes'
+  ],
+  'Gestión Financiera': [
+    'Presupuesto',
+    'Tesorería',
+    'Contabilidad',
+    'Cartera'
+  ],
+  'Gestión Talento Humano': [
+    'Nómina',
+    'Selección y Vinculación',
+    'Capacitación',
+    'Evaluación Desempeño',
+    'Bienestar Social',
+    'Seguridad y Salud en el Trabajo'
+  ],
+  'Gestión Académica': [
+    'Admisiones',
+    'Registro Académico',
+    'Docencia',
+    'Investigación',
+    'Extensión y Proyección Social'
+  ],
+  'Gestión Tecnológica': [
+    'Infraestructura TI',
+    'Desarrollo de Software',
+    'Soporte Técnico',
+    'Seguridad Informática'
+  ],
+  'Gestión Contractual': [
+    'Contratación',
+    'Supervisión de Contratos',
+    'Liquidación de Contratos'
+  ],
+  'Gestión Documental': [
+    'Archivo y Correspondencia',
+    'Gestión de Expedientes',
+    'Atención de PQRS'
+  ],
+  'Gestión Riesgos': [
+    'Identificación de Riesgos',
+    'Monitoreo de Riesgos',
+    'Planes de Tratamiento'
+  ],
+  'Gestión Ambiental': [
+    'Plan de Gestión Ambiental',
+    'Gestión de Residuos',
+    'Programas Ambientales'
+  ],
+  'Atención al Ciudadano': [
+    'PQRS',
+    'Servicio al Ciudadano',
+    'Ventanilla Única'
+  ],
+  'Control Interno': [
+    'Auditoría Interna',
+    'Evaluación del SCI',
+    'Seguimiento a Planes'
+  ],
+  'Planeación Estratégica': [
+    'Plan Estratégico Institucional',
+    'Plan de Acción',
+    'Indicadores de Gestión',
+    'Proyectos de Inversión'
+  ]
+};
+
+// Lista plana de todos los procesos (para referencia/legacy)
+const PROCESOS_INSTITUCIONALES = Object.values(PROCESO_AREA_MAP).flat();
+
+/**
+ * Obtiene los procesos disponibles para un área específica
+ */
+function getProcesosPorArea(area: string): string[] {
+  return PROCESO_AREA_MAP[area] || [];
+}
+
+/**
+ * Valida si un proceso pertenece a un área
+ */
+function validarRelacionProcesoArea(proceso: string, area: string): boolean {
+  const procesosDelArea = PROCESO_AREA_MAP[area];
+  return procesosDelArea ? procesosDelArea.includes(proceso) : false;
+}
 
 const AUDITORES_MOCK = [
   { id: 'aud-001', nombre: 'Juan Pérez Gómez', cargo: 'Auditor Senior' },
@@ -517,6 +593,26 @@ export function FormularioAuditoriaUnificado({
 
     if (!formData.territorial) {
       toast.error('Debe seleccionar una territorial');
+      setPasoActual(2);
+      return;
+    }
+
+    // Validación obligatoria: Área y Proceso (modelo OCIG)
+    if (!formData.areaObjetivo) {
+      toast.error('Debe seleccionar un Área Responsable');
+      setPasoActual(2);
+      return;
+    }
+
+    if (!formData.procesoAuditado) {
+      toast.error('Debe seleccionar un Proceso Auditado');
+      setPasoActual(2);
+      return;
+    }
+
+    // Validar relación Proceso ↔ Área
+    if (!validarRelacionProcesoArea(formData.procesoAuditado, formData.areaObjetivo)) {
+      toast.error(`El proceso "${formData.procesoAuditado}" no pertenece al área "${formData.areaObjetivo}". Seleccione un proceso válido.`);
       setPasoActual(2);
       return;
     }
@@ -984,11 +1080,22 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
             </select>
           </FieldWrapper>
 
-          {/* Área Objetivo */}
-          <FieldWrapper label="Área Institucional" required>
+          {/* Área Responsable - OBLIGATORIO según modelo OCIG */}
+          <FieldWrapper 
+            label="Área Responsable" 
+            required
+            helpText="Seleccione primero el área. El proceso se filtrará automáticamente."
+          >
             <select
               value={formData.areaObjetivo}
-              onChange={(e) => onChange('areaObjetivo', e.target.value)}
+              onChange={(e) => {
+                const nuevaArea = e.target.value;
+                onChange('areaObjetivo', nuevaArea);
+                // Limpiar proceso cuando se cambia de área (modelo OCIG)
+                if (formData.procesoAuditado && !validarRelacionProcesoArea(formData.procesoAuditado, nuevaArea)) {
+                  onChange('procesoAuditado', '');
+                }
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione un área...</option>
@@ -1000,21 +1107,47 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
             </select>
           </FieldWrapper>
 
-          {/* Proceso Auditado */}
-          <FieldWrapper label="Proceso Específico" required>
+          {/* Proceso Auditado - OBLIGATORIO y filtrado por área (modelo OCIG) */}
+          <FieldWrapper 
+            label="Proceso Auditado" 
+            required
+            helpText={formData.areaObjetivo 
+              ? `${getProcesosPorArea(formData.areaObjetivo).length} procesos disponibles para ${formData.areaObjetivo}`
+              : 'Seleccione primero un área para ver sus procesos'
+            }
+          >
             <select
               value={formData.procesoAuditado}
               onChange={(e) => onChange('procesoAuditado', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 
+                ${!formData.areaObjetivo 
+                  ? 'border-gray-200 bg-gray-100 cursor-not-allowed text-gray-400' 
+                  : 'border-gray-300 bg-white'
+                }`}
+              disabled={!formData.areaObjetivo}
             >
-              <option value="">Seleccione un proceso...</option>
-              {PROCESOS_INSTITUCIONALES.map(proceso => (
+              <option value="">
+                {formData.areaObjetivo ? 'Seleccione un proceso...' : '⚠️ Primero seleccione un área'}
+              </option>
+              {formData.areaObjetivo && getProcesosPorArea(formData.areaObjetivo).map(proceso => (
                 <option key={proceso} value={proceso}>
                   {proceso}
                 </option>
               ))}
             </select>
           </FieldWrapper>
+
+          {/* Mensaje informativo de relación Proceso ↔ Área */}
+          {formData.areaObjetivo && formData.procesoAuditado && (
+            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                <p className="text-sm text-green-700">
+                  <span className="font-semibold">Relación válida:</span> El proceso "{formData.procesoAuditado}" pertenece al área "{formData.areaObjetivo}"
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Alcance */}
           <FieldWrapper

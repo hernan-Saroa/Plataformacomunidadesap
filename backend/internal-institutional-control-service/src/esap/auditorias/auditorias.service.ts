@@ -46,6 +46,33 @@ export class AuditoriasService {
     private readonly notificacionesService: NotificacionesService,
   ) {}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAPEO PROCESO ↔ ÁREA (OBLIGATORIO según modelo OCIG)
+  // Cada proceso pertenece a un área específica. Esta relación es obligatoria.
+  // ═══════════════════════════════════════════════════════════════════════════
+  private static readonly PROCESO_AREA_MAP: Record<string, string[]> = {
+    'Gestión Administrativa': ['Inventarios', 'Almacén', 'Servicios Generales', 'Gestión de Bienes'],
+    'Gestión Financiera': ['Presupuesto', 'Tesorería', 'Contabilidad', 'Cartera'],
+    'Gestión Talento Humano': ['Nómina', 'Selección y Vinculación', 'Capacitación', 'Evaluación Desempeño', 'Bienestar Social', 'Seguridad y Salud en el Trabajo'],
+    'Gestión Académica': ['Admisiones', 'Registro Académico', 'Docencia', 'Investigación', 'Extensión y Proyección Social'],
+    'Gestión Tecnológica': ['Infraestructura TI', 'Desarrollo de Software', 'Soporte Técnico', 'Seguridad Informática'],
+    'Gestión Contractual': ['Contratación', 'Supervisión de Contratos', 'Liquidación de Contratos'],
+    'Gestión Documental': ['Archivo y Correspondencia', 'Gestión de Expedientes', 'Atención de PQRS'],
+    'Gestión Riesgos': ['Identificación de Riesgos', 'Monitoreo de Riesgos', 'Planes de Tratamiento'],
+    'Gestión Ambiental': ['Plan de Gestión Ambiental', 'Gestión de Residuos', 'Programas Ambientales'],
+    'Atención al Ciudadano': ['PQRS', 'Servicio al Ciudadano', 'Ventanilla Única'],
+    'Control Interno': ['Auditoría Interna', 'Evaluación del SCI', 'Seguimiento a Planes'],
+    'Planeación Estratégica': ['Plan Estratégico Institucional', 'Plan de Acción', 'Indicadores de Gestión', 'Proyectos de Inversión'],
+  };
+
+  /**
+   * Valida si un proceso pertenece a un área según el modelo OCIG
+   */
+  private validarRelacionProcesoArea(proceso: string, area: string): boolean {
+    const procesosDelArea = AuditoriasService.PROCESO_AREA_MAP[area];
+    return procesosDelArea ? procesosDelArea.includes(proceso) : false;
+  }
+
   /**
    * Valida si un string es un UUID válido
    */
@@ -379,6 +406,22 @@ export class AuditoriasService {
       throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VALIDACIÓN OBLIGATORIA: Relación Proceso ↔ Área (modelo OCIG)
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (!createDto.areaObjetivo || !createDto.procesoAuditado) {
+      throw new BadRequestException(
+        'Los campos Área Responsable y Proceso Auditado son obligatorios según el modelo OCIG'
+      );
+    }
+
+    if (!this.validarRelacionProcesoArea(createDto.procesoAuditado, createDto.areaObjetivo)) {
+      throw new BadRequestException(
+        `El proceso "${createDto.procesoAuditado}" no pertenece al área "${createDto.areaObjetivo}". ` +
+        `Seleccione un proceso válido para el área indicada según el modelo OCIG.`
+      );
+    }
+
     // Generar código automático
     const codigo = await this.generarCodigo();
 
@@ -594,6 +637,22 @@ export class AuditoriasService {
 
       if (fechaFin < fechaInicio) {
         throw new BadRequestException('La fecha de finalización debe ser posterior a la fecha de inicio');
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VALIDACIÓN OBLIGATORIA: Relación Proceso ↔ Área (modelo OCIG) en edición
+    // ═══════════════════════════════════════════════════════════════════════════
+    const areaFinal = updateDto.areaObjetivo ?? auditoria.areaObjetivo;
+    const procesoFinal = updateDto.procesoAuditado ?? auditoria.procesoAuditado;
+    
+    // Si se está actualizando área o proceso, validar la relación
+    if (updateDto.areaObjetivo !== undefined || updateDto.procesoAuditado !== undefined) {
+      if (areaFinal && procesoFinal && !this.validarRelacionProcesoArea(procesoFinal, areaFinal)) {
+        throw new BadRequestException(
+          `El proceso "${procesoFinal}" no pertenece al área "${areaFinal}". ` +
+          `Seleccione un proceso válido para el área indicada según el modelo OCIG.`
+        );
       }
     }
 

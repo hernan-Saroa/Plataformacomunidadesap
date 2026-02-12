@@ -14,6 +14,7 @@ import { ProgramaAnualService } from './programa-anual.service';
 import { CreateProgramaAnualDto } from './dto/create-programa-anual.dto';
 import { UpdateProgramaAnualDto } from './dto/update-programa-anual.dto';
 import { CreateAuditoriaProgramadaDto } from './dto/create-auditoria-programada.dto';
+import { UpdateAuditoriaProgramadaDto } from './dto/update-auditoria-programada.dto';
 import { AmpliarPlazoDto } from './dto/ampliar-plazo.dto';
 
 @Controller('programa-anual')
@@ -96,6 +97,31 @@ export class ProgramaAnualController {
   @Get(':id/cronograma')
   getCronograma(@Param('id') id: string) {
     return this.programaAnualService.getCronograma(id);
+  }
+
+  /**
+   * PUT /programa-anual/auditorias/:auditoriaId
+   * Actualiza una auditoría programada
+   * Solo permite edición si el programa tiene estado aprobado o borrador
+   */
+  @Put('auditorias/:auditoriaId')
+  updateAuditoria(
+    @Param('auditoriaId') auditoriaId: string,
+    @Body() updateDto: UpdateAuditoriaProgramadaDto,
+  ) {
+    return this.programaAnualService.updateAuditoria(auditoriaId, updateDto);
+  }
+
+  /**
+   * DELETE /programa-anual/auditorias/:auditoriaId
+   * Elimina una auditoría programada
+   * Solo permite eliminación si el programa tiene estado aprobado o borrador
+   * Y la auditoría no está en ejecución o completada
+   */
+  @Delete('auditorias/:auditoriaId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteAuditoria(@Param('auditoriaId') auditoriaId: string) {
+    return this.programaAnualService.deleteAuditoria(auditoriaId);
   }
 
   /**

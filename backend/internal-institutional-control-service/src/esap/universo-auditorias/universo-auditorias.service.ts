@@ -4,6 +4,7 @@ import { Repository, ILike } from 'typeorm';
 import { ProcesoAuditable, TipoProceso, NivelRiesgo } from './entities/proceso-auditable.entity';
 import { CreateProcesoAuditableDto } from './dto/create-proceso-auditable.dto';
 import { UpdateProcesoAuditableDto } from './dto/update-proceso-auditable.dto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class UniversoAuditoriasService {
@@ -367,6 +368,144 @@ export class UniversoAuditoriasService {
       trienal: procesos.filter(p => p.priorizacionAnos === 3),
       cuatrienal: procesos.filter(p => p.priorizacionAnos === 4),
     };
+  }
+
+  /**
+   * Exporta el universo de auditorías a Excel
+   * Genera un archivo Excel con toda la información de procesos auditables
+   */
+  async exportarExcel(): Promise<Buffer> {
+    // Obtener todos los procesos
+    const procesos = await this.findAll();
+
+    // Crear libro de trabajo
+    const workbook = XLSX.utils.book_new();
+
+    // ========== HOJA 1: Todos los Procesos ==========
+    const datosGenerales = procesos.map((p, index) => ({
+      'No.': index + 1,
+      'Código': p.codigo,
+      'Nombre del Proceso': p.nombre,
+      'Descripción': p.descripcion,
+      'Tipo': p.tipo,
+      'Macroproceso': p.macroproceso,
+      'Dependencia': p.dependencia,
+      'Responsable': p.responsable,
+      'Territorial': p.territorial || 'N/A',
+      'Nivel de Riesgo': p.evaluacionRiesgo?.nivelRiesgo?.toUpperCase() || 'N/A',
+      'Probabilidad': p.evaluacionRiesgo?.probabilidad || 'N/A',
+      'Impacto': p.evaluacionRiesgo?.impacto || 'N/A',
+      'Riesgo Inherente': p.evaluacionRiesgo?.riesgoInherente || 'N/A',
+      'Nivel Control': p.evaluacionRiesgo?.nivelControl || 'N/A',
+      'Riesgo Residual': p.evaluacionRiesgo?.riesgoResidual || 'N/A',
+      'Frecuencia Auditoría': p.frecuenciaAuditoria,
+      'Prioridad': p.prioridad,
+      'Priorización (Años)': p.priorizacionAnos,
+      'Última Auditoría': p.ultimaAuditoria ? new Date(p.ultimaAuditoria).toLocaleDateString('es-CO') : 'N/A',
+      'Próxima Auditoría': p.proximaAuditoria ? new Date(p.proximaAuditoria).toLocaleDateString('es-CO') : 'N/A',
+    }));
+
+    const wsGeneral = XLSX.utils.json_to_sheet(datosGenerales);
+    
+    // Ajustar anchos de columna
+    wsGeneral['!cols'] = [
+      { wch: 5 },   // No.
+      { wch: 15 },  // Código
+      { wch: 40 },  // Nombre
+      { wch: 50 },  // Descripción
+      { wch: 15 },  // Tipo
+      { wch: 25 },  // Macroproceso
+      { wch: 25 },  // Dependencia
+      { wch: 25 },  // Responsable
+      { wch: 15 },  // Territorial
+      { wch: 15 },  // Nivel Riesgo
+      { wch: 12 },  // Probabilidad
+      { wch: 10 },  // Impacto
+      { wch: 15 },  // Riesgo Inherente
+      { wch: 12 },  // Nivel Control
+      { wch: 15 },  // Riesgo Residual
+      { wch: 20 },  // Frecuencia
+      { wch: 10 },  // Prioridad
+      { wch: 18 },  // Priorización
+      { wch: 15 },  // Última Auditoría
+      { wch: 15 },  // Próxima Auditoría
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, wsGeneral, 'Universo Auditorías');
+
+    // ========== HOJA 2: Matriz de Riesgo ==========
+    const matrizRiesgo = await this.getMatrizRiesgo();
+    
+    const datosMatriz = [
+      ...matrizRiesgo.alto.map(p => ({
+        'Nivel de Riesgo': 'ALTO',
+        'Código': p.codigo,
+        'Proceso': p.nombre,
+        'Macroproceso': p.macroproceso,
+        'Dependencia': p.dependencia,
+        'Probabilidad': p.evaluacionRiesgo?.probabilidad,
+        'Impacto': p.evaluacionRiesgo?.impacto,
+        'Riesgo Residual': p.evaluacionRiesgo?.riesgoResidual,
+        'Priorización': `${p.priorizacionAnos} año(s)`,
+      })),
+      ...matrizRiesgo.medio.map(p => ({
+        'Nivel de Riesgo': 'MEDIO',
+        'Código': p.codigo,
+        'Proceso': p.nombre,
+        'Macroproceso': p.macroproceso,
+        'Dependencia': p.dependencia,
+        'Probabilidad': p.evaluacionRiesgo?.probabilidad,
+        'Impacto': p.evaluacionRiesgo?.impacto,
+        'Riesgo Residual': p.evaluacionRiesgo?.riesgoResidual,
+        'Priorización': `${p.priorizacionAnos} año(s)`,
+      })),
+      ...matrizRiesgo.bajo.map(p => ({
+        'Nivel de Riesgo': 'BAJO',
+        'Código': p.codigo,
+        'Proceso': p.nombre,
+        'Macroproceso': p.macroproceso,
+        'Dependencia': p.dependencia,
+        'Probabilidad': p.evaluacionRiesgo?.probabilidad,
+        'Impacto': p.evaluacionRiesgo?.impacto,
+        'Riesgo Residual': p.evaluacionRiesgo?.riesgoResidual,
+        'Priorización': `${p.priorizacionAnos} año(s)`,
+      })),
+    ];
+
+    const wsMatriz = XLSX.utils.json_to_sheet(datosMatriz);
+    wsMatriz['!cols'] = [
+      { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 25 }, { wch: 25 },
+      { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 15 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, wsMatriz, 'Matriz de Riesgo');
+
+    // ========== HOJA 3: Resumen Estadístico ==========
+    const resumen = [
+      { 'Categoría': 'Total Procesos', 'Cantidad': procesos.length },
+      { 'Categoría': 'Riesgo Alto', 'Cantidad': matrizRiesgo.alto.length },
+      { 'Categoría': 'Riesgo Medio', 'Cantidad': matrizRiesgo.medio.length },
+      { 'Categoría': 'Riesgo Bajo', 'Cantidad': matrizRiesgo.bajo.length },
+      { 'Categoría': '', 'Cantidad': '' },
+      { 'Categoría': 'Por Tipo de Proceso', 'Cantidad': '' },
+      { 'Categoría': 'Estratégicos', 'Cantidad': procesos.filter(p => p.tipo === TipoProceso.ESTRATEGICO).length },
+      { 'Categoría': 'Misionales', 'Cantidad': procesos.filter(p => p.tipo === TipoProceso.MISIONAL).length },
+      { 'Categoría': 'Apoyo', 'Cantidad': procesos.filter(p => p.tipo === TipoProceso.APOYO).length },
+      { 'Categoría': 'Evaluación', 'Cantidad': procesos.filter(p => p.tipo === TipoProceso.EVALUACION).length },
+      { 'Categoría': '', 'Cantidad': '' },
+      { 'Categoría': 'Por Priorización', 'Cantidad': '' },
+      { 'Categoría': 'Anual (1 año)', 'Cantidad': procesos.filter(p => p.priorizacionAnos === 1).length },
+      { 'Categoría': 'Bienal (2 años)', 'Cantidad': procesos.filter(p => p.priorizacionAnos === 2).length },
+      { 'Categoría': 'Trienal (3 años)', 'Cantidad': procesos.filter(p => p.priorizacionAnos === 3).length },
+      { 'Categoría': 'Cuatrienal (4 años)', 'Cantidad': procesos.filter(p => p.priorizacionAnos === 4).length },
+    ];
+
+    const wsResumen = XLSX.utils.json_to_sheet(resumen);
+    wsResumen['!cols'] = [{ wch: 25 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(workbook, wsResumen, 'Resumen');
+
+    // Generar buffer
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return buffer;
   }
 }
 

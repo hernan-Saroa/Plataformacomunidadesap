@@ -10,6 +10,7 @@ import { SeguimientoTrimestral } from './entities/seguimiento-trimestral.entity'
 import { RegistroSeguimiento } from './entities/registro-seguimiento.entity';
 import { EventoTimeline } from './entities/evento-timeline.entity';
 import { DocumentoPlanMejoramiento } from './entities/documento-plan.entity';
+import { EvidenciaDocumento } from '../evidencias/entities/evidencia-documento.entity';
 import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion } from '../aprobaciones/entities/aprobacion.entity';
@@ -24,6 +25,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
       RegistroSeguimiento,
       EventoTimeline,
       DocumentoPlanMejoramiento,
+      EvidenciaDocumento,
       Hallazgo,
       Auditoria,
       Aprobacion,

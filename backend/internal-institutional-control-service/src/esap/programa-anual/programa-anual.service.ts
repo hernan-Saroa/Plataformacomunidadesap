@@ -6,6 +6,7 @@ import { AuditoriaProgramada, EstadoAuditoriaProgramada } from './entities/audit
 import { CreateProgramaAnualDto } from './dto/create-programa-anual.dto';
 import { UpdateProgramaAnualDto } from './dto/update-programa-anual.dto';
 import { CreateAuditoriaProgramadaDto } from './dto/create-auditoria-programada.dto';
+import { UpdateAuditoriaProgramadaDto } from './dto/update-auditoria-programada.dto';
 import { AmpliarPlazoDto } from './dto/ampliar-plazo.dto';
 import { ProcesoAuditable } from '../universo-auditorias/entities/proceso-auditable.entity';
 
@@ -341,6 +342,125 @@ export class ProgramaAnualService {
     }
 
     return this.auditoriaRepository.save(auditoria);
+  }
+
+  /**
+   * Actualiza una auditoría programada
+   * Solo permite edición si el programa tiene estado 'aprobado' o 'borrador'
+   */
+  async updateAuditoria(auditoriaId: string, updateDto: UpdateAuditoriaProgramadaDto): Promise<AuditoriaProgramada> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+      relations: ['programa'],
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // Verificar el programa asociado para validar permisos según estado
+    const programa = await this.programaRepository.findOne({
+      where: { id: auditoria.programaAnualId },
+    });
+
+    if (!programa) {
+      throw new NotFoundException('Programa anual asociado no encontrado');
+    }
+
+    // Solo permitir edición en estados: borrador, aprobado
+    // No permitir edición si el programa está cerrado o en revisión
+    const estadosEditables = ['borrador', 'aprobado', 'vigente'];
+    if (!estadosEditables.includes(programa.estado)) {
+      throw new BadRequestException(
+        `No se puede editar la auditoría. El programa está en estado "${programa.estado}". ` +
+        `Solo se permite edición cuando el programa está en: ${estadosEditables.join(', ')}`
+      );
+    }
+
+    // Aplicar actualizaciones
+    if (updateDto.nombre !== undefined) auditoria.nombre = updateDto.nombre;
+    if (updateDto.tipo !== undefined) auditoria.tipo = updateDto.tipo;
+    if (updateDto.alcance !== undefined) auditoria.alcance = updateDto.alcance;
+    if (updateDto.procesoAuditar !== undefined) auditoria.procesoAuditar = updateDto.procesoAuditar;
+    if (updateDto.auditorLider !== undefined) auditoria.auditorLider = updateDto.auditorLider;
+    if (updateDto.equipoAuditor !== undefined) {
+      auditoria.equipoAuditor = { ...auditoria.equipoAuditor, ...updateDto.equipoAuditor };
+    }
+    if (updateDto.fechaInicioPlaneada !== undefined) {
+      auditoria.fechaInicioPlaneada = new Date(updateDto.fechaInicioPlaneada);
+    }
+    if (updateDto.fechaFinPlaneada !== undefined) {
+      auditoria.fechaFinPlaneada = new Date(updateDto.fechaFinPlaneada);
+      auditoria.fechaLimiteActual = new Date(updateDto.fechaFinPlaneada);
+    }
+    if (updateDto.duracionDias !== undefined) auditoria.duracionDias = updateDto.duracionDias;
+    if (updateDto.prioridad !== undefined) auditoria.prioridad = updateDto.prioridad;
+    if (updateDto.riesgoInherente !== undefined) auditoria.riesgoInherente = updateDto.riesgoInherente;
+    if (updateDto.esTerritorial !== undefined) auditoria.esTerritorial = updateDto.esTerritorial;
+    if (updateDto.territorial !== undefined) auditoria.territorial = updateDto.territorial;
+    if (updateDto.esEspecial !== undefined) auditoria.esEspecial = updateDto.esEspecial;
+    if (updateDto.etapas !== undefined) {
+      auditoria.etapas = {
+        ...auditoria.etapas,
+        ...(updateDto.etapas.planeacion && { planeacion: { ...auditoria.etapas.planeacion, ...updateDto.etapas.planeacion } }),
+        ...(updateDto.etapas.ejecucion && { ejecucion: { ...auditoria.etapas.ejecucion, ...updateDto.etapas.ejecucion } }),
+        ...(updateDto.etapas.comunicacion && { comunicacion: { ...auditoria.etapas.comunicacion, ...updateDto.etapas.comunicacion } }),
+      };
+    }
+
+    return this.auditoriaRepository.save(auditoria);
+  }
+
+  /**
+   * Elimina una auditoría programada
+   * Solo permite eliminación si el programa tiene estado 'aprobado' o 'borrador'
+   * Y la auditoría no está en ejecución o completada
+   */
+  async deleteAuditoria(auditoriaId: string): Promise<void> {
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${auditoriaId} no encontrada`);
+    }
+
+    // Verificar el programa asociado
+    const programa = await this.programaRepository.findOne({
+      where: { id: auditoria.programaAnualId },
+    });
+
+    if (!programa) {
+      throw new NotFoundException('Programa anual asociado no encontrado');
+    }
+
+    // Solo permitir eliminación en estados: borrador, aprobado
+    const estadosEditables = ['borrador', 'aprobado', 'vigente'];
+    if (!estadosEditables.includes(programa.estado)) {
+      throw new BadRequestException(
+        `No se puede eliminar la auditoría. El programa está en estado "${programa.estado}". ` +
+        `Solo se permite eliminación cuando el programa está en: ${estadosEditables.join(', ')}`
+      );
+    }
+
+    // No permitir eliminar auditorías en ejecución o completadas
+    const estadosNoEliminables = [
+      EstadoAuditoriaProgramada.EN_CURSO,
+      EstadoAuditoriaProgramada.COMPLETADA,
+      EstadoAuditoriaProgramada.CANCELADA,
+    ];
+    if (estadosNoEliminables.includes(auditoria.estado)) {
+      throw new BadRequestException(
+        `No se puede eliminar la auditoría porque está en estado "${auditoria.estado}". ` +
+        `Solo se pueden eliminar auditorías planeadas o reprogramadas.`
+      );
+    }
+
+    const programaId = auditoria.programaAnualId;
+    await this.auditoriaRepository.remove(auditoria);
+
+    // Recalcular estadísticas del programa
+    await this.recalcularEstadisticas(programaId);
   }
 
   /**

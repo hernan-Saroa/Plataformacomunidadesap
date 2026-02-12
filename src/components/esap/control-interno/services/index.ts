@@ -12,5 +12,8 @@ export * from './api';
 // Custom Hooks
 export * from './hooks';
 
+// Servicios de exportación
+export * from './exportPlanAnualService';
+
 // Re-exportar controlInternoApi como default para facilitar importación
 export { controlInternoApi as default } from './api';

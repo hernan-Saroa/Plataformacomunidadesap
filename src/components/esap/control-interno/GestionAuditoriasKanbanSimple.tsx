@@ -1589,8 +1589,8 @@ function TarjetaAuditoria({
               </Button>
             )}
 
-            {/* Botón Registrar Hallazgo - Solo para auditorías en Ejecución */}
-            {auditoria.estado === 'Ejecución' && onRegistrarHallazgo && authService.hasPermission(Permissions.CONTROL_INTERNO_HALLAZGOS_CREATE) && (
+            {/* Botón Registrar Hallazgo - Para auditorías en Ejecución, Comunicación o Seguimiento */}
+            {['Ejecución', 'Comunicación', 'Seguimiento'].includes(auditoria.estado) && onRegistrarHallazgo && authService.hasPermission(Permissions.CONTROL_INTERNO_HALLAZGOS_CREATE) && (
               <Button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2215,7 +2215,7 @@ export function GestionAuditoriasKanbanSimple() {
           codigo: codigoAuditoria,
           titulo: aud.titulo || aud.nombre || '',
           descripcion: aud.descripcion || '',
-          estado: aud.estado || 'Planeación',
+          estado: aud.estadoKanban || aud.estado || 'Planeación',
           riesgo: aud.riesgo || 'Medio',
           semaforo: aud.semaforo || 'verde',
           territorial: aud.territorial || '',
@@ -2567,9 +2567,10 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Handler para registrar hallazgo
   const handleRegistrarHallazgo = (auditoria: Auditoria) => {
-    // Validar que la auditoría esté en Ejecución
-    if (auditoria.estado !== 'Ejecución') {
-      toast.error('Solo se pueden registrar hallazgos durante la fase de Ejecución');
+    // Validar que la auditoría esté en Ejecución, Comunicación o Seguimiento
+    const estadosPermitidos = ['Ejecución', 'Comunicación', 'Seguimiento'];
+    if (!estadosPermitidos.includes(auditoria.estado)) {
+      toast.error('Solo se pueden registrar hallazgos durante Ejecución, Comunicación o Seguimiento');
       return;
     }
     setAuditoriaSeleccionada(auditoria);
@@ -4803,9 +4804,8 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             auditoriaId={auditoriaSeleccionada.id}
-            onAprobar={() => {
-              handleAprobado();
-              setModalAprobacionOpen(false);
+            onAprobar={(comentario) => {
+              handleAprobado(auditoriaSeleccionada, comentario);
             }}
           />
         )}

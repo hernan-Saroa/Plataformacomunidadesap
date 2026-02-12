@@ -57,17 +57,18 @@ export class PlanAnual5RolesController {
   // ============ ENDPOINTS PROTEGIDOS (Requieren autenticación) ============
 
   @Post()
-  // @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createDto: CreatePlanAnual5RolesDto, @Req() req: any) {
-    // Validación de roles temporalmente deshabilitada
-    // const user = req.user;
-    // 
-    // if (!user || !this.tienePermisoCrearPlan(user)) {
-    //   throw new ForbiddenException('No tienes permisos para crear Plan Anual. Se requiere rol de Jefe OTIC, Jefe OCI o Administrador.');
-    // }
+    const user = req.user;
+    
+    // Validar que el usuario tenga permiso para crear planes
+    // El rol "Evaluación y Seguimiento" NO puede crear, solo visualizar y dar seguimiento
+    if (!user || !this.tienePermisoCrearPlan(user)) {
+      throw new ForbiddenException('No tienes permisos para crear Plan Anual. El rol Evaluación y Seguimiento solo puede visualizar y dar seguimiento.');
+    }
 
-    // Pasar usuarioId al servicio para auditoría (temporalmente undefined)
+    // Pasar usuarioId al servicio para auditoría
     return this.service.create(createDto, req.user?.userId);
   }
 

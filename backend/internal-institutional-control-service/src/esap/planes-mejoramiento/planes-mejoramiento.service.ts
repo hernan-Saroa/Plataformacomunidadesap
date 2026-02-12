@@ -20,11 +20,33 @@ import { UpdateAccionDto } from './dto/update-accion.dto';
 import { RegistrarAvanceDto } from './dto/registrar-avance.dto';
 import { CreateRegistroSeguimientoDto } from './dto/create-registro-seguimiento.dto';
 import { CreateEventoTimelineDto } from './dto/create-evento-timeline.dto';
-import { Hallazgo } from '../hallazgos/entities/hallazgo.entity';
-import { Auditoria } from '../auditorias/entities/auditoria.entity';
+import { Hallazgo, HallazgoEstado } from '../hallazgos/entities/hallazgo.entity';
+import { Auditoria, EstadoKanban } from '../auditorias/entities/auditoria.entity';
 import { Aprobacion, AprobacionTipo, AprobacionEstado, AprobacionPrioridad } from '../aprobaciones/entities/aprobacion.entity';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { EvidenciaDocumento } from '../evidencias/entities/evidencia-documento.entity';
+
+/**
+ * Estados de hallazgo que se consideran "formalizados" para permitir seguimientos.
+ * Según regla de negocio: Seguimientos se generan únicamente desde Comunicación,
+ * después de que el hallazgo ha sido formalizado.
+ */
+const ESTADOS_HALLAZGO_FORMALIZADOS = [
+  HallazgoEstado.NOTIFICADO,
+  HallazgoEstado.RATIFICADO,
+  HallazgoEstado.MODIFICADO,
+  HallazgoEstado.CERRADO,
+];
+
+/**
+ * Etapas de auditoría que permiten crear seguimientos de planes de mejoramiento.
+ */
+const ETAPAS_PERMITIDAS_SEGUIMIENTOS = [
+  EstadoKanban.COMUNICACION,
+  EstadoKanban.SEGUIMIENTO,
+  EstadoKanban.FINALIZADA,
+];
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -45,9 +67,68 @@ export class PlanesMejoramientoService {
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(Aprobacion)
     private readonly aprobacionRepository: Repository<Aprobacion>,
+    @InjectRepository(EvidenciaDocumento)
+    private readonly evidenciaRepository: Repository<EvidenciaDocumento>,
     private readonly notificacionesService: NotificacionesService,
     private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * Valida que el plan de mejoramiento cumpla las condiciones necesarias para registrar seguimiento.
+   * Regla de negocio: Los seguimientos solo se pueden registrar cuando:
+   * 1. El hallazgo está formalizado (notificado, ratificado, modificado o cerrado)
+   * 2. La auditoría está en etapa de Comunicación, Seguimiento o Finalizada
+   * 
+   * @param plan El plan de mejoramiento a validar
+   * @throws BadRequestException si no se cumplen las condiciones
+   */
+  private async validarCondicionesParaSeguimiento(plan: PlanMejoramiento): Promise<void> {
+    // Si el plan tiene un hallazgo asociado, validar su estado y la etapa de la auditoría
+    if (plan.hallazgoId) {
+      const hallazgo = await this.hallazgoRepository.findOne({
+        where: { id: plan.hallazgoId },
+        relations: ['auditoriaEntity'],
+      });
+
+      if (hallazgo) {
+        // Validar que el hallazgo esté formalizado
+        if (!ESTADOS_HALLAZGO_FORMALIZADOS.includes(hallazgo.estado)) {
+          throw new BadRequestException(
+            `No se puede registrar seguimiento. El hallazgo "${hallazgo.codigo}" debe estar ` +
+            `formalizado (notificado, ratificado, modificado o cerrado). Estado actual: "${hallazgo.estado}".`
+          );
+        }
+
+        // Validar la etapa de la auditoría si existe
+        if (hallazgo.auditoriaEntity) {
+          const auditoria = hallazgo.auditoriaEntity;
+          const estadoKanban = auditoria.estadoKanban;
+
+          if (estadoKanban && !ETAPAS_PERMITIDAS_SEGUIMIENTOS.includes(estadoKanban)) {
+            throw new BadRequestException(
+              `No se puede registrar seguimiento. La auditoría "${auditoria.codigo}" debe estar ` +
+              `en etapa de Comunicación, Seguimiento o Finalizada para registrar seguimientos. ` +
+              `Etapa actual: "${estadoKanban}".`
+            );
+          }
+        }
+      }
+    }
+
+    // Si el plan tiene auditoría directa (sin hallazgo), validar la etapa
+    if (plan.auditoriaId && !plan.hallazgoId) {
+      const auditoria = await this.auditoriaRepository.findOne({
+        where: { id: plan.auditoriaId },
+      });
+
+      if (auditoria?.estadoKanban && !ETAPAS_PERMITIDAS_SEGUIMIENTOS.includes(auditoria.estadoKanban)) {
+        throw new BadRequestException(
+          `No se puede registrar seguimiento. La auditoría "${auditoria.codigo}" debe estar ` +
+          `en etapa de Comunicación, Seguimiento o Finalizada. Etapa actual: "${auditoria.estadoKanban}".`
+        );
+      }
+    }
+  }
 
   /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
@@ -866,9 +947,16 @@ export class PlanesMejoramientoService {
 
   /**
    * Registra el avance de un plan (crea o actualiza seguimiento trimestral)
+   * 
+   * Regla de negocio: Los seguimientos solo se pueden registrar cuando:
+   * 1. El hallazgo está formalizado (notificado, ratificado, modificado o cerrado)
+   * 2. La auditoría está en etapa de Comunicación, Seguimiento o Finalizada
    */
   async registrarAvance(planId: string, avanceDto: RegistrarAvanceDto): Promise<SeguimientoTrimestral> {
     const plan = await this.findOne(planId);
+
+    // Validar que se cumplan las condiciones para registrar seguimiento
+    await this.validarCondicionesParaSeguimiento(plan);
 
     // Determinar trimestre y año
     const fecha = new Date(avanceDto.fecha);
@@ -1306,5 +1394,164 @@ export class PlanesMejoramientoService {
       return [];
     }
   }
-}
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA DOCUMENTOS ASOCIADOS A ACCIONES CORRECTIVAS (JERÁRQUICO)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene los documentos asociados a una acción correctiva específica
+   * Los documentos se devuelven en orden cronológico (más reciente primero)
+   */
+  async getDocumentosAccion(planId: string, accionId: string): Promise<EvidenciaDocumento[]> {
+    // Validar que la acción pertenece al plan
+    await this.findOne(planId);
+    
+    const accion = await this.accionRepository.findOne({
+      where: { id: accionId, planId },
+    });
+
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
+    }
+
+    // Obtener documentos ordenados cronológicamente
+    return this.evidenciaRepository.find({
+      where: { accionCorrectivaId: accionId },
+      order: { fechaSubida: 'DESC' },
+    });
+  }
+
+  /**
+   * Obtiene las acciones de un plan con sus documentos anidados jerárquicamente
+   * Estructura: Plan -> Acciones[] -> Documentos[]
+   */
+  async getAccionesConDocumentos(planId: string): Promise<any[]> {
+    const plan = await this.findOne(planId);
+
+    // Obtener todas las acciones del plan
+    const acciones = await this.accionRepository.find({
+      where: { planId },
+      order: { createdAt: 'ASC' },
+    });
+
+    // Para cada acción, obtener sus documentos
+    const accionesConDocumentos = await Promise.all(
+      acciones.map(async (accion) => {
+        const documentos = await this.evidenciaRepository.find({
+          where: { accionCorrectivaId: accion.id },
+          order: { fechaSubida: 'DESC' },
+        });
+
+        return {
+          ...accion,
+          fechaInicio: this.serializeDate(accion.fechaInicio),
+          fechaFin: this.serializeDate(accion.fechaFin),
+          documentos,
+          totalDocumentos: documentos.length,
+          documentosPendientes: documentos.filter(d => d.estadoValidacion === 'pendiente').length,
+          documentosValidados: documentos.filter(d => d.estadoValidacion === 'aceptado').length,
+        };
+      })
+    );
+
+    return accionesConDocumentos;
+  }
+
+  /**
+   * Obtiene un plan completo con estructura jerárquica:
+   * Plan -> Acciones[] -> Documentos[]
+   * Incluye estadísticas de documentos por acción
+   */
+  async findOneConDocumentosJerarquicos(planId: string): Promise<any> {
+    const plan = await this.planRepository.findOne({
+      where: { id: planId },
+      relations: ['hallazgo', 'auditoria', 'seguimientos', 'seguimientos.registros'],
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Plan con ID ${planId} no encontrado`);
+    }
+
+    // Obtener acciones con documentos
+    const accionesConDocumentos = await this.getAccionesConDocumentos(planId);
+
+    // Calcular estadísticas globales de documentos
+    const totalDocumentos = accionesConDocumentos.reduce((sum, a) => sum + a.totalDocumentos, 0);
+    const documentosPendientes = accionesConDocumentos.reduce((sum, a) => sum + a.documentosPendientes, 0);
+    const documentosValidados = accionesConDocumentos.reduce((sum, a) => sum + a.documentosValidados, 0);
+
+    return {
+      ...plan,
+      fechaLimite: this.serializeDate(plan.fechaLimite),
+      acciones: accionesConDocumentos,
+      estadisticasDocumentos: {
+        total: totalDocumentos,
+        pendientes: documentosPendientes,
+        validados: documentosValidados,
+        porAccion: accionesConDocumentos.map(a => ({
+          accionId: a.id,
+          descripcion: a.descripcion?.substring(0, 50) + '...',
+          total: a.totalDocumentos,
+          pendientes: a.documentosPendientes,
+          validados: a.documentosValidados,
+        })),
+      },
+    };
+  }
+
+  /**
+   * Obtiene una acción específica con sus documentos anidados
+   */
+  async getAccionConDocumentos(planId: string, accionId: string): Promise<any> {
+    await this.findOne(planId);
+
+    const accion = await this.accionRepository.findOne({
+      where: { id: accionId, planId },
+    });
+
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
+    }
+
+    const documentos = await this.evidenciaRepository.find({
+      where: { accionCorrectivaId: accionId },
+      order: { fechaSubida: 'DESC' },
+    });
+
+    return {
+      ...accion,
+      fechaInicio: this.serializeDate(accion.fechaInicio),
+      fechaFin: this.serializeDate(accion.fechaFin),
+      documentos,
+      totalDocumentos: documentos.length,
+      documentosPendientes: documentos.filter(d => d.estadoValidacion === 'pendiente').length,
+      documentosValidados: documentos.filter(d => d.estadoValidacion === 'aceptado').length,
+    };
+  }
+
+  /**
+   * Elimina un documento de una acción correctiva
+   */
+  async deleteDocumentoAccion(planId: string, accionId: string, documentoId: string): Promise<void> {
+    await this.findOne(planId);
+
+    const accion = await this.accionRepository.findOne({
+      where: { id: accionId, planId },
+    });
+
+    if (!accion) {
+      throw new NotFoundException(`Acción con ID ${accionId} no encontrada en el plan`);
+    }
+
+    const documento = await this.evidenciaRepository.findOne({
+      where: { id: documentoId, accionCorrectivaId: accionId },
+    });
+
+    if (!documento) {
+      throw new NotFoundException(`Documento con ID ${documentoId} no encontrado en la acción`);
+    }
+
+    await this.evidenciaRepository.remove(documento);
+  }
+}

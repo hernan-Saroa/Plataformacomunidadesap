@@ -29,9 +29,10 @@ import {
   Shield, Target, AlertTriangle, Users, FileCheck,
   ChevronDown, ChevronUp, Calendar, CheckCircle2, 
   Clock, TrendingUp, Download, Eye, Edit2, Plus,
-  BarChart3, Activity, Info, FileText, Check, X
+  BarChart3, Activity, Info, FileText, Check, X,
+  FileSpreadsheet
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // Imports oficiales
 import { 
@@ -43,6 +44,26 @@ import {
 // Modales
 import { CrearPlanAnualModal, type NuevoPlanAnualData } from '../plan-anual-auditoria/modals/CrearPlanAnualModal';
 import { AprobarPlanAnualModal } from '../plan-anual-auditoria/modals/AprobarPlanAnualModal';
+
+// Componentes UI
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem
+} from '../../../components/ui/dropdown-menu';
+
+// Servicios de exportación y API
+import { 
+  exportarPlanAnualPDF, 
+  exportarPlanAnualExcel,
+  type PlanAnualExport 
+} from './services/plan-anual/exportService';
+import { planAnual5RolesApi } from './services/api';
+
+// Auth y permisos
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS EXTENDIDOS
@@ -120,11 +141,14 @@ const crearDatosMock = (): PlanOperativoData => {
   };
 };
 
+
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanAnualModuleMejorado() {
+  // Estado principal - usa datos mock inicialmente
   const [planData, setPlanData] = useState<PlanOperativoData>(crearDatosMock());
   const [vista, setVista] = useState<Vista>('dashboard');
   const [rolExpandido, setRolExpandido] = useState<number | null>(1);
@@ -134,50 +158,108 @@ export function PlanAnualModuleMejorado() {
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [modalAprobarOpen, setModalAprobarOpen] = useState(false);
 
-  // Handlers para creación de plan
-  const handleCrearPlan = (nuevoPlan: NuevoPlanAnualData) => {
-    // Crear el plan basado en los roles oficiales del Decreto 648/2017
-    const rolesExtendidos: RolExtendido[] = ROLES_DECRETO_648_OFICIALES.map((rol) => ({
-      ...rol,
-      actividadesExtendidas: rol.actividades.map((act) => ({
-        ...act,
-        porcentajeReal: 0,
-        estado: 'No Iniciada',
-        observaciones: '',
-        evidencias: []
-      })),
-      porcentajeGeneral: 0,
-      estadoGeneral: 'No Iniciado'
-    }));
+  // Handlers para creación de plan - LLAMA AL BACKEND CON FALLBACK LOCAL
+  const handleCrearPlan = async (nuevoPlan: NuevoPlanAnualData) => {
+    let backendCreado = false;
+    
+    try {
+      // Intentar crear en backend - el DTO espera: año, responsable, estado
+      const response = await planAnual5RolesApi.create({
+        año: nuevoPlan.vigencia,
+        responsable: 'Mario Oswaldo Bernal',
+        estado: 'borrador'
+      });
 
-    const planNuevo: PlanOperativoData = {
-      id: `PAI-${nuevoPlan.vigencia}-V${nuevoPlan.version}`,
-      año: nuevoPlan.vigencia,
-      version: parseInt(nuevoPlan.version.replace('V.', '').replace('.', '')),
-      estado: 'Borrador',
-      jefeOCI: {
-        nombre: 'Mario Oswaldo Bernal',
-        cargo: 'Jefe Oficina de Control Interno',
-        email: 'mario.bernal@esap.edu.co'
-      },
-      roles: rolesExtendidos,
-      fechaCreacion: nuevoPlan.fechaCreacion,
-      fechaUltimaModificacion: nuevoPlan.fechaCreacion
-    };
+      if (response.success && response.data) {
+        backendCreado = true;
+        toast.success('Plan Anual Creado en BD', {
+          description: `Plan ${response.data.id} guardado en base de datos`
+        });
+      } else if (response.error) {
+        // Error del backend - mostrar mensaje
+        toast.error('Error del servidor', {
+          description: response.error || 'No se pudo crear en base de datos'
+        });
+      }
+    } catch (err: any) {
+      console.error('Error al crear plan:', err);
+      toast.error('Error de conexión', {
+        description: 'No se pudo conectar con el servidor'
+      });
+    }
 
-    setPlanData(planNuevo);
-    toast.success('Plan Anual Creado', {
-      description: `Plan para la vigencia ${nuevoPlan.vigencia} creado en estado Borrador`
-    });
+    // Solo crear localmente si el backend NO respondió exitosamente
+    if (!backendCreado) {
+      // Crear el plan localmente con los datos del Decreto 648
+      const rolesExtendidos: RolExtendido[] = ROLES_DECRETO_648_OFICIALES.map((rol) => ({
+        ...rol,
+        actividadesExtendidas: rol.actividades.map((act) => ({
+          ...act,
+          porcentajeReal: 0,
+          estado: 'No Iniciada' as const,
+          observaciones: '',
+          evidencias: []
+        })),
+        porcentajeGeneral: 0,
+        estadoGeneral: 'No Iniciado' as const
+      }));
+
+      const planNuevo: PlanOperativoData = {
+        id: `PAI-${nuevoPlan.vigencia}-V${nuevoPlan.version}`,
+        año: nuevoPlan.vigencia,
+        version: parseInt(nuevoPlan.version.replace('V.', '').replace('.', '')),
+        estado: 'Borrador',
+        jefeOCI: {
+          nombre: 'Mario Oswaldo Bernal',
+          cargo: 'Jefe Oficina de Control Interno',
+          email: 'mario.bernal@esap.edu.co'
+        },
+        roles: rolesExtendidos,
+        fechaCreacion: nuevoPlan.fechaCreacion,
+        fechaUltimaModificacion: nuevoPlan.fechaCreacion
+      };
+
+      setPlanData(planNuevo);
+      toast.info('Plan creado localmente', {
+        description: 'Los datos se muestran pero NO están guardados en BD'
+      });
+    } else {
+      // Backend creó el plan - crear versión local para mostrar
+      const rolesExtendidos: RolExtendido[] = ROLES_DECRETO_648_OFICIALES.map((rol) => ({
+        ...rol,
+        actividadesExtendidas: rol.actividades.map((act) => ({
+          ...act,
+          porcentajeReal: 0,
+          estado: 'No Iniciada' as const,
+          observaciones: '',
+          evidencias: []
+        })),
+        porcentajeGeneral: 0,
+        estadoGeneral: 'No Iniciado' as const
+      }));
+
+      const planNuevo: PlanOperativoData = {
+        id: `PAI-${nuevoPlan.vigencia}-V${nuevoPlan.version}`,
+        año: nuevoPlan.vigencia,
+        version: parseInt(nuevoPlan.version.replace('V.', '').replace('.', '')),
+        estado: 'Borrador',
+        jefeOCI: {
+          nombre: 'Mario Oswaldo Bernal',
+          cargo: 'Jefe Oficina de Control Interno',
+          email: 'mario.bernal@esap.edu.co'
+        },
+        roles: rolesExtendidos,
+        fechaCreacion: nuevoPlan.fechaCreacion,
+        fechaUltimaModificacion: nuevoPlan.fechaCreacion
+      };
+
+      setPlanData(planNuevo);
+    }
   };
 
   // Handler para enviar a aprobación
   const handleEnviarAprobacion = () => {
-    setPlanData({
-      ...planData,
-      estado: 'En Revisión',
-      fechaUltimaModificacion: new Date().toISOString()
-    });
+    setPlanData(prev => ({ ...prev, estado: 'En Revisión' }));
     setModalAprobarOpen(true);
     toast.info('Plan enviado a aprobación', {
       description: 'Esperando decisión del Jefe de OCIG'
@@ -187,24 +269,85 @@ export function PlanAnualModuleMejorado() {
   // Handler para aprobar/rechazar
   const handleDecisionAprobacion = (decision: 'Aprobado' | 'Rechazado', observaciones: string) => {
     if (decision === 'Aprobado') {
-      setPlanData({
-        ...planData,
+      setPlanData(prev => ({
+        ...prev,
         estado: 'Aprobado',
-        fechaAprobacion: new Date().toISOString(),
-        fechaUltimaModificacion: new Date().toISOString()
-      });
-      toast.success('✅ Plan Aprobado', {
+        fechaAprobacion: new Date().toISOString().split('T')[0]
+      }));
+      toast.success('Plan Aprobado', {
         description: 'El Plan Anual OCIG ha sido aprobado y está vigente'
       });
     } else {
-      setPlanData({
-        ...planData,
-        estado: 'Borrador',
-        fechaUltimaModificacion: new Date().toISOString()
-      });
-      toast.error('❌ Plan Rechazado', {
+      setPlanData(prev => ({ ...prev, estado: 'Borrador' }));
+      toast.error('Plan Rechazado', {
         description: 'El plan ha vuelto a estado Borrador para correcciones'
       });
+    }
+  };
+
+  // ============ HANDLERS DE EXPORTACIÓN ============
+  
+  // Convertir planData interno al formato de exportación
+  const convertirPlanParaExportar = (): PlanAnualExport | null => {
+    if (!planData) return null;
+    
+    return {
+      id: planData.id,
+      año: planData.año,
+      version: planData.version,
+      estado: planData.estado,
+      jefeOCI: planData.jefeOCI,
+      fechaCreacion: planData.fechaCreacion,
+      fechaAprobacion: planData.fechaAprobacion,
+      fechaUltimaModificacion: planData.fechaUltimaModificacion,
+      roles: planData.roles.map(rol => ({
+        codigo: `ROL-${rol.numero}`,
+        nombre: rol.nombre,
+        descripcion: `Rol ${rol.numero} del Decreto 648/2017`,
+        icono: rol.icono,
+        color: rol.color,
+        porcentajeGeneral: rol.porcentajeGeneral,
+        estadoGeneral: rol.estadoGeneral,
+        actividades: rol.actividadesExtendidas.map(act => ({
+          codigo: `ACT-${act.id}`,
+          nombre: act.nombre,
+          descripcion: act.descripcion,
+          responsableNombre: act.responsable,
+          fechaInicio: act.fechaInicio,
+          fechaFin: act.fechaFin,
+          porcentajeReal: act.porcentajeReal,
+          estado: act.estado,
+          observaciones: act.observaciones
+        }))
+      }))
+    };
+  };
+
+  // Handler para exportar a PDF
+  const handleExportarPDF = async () => {
+    try {
+      const planExport = convertirPlanParaExportar();
+      if (!planExport) {
+        toast.error('No hay plan para exportar');
+        return;
+      }
+      await exportarPlanAnualPDF(planExport);
+    } catch (error) {
+      console.error('Error al exportar PDF:', error);
+    }
+  };
+
+  // Handler para exportar a Excel
+  const handleExportarExcel = async () => {
+    try {
+      const planExport = convertirPlanParaExportar();
+      if (!planExport) {
+        toast.error('No hay plan para exportar');
+        return;
+      }
+      await exportarPlanAnualExcel(planExport);
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
     }
   };
 
@@ -229,6 +372,9 @@ export function PlanAnualModuleMejorado() {
     };
   }, [planData]);
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // UI PRINCIPAL
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <>
       {/* Modales */}
@@ -296,14 +442,16 @@ export function PlanAnualModuleMejorado() {
                 </div>
               </div>
 
-              {/* Botón: Crear Nuevo Plan */}
-              <button
-                onClick={() => setModalCrearPlanOpen(true)}
-                className="px-5 py-3 bg-gradient-to-r from-[#003DA5] to-[#2962FF] hover:shadow-xl text-white rounded-lg font-semibold flex items-center gap-2 transition-all"
-              >
-                <Plus className="w-5 h-5" />
-                Crear Nuevo Plan
-              </button>
+              {/* Botón: Crear Nuevo Plan - Solo visible para roles con permiso de crear planes (NO Evaluación y Seguimiento) */}
+              {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_PLAN_CREATE) && (
+                <button
+                  onClick={() => setModalCrearPlanOpen(true)}
+                  className="px-5 py-3 bg-gradient-to-r from-[#003DA5] to-[#2962FF] hover:shadow-xl text-white rounded-lg font-semibold flex items-center gap-2 transition-all"
+                >
+                  <Plus className="w-5 h-5" />
+                  Crear Nuevo Plan
+                </button>
+              )}
 
               {/* Botón: Enviar a Aprobación (solo si está en Borrador) */}
               {planData.estado === 'Borrador' && (
@@ -327,14 +475,34 @@ export function PlanAnualModuleMejorado() {
                 </button>
               )}
 
-              {/* Botón: Exportar PDF */}
-              <button
-                onClick={() => toast.success('Exportando PDF...', { description: 'Generando documento oficial ESAP' })}
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors shadow-md hover:shadow-lg"
-              >
-                <Download className="w-4 h-4" />
-                Exportar PDF
-              </button>
+              {/* Botón: Exportar con opciones PDF/Excel */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors shadow-md hover:shadow-lg"
+                  >
+                    <Download className="w-4 h-4" />
+                    Exportar
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem 
+                    onClick={() => handleExportarPDF()}
+                    className="cursor-pointer flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4 text-red-600" />
+                    <span>Exportar a PDF</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleExportarExcel()}
+                    className="cursor-pointer flex items-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                    <span>Exportar a Excel</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 

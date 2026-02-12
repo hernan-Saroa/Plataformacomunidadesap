@@ -52,7 +52,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers, Plus, Filter, Search, Grid, List, Edit2, Save, X,
   TrendingUp, AlertTriangle, CheckCircle, Clock, Building2,
-  MapPin, Target, BarChart3, Eye, Settings, Link2
+  MapPin, Target, BarChart3, Eye, Settings, Link2, Download
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -879,18 +879,33 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
             <span className="text-red-600"><strong>{metricas.critico}</strong> críticas</span>
           </div>
 
-          {/* Acción principal */}
-          {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_CREATE) && (
-          <Button 
-            style={{ background: '#003DA5' }}
-            className="gap-2"
-            size="sm"
-            onClick={() => setModalNuevaArea(true)}
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Nueva Área</span>
-          </Button>
-          )}
+          {/* Acciones principales */}
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => {
+                const url = universoAuditoriasApi.exportarExcel();
+                window.open(url, '_blank');
+                toast.success('Descargando Excel del Universo de Auditorías');
+              }}
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Exportar</span>
+            </Button>
+            {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_CREATE) && (
+            <Button 
+              style={{ background: '#003DA5' }}
+              className="gap-2"
+              size="sm"
+              onClick={() => setModalNuevaArea(true)}
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Nueva Área</span>
+            </Button>
+            )}
+          </div>
         </div>
       </div>
 
