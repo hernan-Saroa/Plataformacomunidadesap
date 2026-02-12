@@ -6,6 +6,7 @@ import { Expediente } from '../entities/expediente.entity';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
+import { Actuacion } from '../entities/actuacion.entity';
 
 @Injectable()
 export class TerminosService {
@@ -22,6 +23,8 @@ export class TerminosService {
         private requerimientoOCRepository: Repository<RequerimientoOC>,
         @InjectRepository(ProcesoCoactivo)
         private procesoCoactivoRepository: Repository<ProcesoCoactivo>,
+        @InjectRepository(Actuacion)
+        private actuacionRepository: Repository<Actuacion>,
     ) { }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
@@ -192,7 +195,7 @@ export class TerminosService {
         if (termino.origenModulo === 'DEFENSA' || termino.origenModulo === 'JUZGAMIENTO') {
             const expediente = await this.expedienteRepository.findOne({
                 where: { id: termino.referenciaId },
-                relations: ['documentos', 'actuaciones'] // Fetch real relations
+                relations: ['documentos'] // Removed 'actuaciones'
             });
 
             if (expediente) {
@@ -206,9 +209,15 @@ export class TerminosService {
                     }));
                 }
 
-                // 2. Documentos from Actuaciones
-                if (expediente.actuaciones) {
-                    expediente.actuaciones.forEach(a => {
+                // 2. Documentos from Actuaciones (Fetch Manually Hybrid)
+                const actuaciones = await this.actuacionRepository.find({
+                    where: [
+                        { expedienteId: expediente.id },
+                        { expedienteId: expediente.radicado }
+                    ]
+                });
+                if (actuaciones) {
+                    actuaciones.forEach(a => {
                         if (a.documentoUrl) {
                             docs.push({
                                 nombre: a.documentoNombre || `Actuación ${a.tipoActuacion}`,

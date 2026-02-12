@@ -95,7 +95,7 @@ export function DashboardEjecutivoIntegrado() {
     }
   ];
 
-  // Procesos recientes
+  // Procesos recientes - REDUCIDO
   const procesosRecientes = [
     {
       id: '1',
@@ -104,24 +104,6 @@ export function DashboardEjecutivoIntegrado() {
       etapa: 'Indagación Preliminar',
       dias: 15,
       semaforo: 'verde' as const,
-      profesional: 'Dr. Juan Carlos'
-    },
-    {
-      id: '2',
-      numero: 'P-089-2024',
-      denunciado: 'María González',
-      etapa: 'Valoración',
-      dias: 32,
-      semaforo: 'amarillo' as const,
-      profesional: 'Dra. Ana Torres'
-    },
-    {
-      id: '3',
-      numero: 'P-156-2024',
-      denunciado: 'Carlos Rodríguez',
-      etapa: 'Investigación Formal',
-      dias: 48,
-      semaforo: 'rojo' as const,
       profesional: 'Dr. Juan Carlos'
     }
   ];

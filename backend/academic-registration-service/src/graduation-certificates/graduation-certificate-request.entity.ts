@@ -69,6 +69,12 @@ export class GraduationCertificateRequest {
   @Column({ name: 'company_name', length: 255, nullable: true })
   companyName: string;
 
+  @Column({ name: 'company_nit', length: 50, nullable: true })
+  companyNit: string;
+
+  @Column({ name: 'contact_person', length: 255, nullable: true })
+  contactPerson: string;
+
   // Tipo de certificado
   @Column({ name: 'certificate_type', length: 50, default: 'STANDARD' })
   certificateType: string; // STANDARD, OFFICIAL, INTERNATIONAL

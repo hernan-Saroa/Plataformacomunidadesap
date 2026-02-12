@@ -149,6 +149,26 @@ export const calcularSemaforo = determinarSemaforo;
 // ============================================================================
 
 /**
+ * Formatea días hábiles con el label correcto
+ */
+export function formatearDiasHabiles(dias: number, incluirLabel: boolean = true): string {
+  const diasAbsoluto = Math.abs(dias);
+  const label = incluirLabel ? (diasAbsoluto === 1 ? ' día hábil' : ' días hábiles') : '';
+  
+  if (dias === 0) return `Vence hoy${label}`;
+  if (dias < 0) return `Vencido hace ${diasAbsoluto}${label}`;
+  return `${dias}${label}`;
+}
+
+/**
+ * Calcula y formatea días hábiles entre dos fechas
+ */
+export function calcularYFormatearDiasHabiles(fechaInicio: Date, fechaFin: Date): string {
+  const diasHabiles = calcularDiasHabiles(fechaInicio, fechaFin);
+  return formatearDiasHabiles(diasHabiles);
+}
+
+/**
  * Formatea una fecha a formato colombiano
  */
 export function formatearFecha(fecha: Date, formato: 'corto' | 'largo' | 'completo' = 'corto'): string {

@@ -48,6 +48,14 @@ interface EstadoKanban {
   activo: boolean;
 }
 
+// Tipo para etapa dinámica
+interface Etapa {
+  id: string;
+  nombre: string;
+  dias: number;
+  orden: number;
+}
+
 interface Cargo {
   id: string;
   nombre: string;
@@ -296,9 +304,11 @@ export function ModuloConfiguracion() {
       toast.success('Configuración guardada exitosamente', {
         description: 'Los cambios se aplicarán de inmediato'
       });
+      setCambiosPendientes(false)
     } catch (error) {
       console.error('Error saving config:', error);
       toast.error('Error al guardar la configuración');
+      setCambiosPendientes(false)
     }
   };
 
@@ -359,10 +369,12 @@ export function ModuloConfiguracion() {
       toast.success('Configuración restablecida', {
         description: 'Todos los valores han sido restaurados a sus valores por defecto'
       });
+      setCambiosPendientes(false)
 
     } catch (error) {
       console.error('Error restableciendo configuración:', error);
       toast.error('Error al restablecer la configuración');
+      setCambiosPendientes(false)
     }
   };
 
@@ -453,12 +465,12 @@ export function ModuloConfiguracion() {
   };
 
   /* MODIFIED: Persist new role immediately */
-  const handleAgregarCargo = async () => {
+  // const handleAgregarCargo = async () => {
   // Estados
   const [estadosKanban, setEstadosKanban] = useState<EstadoKanban[]>(ESTADOS_KANBAN_DEFECTO);
-  const [cargos, setCargos] = useState<Cargo[]>(CARGOS_DEFECTO);
-  const [notificaciones, setNotificaciones] = useState<ConfiguracionNotificaciones>(NOTIFICACIONES_DEFECTO);
-  const [alertas, setAlertas] = useState<ConfiguracionAlertas>(ALERTAS_DEFECTO);
+  // const [cargos, setCargos] = useState<Cargo[]>(CARGOS_DEFECTO);
+  // const [notificaciones, setNotificaciones] = useState<ConfiguracionNotificaciones>(NOTIFICACIONES_DEFECTO);
+  // const [alertas, setAlertas] = useState<ConfiguracionAlertas>(ALERTAS_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
 
   // Estados para modales
@@ -590,9 +602,7 @@ export function ModuloConfiguracion() {
         console.error('Error deleting role:', error);
         toast.error('Error al eliminar el cargo');
       }
-    setCargos([...cargos, nuevoCargo]);
-    setCambiosPendientes(true);
-    toast.success('Cargo agregado correctamente');
+    }
   };
 
   const eliminarCargo = (cargoId: string) => {
@@ -640,7 +650,7 @@ export function ModuloConfiguracion() {
       setCargos(CARGOS_DEFECTO);
       setNotificaciones(NOTIFICACIONES_DEFECTO);
       setAlertas(ALERTAS_DEFECTO);
-      setAlertasProgramadas(ALERTAS_PROGRAMADAS_DEFECTO);
+      // setAlertasProgramadas(ALERTAS_PROGRAMADAS_DEFECTO);
       setCambiosPendientes(true);
       
       toast.success('Configuraciones restablecidas', {
@@ -650,6 +660,14 @@ export function ModuloConfiguracion() {
     }
   };
 
+  const handleEditarCargo = (id: string) => {
+    const cargo = cargos.find(cargo => cargo.id === id);
+    if (cargo) {
+      setEditandoCargo(id);
+      setNombreCargoEditando(cargo.nombre);
+    }
+  };
+  
   // ============ DRAG AND DROP ============
 
   /* MODIFIED: Persist edit immediately */
@@ -678,6 +696,7 @@ export function ModuloConfiguracion() {
       toast.error('Error al actualizar el cargo');
     }
   };
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -702,253 +721,92 @@ export function ModuloConfiguracion() {
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold mb-2" style={{ color: '#003DA5' }}>
-            Configuración del Sistema
-          </h1>
-          <p className="text-sm" style={{ color: '#6B7280' }}>
-            Parámetros y ajustes del módulo disciplinario
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
-          <button
-            onClick={handleRestablecer}
-            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
-            style={{ background: '#F3F4F6', color: '#4B5563' }}
-          >
-            Restablecer
-          </button>
-          )}
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
-          <button
-            onClick={handleGuardar}
-            className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Save className="w-4 h-4" />
-            Guardar Cambios
-          </button>
-          )}
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
+        <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+          <div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0EDFF' }}>
+                <Settings size={20} className="sm:w-6 sm:h-6" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Configuración del Sistema
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                  Parámetros y ajustes del módulo disciplinario
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {cambiosPendientes && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                <span className="hidden sm:inline">Cambios sin guardar</span>
+                <span className="sm:hidden">Sin guardar</span>
+              </span>
+            )}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
+            <button
+              onClick={handleRestablecer}
+              className="px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
+              style={{ background: '#F3F4F6', color: '#4B5563' }}
+            >
+              Restablecer
+            </button>
+            )}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+            <button
+              onClick={handleGuardar}
+              disabled={!cambiosPendientes}
+              className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ 
+                background: cambiosPendientes ? 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' : '#9CA3AF',
+                boxShadow: cambiosPendientes ? '0 2px 4px rgba(41, 98, 255, 0.2)' : 'none'
+              }}
+            >
+              <Save className="w-4 h-4" />
+              Guardar Cambios
+            </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Tiempos por Etapa */}
-      <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 rounded-xl" style={{ background: '#E0EDFF' }}>
-            <Clock className="w-6 h-6" style={{ color: '#003DA5' }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-extrabold" style={{ color: '#1F2937' }}>
-              Tiempos por Etapa
-            </h2>
-            <p className="text-sm" style={{ color: '#6B7280' }}>
-              Duración estándar en días para cada etapa del proceso
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {etapas.map(etapa => (
-            <div key={etapa.id} className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
-              <label className="block mb-3">
-                <span className="text-sm font-bold uppercase mb-2 block" style={{ color: '#4B5563' }}>
-                  {editandoEtapa === etapa.id ? (
-                    <input
-                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
-                      type="text"
-                      value={nombreEditando}
-                      onChange={(e) => setNombreEditando(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                      style={{ borderColor: '#E5E7EB' }}
-                      autoFocus
-                    />
-                  ) : (
-                    etapa.nombre
-                  )}
-                </span>
-
-                <div className="flex items-center gap-3">
-                  {editandoEtapa === etapa.id ? (
-                    <input
-                      disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT)}
-                      type="number"
-                      min="1"
-                      max="365"
-                      value={diasEditando}
-                      onChange={(e) => setDiasEditando(parseInt(e.target.value) || 0)}
-                      className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                      style={{ borderColor: '#E5E7EB' }}
-                    />
-                  ) : (
-                    <div className="flex-1 px-4 py-2.5 rounded-xl border-2 bg-gray-50 flex items-center" style={{ borderColor: '#E5E7EB' }}>
-                      <span className="font-bold text-lg" style={{ color: '#1F2937' }}>
-                        {etapa.dias}
-                      </span>
-                    </div>
-                  )}
-                  <span className="text-sm font-semibold whitespace-nowrap" style={{ color: '#6B7280' }}>
-                    días
-                  </span>
+      {/* Contenido */}
+      <div className="p-3 sm:p-4 lg:p-6 space-y-6">
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* 1. ESTADOS KANBAN - Diseño de SIGL */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#003DA5' }} />
+                    Estados / Columnas Kanban
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Define las columnas que aparecerán en el tablero Kanban del módulo disciplinario
+                  </p>
                 </div>
-              </label>
+                <button
+                  onClick={agregarEstado}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Estado</span>
+                </button>
+              </div>
 
-              <button
-                onClick={agregarEstado}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                style={{
-                  background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                  boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                }}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <Plus className="w-4 h-4" />
-                <span>Agregar Estado</span>
-              </button>
-            </div>
-          ))}
-          <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE) && (
-            <button
-              onClick={handleAgregarEtapa}
-              className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <Plus className="w-4 h-4" />
-              Agregar Etapa
-            </button>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
-          <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#003DA5' }} />
-          <p className="text-sm" style={{ color: '#003DA5' }}>
-            <span className="font-bold">Importante:</span> Estos tiempos se utilizan para calcular las alertas automáticas y el semáforo de cada proceso.
-          </p>
-        </div>
-      </Card>
-
-      {/* Capacidades por Cargo */}
-      <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 rounded-xl" style={{ background: '#D1FAE5' }}>
-            <Users className="w-6 h-6" style={{ color: '#10B981' }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-extrabold" style={{ color: '#1F2937' }}>
-              Capacidad por Cargo
-            </h2>
-            <p className="text-sm" style={{ color: '#6B7280' }}>
-              Número máximo de procesos que puede gestionar cada tipo de profesional
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-6 p-4 rounded-xl flex items-start gap-3" style={{ background: '#E0EDFF' }}>
-          <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#003DA5' }} />
-          <p className="text-sm" style={{ color: '#003DA5' }}>
-            <span className="font-bold">Recordatorio:</span> Estas son configuraciones de capacidad. Los usuarios se crean únicamente desde{' '}
-            <span className="font-bold">Administración de Personas → Roles y Permisos</span>. En la sección "Profesionales" solo se asignan usuarios existentes al equipo disciplinario.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {cargos.map(cargo => (
-            <div key={cargo.id} className="p-5 rounded-xl border-2" style={{ borderColor: '#E5E7EB' }}>
-              <div className="flex items-center gap-2 mb-3">
-                <Target className="w-5 h-5" style={{ color: '#003DA5' }} />
-                <span className="text-sm font-bold uppercase" style={{ color: '#1F2937' }}>
-                  {cargo.nombre}
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT)}
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={cargo.capacidad || ''}
-                  onChange={(e) => setCargos(cargos.map(c => c.id === cargo.id ? { ...c, capacidad: parseInt(e.target.value) || 0 } : c))}
-                  className="flex-1 px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] text-center text-xl font-bold"
-                  style={{ borderColor: '#E5E7EB', color: '#003DA5' }}
-                />
-              </div>
-              <p className="text-xs text-center mt-2" style={{ color: '#9CA3AF' }}>
-                procesos máximo
-              </p>
-              <div className="flex items-center gap-2 mt-2">
-                {editandoCargo === cargo.id ? (
-                  <button
-                    onClick={() => handleGuardarEdicionCargo(cargo.id)}
-                    className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
-                    style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Guardar
-                  </button>
-                ) : (
-                  <>
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT) && (
-                    <button
-                      onClick={() => handleEditarCargo(cargo.id)}
-                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
-                      style={{ background: '#F3F4F6', color: '#4B5563' }}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                      Editar
-                    </button>
-                    )}
-                    {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE) && (
-                    <button
-                      onClick={() => handleEliminarCargo(cargo.id)}
-                      className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
-                      style={{ background: '#F3F4F6', color: '#4B5563' }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Eliminar
-                    </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-          <div className="p-5 rounded-xl" style={{ background: '#F9FAFB' }}>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE) && (
-            <button
-              onClick={() => setMostrarModalAgregarCargo(true)}
-              className="px-2 py-1.5 rounded-xl font-semibold flex items-center gap-2"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              <Plus className="w-4 h-4" />
-              Agregar Cargo
-            </button>
-            )}
-          </div>
-        </div>
-
-      </Card>
-
-      {/* Modal para agregar cargo */}
-      <AnimatePresence>
-        {mostrarModalAgregarCargo && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black bg-opacity-50 z-50"
-              onClick={() => setMostrarModalAgregarCargo(false)}
-            />
-            <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none"
-            >
-              <DndContext sensors={sensors}>
                 <SortableContext
                   items={estadosKanban.map(e => e.id)}
                   strategy={verticalListSortingStrategy}
@@ -966,450 +824,417 @@ export function ModuloConfiguracion() {
                   </div>
                 </SortableContext>
               </DndContext>
-            </motion.div>
-          </>
-        )}
-
-        </AnimatePresence>
-
-        {/* 3. CAPACIDAD POR CARGO */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-3 sm:p-4 lg:p-6">
-            <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Users className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#10B981' }} />
-                  Capacidad por Cargo
-                </h2>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  Número máximo de procesos que puede gestionar cada tipo de profesional
-                </p>
-              </div>
-              <button
-                onClick={agregarCargo}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                style={{ 
-                  background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                  boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                }}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Agregar Cargo</span>
-              </button>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {cargos.map((cargo) => (
-                <div key={cargo.id} className="p-4 rounded-lg border-2 border-gray-200 bg-gradient-to-br from-blue-50 to-white">
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      value={cargo.nombre}
-                      onChange={(e) => actualizarCargo(cargo.id, { nombre: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-1.5 text-sm font-bold uppercase border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Nombre del cargo"
-                    />
+          {/* 3. CAPACIDAD POR CARGO */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 flex-col sm:flex-row gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#10B981' }} />
+                    Capacidad por Cargo
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                    Número máximo de procesos que puede gestionar cada tipo de profesional
+                  </p>
+                </div>
+                <button
+                  onClick={agregarCargo}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Cargo</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {cargos.map((cargo) => (
+                  <div key={cargo.id} className="p-4 rounded-lg border-2 border-gray-200 bg-gradient-to-br from-blue-50 to-white">
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        value={cargo.nombre}
+                        onChange={(e) => actualizarCargo(cargo.id, { nombre: e.target.value.toUpperCase() })}
+                        className="w-full px-3 py-1.5 text-sm font-bold uppercase border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Nombre del cargo"
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="text-xs font-semibold text-gray-700 mb-1 block text-center">
+                        Capacidad Máxima
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={cargo.capacidad}
+                        onChange={(e) => actualizarCargo(cargo.id, { capacidad: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        style={{ color: '#003DA5' }}
+                      />
+                      <p className="text-xs text-center mt-2 text-gray-600">
+                        procesos máximo
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={cargo.activo}
+                          onChange={(e) => actualizarCargo(cargo.id, { activo: e.target.checked })}
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs font-semibold text-gray-700">Activo</span>
+                      </label>
+                      
+                      <button
+                        onClick={() => eliminarCargo(cargo.id)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
 
-                  <div className="mb-3">
-                    <label className="text-xs font-semibold text-gray-700 mb-1 block text-center">
-                      Capacidad Máxima
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={cargo.capacidad}
-                      onChange={(e) => actualizarCargo(cargo.id, { capacidad: parseInt(e.target.value) || 0 })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-center text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      style={{ color: '#003DA5' }}
-                    />
-                    <p className="text-xs text-center mt-2 text-gray-600">
-                      procesos máximo
+              <div className="mt-6 p-4 rounded-lg bg-blue-50 border-l-4 border-blue-500">
+                <div className="flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-800">
+                      <span className="font-bold">Recordatorio:</span> Estas son configuraciones de capacidad. Los usuarios se crean únicamente desde{' '}
+                      <span className="font-bold">Administración de Personas → Roles y Permisos</span>.
                     </p>
                   </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={cargo.activo}
-                        onChange={(e) => actualizarCargo(cargo.id, { activo: e.target.checked })}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-xs font-semibold text-gray-700">Activo</span>
-                    </label>
-                    
-                    <button
-                      onClick={() => eliminarCargo(cargo.id)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 p-4 rounded-lg bg-blue-50 border-l-4 border-blue-500">
-              <div className="flex gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm text-blue-800">
-                    <span className="font-bold">Recordatorio:</span> Estas son configuraciones de capacidad. Los usuarios se crean únicamente desde{' '}
-                    <span className="font-bold">Administración de Personas → Roles y Permisos</span>.
-                  </p>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* 4. NOTIFICACIONES */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-3 sm:p-4 lg:p-6">
-            <div className="mb-4 sm:mb-6">
-              <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F59E0B' }} />
-                Notificaciones
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Configura las alertas automáticas del sistema
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Alertas de Vencimiento */}
-              <div className="p-4 rounded-lg bg-gray-50">
-                <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
-                  Alertas de Vencimiento
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    { key: 'vencimiento7dias', label: '7 días antes del vencimiento' },
-                    { key: 'vencimiento3dias', label: '3 días antes del vencimiento' },
-                    { key: 'vencimiento1dia', label: '1 día antes del vencimiento' },
-                    { key: 'procesoVencido', label: 'Proceso vencido (inmediato)' }
-                  ].map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
-                        onChange={(e) => {
-                          setNotificaciones({
-                            ...notificaciones,
-                            [item.key]: e.target.checked
-                          });
-                          setCambiosPendientes(true);
-                        }}
-                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900">
-                        {item.label}
-                      </span>
-                    </label>
-                  ))}
-                </div>
+          {/* 4. NOTIFICACIONES */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="mb-4 sm:mb-6">
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#F59E0B' }} />
+                  Notificaciones
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                  Configura las alertas automáticas del sistema
+                </p>
               </div>
 
-              {/* Notificaciones de Proceso */}
-              <div className="p-4 rounded-lg bg-gray-50">
-                <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
-                  Notificaciones de Proceso
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    { key: 'asignacionProceso', label: 'Asignación de nuevo proceso' },
-                    { key: 'cambioEtapa', label: 'Cambio de etapa' },
-                    { key: 'aprobacionRequerida', label: 'Aprobación requerida' }
-                  ].map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
-                        onChange={(e) => {
-                          setNotificaciones({
-                            ...notificaciones,
-                            [item.key]: e.target.checked
-                          });
-                          setCambiosPendientes(true);
-                        }}
-                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900">
-                        {item.label}
-                      </span>
-                    </label>
-                  ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Alertas de Vencimiento */}
+                <div className="p-4 rounded-lg bg-gray-50">
+                  <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
+                    Alertas de Vencimiento
+                  </h3>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'vencimiento7dias', label: '7 días antes del vencimiento' },
+                      { key: 'vencimiento3dias', label: '3 días antes del vencimiento' },
+                      { key: 'vencimiento1dia', label: '1 día antes del vencimiento' },
+                      { key: 'procesoVencido', label: 'Proceso vencido (inmediato)' }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
+                          onChange={(e) => {
+                            setNotificaciones({
+                              ...notificaciones,
+                              [item.key]: e.target.checked
+                            });
+                            setCambiosPendientes(true);
+                          }}
+                          className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          {item.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Resúmenes */}
-              <div className="p-4 rounded-lg bg-gray-50 md:col-span-2">
-                <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
-                  Resúmenes Automáticos
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    { key: 'resumenDiario', label: 'Resumen diario (8:00 AM)' },
-                    { key: 'resumenSemanal', label: 'Resumen semanal (Lunes 8:00 AM)' }
-                  ].map((item) => (
-                    <label key={item.key} className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
-                        onChange={(e) => {
-                          setNotificaciones({
-                            ...notificaciones,
-                            [item.key]: e.target.checked
-                          });
-                          setCambiosPendientes(true);
-                        }}
-                        className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900">
-                        {item.label}
-                      </span>
-                    </label>
-                  ))}
+                {/* Notificaciones de Proceso */}
+                <div className="p-4 rounded-lg bg-gray-50">
+                  <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
+                    Notificaciones de Proceso
+                  </h3>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'asignacionProceso', label: 'Asignación de nuevo proceso' },
+                      { key: 'cambioEtapa', label: 'Cambio de etapa' },
+                      { key: 'aprobacionRequerida', label: 'Aprobación requerida' }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
+                          onChange={(e) => {
+                            setNotificaciones({
+                              ...notificaciones,
+                              [item.key]: e.target.checked
+                            });
+                            setCambiosPendientes(true);
+                          }}
+                          className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          {item.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resúmenes */}
+                <div className="p-4 rounded-lg bg-gray-50 md:col-span-2">
+                  <h3 className="text-sm font-bold mb-4 uppercase text-gray-700">
+                    Resúmenes Automáticos
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {[
+                      { key: 'resumenDiario', label: 'Resumen diario (8:00 AM)' },
+                      { key: 'resumenSemanal', label: 'Resumen semanal (Lunes 8:00 AM)' }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
+                          onChange={(e) => {
+                            setNotificaciones({
+                              ...notificaciones,
+                              [item.key]: e.target.checked
+                            });
+                            setCambiosPendientes(true);
+                          }}
+                          className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          {item.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* 5. PARÁMETROS DE ALERTAS */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-3 sm:p-4 lg:p-6">
-            <div className="mb-4 sm:mb-6">
-              <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#DC2626' }} />
-                Parámetros de Alertas y Semáforo
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Configure el sistema de semáforo que indica el estado de avance de cada proceso
-              </p>
-            </div>
-
-            {/* Explicación Visual del Semáforo */}
-            <div className="mb-6 p-5 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-              <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-                <Target className="w-5 h-5 text-blue-600" />
-                ¿Cómo funciona el semáforo de procesos?
-              </h3>
-              <p className="text-sm text-gray-700 mb-4">
-                El sistema calcula automáticamente el <strong>% de tiempo consumido</strong> de cada proceso según los días configurados en cada estado. 
-                Ejemplo: Si un estado dura 10 días y ya pasaron 8 días, el proceso ha consumido el <strong>80%</strong> del tiempo.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* Verde */}
-                <div className="bg-white rounded-lg p-4 border-2 border-green-400">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 rounded-full bg-green-500"></div>
-                    <span className="font-bold text-green-800">VERDE - Normal</span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    El proceso va a tiempo. Tiempo consumido es <strong>menor al {alertas.porcentajeRiesgo}%</strong>
-                  </p>
-                  <div className="mt-2 text-xs font-mono bg-green-100 text-green-800 px-2 py-1 rounded">
-                    Ejemplo: 0% - {alertas.porcentajeRiesgo - 1}% consumido
-                  </div>
-                </div>
-
-                {/* Amarillo */}
-                <div className="bg-white rounded-lg p-4 border-2 border-amber-400">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 rounded-full bg-amber-500"></div>
-                    <span className="font-bold text-amber-800">AMARILLO - Alerta</span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    El proceso está cerca de vencerse. Tiempo consumido entre <strong>{alertas.porcentajeRiesgo}% y {alertas.porcentajeCritico - 1}%</strong>
-                  </p>
-                  <div className="mt-2 text-xs font-mono bg-amber-100 text-amber-800 px-2 py-1 rounded">
-                    Ejemplo: {alertas.porcentajeRiesgo}% - {alertas.porcentajeCritico - 1}% consumido
-                  </div>
-                </div>
-
-                {/* Rojo */}
-                <div className="bg-white rounded-lg p-4 border-2 border-red-400">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 rounded-full bg-red-500"></div>
-                    <span className="font-bold text-red-800">ROJO - Crítico</span>
-                  </div>
-                  <p className="text-xs text-gray-600">
-                    El proceso está vencido o crítico. Tiempo consumido es <strong>mayor o igual al {alertas.porcentajeCritico}%</strong>
-                  </p>
-                  <div className="mt-2 text-xs font-mono bg-red-100 text-red-800 px-2 py-1 rounded">
-                    Ejemplo: {alertas.porcentajeCritico}% - 100%+ consumido
-                  </div>
-                </div>
+          {/* 5. PARÁMETROS DE ALERTAS */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-3 sm:p-4 lg:p-6">
+              <div className="mb-4 sm:mb-6">
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#DC2626' }} />
+                  Parámetros de Alertas y Semáforo
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                  Configure el sistema de semáforo que indica el estado de avance de cada proceso
+                </p>
               </div>
-            </div>
 
-            {/* Configuración de Umbrales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Umbral Amarillo */}
-              <div className="p-5 rounded-lg bg-amber-50 border-2 border-amber-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-white" />
+              {/* Explicación Visual del Semáforo */}
+              <div className="mb-6 p-5 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
+                <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-blue-600" />
+                  ¿Cómo funciona el semáforo de procesos?
+                </h3>
+                <p className="text-sm text-gray-700 mb-4">
+                  El sistema calcula automáticamente el <strong>% de tiempo consumido</strong> de cada proceso según los días configurados en cada estado. 
+                  Ejemplo: Si un estado dura 10 días y ya pasaron 8 días, el proceso ha consumido el <strong>80%</strong> del tiempo.
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Verde */}
+                  <div className="bg-white rounded-lg p-4 border-2 border-green-400">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-green-500"></div>
+                      <span className="font-bold text-green-800">VERDE - Normal</span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      El proceso va a tiempo. Tiempo consumido es <strong>menor al {alertas.porcentajeRiesgo}%</strong>
+                    </p>
+                    <div className="mt-2 text-xs font-mono bg-green-100 text-green-800 px-2 py-1 rounded">
+                      Ejemplo: 0% - {alertas.porcentajeRiesgo - 1}% consumido
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-gray-900">
-                        Umbral de Riesgo (Amarillo)
-                      </span>
-                      <span className="px-3 py-1 rounded-full text-sm font-bold bg-amber-200 text-amber-900">
-                        {alertas.porcentajeRiesgo}%
-                      </span>
+
+                  {/* Amarillo */}
+                  <div className="bg-white rounded-lg p-4 border-2 border-amber-400">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-amber-500"></div>
+                      <span className="font-bold text-amber-800">AMARILLO - Alerta</span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      El proceso está cerca de vencerse. Tiempo consumido entre <strong>{alertas.porcentajeRiesgo}% y {alertas.porcentajeCritico - 1}%</strong>
+                    </p>
+                    <div className="mt-2 text-xs font-mono bg-amber-100 text-amber-800 px-2 py-1 rounded">
+                      Ejemplo: {alertas.porcentajeRiesgo}% - {alertas.porcentajeCritico - 1}% consumido
+                    </div>
+                  </div>
+
+                  {/* Rojo */}
+                  <div className="bg-white rounded-lg p-4 border-2 border-red-400">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-red-500"></div>
+                      <span className="font-bold text-red-800">ROJO - Crítico</span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      El proceso está vencido o crítico. Tiempo consumido es <strong>mayor o igual al {alertas.porcentajeCritico}%</strong>
+                    </p>
+                    <div className="mt-2 text-xs font-mono bg-red-100 text-red-800 px-2 py-1 rounded">
+                      Ejemplo: {alertas.porcentajeCritico}% - 100%+ consumido
                     </div>
                   </div>
                 </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="95"
-                  value={alertas.porcentajeRiesgo}
-                  onChange={(e) => {
-                    const nuevoValor = parseInt(e.target.value);
-                    // Asegurar que el amarillo sea menor que el rojo
-                    if (nuevoValor < alertas.porcentajeCritico) {
+              </div>
+
+              {/* Configuración de Umbrales */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Umbral Amarillo */}
+                <div className="p-5 rounded-lg bg-amber-50 border-2 border-amber-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
+                      <AlertTriangle className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-gray-900">
+                          Umbral de Riesgo (Amarillo)
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-amber-200 text-amber-900">
+                          {alertas.porcentajeRiesgo}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="95"
+                    value={alertas.porcentajeRiesgo}
+                    onChange={(e) => {
+                      const nuevoValor = parseInt(e.target.value);
+                      // Asegurar que el amarillo sea menor que el rojo
+                      if (nuevoValor < alertas.porcentajeCritico) {
+                        setAlertas({
+                          ...alertas,
+                          porcentajeRiesgo: nuevoValor
+                        });
+                        setCambiosPendientes(true);
+                      }
+                    }}
+                    className="w-full h-2 bg-gradient-to-r from-green-200 via-amber-300 to-amber-500 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="mt-3 p-3 bg-white rounded border border-amber-300">
+                    <p className="text-xs text-gray-700">
+                      <strong>Se activa cuando:</strong> Un proceso ha consumido el <strong>{alertas.porcentajeRiesgo}%</strong> del tiempo asignado a su etapa actual.
+                    </p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      📍 <strong>Ejemplo práctico:</strong> Si una etapa dura 10 días, el semáforo se pondrá amarillo al día {Math.ceil((alertas.porcentajeRiesgo / 100) * 10)}.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Umbral Rojo */}
+                <div className="p-5 rounded-lg bg-red-50 border-2 border-red-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
+                      <AlertTriangle className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-gray-900">
+                          Umbral Crítico (Rojo)
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-red-200 text-red-900">
+                          {alertas.porcentajeCritico}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min="80"
+                    max="100"
+                    value={alertas.porcentajeCritico}
+                    onChange={(e) => {
+                      const nuevoValor = parseInt(e.target.value);
+                      // Asegurar que el rojo sea mayor que el amarillo
+                      if (nuevoValor > alertas.porcentajeRiesgo) {
+                        setAlertas({
+                          ...alertas,
+                          porcentajeCritico: nuevoValor
+                        });
+                        setCambiosPendientes(true);
+                      }
+                    }}
+                    className="w-full h-2 bg-gradient-to-r from-amber-300 via-red-400 to-red-600 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="mt-3 p-3 bg-white rounded border border-red-300">
+                    <p className="text-xs text-gray-700">
+                      <strong>Se activa cuando:</strong> Un proceso ha consumido el <strong>{alertas.porcentajeCritico}%</strong> del tiempo asignado a su etapa actual.
+                    </p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      📍 <strong>Ejemplo práctico:</strong> Si una etapa dura 10 días, el semáforo se pondrá rojo al día {Math.ceil((alertas.porcentajeCritico / 100) * 10)}.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Alerta de Capacidad */}
+                <div className="p-5 rounded-lg bg-blue-50 border-2 border-blue-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                      <Users className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-gray-900">
+                          Alerta de Capacidad
+                        </span>
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-blue-200 text-blue-900">
+                          {alertas.capacidadAlerta}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="100"
+                    value={alertas.capacidadAlerta}
+                    onChange={(e) => {
                       setAlertas({
                         ...alertas,
-                        porcentajeRiesgo: nuevoValor
+                        capacidadAlerta: parseInt(e.target.value)
                       });
                       setCambiosPendientes(true);
-                    }
-                  }}
-                  className="w-full h-2 bg-gradient-to-r from-green-200 via-amber-300 to-amber-500 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="mt-3 p-3 bg-white rounded border border-amber-300">
-                  <p className="text-xs text-gray-700">
-                    <strong>Se activa cuando:</strong> Un proceso ha consumido el <strong>{alertas.porcentajeRiesgo}%</strong> del tiempo asignado a su etapa actual.
-                  </p>
-                  <p className="text-xs text-gray-600 mt-2">
-                    📍 <strong>Ejemplo práctico:</strong> Si una etapa dura 10 días, el semáforo se pondrá amarillo al día {Math.ceil((alertas.porcentajeRiesgo / 100) * 10)}.
-                  </p>
-                </div>
-              </div>
-
-              {/* Umbral Rojo */}
-              <div className="p-5 rounded-lg bg-red-50 border-2 border-red-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-gray-900">
-                        Umbral Crítico (Rojo)
-                      </span>
-                      <span className="px-3 py-1 rounded-full text-sm font-bold bg-red-200 text-red-900">
-                        {alertas.porcentajeCritico}%
-                      </span>
-                    </div>
+                    }}
+                    className="w-full h-2 bg-gradient-to-r from-green-200 via-blue-300 to-blue-600 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="mt-3 p-3 bg-white rounded border border-blue-300">
+                    <p className="text-xs text-gray-700">
+                      <strong>Se activa cuando:</strong> Un profesional alcanza el <strong>{alertas.capacidadAlerta}%</strong> de su capacidad máxima de procesos asignados.
+                    </p>
+                    <p className="text-xs text-gray-600 mt-2">
+                      📍 <strong>Ejemplo práctico:</strong> Si un profesional puede tener 10 procesos, recibirá alerta al tener {Math.ceil((alertas.capacidadAlerta / 100) * 10)} procesos asignados.
+                    </p>
                   </div>
                 </div>
-                <input
-                  type="range"
-                  min="80"
-                  max="100"
-                  value={alertas.porcentajeCritico}
-                  onChange={(e) => {
-                    const nuevoValor = parseInt(e.target.value);
-                    // Asegurar que el rojo sea mayor que el amarillo
-                    if (nuevoValor > alertas.porcentajeRiesgo) {
-                      setAlertas({
-                        ...alertas,
-                        porcentajeCritico: nuevoValor
-                      });
-                      setCambiosPendientes(true);
-                    }
-                  }}
-                  className="w-full h-2 bg-gradient-to-r from-amber-300 via-red-400 to-red-600 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="mt-3 p-3 bg-white rounded border border-red-300">
-                  <p className="text-xs text-gray-700">
-                    <strong>Se activa cuando:</strong> Un proceso ha consumido el <strong>{alertas.porcentajeCritico}%</strong> del tiempo asignado a su etapa actual.
-                  </p>
-                  <p className="text-xs text-gray-600 mt-2">
-                    📍 <strong>Ejemplo práctico:</strong> Si una etapa dura 10 días, el semáforo se pondrá rojo al día {Math.ceil((alertas.porcentajeCritico / 100) * 10)}.
-                  </p>
-                </div>
-              </div>
 
-              {/* Alerta de Capacidad */}
-              <div className="p-5 rounded-lg bg-blue-50 border-2 border-blue-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-gray-900">
-                        Alerta de Capacidad
-                      </span>
-                      <span className="px-3 py-1 rounded-full text-sm font-bold bg-blue-200 text-blue-900">
-                        {alertas.capacidadAlerta}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="100"
-                  value={alertas.capacidadAlerta}
-                  onChange={(e) => {
-                    setAlertas({
-                      ...alertas,
-                      capacidadAlerta: parseInt(e.target.value)
-                    });
-                    setCambiosPendientes(true);
-                  }}
-                  className="w-full h-2 bg-gradient-to-r from-green-200 via-blue-300 to-blue-600 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="mt-3 p-3 bg-white rounded border border-blue-300">
-                  <p className="text-xs text-gray-700">
-                    <strong>Se activa cuando:</strong> Un profesional alcanza el <strong>{alertas.capacidadAlerta}%</strong> de su capacidad máxima de procesos asignados.
-                  </p>
-                  <p className="text-xs text-gray-600 mt-2">
-                    📍 <strong>Ejemplo práctico:</strong> Si un profesional puede tener 10 procesos, recibirá alerta al tener {Math.ceil((alertas.capacidadAlerta / 100) * 10)} procesos asignados.
-                  </p>
-                </div>
-              </div>
-            </div>
-            </div>
-          </div>
-      <ConfiguracionFirmaPersonal />
-
-      {/* Parámetros de Alertas */}
-      <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 rounded-xl" style={{ background: '#FEE2E2' }}>
-            <AlertTriangle className="w-6 h-6" style={{ color: '#DC2626' }} />
-          </div>
-          <div>
-            <h2 className="text-xl font-extrabold" style={{ color: '#1F2937' }}>
-              Parámetros de Alertas
-            </h2>
-            <p className="text-sm" style={{ color: '#6B7280' }}>
-              Umbrales para activar las alertas del sistema
-            </p>
-          </div>
-        </div>
-
-        <Card className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="p-5 rounded-xl" style={{ background: '#FFFBEB' }}>
-            <label className="block">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-bold" style={{ color: '#1F2937' }}>
-                  Porcentaje de Riesgo (Amarillo)
-                </span>
-                <Badge style={{ background: '#FEF3C7', color: '#D97706' }}>
-                  {alertas.porcentajeRiesgo}%
-                </Badge>
                 {/* Días de Anticipación */}
                 <div className="p-5 rounded-lg bg-purple-50 border-2 border-purple-200">
                   <div className="flex items-center gap-2 mb-3">
@@ -1491,31 +1316,31 @@ export function ModuloConfiguracion() {
                   </div>
                 </div>
               </div>
-            </label>
+            </div>
           </div>
-        </Card>
 
-        {/* Info Final */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 bg-blue-50 border-l-4 border-blue-500">
-            <div className="flex gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-blue-900 mb-1">
-                  Información Importante
-                </h3>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Los cambios afectarán todos los procesos del módulo disciplinario</li>
-                  <li>• Las alertas se enviarán automáticamente según los días configurados</li>
-                  <li>• Los estados inactivos no aparecerán en el tablero Kanban</li>
-                  <li>• El orden de los estados se puede cambiar arrastrándolos</li>
-                  <li>• Los cambios en capacidad afectan la asignación automática de procesos</li>
-                </ul>
+          {/* Info Final */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-6 bg-blue-50 border-l-4 border-blue-500">
+              <div className="flex gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-blue-900 mb-1">
+                    Información Importante
+                  </h3>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• Los cambios afectarán todos los procesos del módulo disciplinario</li>
+                    <li>• Las alertas se enviarán automáticamente según los días configurados</li>
+                    <li>• Los estados inactivos no aparecerán en el tablero Kanban</li>
+                    <li>• El orden de los estados se puede cambiar arrastrándolos</li>
+                    <li>• Los cambios en capacidad afectan la asignación automática de procesos</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* MODALES */}
       
@@ -1622,9 +1447,6 @@ export function ModuloConfiguracion() {
   );
 }
 
-}
-}
-
 // ============ COMPONENTE ESTADO SORTABLE ============
 
 function EstadoSortable({ estado, index, onUpdate, onDelete }: { 
@@ -1694,27 +1516,6 @@ function EstadoSortable({ estado, index, onUpdate, onDelete }: {
             onChange={(e) => onUpdate(estado.id, { color: e.target.value })}
             className="w-10 h-8 rounded border border-gray-300 cursor-pointer"
           />
-        </div>
-        <div className="flex items-center gap-3">
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
-          <button
-            onClick={handleRestablecer}
-            className="px-6 py-2.5 rounded-xl font-semibold"
-            style={{ background: '#F3F4F6', color: '#4B5563' }}
-          >
-            Restablecer
-          </button>
-          )}
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
-          <button
-            onClick={handleGuardar}
-            className="px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2"
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-          >
-            <Save className="w-4 h-4" />
-            Guardar Cambios
-          </button>
-          )}
         </div>
 
         {/* Días estándar */}

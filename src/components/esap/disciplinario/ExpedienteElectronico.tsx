@@ -190,7 +190,7 @@ interface Carpeta {
   documentos: Documento[];
 }
 
-// Mock Data
+// Mock Data - REDUCIDO
 const PROCESOS_MOCK: Proceso[] = [
   {
     id: '1',
@@ -203,16 +203,6 @@ const PROCESOS_MOCK: Proceso[] = [
     estado: 'En Proceso'
   },
   {
-    id: '2',
-    numero: 'PJ-2024-045',
-    tipo: 'Defensa Judicial',
-    descripcion: 'Tutela - Derecho de Petición',
-    responsable: 'Dra. Ana López García',
-    inicio: '2024-08-15',
-    documentos: 10,
-    estado: 'Finalizado'
-  },
-  {
     id: '3',
     numero: 'PD-2025-001',
     tipo: 'Juzgamiento Disciplinario',
@@ -222,49 +212,6 @@ const PROCESOS_MOCK: Proceso[] = [
     documentos: 6,
     estado: 'Activo',
     etapa: 'Indagación Preliminar'
-  },
-  {
-    id: '4',
-    numero: 'PD-2024-089',
-    tipo: 'Juzgamiento Disciplinario',
-    descripcion: 'Queja - Servidor Público Regional',
-    responsable: 'Dr. Juan Pérez López',
-    inicio: '2024-12-15',
-    documentos: 12,
-    estado: 'En Proceso',
-    etapa: 'Valoración'
-  },
-  {
-    id: '5',
-    numero: 'PD-2024-156',
-    tipo: 'Juzgamiento Disciplinario',
-    descripcion: 'Investigación - Presunta Falta',
-    responsable: 'Dra. Ana López García',
-    inicio: '2024-11-20',
-    documentos: 18,
-    estado: 'En Proceso',
-    etapa: 'Investigación Formal'
-  },
-  {
-    id: '6',
-    numero: 'PJ-2024-032',
-    tipo: 'Derecho de Petición',
-    descripcion: 'Solicitud Información Pública',
-    responsable: 'Dr. Juan Pérez López',
-    inicio: '2024-09-10',
-    documentos: 4,
-    estado: 'Finalizado'
-  },
-  {
-    id: '7',
-    numero: 'PD-2024-201',
-    tipo: 'Juzgamiento Disciplinario',
-    descripcion: 'Denuncia Ciudadana - Sede Nacional',
-    responsable: 'Dr. Juan Pérez López',
-    inicio: '2024-10-25',
-    documentos: 8,
-    estado: 'Activo',
-    etapa: 'Valoración'
   }
 ];
 

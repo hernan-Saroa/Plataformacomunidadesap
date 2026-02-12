@@ -17,6 +17,7 @@ import { ProcessService } from './process.service';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
+import { PdfModifierService } from './pdf-modifier.service';
 
 @Injectable()
 export class AutoService {
@@ -29,6 +30,7 @@ export class AutoService {
     private configRepository: Repository<SystemConfiguration>,
     private processService: ProcessService,
     private alertasService: AlertasService,
+    private pdfModifierService: PdfModifierService,
   ) { }
 
   /**
@@ -37,7 +39,7 @@ export class AutoService {
   async create(createAutoDto: CreateLegalAutoDto): Promise<LegalAuto> {
     try {
       // Validar que el proceso existe
-      await this.processService.findById(createAutoDto.processId, false);
+      const proceso = await this.processService.findById(createAutoDto.processId, false);
 
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
@@ -53,7 +55,25 @@ export class AutoService {
         comentarios: createAutoDto.comentarios,
       });
 
-      return await this.autoRepository.save(auto);
+      const savedAuto = await this.autoRepository.save(auto);
+
+      // Si tiene documento PDF, agregar el consecutivo
+      if (savedAuto.documentUrl && savedAuto.documentName?.toLowerCase().endsWith('.pdf')) {
+        // Asumimos que documentUrl es el nombre del archivo en uploads (StorageService)
+        // Ejemplo: "1738923_archivo.pdf"
+        try {
+          await this.pdfModifierService.addConsecutive(
+            savedAuto.documentUrl,
+            savedAuto.numero,
+            proceso.radicadoProceso
+          );
+        } catch (e) {
+          console.error('Error al agregar consecutivo al PDF', e);
+          // No fallamos la creación del auto, solo loggeamos
+        }
+      }
+
+      return savedAuto;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -183,18 +203,42 @@ export class AutoService {
   /**
    * Firma digitalmente un auto aprobado
    */
-  async sign(id: string, userId: string): Promise<LegalAuto> {
+  async sign(id: string, userId: string, signData?: any): Promise<LegalAuto> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.estado !== AutoStatus.APROBADO) {
+    // Permitir firmar si está APROBADO o EN REVISIÓN (Jefe puede firmar directo)
+    if (auto.estado !== AutoStatus.APROBADO && auto.estado !== AutoStatus.REVISION_JEFE) {
       throw new HttpException(
-        'Solo se pueden firmar autos que estén aprobados',
+        'Solo se pueden firmar autos que estén en revisión o aprobados',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    auto.firmaUrl = this.generateMockSignatureUrl(auto.id, 'ELECTRONICA');
+    // NOTA: A petición del usuario, NO reemplazamos el archivo original con el archivo subido (Firma Local).
+    // Mantenemos el archivo original (que ya tiene el consecutivo) y le estampamos la firma visualmente al final.
+
+    // La firma queda en el mismo documento (modificado in-place)
+    auto.firmaUrl = auto.documentUrl;
     auto.estado = AutoStatus.FIRMADO;
+    auto.aprobadoPorId = userId;
+
+    // Agregar la estampa visual AL MISMO ARCHIVO SIEMPRE (para todos los métodos de firma)
+    if (auto.documentUrl && auto.documentName?.toLowerCase().endsWith('.pdf')) {
+      try {
+        // TODO: Obtener nombre real del usuario firmante
+        const signerName = "Jefe Control Disciplinario";
+        const role = "Jefe Oficina";
+
+        // Esto modifica el archivo en disco (in-place)
+        await this.pdfModifierService.addSignature(
+          auto.documentUrl,
+          signerName,
+          role
+        );
+      } catch (e) {
+        console.error('Error al estampar firma en PDF', e);
+      }
+    }
 
     // Registrar en Historial
     await this.versionRepository.save({
@@ -202,7 +246,7 @@ export class AutoService {
       contenido: auto.contenido,
       versionNumber: auto.currentVersion,
       createdBy: userId, // Quien firma
-      changeReason: 'Auto Firmado Digitalmente',
+      changeReason: 'Auto Firmado (Estampado Digital en Documento Original)',
       documentUrl: auto.documentUrl,
       documentName: auto.documentName,
     });

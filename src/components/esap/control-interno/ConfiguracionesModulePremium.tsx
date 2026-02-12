@@ -10,7 +10,7 @@ import { Settings, Bell, Activity, Sliders, Columns } from 'lucide-react';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { NotificacionesModule } from './NotificacionesModule';
 import { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
-import { ConfiguracionAuditoriasModule } from './ConfiguracionAuditoriasModule';
+import { ConfiguracionAuditoriasModuleSimplificado } from './ConfiguracionAuditoriasModuleSimplificado';
 import { ConfiguracionKanbanModule } from './ConfiguracionKanbanModule';
 
 type TabActiva = 'NOTIFICACIONES' | 'AUDITORIA_CAMBIOS' | 'CONFIG_AUDITORIAS' | 'CONFIG_KANBAN';
@@ -37,7 +37,7 @@ export function ConfiguracionesModulePremium() {
         <motion.div key={tabActiva} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
           {tabActiva === 'NOTIFICACIONES' && <NotificacionesModule />}
           {tabActiva === 'AUDITORIA_CAMBIOS' && <AuditoriaCambiosModule />}
-          {tabActiva === 'CONFIG_AUDITORIAS' && <ConfiguracionAuditoriasModule />}
+          {tabActiva === 'CONFIG_AUDITORIAS' && <ConfiguracionAuditoriasModuleSimplificado />}
           {tabActiva === 'CONFIG_KANBAN' && <ConfiguracionKanbanModule />}
         </motion.div>
       </AnimatePresence>

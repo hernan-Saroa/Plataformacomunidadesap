@@ -17,9 +17,15 @@ import { toast } from 'sonner';
 import { ocService, legalService } from '../../../../services/api/legal.service';
 
 interface Organismo {
-    id: number;
+    id: string | number;
     nombre: string;
     sigla?: string;
+}
+
+interface TipoRequerimiento {
+    id: string;
+    nombre: string;
+    descripcion?: string;
 }
 
 interface Abogado {
@@ -41,15 +47,18 @@ export function ModalNuevoRequerimiento({
     onSuccess
 }: ModalNuevoRequerimientoProps) {
     const [loading, setLoading] = useState(false);
-    const [organismos, setOrganismos] = useState<Organismo[]>([]);
-    const [abogados, setAbogados] = useState<Abogado[]>([]);
     const [loadingData, setLoadingData] = useState(true);
+
+    // Data loaded from backend API
+    const [organismos, setOrganismos] = useState<Organismo[]>([]);
+    const [tiposRequerimiento, setTiposRequerimiento] = useState<TipoRequerimiento[]>([]);
+    const [abogados, setAbogados] = useState<Abogado[]>([]);
 
     // Form state
     const [formData, setFormData] = useState({
         radicadoExterno: '',
         organismoId: '',
-        tipoRequerimiento: 'SOLICITUD_INFORMACION',
+        tipoRequerimiento: '',
         asunto: '',
         descripcion: '',
         fechaRecepcion: new Date().toISOString().split('T')[0],
@@ -60,7 +69,7 @@ export function ModalNuevoRequerimiento({
         areaResponsable: 'Oficina Jurídica'
     });
 
-    // Load organismos and abogados on mount
+    // Load data from backend on mount
     useEffect(() => {
         if (isOpen) {
             loadInitialData();
@@ -70,21 +79,55 @@ export function ModalNuevoRequerimiento({
     const loadInitialData = async () => {
         setLoadingData(true);
         try {
-            const [orgs, lawyers] = await Promise.all([
-                ocService.getOrganismosControl(),
-                legalService.getAbogados()
+            // Lawyers always from backend
+            const lawyersPromise = legalService.getAbogados();
+
+            // Try to load from LocalStorage first (ConfiguracionesSIGL source)
+            const storedTipos = localStorage.getItem('sigl-tipos-requerimientos');
+            const storedOrgs = localStorage.getItem('sigl-organismos-control');
+
+            let tiposFn = async () => {
+                if (storedTipos) {
+                    try {
+                        const parsed = JSON.parse(storedTipos);
+                        return parsed.filter((t: any) => t.activo);
+                    } catch (e) { console.error('Error config tipos LS', e); }
+                }
+                return await ocService.getTiposRequerimientoOC();
+            };
+
+            let orgsFn = async () => {
+                if (storedOrgs) {
+                    try {
+                        const parsed = JSON.parse(storedOrgs);
+                        return parsed.filter((o: any) => o.activo);
+                    } catch (e) { console.error('Error config organos LS', e); }
+                }
+                return await ocService.getOrganismosControl();
+            };
+
+            const [orgs, tipos, lawyers] = await Promise.all([
+                orgsFn(),
+                tiposFn(),
+                lawyersPromise
             ]);
 
             setOrganismos(orgs || []);
+            setTiposRequerimiento(tipos || []);
             setAbogados(lawyers.map((a: any) => ({
                 id: a.id,
                 nombreCompleto: a.nombreCompleto || a.nombre || `${a.nombres} ${a.apellidos}`,
                 email: a.email,
                 especialidad: a.especialidad
             })) || []);
+
+            // Set default tipo if available
+            if (tipos && tipos.length > 0) {
+                setFormData(prev => ({ ...prev, tipoRequerimiento: tipos[0].id }));
+            }
         } catch (error) {
             console.error('Error cargando datos iniciales:', error);
-            toast.error('Error al cargar organismos o abogados');
+            toast.error('Error al cargar catálogos');
         } finally {
             setLoadingData(false);
         }
@@ -116,7 +159,7 @@ export function ModalNuevoRequerimiento({
         try {
             const payload = {
                 radicadoExterno: formData.radicadoExterno,
-                organismoId: parseInt(formData.organismoId),
+                organismoId: formData.organismoId,
                 tipoRequerimiento: formData.tipoRequerimiento,
                 asunto: formData.asunto,
                 descripcion: formData.descripcion,
@@ -138,7 +181,7 @@ export function ModalNuevoRequerimiento({
             setFormData({
                 radicadoExterno: '',
                 organismoId: '',
-                tipoRequerimiento: 'SOLICITUD_INFORMACION',
+                tipoRequerimiento: tiposRequerimiento.length > 0 ? tiposRequerimiento[0].id : '',
                 asunto: '',
                 descripcion: '',
                 fechaRecepcion: new Date().toISOString().split('T')[0],
@@ -161,7 +204,7 @@ export function ModalNuevoRequerimiento({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="!w-full !max-w-[600px] !max-h-[85vh] !top-1/2 !-translate-y-1/2 overflow-y-auto">
                 <DialogTitle className="flex items-center gap-2 text-lg font-bold" style={{ color: '#003DA5' }}>
                     <Building2 className="w-5 h-5" />
                     Nuevo Requerimiento - Órgano de Control
@@ -191,7 +234,12 @@ export function ModalNuevoRequerimiento({
                                         id="radicadoExterno"
                                         placeholder="Ej: CGR-OF-2025-00125"
                                         value={formData.radicadoExterno}
-                                        onChange={(e) => handleChange('radicadoExterno', e.target.value)}
+                                        onChange={(e) => {
+                                            const value = e.target.value.toUpperCase();
+                                            if (/^[A-Z0-9-]*$/.test(value)) {
+                                                handleChange('radicadoExterno', value);
+                                            }
+                                        }}
                                         required
                                     />
                                 </div>
@@ -201,21 +249,19 @@ export function ModalNuevoRequerimiento({
                                         <Building2 className="w-3 h-3" />
                                         Órgano de Control *
                                     </Label>
-                                    <Select
+                                    <Input
+                                        id="organismoId"
+                                        placeholder="Ingrese el nombre del órgano de control"
                                         value={formData.organismoId}
-                                        onValueChange={(value) => handleChange('organismoId', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Seleccione organismo..." />
-                                        </SelectTrigger>
-                                        <SelectContent className="z-[9999]">
-                                            {organismos.map(org => (
-                                                <SelectItem key={org.id} value={String(org.id)}>
-                                                    {org.sigla ? `${org.sigla} - ${org.nombre}` : org.nombre}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            // Validar solo letras y espacios (incluyendo tildes)
+                                            if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
+                                                handleChange('organismoId', value);
+                                            }
+                                        }}
+                                        required
+                                    />
                                 </div>
                             </div>
 
@@ -228,14 +274,14 @@ export function ModalNuevoRequerimiento({
                                     onValueChange={(value) => handleChange('tipoRequerimiento', value)}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue />
+                                        <SelectValue placeholder="Seleccione tipo..." />
                                     </SelectTrigger>
                                     <SelectContent className="z-[9999]">
-                                        <SelectItem value="SOLICITUD_INFORMACION">Solicitud de Información</SelectItem>
-                                        <SelectItem value="APERTURA_AUDITORIA">Apertura de Auditoría</SelectItem>
-                                        <SelectItem value="NOTIFICACION_HALLAZGO">Notificación de Hallazgo</SelectItem>
-                                        <SelectItem value="PLAN_MEJORAMIENTO">Plan de Mejoramiento</SelectItem>
-                                        <SelectItem value="OTRO">Otro</SelectItem>
+                                        {tiposRequerimiento.map((tipo: TipoRequerimiento) => (
+                                            <SelectItem key={tipo.id} value={tipo.id}>
+                                                {tipo.nombre}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>

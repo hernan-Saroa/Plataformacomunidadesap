@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -32,6 +32,30 @@ import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { ModalNuevaActuacion, type NuevaActuacionData } from './ModalNuevaActuacion';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+
+// Tipo para Proceso Disciplinario
+interface ProcesoDisciplinario {
+  id: string;
+  tipoFalta: string;
+  etapa: string;
+  abogadoAsignado: string;
+  disciplinado: string;
+  cargo?: string;
+  dependencia?: string;
+  diasRestantes: number;
+  diasTotales: number;
+  ultimaActuacion?: {
+    fecha: string;
+    tipo: string;
+    descripcion: string;
+    responsable: string;
+    estado: string;
+  };
+  fechaActualizacion: Date;
+  descripcionHechos?: string;
+}
 
 interface ModalProcesoDisciplinarioProps {
   isOpen: boolean;
@@ -40,27 +64,65 @@ interface ModalProcesoDisciplinarioProps {
 }
 
 export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalProcesoDisciplinarioProps) {
+  // ✅ Obtener configuraciones desde Context API
+  const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
+
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Single source of truth for process actions/documents
-  const [actuaciones, setActuaciones] = useState<any[]>([]);
+  // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
+  const [actuaciones, setActuaciones] = useState([
+    {
+      id: 1,
+      fecha: '26/12/2024',
+      tipo: 'Solicitud de Informes',
+      descripcion: proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH',
+      responsable: 'Oficina Control Disciplinario',
+      estado: 'COMPLETADA',
+      colorBorde: '#003DA5'
+    },
+    {
+      id: 2,
+      fecha: '20/12/2024',
+      tipo: 'Auto de Apertura',
+      descripcion: 'Auto de apertura de investigación disciplinaria',
+      responsable: 'Jefe de Control Interno',
+      estado: 'COMPLETADA',
+      colorBorde: '#F59E0B'
+    },
+    {
+      id: 3,
+      fecha: '15/12/2024',
+      tipo: 'Recepción de Queja',
+      descripcion: 'Recepción de queja por irregularidades',
+      responsable: 'Secretaría General',
+      estado: 'COMPLETADA',
+      colorBorde: '#003DA5'
+    }
+  ]);
 
   const [mostrarFormularioDecision, setMostrarFormularioDecision] = useState(false);
   const [decisiones, setDecisiones] = useState<any[]>([]);
   const [decisionSeleccionada, setDecisionSeleccionada] = useState<any>(null);
 
-  // Excepciones Procesales
+  // ✅ Estado para excepciones procesales
   const [excepciones, setExcepciones] = useState<any[]>([]);
+  const [modalNuevaExcepcion, setModalNuevaExcepcion] = useState(false);
   const [mostrarFormularioExcepcion, setMostrarFormularioExcepcion] = useState(false);
+
+  // ✅ Estado para el modal de nueva actuación
+  const [modalNuevaActuacionOpen, setModalNuevaActuacionOpen] = useState(false);
+
+  // Estado para el visor de documentos
+  const [visorAbierto, setVisorAbierto] = useState(false);
+  const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
+  const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
 
   // Derived states for tabs options
   const pruebas = actuaciones.filter(a => a.tipoActuacion === 'EVIDENCIA');
   const documentos = actuaciones.filter(a => a.tipoActuacion === 'DOCUMENTO');
 
-  const [pruebaSeleccionada, setPruebaSeleccionada] = useState<any>(null);
-  const [documentoSeleccionado, setDocumentoSeleccionado] = useState<any>(null);
-  const [visorAbierto, setVisorAbierto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fecha inicial para asegurar persistencia
   useEffect(() => {
@@ -174,23 +236,25 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     try {
       toast.loading(`Subiendo ${tipo.toLowerCase()}...`, { id: 'upload-file' });
 
-      // 1. Subir al backend
-      const res = await legalService.uploadJuzgamientoDocumento(proceso.id, file, tipo, file.name);
-
-      // 2. Crear objeto 'Actuación' para la lista unificada
-      const nuevaActuacion = {
-        id: res.id || Date.now(),
+      // Usar createJuzgamientoActuacion para asegurar que se guarde en la línea de tiempo y base de datos
+      const res = await legalService.createJuzgamientoActuacion(proceso.id, {
         tipoActuacion: tipo,
-        descripcion: `Carga de ${tipo.toLowerCase()}: ${file.name} `,
+        descripcion: `Carga de ${tipo.toLowerCase()}: ${file.name}`,
         fechaActuacion: new Date().toISOString(),
-        usuario: 'Usuario Actual',
-        documentoUrl: res.url || res.path,
-        documentoNombre: file.name,
-        nombreArchivo: file.name,   // Legacy support
-        tamaño: `${(file.size / 1024).toFixed(2)} KB`
+        file: file
+      });
+
+      // Actualizar estado local
+      const nuevaActuacion = {
+        ...res,
+        // Fallbacks por si la respuesta del backend varía
+        documentoUrl: res.documentoUrl || res.url || res.path,
+        documentoNombre: res.documentoNombre || file.name,
+        nombreArchivo: res.nombreArchivo || file.name,
+        tipoActuacion: res.tipoActuacion || tipo,
+        fechaActuacion: res.fechaActuacion || new Date().toISOString(),
       };
 
-      // 3. Update single source
       setActuaciones(prev => [nuevaActuacion, ...prev]);
       setHasChanges(true);
 
@@ -234,11 +298,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
 
   const handleAgregarPrueba = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf,.doc,.docx,.jpg,.png,.xlsx';
-    input.onchange = (e) => handleFileUpload(e, 'EVIDENCIA');
-    input.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // Reset to allow selecting same file again
+      fileInputRef.current.click();
+    }
   };
 
   const handleVerPrueba = (prueba: any) => {
@@ -254,6 +317,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
       description: `Visualizando: ${prueba.documentoNombre || 'Evidencia'} `,
       duration: 2000
     });
+  };
+
+  const handleDescargarPDF = () => {
+    const ultimaActuacion = actuacionesTotales[0];
+    if (ultimaActuacion && (ultimaActuacion.documentoUrl || ultimaActuacion.url)) {
+      handleDescargarActuacion(ultimaActuacion);
+    } else {
+      toast.error('No hay documento adjunto disponible para la última actuación');
+    }
   };
 
   const handleAgregarDocumento = () => {
@@ -277,6 +349,28 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
   // Removed old handleDescargarPrueba, simplified to use same logic or dedicated logic
   // The UI calls handleDescargarDocumento for documents, maybe handleVerPrueba is just for viewing.
+  // ==================== FUNCIONES PARA ACTUACIONES ====================
+
+  const handleGuardarActuacion = (nuevaActuacion: NuevaActuacionData) => {
+    const actuacion = {
+      id: actuaciones.length + 1,
+      fecha: nuevaActuacion.fecha,
+      tipo: nuevaActuacion.tipo,
+      descripcion: nuevaActuacion.descripcion,
+      responsable: nuevaActuacion.responsable,
+      estado: nuevaActuacion.estado,
+      colorBorde: nuevaActuacion.estado === 'COMPLETADA' ? '#10B981' : '#F59E0B'
+    };
+
+    setActuaciones([actuacion, ...actuaciones]);
+    setHasChanges(true);
+  };
+
+  // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
+
+  const handleNotificar = () => {
+    setMostrarModalNotificar(true);
+  };
 
   const handleGuardarCambios = () => {
     toast.info('Los documentos se guardan automáticamente al subir.');
@@ -522,7 +616,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         <DialogDescription className="sr-only">
           Vista completa del proceso disciplinario {proceso.id} con información detallada de hechos, pruebas, actuaciones y decisiones
         </DialogDescription>
-        
+
         {/* ==================== HEADER LIMPIO ESAP 2025 ==================== */}
         <ModalHeaderClean
           icono={Gavel}
@@ -539,15 +633,48 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         <Tabs value={tabActivo} onValueChange={setTabActivo} className="flex-1 flex flex-col overflow-hidden">
           <div className="px-6 pt-4 border-b bg-gray-50">
             <TabsList className="bg-transparent border-0 p-0 h-auto gap-1">
-              {['general', 'hechos', 'pruebas', 'actuaciones', 'decisiones', 'documentos'].map(tab => (
-                <TabsTrigger
-                  key={tab}
-                  value={tab}
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold capitalize"
-                >
-                  {tab}
-                </TabsTrigger>
-              ))}
+              <TabsTrigger
+                value="general"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                General
+              </TabsTrigger>
+              <TabsTrigger
+                value="hechos"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Hechos
+              </TabsTrigger>
+              <TabsTrigger
+                value="pruebas"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                Pruebas
+              </TabsTrigger>
+              <TabsTrigger
+                value="actuaciones"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <Clock className="w-4 h-4 mr-2" />
+                Actuaciones
+              </TabsTrigger>
+              <TabsTrigger
+                value="decisiones"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Decisiones
+              </TabsTrigger>
+              <TabsTrigger
+                value="documentos"
+                className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Documentos
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -634,12 +761,54 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <AlertTriangle className="w-6 h-6" /> ÚLTIMA ACTUACIÓN PROCESAL
                 </h3>
               </div>
-              <div className="p-4 bg-blue-50 rounded-lg mb-4">
-                <p className="text-sm text-gray-600 mb-1">Actuación:</p>
-                <p className="font-bold text-gray-900">{actuacionesTotales[0]?.descripcion || 'Inicio del proceso'}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>📅 {actuacionesTotales[0]?.fechaActuacion ? new Date(actuacionesTotales[0].fechaActuacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO')}</span>
+
+              <div className="p-5 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl mb-5 border border-blue-200">
+                <p className="text-sm font-semibold text-gray-600 mb-2">Actuación:</p>
+                <p className="font-black text-lg text-gray-900">
+                  {proceso.ultimaActuacion?.descripcion || 'Solicitud de informes a RRHH'}
+                </p>
+                <div className="flex items-center gap-4 mt-3 text-xs font-semibold text-gray-500">
+                  <span>📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</span>
+                  <span>⏰ {proceso.fechaActualizacion.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {/* <Button 
+                  onClick={() => setMostrarModalNotificar(true)}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Bell className="w-4 h-4 mr-1.5" />
+                  Notificar
+                </Button> */}
+                {/* <Button 
+                  onClick={handleCompartir}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <Share2 className="w-4 h-4 mr-1.5" />
+                  Compartir
+                </Button> */}
+                <Button
+                  onClick={handleDescargarPDF}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#F57C00', color: '#FFFFFF' }}
+                >
+                  <FileText className="w-4 h-4 mr-1.5" />
+                  Descargar PDF
+                </Button>
+                {/* <Button 
+                  onClick={handleAbrirEnPortales}
+                  size="sm"
+                  className="font-semibold"
+                  style={{ background: '#1e5da8', color: '#FFFFFF' }}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Abrir en Portales
+                </Button> */}
               </div>
             </Card>
           </TabsContent>
@@ -659,9 +828,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Material Probatorio</h3>
               {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_PRUEBA) && (
-              <Button onClick={handleAgregarPrueba} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Plus className="w-4 h-4 mr-2" /> Agregar Prueba
-              </Button>
+                <Button onClick={handleAgregarPrueba} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                  <Plus className="w-4 h-4 mr-2" /> Agregar Prueba
+                </Button>
               )}
             </div>
 
@@ -692,136 +861,129 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
           {/* ==================== TAB: ACTUACIONES ==================== */}
           <TabsContent value="actuaciones" className="flex-1 overflow-y-auto p-6">
-            <h3 className="font-black text-xl mb-4" style={{ color: '#003DA5' }}>Historial de Actuaciones</h3>
-            <div className="space-y-3">
-              {actuacionesTotales.length === 0 && <p className="text-gray-500">Solo inicio del proceso.</p>}
-              {actuacionesTotales.map((act, idx) => (
-                <Card key={idx} className="p-4 border-l-4 border-blue-800">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-gray-500 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className="text-xs">{act.tipoActuacion}</Badge>
-                        {(act.documentoUrl || act.url) && (
-                          <Badge className="bg-green-100 text-green-700 text-xs">
-                            <FileText className="w-3 h-3 mr-1" />
-                            Con documento
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="font-bold text-sm text-gray-900">{act.descripcion || act.tipoActuacion}</p>
-                      {act.documentoNombre && (
-                        <p className="text-xs text-gray-600 mt-1">
-                          📄 {act.documentoNombre}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">📅 {new Date(act.fechaActuacion).toLocaleDateString('es-CO')}</p>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>
+                Historial de Actuaciones
+              </h3>
 
-                      {/* Botones de Ver/Descargar si hay documento */}
-                      {(act.documentoUrl || act.url) && (
-                        <div className="flex gap-2 mt-2">
-                          <Button size="sm" variant="outline" onClick={() => handleVerActuacion(act)}>
-                            <Eye className="w-3 h-3 mr-1" /> Ver
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleDescargarActuacion(act)}>
-                            <Download className="w-3 h-3 mr-1" /> Descargar
-                          </Button>
+              {/* ✅ BOTÓN AGREGAR ACTUACIÓN */}
+              <Button
+                onClick={() => setModalNuevaActuacionOpen(true)}
+                className="font-bold flex items-center gap-2"
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Plus className="w-4 h-4" />
+                Agregar Actuación
+              </Button>
+            </div>
+
+            {/* Lista de actuaciones con estado dinámico */}
+            {actuaciones.length === 0 ? (
+              <Card className="p-8 text-center border-2 border-dashed border-gray-300">
+                <Clock className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h4 className="font-bold text-lg text-gray-600 mb-2">
+                  Sin actuaciones registradas
+                </h4>
+                <p className="text-sm text-gray-500 mb-4">
+                  Aún no se han registrado actuaciones en este proceso disciplinario
+                </p>
+                <Button
+                  onClick={() => setModalNuevaActuacionOpen(true)}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Registrar Primera Actuación
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {actuaciones.map((act) => (
+                  <Card
+                    key={act.id}
+                    className="p-4 border-l-4 hover:shadow-md transition-all"
+                    style={{ borderLeftColor: act.colorBorde }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg" style={{ background: `${act.colorBorde}15` }}>
+                        <Clock className="w-5 h-5" style={{ color: act.colorBorde }} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span
+                                className="px-2 py-0.5 text-xs font-bold rounded-full"
+                                style={{
+                                  background: `${act.colorBorde}20`,
+                                  color: act.colorBorde
+                                }}
+                              >
+                                {act.tipo}
+                              </span>
+                              <span className="text-xs text-gray-500">📅 {act.fecha}</span>
+                            </div>
+                            <p className="font-bold text-sm text-gray-900 mb-1">{act.descripcion}</p>
+                            <p className="text-xs text-gray-600">
+                              👤 <span className="font-semibold">{act.responsable}</span>
+                            </p>
+                          </div>
+                          <span
+                            className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap ${act.estado === 'COMPLETADA'
+                              ? 'bg-green-100 text-green-800'
+                              : act.estado === 'EN_REVISION'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-orange-100 text-orange-800'
+                              }`}
+                          >
+                            {act.estado === 'COMPLETADA' ? '✅ Completada' :
+                              act.estado === 'EN_REVISION' ? '🔍 En Revisión' : '⏳ Pendiente'}
+                          </span>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                ))}
+              </div>
+            )}
+
+
+            {/* ==================== ACCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
+            <div className="mt-6 flex gap-2">
+              <Button
+                onClick={handleNotificar}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Bell className="w-4 h-4 mr-2" />
+                Notificar
+              </Button>
+              <Button
+                onClick={handleCompartir}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Compartir
+              </Button>
+              <Button
+                onClick={handleDescargarPDF}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                Descargar PDF
+              </Button>
+              <Button
+                onClick={handleAbrirEnPortales}
+                style={{ background: '#003DA5', color: '#FFFFFF' }}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Abrir en Portales
+              </Button>
             </div>
           </TabsContent>
 
           {/* ==================== TAB: DECISIONES ==================== */}
           <TabsContent value="decisiones" className="flex-1 overflow-y-auto p-6 space-y-6">
 
-            {/* ========== SECCIÓN: EXCEPCIONES PROCESALES ========== */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Scale className="w-6 h-6 text-orange-600" />
-                  <h3 className="font-black text-xl text-orange-700">
-                    Excepciones Procesales ({excepciones.length})
-                  </h3>
-                </div>
-                {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EXCEPCION) && (
-                <Button
-                  onClick={() => setMostrarFormularioExcepcion(true)}
-                  style={{ background: '#F97316', color: '#FFFFFF' }}
-                  size="sm"
-                >
-                  <Plus className="w-4 h-4 mr-2" /> Nueva Excepción
-                </Button>
-                )}
-              </div>
-
-              {excepciones.length === 0 ? (
-                <Card className="p-4 bg-orange-50 border-orange-200 text-center">
-                  <p className="text-orange-700 text-sm">
-                    No hay excepciones procesales registradas en este expediente.
-                  </p>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {excepciones.map((excepcion, index) => (
-                    <Card key={index} className={`p-4 border-2 ${excepcion.estado === 'PENDIENTE' ? 'border-orange-300 bg-orange-50' :
-                      excepcion.estado === 'RESUELTA' ? 'border-green-300 bg-green-50' :
-                        'border-red-300 bg-red-50'
-                      }`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge
-                              className="font-bold"
-                              style={{
-                                background: excepcion.tipo === 'NULIDAD' ? '#EF4444' :
-                                  excepcion.tipo === 'RECUSACION' ? '#8B5CF6' :
-                                    excepcion.tipo === 'PRESCRIPCION' ? '#F59E0B' :
-                                      excepcion.tipo === 'IMPEDIMENTO' ? '#3B82F6' : '#6B7280',
-                                color: '#FFFFFF'
-                              }}
-                            >
-                              {excepcion.tipo}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className={`font-bold ${excepcion.estado === 'PENDIENTE' ? 'text-orange-700 border-orange-500' :
-                                excepcion.estado === 'RESUELTA' ? 'text-green-700 border-green-500' :
-                                  'text-red-700 border-red-500'
-                                }`}
-                            >
-                              {excepcion.estado}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-gray-800 mb-2">{excepcion.descripcion}</p>
-                          {excepcion.fundamento && (
-                            <p className="text-xs text-gray-600 italic mb-2">
-                              <strong>Fundamento:</strong> {excepcion.fundamento}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span>📅 {new Date(excepcion.fechaPresentacion).toLocaleDateString('es-CO')}</span>
-                            {excepcion.presentadoPor && <span>👤 {excepcion.presentadoPor}</span>}
-                          </div>
-                          {excepcion.resolucion && (
-                            <div className="mt-2 p-2 bg-white rounded border">
-                              <p className="text-xs font-bold text-gray-700">Resolución:</p>
-                              <p className="text-sm text-gray-800">{excepcion.resolucion}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Separador */}
-            <div className="border-t-2 border-gray-200 my-6"></div>
+            {/* Nota: Sección de Excepciones Procesales movida más abajo con UI preferida por el usuario */}
 
             {/* ========== SECCIÓN: DECISIONES ========== */}
             {decisiones.length === 0 ? (
@@ -830,9 +992,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <h3 className="font-black text-xl mb-2 text-gray-600">Sin Decisiones Registradas</h3>
                 <p className="text-gray-500 mb-4">El proceso aún se encuentra en etapa de investigación</p>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
-                <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                  <Plus className="w-4 h-4 mr-2" /> Registrar Decisión
-                </Button>
+                  <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                    <Plus className="w-4 h-4 mr-2" /> Registrar Decisión
+                  </Button>
                 )}
               </Card>
             ) : (
@@ -840,9 +1002,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Decisiones Registradas ({decisiones.length})</h3>
                   {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION) && (
-                  <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                    <Plus className="w-4 h-4 mr-2" /> Nueva Decisión
-                  </Button>
+                    <Button onClick={() => { setMostrarFormularioDecision(true); setHasChanges(true); }} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                      <Plus className="w-4 h-4 mr-2" /> Nueva Decisión
+                    </Button>
                   )}
                 </div>
                 {decisiones.map((decision, index) => (
@@ -914,10 +1076,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                           Descargar
                         </Button>
                         {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION_NOTIFICAR) && (
-                        <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setMostrarModalNotificar(true)}>
-                          <Bell className="w-3.5 h-3.5 mr-1.5" />
-                          Notificar
-                        </Button>
+                          <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setMostrarModalNotificar(true)}>
+                            <Bell className="w-3.5 h-3.5 mr-1.5" />
+                            Notificar
+                          </Button>
                         )}
                       </div>
                     </div>
@@ -925,6 +1087,96 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 ))}
               </div>
             )}
+
+            {/* ==================== SECCIÓN: EXCEPCIONES PROCESALES ==================== */}
+            <div className="mt-8 pt-6 border-t-2 border-gray-200">
+              <Card className="p-5 border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-orange-600" />
+                    <h3 className="font-black text-lg text-orange-900">
+                      Excepciones Procesales ({excepciones.length})
+                    </h3>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setModalNuevaExcepcion(true);
+                      setHasChanges(true);
+                    }}
+                    className="bg-orange-600 hover:bg-orange-700 text-white font-semibold"
+                    size="sm"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Nueva Excepción
+                  </Button>
+                </div>
+
+                {excepciones.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-orange-700 font-medium">
+                      No hay excepciones procesales registradas en este expediente
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mt-4">
+                    {excepciones.map((excepcion, index) => (
+                      <Card key={index} className="p-4 border-2 border-orange-300 bg-white">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-bold text-base text-orange-900">
+                                {excepcion.tipo}
+                              </h4>
+                              <Badge
+                                variant="outline"
+                                className="text-xs font-semibold border-orange-400 text-orange-700"
+                              >
+                                {excepcion.estado}
+                              </Badge>
+                            </div>
+
+                            {/* Descripción */}
+                            <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                              <p className="text-xs font-bold text-gray-700 mb-1">📋 Descripción:</p>
+                              <p className="text-sm text-gray-700 leading-relaxed">
+                                {excepcion.descripcion}
+                              </p>
+                            </div>
+
+                            {/* Fundamento Legal */}
+                            {excepcion.fundamento && (
+                              <div className="mb-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                <p className="text-xs font-bold text-orange-900 mb-1">⚖️ Fundamento Legal:</p>
+                                <p className="text-sm text-gray-700 leading-relaxed">
+                                  {excepcion.fundamento}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Metadata */}
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-gray-600">Fecha:</span>
+                                <span className="font-semibold ml-1">{excepcion.fecha}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">Presentada por:</span>
+                                <span className="font-semibold ml-1">{excepcion.responsable}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 ml-3">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                              <Eye className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ==================== TAB: DOCUMENTOS ==================== */}
@@ -932,9 +1184,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-black text-xl" style={{ color: '#003DA5' }}>Documentos del Proceso</h3>
               {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD) && (
-              <Button onClick={handleAgregarDocumento} style={{ background: '#003DA5', color: '#FFFFFF' }}>
-                <Upload className="w-4 h-4 mr-2" /> Subir Documento
-              </Button>
+                <Button onClick={handleAgregarDocumento} style={{ background: '#003DA5', color: '#FFFFFF' }}>
+                  <Upload className="w-4 h-4 mr-2" /> Subir Documento
+                </Button>
               )}
             </div>
 
@@ -973,9 +1225,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleCerrar} className="font-semibold">Cerrar</Button>
             {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT) && (
-            <Button onClick={handleGuardarCambios} disabled={!hasChanges} className="font-semibold" style={{ background: hasChanges ? '#003DA5' : '#9CA3AF', color: '#FFFFFF', cursor: hasChanges ? 'pointer' : 'not-allowed' }}>
-              <CheckCircle className="w-4 h-4 mr-2" /> Guardar Cambios
-            </Button>
+              <Button onClick={handleGuardarCambios} disabled={!hasChanges} className="font-semibold" style={{ background: hasChanges ? '#003DA5' : '#9CA3AF', color: '#FFFFFF', cursor: hasChanges ? 'pointer' : 'not-allowed' }}>
+                <CheckCircle className="w-4 h-4 mr-2" /> Guardar Cambios
+              </Button>
             )}
           </div>
         </div>
@@ -1095,7 +1347,67 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
       {mostrarModalCompartir && (
         <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
-          <DialogContent><DialogTitle>Enlace Generado</DialogTitle><p>{enlaceCompartir}</p></DialogContent>
+          <DialogContent hideCloseButton className="max-w-2xl">
+            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
+              <Share2 className="w-6 h-6" />
+              Enlace de Compartir Generado
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Enlace seguro para compartir la última actuación procesal
+            </DialogDescription>
+
+            <div className="space-y-4 mt-4">
+              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Enlace Seguro</p>
+                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
+                  {enlaceCompartir}
+                </p>
+              </div>
+
+              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+                <p className="text-sm font-bold text-green-900 mb-2">✅ Enlace Copiado al Portapapeles</p>
+                <p className="text-sm text-green-700">
+                  El enlace ha sido copiado automáticamente. Puedes pegarlo en un correo, mensaje o documento.
+                </p>
+              </div>
+
+              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
+                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
+                  <li>Este enlace permite consultar la última actuación procesal</li>
+                  <li>Es válido por 30 días desde su generación</li>
+                  <li>Requiere autenticación para acceder al contenido</li>
+                </ul>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    const copiado = await copyToClipboard(enlaceCompartir);
+                    if (copiado) {
+                      toast.success('✅ Enlace copiado nuevamente');
+                    } else {
+                      toast.info('📋 No se pudo copiar', {
+                        description: enlaceCompartir
+                      });
+                    }
+                  }}
+                  className="font-semibold"
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Copiar Nuevamente
+                </Button>
+                <Button
+                  onClick={() => setMostrarModalCompartir(false)}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="font-semibold"
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
         </Dialog>
       )}
 
@@ -1107,12 +1419,207 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         procesoId={proceso.id}
       />
 
+      {/* ==================== MODAL: NUEVA EXCEPCIÓN PROCESAL ==================== */}
+      {modalNuevaExcepcion && (
+        <Dialog open={modalNuevaExcepcion} onOpenChange={setModalNuevaExcepcion}>
+          <DialogContent hideCloseButton className="w-[90vw] max-w-[420px] p-0">
+            <DialogTitle className="sr-only">Nueva Excepción Procesal</DialogTitle>
+            <DialogDescription className="sr-only">
+              Registrar nueva excepción procesal en el proceso {proceso.id}
+            </DialogDescription>
+
+            <ModalHeaderClean
+              titulo="Nueva Excepción Procesal"
+              subtitulo={`Proceso ${proceso.id}`}
+              icono={AlertTriangle}
+              colorIcono="orange"
+              onClose={() => setModalNuevaExcepcion(false)}
+            />
+
+            <div className="p-6 space-y-5">
+              {/* SECCIÓN: Tipo de Excepción (Radio Buttons) - Parametrizable desde Configuraciones */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3">
+                  Tipo de Excepción Procesal *
+                </label>
+                <div className="space-y-3">
+                  {tiposExcepcionesActivos && tiposExcepcionesActivos.length > 0 ? (
+                    tiposExcepcionesActivos.map((tipo) => (
+                      <label key={tipo.id} className="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-all">
+                        <input
+                          type="radio"
+                          name="tipo-excepcion"
+                          value={tipo.nombre}
+                          className="mt-1 w-4 h-4 text-orange-600 focus:ring-orange-500"
+                          id={`radio-${tipo.id}`}
+                        />
+                        <div className="flex-1">
+                          <div className="font-bold text-gray-900">{tipo.icono} {tipo.nombre}</div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {tipo.descripcion}
+                          </div>
+                        </div>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                      <p className="text-sm text-gray-600">
+                        No hay tipos de excepciones configurados. <br />
+                        <span className="text-xs">Configure los tipos en <strong>Configuraciones del Sistema</strong></span>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SECCIÓN: Causal Específica (Dropdown) - Parametrizable desde Configuraciones */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Causal Específica (Opcional)
+                </label>
+                <select
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  id="impedimento-excepcion"
+                >
+                  <option value="">Seleccione una causal...</option>
+                  {causalesEspecificasActivas && causalesEspecificasActivas.length > 0 ? (
+                    causalesEspecificasActivas.map((causal) => (
+                      <option key={causal.id} value={causal.nombre}>
+                        {causal.icono} {causal.nombre} {causal.descripcion && `(${causal.descripcion})`}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay causales configuradas</option>
+                  )}
+                </select>
+              </div>
+
+              {/* SECCIÓN: Descripción de la Excepción */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  📋 Descripción de la Excepción *
+                </label>
+                <textarea
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                  rows={5}
+                  placeholder="Describa detalladamente la excepción procesal. Indíquelas los hechos que la fundamentan o la excepción..."
+                  id="descripcion-excepcion"
+                />
+              </div>
+
+              {/* SECCIÓN: Fundamento Legal */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  ⚖️ Fundamento Legal *
+                </label>
+                <textarea
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                  rows={3}
+                  placeholder="Indique las normas aplicables o jurisprudencia que fundamenta la excepción (Ej: Art. 100 CGP, Ley 734 de 2002...)"
+                  id="fundamento-excepcion"
+                />
+              </div>
+
+              {/* SECCIÓN: Presentada Por (Opcional) */}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  👤 Presentada Por (Opcional)
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  placeholder="Nombre de quien presenta la excepción"
+                  id="responsable-excepcion"
+                />
+              </div>
+
+              {/* ALERTA INFORMATIVA */}
+              <Card className="p-3 bg-orange-50 border-2 border-orange-200">
+                <p className="text-sm text-orange-800">
+                  <AlertTriangle className="w-4 h-4 inline mr-1" />
+                  Las excepciones procesales deben ser fundamentadas jurídicamente y presentadas dentro de los términos legales establecidos.
+                </p>
+              </Card>
+            </div>
+
+            <div className="sticky bottom-0 bg-white border-t-2 px-6 py-4 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setModalNuevaExcepcion(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                onClick={() => {
+                  // Obtener valores de radio buttons
+                  const radioSeleccionado = document.querySelector('input[name="tipo-excepcion"]:checked') as HTMLInputElement;
+                  const impedimentoSelect = document.getElementById('impedimento-excepcion') as HTMLSelectElement;
+                  const descripcionTextarea = document.getElementById('descripcion-excepcion') as HTMLTextAreaElement;
+                  const fundamentoTextarea = document.getElementById('fundamento-excepcion') as HTMLTextAreaElement;
+                  const responsableInput = document.getElementById('responsable-excepcion') as HTMLInputElement;
+
+                  const tipoExcepcion = radioSeleccionado?.value;
+                  const impedimento = impedimentoSelect?.value;
+                  const descripcion = descripcionTextarea?.value;
+                  const fundamento = fundamentoTextarea?.value;
+                  const responsable = responsableInput?.value || 'Sin especificar';
+
+                  // Validaciones
+                  if (!tipoExcepcion) {
+                    toast.error('⚠️ Tipo de excepción requerido', {
+                      description: 'Debe seleccionar un tipo de excepción procesal'
+                    });
+                    return;
+                  }
+
+                  if (!descripcion) {
+                    toast.error('⚠️ Descripción requerida', {
+                      description: 'Debe describir la excepción procesal'
+                    });
+                    return;
+                  }
+
+                  if (!fundamento) {
+                    toast.error('⚠️ Fundamento legal requerido', {
+                      description: 'Debe indicar el fundamento legal de la excepción'
+                    });
+                    return;
+                  }
+
+                  // Construir tipo completo
+                  let tipoCompleto = tipoExcepcion;
+                  if (impedimento) {
+                    tipoCompleto += ` - ${impedimento}`;
+                  }
+
+                  const nuevaExcepcion = {
+                    tipo: tipoCompleto,
+                    descripcion,
+                    fundamento,
+                    presentadoPor: responsable
+                  };
+
+                  // Llamar al backend via handleGuardarNuevaExcepcion
+                  handleGuardarNuevaExcepcion(nuevaExcepcion);
+                  setModalNuevaExcepcion(false);
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Registrar Excepción
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
       {/* ==================== MODAL: VISOR DE DOCUMENTOS ==================== */}
       {pruebaSeleccionada && (
         <VisorDocumentoModal
           isOpen={visorAbierto}
           onClose={() => setVisorAbierto(false)}
-          archivo={pruebaSeleccionada.documentoUrl || pruebaSeleccionada.archivo}
+          archivo={getFileUrl(pruebaSeleccionada.documentoUrl || pruebaSeleccionada.archivo || pruebaSeleccionada.url)}
           numero={pruebaSeleccionada.documentoNombre || pruebaSeleccionada.nombre}
           asunto={pruebaSeleccionada.descripcion}
         />
@@ -1122,7 +1629,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
         <VisorDocumentoModal
           isOpen={visorAbierto}
           onClose={() => setVisorAbierto(false)}
-          archivo={documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo}
+          archivo={getFileUrl(documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo || documentoSeleccionado.url)}
           numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
           asunto={`Documento del proceso ${proceso.id}`}
         />
@@ -1184,7 +1691,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           procesoId={proceso.id || ''}
         />
       )}
+
+      {/* Hidden File Input for Pruebas Upload */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        style={{ display: 'none' }}
+        accept=".pdf,.doc,.docx,.jpg,.png,.xlsx,.zip"
+        onChange={(e) => handleFileUpload(e, 'EVIDENCIA')}
+      />
+      {/* ==================== MODAL: NUEVA ACTUACIÓN ==================== */}
+      <ModalNuevaActuacion
+        isOpen={modalNuevaActuacionOpen}
+        onClose={() => setModalNuevaActuacionOpen(false)}
+        onSave={handleGuardarActuacion}
+        procesoId={proceso.id}
+      />
     </Dialog>
   );
 }
-

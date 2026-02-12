@@ -23,7 +23,18 @@ interface ModalComunicacionesProps {
   expediente: ExpedienteJudicial;
 }
 
-// Mocks eliminados - Datos se cargarán desde API cuando esté disponible
+// Datos mock de comunicaciones (REDUCIDOS)
+const comunicacionesMock = [
+  {
+    id: 1,
+    usuario: 'Usuario Ejemplo',
+    rol: 'Abogado',
+    mensaje: 'Mensaje de ejemplo para referencia',
+    fecha: '22/12/2024 14:35',
+    avatar: 'UE',
+    tipo: 'update'
+  },
+];
 
 export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
@@ -254,7 +265,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-4xl !max-h-[82vh] overflow-hidden flex flex-col p-0">
         <DialogTitle className="sr-only">
           Centro de Comunicaciones - Expediente {expediente.id}
         </DialogTitle>

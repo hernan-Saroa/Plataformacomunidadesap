@@ -3,7 +3,7 @@
  * Maneja todas las peticiones HTTP al microservicio academic-registration-service
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway (rutea al servicio registro-academico)
 const SERVICE_PREFIX = '/registro-academico/api/v1';
@@ -34,6 +34,12 @@ export interface GraduadoData {
   isVerified: boolean;
   campus: string;
   seccionalName?: string;
+  createdBy?: string;
+  numRegistro?: string;
+  numFolio?: string;
+  numLibro?: string;
+  numActa?: string;
+  filesCount?: number;
 }
 
 /**
@@ -56,6 +62,8 @@ export interface SolicitudCertificadoGraduado {
   requesterEmail: string;
   requesterPhone?: string;
   companyName?: string;
+  companyNit?: string;
+  contactPerson?: string;
   certificateType: 'STANDARD' | 'OFFICIAL' | 'INTERNATIONAL';
   validationCode?: string;
   validationExpiresAt?: string;
@@ -121,13 +129,15 @@ export interface AprobarSolicitudPayload {
   fullName?: string;
   idNumber?: string;
   email?: string;
-  phone?: string;
   programName?: string;
   programType?: string;
   degreeTitle?: string;
   graduationDate?: string;
   campus?: string;
   seccionalName?: string;
+  numRegistro?: string;
+  numFolio?: string;
+  numLibro?: string;
 }
 
 /**
@@ -137,6 +147,13 @@ export interface VerificacionDocumentoResponse {
   existe: boolean;
   graduado?: GraduadoData;
   mensaje: string;
+}
+
+export interface EmpresaNitResponse {
+  found: boolean;
+  razonSocial?: string;
+  nit?: string;
+  digitoVerificacion?: string;
 }
 
 /**
@@ -195,6 +212,18 @@ export interface DescargaCertificado {
   downloadDate: string;
   ipAddress?: string;
   userAgent?: string;
+}
+
+export interface GraduadoArchivo {
+  id: string;
+  graduateId: string;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  uploadedBy?: string;
+  url: string;
 }
 
 /**
@@ -291,6 +320,17 @@ const graduadosService = {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/autoservicio/solicitar-certificado`,
         payload
+      );
+      return response;
+    },
+
+    /**
+     * Consultar empresa por NIT (datos.gov.co)
+     */
+    buscarEmpresaPorNit: async (nit: string): Promise<EmpresaNitResponse> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/certificates/autoservicio/empresa`,
+        { params: { nit } }
       );
       return response;
     },
@@ -581,6 +621,46 @@ const graduadosService = {
     buscarPorCedula: async (idNumber: string): Promise<GraduadoData> => {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/graduates/cedula/${idNumber}`
+      );
+      return response;
+    },
+
+    /**
+     * Listar archivos del graduado
+     */
+    listarArchivos: async (id: string): Promise<GraduadoArchivo[]> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/graduates/${id}/files`
+      );
+      return response;
+    },
+
+    /**
+     * Subir archivos del graduado
+     */
+    subirArchivos: async (
+      id: string,
+      files: File[],
+      uploadedBy?: string,
+    ): Promise<GraduadoArchivo[]> => {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('files', file));
+      if (uploadedBy) {
+        formData.append('uploadedBy', uploadedBy);
+      }
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/graduates/${id}/upload-file`,
+        formData
+      );
+      return response;
+    },
+
+    /**
+     * Eliminar archivo del graduado
+     */
+    eliminarArchivo: async (graduateId: string, fileId: string): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/graduates/${graduateId}/files/${fileId}`
       );
       return response;
     },

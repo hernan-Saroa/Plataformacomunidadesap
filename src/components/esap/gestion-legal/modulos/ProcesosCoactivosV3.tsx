@@ -4,13 +4,13 @@
  * Los procesos son creados manualmente por la oficina de gestión legal
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, FileText, AlertTriangle, Clock, Calendar,
   User, Eye, ChevronDown, DollarSign, TrendingUp, X,
   AlertCircle, CheckCircle, Search, Download, Upload,
   Edit, Trash2, Filter, MoreVertical, Phone, Mail as MailIcon,
-  MapPin, Building, CreditCard, FileCheck, Send, History
+  MapPin, Building, CreditCard, FileCheck, Send, History, Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Badge } from '../../../ui/badge';
@@ -26,11 +26,12 @@ import {
   procesosCoactivosService,
   ProcesoCoactivo as ProcesoCoactivoAPI,
   ProcesoCoactivoStats,
-  ProcesoCoactivoStats,
   ProcesoCoactivoAdjunto
 } from '../../../../services/api/legal.service';
 import { ModalGestionarPagos } from '../procesos-coactivos/ModalGestionarPagos';
 import { ModalHistorialCoactivo } from '../procesos-coactivos/ModalHistorialCoactivo';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext'
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -99,6 +100,12 @@ export function ModuloProcesosCoactivosV3() {
   const [procesos, setProcesos] = useState<ProcesoCoactivo[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<ProcesoCoactivoStats>({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} });
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
+  // ✅ Estado para cambiar entre vista normal y archivados
+  const [vistaActual, setVistaActual] = useState<'activos' | 'archivados'>('activos');
+
   const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
   const [busqueda, setBusqueda] = useState('');
   const [modalNuevoProceso, setModalNuevoProceso] = useState(false);
@@ -112,6 +119,68 @@ export function ModuloProcesosCoactivosV3() {
   const [modalHistorial, setModalHistorial] = useState(false);
   const [procesoParaPago, setProcesoParaPago] = useState<ProcesoCoactivo | null>(null);
   const [procesoParaHistorial, setProcesoParaHistorial] = useState<ProcesoCoactivo | null>(null);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PC-2024-999',
+      codigo: 'COA-2024-00099',
+      nombre: 'Cobro matrícula semestre 2023-2 - José Martínez (CC 1.001.001.001) - $2.800.000',
+      tipo: 'Proceso Coactivo',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-20T14:30:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Obligación cancelada en su totalidad con intereses moratorios. Proceso finalizado exitosamente mediante acuerdo de pago',
+      metadatos: {
+        'Deudor': 'José Martínez López',
+        'Identificación': '1.001.001.001',
+        'Concepto': 'Matrícula Semestre 2023-2',
+        'Valor': '$2.800.000',
+        'Estado Final': 'Finalizado - Pago completo',
+        'Responsable': 'Dr. Carlos Mendoza García',
+        'Fecha Finalización': '20/12/2024'
+      }
+    },
+    {
+      id: 'PC-2024-888',
+      codigo: 'COA-2024-00088',
+      nombre: 'Reintegro beca - María González (CC 1.002.002.002) - $8.500.000',
+      tipo: 'Proceso Coactivo',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-11-10T09:15:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Proceso duplicado por error del sistema. El proceso oficial es COA-2024-00089',
+      metadatos: {
+        'Deudor': 'María González Pérez',
+        'Motivo Eliminación': 'Registro duplicado',
+        'Proceso Oficial': 'COA-2024-00089',
+        'Fecha Detección': '10/11/2024'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un proceso archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando proceso coactivo:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Proceso restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un proceso
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente proceso:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Proceso eliminado permanentemente');
+  };
+
+  const handlePagar = (proceso: ProcesoCoactivo) => {
+    setProcesoParaPago(proceso);
+    setModalPagos(true);
+  };
+
+  const handleHistorial = (proceso: ProcesoCoactivo) => {
+    setProcesoParaHistorial(proceso);
+    setModalHistorial(true);
+  };
 
   // Detectar tamaño de pantalla
   const [isMobile, setIsMobile] = useState(false);
@@ -203,228 +272,185 @@ export function ModuloProcesosCoactivosV3() {
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Procesos Coactivos</h1>
-            <p className="text-sm sm:text-base text-gray-500 mt-1">
-              Gestión de cobro coactivo de obligaciones
-            </p>
-          </div>
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
-            <ButtonSIGL
-              onClick={() => {
-                setProcesoEditar(null);
-                setModalNuevoProceso(true);
-              }}
-              className="flex-shrink-0"
-              icon={<Plus className="w-4 h-4" />}
-            >
-              {!isMobile && 'Nuevo Proceso'}
-            </ButtonSIGL>
-          )}
-        </div>
-
-        {/* Métricas */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-blue-50 rounded-lg">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-[#003DA5]" />
-              </div>
+      {/* ✅ SI ESTÁ EN VISTA DE ARCHIVADOS, MOSTRAR COMPONENTE */}
+      {vistaActual === 'archivados' ? (
+        <VistaArchivados
+          items={itemsArchivados}
+          moduloNombre="Procesos Coactivos"
+          onRestaurar={handleRestaurar}
+          onEliminarPermanente={handleEliminarPermanente}
+          onVolver={() => setVistaActual('activos')}
+        />
+      ) : (
+        <>
+          {/* Header */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-gray-500">Total Procesos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-amber-50 rounded-lg">
-                <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Activos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.activos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-red-50 rounded-lg">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Críticos</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.criticos}</p>
-              </div>
-            </div>
-          </CardSIGL>
-
-          <CardSIGL className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 sm:p-3 bg-green-50 rounded-lg">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500">Saldo Pendiente</p>
-                <p className="text-base sm:text-lg font-bold text-gray-900">
-                  ${(stats.totalMonto / 1000000).toFixed(1)}M
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Procesos Coactivos</h1>
+                <p className="text-sm sm:text-base text-gray-500 mt-1">
+                  Gestión de cobro coactivo de obligaciones
                 </p>
               </div>
+              <div className="flex items-center gap-2">
+                {/* ✅ BOTÓN PARA IR A ARCHIVADOS */}
+                <button
+                  onClick={() => setVistaActual('archivados')}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+                  title="Ver archivados y eliminados"
+                >
+                  <Archive className="w-4 h-4" />
+                  {!isMobile && 'Archivados'}
+                  {itemsArchivados.length > 0 && (
+                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {itemsArchivados.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setModalNuevoProceso(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  {!isMobile && 'Nuevo Proceso'}
+                </button>
+              </div>
             </div>
-          </CardSIGL>
-        </div>
 
-        {/* Filtros y búsqueda */}
-        <CardSIGL className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Búsqueda */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar por nombre, identificación o radicado..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+            {/* Filtros y búsqueda */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                {/* Búsqueda */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, identificación o radicado..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Filtro Estado */}
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="TODOS">Todos los estados</option>
+                  <option value="IDENTIFICADO">Identificado</option>
+                  <option value="PERSUASIVO">Persuasivo</option>
+                  <option value="PREJURIDICO">Prejurídico</option>
+                  <option value="MANDAMIENTO">Mandamiento</option>
+                  <option value="EMBARGO">Embargo</option>
+                  <option value="FINALIZADO">Finalizado</option>
+                </select>
+
+                {/* Ordenamiento */}
+                <select
+                  value={ordenamiento}
+                  onChange={(e) => setOrdenamiento(e.target.value as any)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="reciente">Más recientes</option>
+                  <option value="antiguo">Más antiguos</option>
+                  <option value="monto-mayor">Monto mayor</option>
+                  <option value="monto-menor">Monto menor</option>
+                </select>
+              </div>
             </div>
-
-            {/* Filtro Estado */}
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="TODOS">Todos los estados</option>
-              <option value="IDENTIFICADO">Identificado</option>
-              <option value="PERSUASIVO">Persuasivo</option>
-              <option value="PREJURIDICO">Prejurídico</option>
-              <option value="MANDAMIENTO">Mandamiento</option>
-              <option value="EMBARGO">Embargo</option>
-              <option value="FINALIZADO">Finalizado</option>
-            </select>
-
-            {/* Ordenamiento */}
-            <select
-              value={ordenamiento}
-              onChange={(e) => setOrdenamiento(e.target.value as any)}
-              className="px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="reciente">Más recientes</option>
-              <option value="antiguo">Más antiguos</option>
-              <option value="monto-mayor">Monto mayor</option>
-              <option value="monto-menor">Monto menor</option>
-            </select>
           </div>
-        </CardSIGL>
-      </div>
 
-      {/* Lista de Procesos */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {procesosFiltrados.map((proceso, index) => (
-            <motion.div
-              key={proceso.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <TarjetaProceso
-                proceso={proceso}
-                onVerDetalle={handleVerDetalle}
-                onEditar={handleEditarProceso}
-                onEliminar={handleEliminarProceso}
-                onGestionarPagos={(p) => {
-                  setProcesoParaPago(p);
-                  setModalPagos(true);
-                }}
-                onVerHistorial={(p) => {
-                  setProcesoParaHistorial(p);
-                  setModalHistorial(true);
-                }}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+          {/* Lista de Procesos */}
+          <div className="space-y-3">
+            <AnimatePresence mode="popLayout">
+              {procesosFiltrados.map((proceso, index) => (
+                <motion.div
+                  key={proceso.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <TarjetaProceso
+                    proceso={proceso}
+                    onVerDetalle={handleVerDetalle}
+                    onEliminar={handleEliminarProceso}
+                    onEditar={handleEditarProceso}
+                    onPagar={handlePagar}
+                    onHistorial={handleHistorial}
+                  />
+                </motion.div>
+              ))}\n        </AnimatePresence>
 
-        {procesosFiltrados.length === 0 && (
-          <CardSIGL className="p-12 text-center">
-            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">
-              No se encontraron procesos con los filtros seleccionados
-            </p>
-          </CardSIGL>
-        )}
-      </div>
+            {procesosFiltrados.length === 0 && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">
+                  No se encontraron procesos con los filtros seleccionados
+                </p>
+              </div>
+            )}
+          </div>
 
-      {/* Modal Nuevo Proceso */}
-      <ModalNuevoProceso
-        isOpen={modalNuevoProceso}
-        onClose={() => {
-          setModalNuevoProceso(false);
-          setProcesoEditar(null);
-        }}
-        onCrear={() => {
-          setModalNuevoProceso(false);
-          setProcesoEditar(null);
-          loadProcesos(); // Recargar lista y stats desde la API
-        }}
-        procesoEditar={procesoEditar}
-      />
+          {/* Modal Nuevo Proceso */}
+          <ModalNuevoProceso
+            isOpen={modalNuevoProceso}
+            onClose={() => setModalNuevoProceso(false)}
+            onCrear={() => {
+              loadProcesos();
+              setModalNuevoProceso(false);
+              toast.success('Proceso creado exitosamente');
+            }}
+            procesoEditar={procesoEditar}
+          />
 
-      {/* Modal Detalle */}
-      {procesoSeleccionado && (
-        <ModalDetalleProceso
-          proceso={procesoSeleccionado}
-          isOpen={modalDetalle}
-          onClose={() => {
-            setModalDetalle(false);
-            setProcesoSeleccionado(null);
-          }}
-          onUpdate={loadProcesos}
-        />
-      )}
+          {/* Modal Detalle */}
+          {procesoSeleccionado && (
+            <ModalDetalleProceso
+              proceso={procesoSeleccionado}
+              isOpen={modalDetalle}
+              onClose={() => {
+                setModalDetalle(false);
+                setProcesoSeleccionado(null);
+              }}
+            />
+          )}
 
-      {/* Modal Gestionar Pagos (desde tarjeta) */}
-      {procesoParaPago && (
-        <ModalGestionarPagos
-          isOpen={modalPagos}
-          onClose={() => {
-            setModalPagos(false);
-            setProcesoParaPago(null);
-          }}
-          proceso={{
-            id: procesoParaPago.id,
-            radicado: procesoParaPago.radicado,
-            deudor: procesoParaPago.deudor.nombre,
-            valorTotal: procesoParaPago.obligacion.valor,
-            valorPagado: procesoParaPago.obligacion.valorPagado || 0
-          }}
-          onRegistrarPago={() => {
-            loadProcesos();
-            setModalPagos(false);
-            setProcesoParaPago(null);
-          }}
-        />
-      )}
+          {/* Modal Gestionar Pagos */}
+          {procesoParaPago && (
+            <ModalGestionarPagos
+              isOpen={modalPagos}
+              onClose={() => setModalPagos(false)}
+              proceso={{
+                id: procesoParaPago.id,
+                deudor: procesoParaPago.deudor.nombre,
+                radicado: procesoParaPago.radicado,
+                valorTotal: procesoParaPago.obligacion.valor,
+                valorPagado: procesoParaPago.obligacion.valorPagado
+              }}
+              onRegistrarPago={() => {
+                loadProcesos(); // Recargar para actualizar saldos
+                setModalPagos(false);
+              }}
+            />
+          )}
 
-      {/* Modal Historial (desde tarjeta) */}
-      {procesoParaHistorial && (
-        <ModalHistorialCoactivo
-          isOpen={modalHistorial}
-          onClose={() => {
-            setModalHistorial(false);
-            setProcesoParaHistorial(null);
-          }}
-          procesoId={procesoParaHistorial.id}
-          radicado={procesoParaHistorial.radicado}
-        />
+          {/* Modal Historial */}
+          {procesoParaHistorial && (
+            <ModalHistorialCoactivo
+              isOpen={modalHistorial}
+              onClose={() => setModalHistorial(false)}
+              procesoId={procesoParaHistorial.id}
+              radicado={procesoParaHistorial.radicado}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -436,17 +462,17 @@ export function ModuloProcesosCoactivosV3() {
 function TarjetaProceso({
   proceso,
   onVerDetalle,
-  onEditar,
   onEliminar,
-  onGestionarPagos,
-  onVerHistorial
+  onEditar,
+  onPagar,
+  onHistorial
 }: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
-  onEditar: (proceso: ProcesoCoactivo) => void;
   onEliminar: (id: string) => void;
-  onGestionarPagos: (proceso: ProcesoCoactivo) => void;
-  onVerHistorial: (proceso: ProcesoCoactivo) => void;
+  onEditar: (proceso: ProcesoCoactivo) => void;
+  onPagar: (proceso: ProcesoCoactivo) => void;
+  onHistorial: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -464,7 +490,7 @@ function TarjetaProceso({
   const esCritico = proceso.obligacion.diasVencidos > 180;
 
   return (
-    <CardSIGL className="overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
       <div className="p-4 sm:p-5">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -495,14 +521,14 @@ function TarjetaProceso({
             <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1">Valor Original</p>
-            <p className="text-sm font-semibold text-gray-700">
+            <p className="text-xs text-gray-500 mb-1">Valor</p>
+            <p className="text-lg font-bold text-[#003DA5]">
               ${proceso.obligacion.valor.toLocaleString('es-CO')}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1">Saldo Pendiente</p>
-            <p className="text-lg font-bold text-[#003DA5]">
+            <p className="text-lg font-bold text-orange-600">
               ${proceso.obligacion.saldoPendiente.toLocaleString('es-CO')}
             </p>
           </div>
@@ -557,58 +583,53 @@ function TarjetaProceso({
 
         {/* Acciones */}
         <div className="flex flex-wrap gap-2">
-          <ButtonSIGL
-            variant="primary"
-            size="md"
+          <button
             onClick={() => onVerDetalle(proceso)}
-            className="flex-none"
-            icon={<Eye className="w-4 h-4" />}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
           >
+            <Eye className="w-4 h-4" />
             Ver Detalle
-          </ButtonSIGL>
-          <ButtonSIGL
-            variant="secondary"
-            size="md"
-            onClick={() => onGestionarPagos(proceso)}
-            className="flex-none"
-            icon={<CreditCard className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => onPagar(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-green-200 text-green-700 hover:bg-green-50 transition-all"
+            title="Gestionar Pagos"
           >
+            <CreditCard className="w-4 h-4" />
             Pagos
-          </ButtonSIGL>
-          <ButtonSIGL
-            variant="secondary"
-            size="md"
-            onClick={() => onVerHistorial(proceso)}
-            className="flex-none"
-            icon={<History className="w-4 h-4" />}
+          </button>
+
+          <button
+            onClick={() => onHistorial(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-blue-200 text-blue-700 hover:bg-blue-50 transition-all"
+            title="Ver Historial"
           >
+            <History className="w-4 h-4" />
             Historial
-          </ButtonSIGL>
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
-            <ButtonSIGL
-              variant="secondary"
-              size="md"
-              onClick={() => onEditar(proceso)}
-              className="flex-none"
-              icon={<Edit className="w-4 h-4" />}
-            >
-              Editar
-            </ButtonSIGL>
-          )}
-          {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-            <ButtonSIGL
-              variant="danger"
-              size="md"
-              onClick={() => onEliminar(proceso.id)}
-              className="flex-none"
-              icon={<Trash2 className="w-4 h-4" />}
-            >
-              Eliminar
-            </ButtonSIGL>
-          )}
+          </button>
+
+          <button
+            onClick={() => onEditar(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+          >
+            <Edit className="w-4 h-4" />
+            Editar
+          </button>
+          <button
+            onClick={() => onEliminar(proceso.id)}
+            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            Eliminar
+          </button>
         </div>
       </div>
-    </CardSIGL>
+    </div>
   );
 }
 
@@ -653,6 +674,7 @@ function ModalNuevoProceso({
 
     switch (field) {
       case 'deudorNombre':
+      case 'responsable':
         filteredValue = onlyLetters(value);
         break;
       case 'deudorIdentificacion':
@@ -660,6 +682,24 @@ function ModalNuevoProceso({
         break;
       case 'deudorTelefono':
         filteredValue = phoneFormat(value);
+        break;
+      case 'valor':
+        // Eliminar caracteres no numéricos
+        filteredValue = value.replace(/[^0-9]/g, '');
+
+        // Regla: Si empieza con 0, solo puede ser "0" (no "00", "01", etc)
+        if (filteredValue.startsWith('0') && filteredValue.length > 1) {
+          filteredValue = filteredValue.replace(/^0+/, '');
+          // Si quedó vacío es porque eran solo ceros, lo dejamos en "0" si el usuario solo escribió ceros
+          // Pero la lógica de replace(/^0+/, '') convierte "05" en "5", correcto.
+          // Si escribe "00", replace devuelve "", así que evitamos que escriba múltiples ceros
+          if (filteredValue === '') filteredValue = '0';
+        }
+
+        // Máximo 12 dígitos
+        if (filteredValue.length > 12) {
+          filteredValue = filteredValue.slice(0, 12);
+        }
         break;
       default:
         filteredValue = value;
@@ -805,249 +845,183 @@ function ModalNuevoProceso({
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title={procesoEditar ? `Editar Proceso ${procesoEditar.radicado}` : "Nuevo Proceso Coactivo"}
-      size="large"
-    >
-      <div className="space-y-6">
-        {/* Información del Deudor */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-blue-50 rounded-md text-blue-600">
-              <User className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Información del Deudor</h3>
-          </div>
+  if (!isOpen) return null;
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Nombre Completo <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorNombre}
-                onChange={(e) => handleInputChange('deudorNombre', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                placeholder="Ej: Juan Carlos Pérez"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Identificación <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.deudorIdentificacion}
-                onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                placeholder="Ej: 1012345678"
-                disabled={!!procesoEditar}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Teléfono</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header - 100% Estándar del Proyecto */}
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="text-xl font-bold text-gray-900">Nuevo Proceso Coactivo</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Contenido del Formulario */}
+        <div className="p-6 space-y-6">
+          {/* Información del Deudor */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3">Información del Deudor</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Nombre Completo <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorNombre}
+                  onChange={(e) => handleInputChange('deudorNombre', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Juan Carlos Pérez Gómez"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Identificación <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.deudorIdentificacion}
+                  onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 1.012.345.678"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Teléfono</label>
                 <input
                   type="text"
                   value={formData.deudorTelefono}
                   onChange={(e) => handleInputChange('deudorTelefono', e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="+57 300 123 4567"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: +57 312 456 7890"
                 />
               </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">Email</label>
-              <div className="relative">
-                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={formData.deudorEmail}
                   onChange={(e) => setFormData({ ...formData, deudorEmail: e.target.value })}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="correo@ejemplo.com"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: correo@ejemplo.com"
                 />
               </div>
-            </div>
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-medium text-gray-700">Dirección</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dirección</label>
                 <input
                   type="text"
                   value={formData.deudorDireccion}
                   onChange={(e) => setFormData({ ...formData, deudorDireccion: e.target.value })}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  placeholder="Dirección de residencia o notificaciones"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Calle 45 #12-34, Bogotá"
                 />
               </div>
             </div>
           </div>
-        </section>
 
-        {/* Información de la Obligación */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-green-50 rounded-md text-green-600">
-              <DollarSign className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Detalle de la Obligación</h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Concepto de Cobro <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.concepto}
-                onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-                placeholder="Ej: Impuesto Predial 2024"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Valor Total (COP) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={formData.valor}
-                onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-                placeholder="0"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700">
-                Fecha Vencimiento <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={formData.fechaVencimiento}
-                onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Documentos y Adicionales */}
-        <section>
-          <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2">
-            <div className="p-1.5 bg-purple-50 rounded-md text-purple-600">
-              <FileText className="w-4 h-4" />
-            </div>
-            <h3 className="font-semibold text-gray-900 text-sm">Soportes y Anexos</h3>
-          </div>
-
-          <div className="space-y-4">
-            {/* Aréa de Carga de Archivos */}
-            <div
-              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center transition-colors ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <Upload className={`w-8 h-8 mb-2 ${dragActive ? 'text-blue-500' : 'text-gray-400'}`} />
-              <p className="text-sm font-medium text-gray-700">
-                Arrastra y suelta archivos aquí, o{' '}
-                <label className="text-blue-600 hover:text-blue-700 cursor-pointer hover:underline">
-                  examina
-                  <input
-                    type="file"
-                    className="hidden"
-                    multiple
-                    onChange={(e) => {
-                      if (e.target.files) {
-                        setSelectedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-                      }
-                    }}
-                  />
+          {/* Información de la Obligación */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información de la Obligación</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Concepto <span className="text-red-500">*</span>
                 </label>
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Soporta PDF, imágenes y documentos de Office
-              </p>
-            </div>
-
-            {/* Lista de archivos seleccionados */}
-            {selectedFiles.length > 0 && (
-              <div className="space-y-2">
-                {selectedFiles.map((file, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="p-1.5 bg-gray-100 rounded text-gray-500">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
-                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(idx)}
-                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                      title="Quitar archivo"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                <input
+                  type="text"
+                  value={formData.concepto}
+                  onChange={(e) => setFormData({ ...formData, concepto: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Matrícula Semestre 2024-2"
+                />
               </div>
-            )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Valor (COP) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.valor}
+                  onChange={(e) => handleInputChange('valor', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: 3250000"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fecha Vencimiento <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.fechaVencimiento}
+                  onChange={(e) => setFormData({ ...formData, fechaVencimiento: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">Responsable Asignado</label>
+          {/* Información Adicional */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 text-sm">Información Adicional</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
                 <input
                   type="text"
                   value={formData.responsable}
-                  onChange={(e) => setFormData({ ...formData, responsable: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow"
-                  placeholder="Ej: Dra. María Fernández"
+                  onChange={(e) => handleInputChange('responsable', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: Dra. María Fernández López"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-700">Observaciones Iniciales</label>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Observaciones</label>
                 <textarea
                   value={formData.observaciones}
                   onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                  rows={1}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-shadow resize-none"
-                  placeholder="Notas adicionales..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  placeholder="Observaciones adicionales sobre el proceso..."
                 />
               </div>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-          <ButtonSIGL variant="secondary" onClick={onClose}>
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+          >
             Cancelar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={handleSubmit} disabled={loading} className="min-w-[120px]">
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
+          >
             {loading ? (
-              <span className="flex items-center gap-2">
+              <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 Guardando...
-              </span>
+              </>
             ) : (
-              procesoEditar ? 'Actualizar' : 'Crear Proceso'
+              procesoEditar ? 'Actualizar' : (<><Plus className="w-4 h-4" />Crear Proceso</>)
             )}
-          </ButtonSIGL>
+          </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }
 
@@ -1055,13 +1029,11 @@ function ModalNuevoProceso({
 function ModalDetalleProceso({
   proceso,
   isOpen,
-  onClose,
-  onUpdate
+  onClose
 }: {
   proceso: ProcesoCoactivo;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate?: () => void;
 }) {
   const estadoConfig = {
     IDENTIFICADO: { label: 'Identificado', color: 'bg-gray-100 text-gray-700' },
@@ -1072,287 +1044,166 @@ function ModalDetalleProceso({
     FINALIZADO: { label: 'Finalizado', color: 'bg-green-100 text-green-700' }
   }[proceso.estado];
 
-  const [adjuntos, setAdjuntos] = useState<ProcesoCoactivoAdjunto[]>([]);
-  const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
-  const [modalPagos, setModalPagos] = useState(false);
-  const [modalHistorial, setModalHistorial] = useState(false);
-
-  // Cargar adjuntos al abrir
-  useEffect(() => {
-    if (isOpen && proceso.id) {
-      loadAdjuntos();
-    }
-  }, [isOpen, proceso.id]);
-
-  const loadAdjuntos = async () => {
-    try {
-      setLoadingAdjuntos(true);
-      const docs = await procesosCoactivosService.getAdjuntos(proceso.id);
-      // ✅ Asegurar que siempre sea un array
-      setAdjuntos(Array.isArray(docs) ? docs : []);
-    } catch (error) {
-      console.error('Error cargando adjuntos:', error);
-      setAdjuntos([]); // ✅ Fallback a array vacío en caso de error
-      // No mostrar toast de error para evitar spam cuando el backend tiene problemas
-    } finally {
-      setLoadingAdjuntos(false);
-    }
-  };
-
-  const handleDownload = (adjunto: ProcesoCoactivoAdjunto) => {
-    const url = procesosCoactivosService.getAdjuntoDownloadUrl(adjunto.nombreArchivo, adjunto.nombreOriginal);
-    window.open(url, '_blank');
-  };
-
-  const handleDeleteAdjunto = async (id: string) => {
-    if (confirm('¿Está seguro de eliminar este documento?')) {
-      try {
-        await procesosCoactivosService.deleteAdjunto(id);
-        toast.success('Documento eliminado');
-        loadAdjuntos();
-        // Notificar al padre para actualizar stats
-        if (onUpdate) onUpdate();
-      } catch (error) {
-        console.error('Error eliminando adjunto:', error);
-        toast.error('Error al eliminar documento');
-      }
-    }
-  };
+  if (!isOpen) return null;
 
   return (
-    <ModalSIGL
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Proceso ${proceso.radicado}`}
-      size="large"
-    >
-      {/* Sub-Modales */}
-      <ModalGestionarPagos
-        isOpen={modalPagos}
-        onClose={() => setModalPagos(false)}
-        proceso={{
-          id: proceso.id,
-          deudor: proceso.deudor.nombre,
-          valorTotal: proceso.obligacion.valor,
-          valorPagado: proceso.obligacion.valorPagado || 0
-        }}
-        onRegistrarPago={() => {
-          if (onUpdate) onUpdate();
-        }}
-      />
-      <ModalHistorialCoactivo
-        isOpen={modalHistorial}
-        onClose={() => setModalHistorial(false)}
-        procesoId={proceso.id}
-        radicado={proceso.radicado}
-      />
-
-      <div className="space-y-4">
-        {/* Header con Estado y Botones */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Estado Actual</p>
-            <span className={`px-3 py-1 mt-1 inline-flex text-sm font-bold rounded-full ${estadoConfig.color}`}>
-              {estadoConfig.label}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <ButtonSIGL size="sm" variant="secondary" onClick={() => setModalHistorial(true)}>
-              <History className="w-4 h-4 mr-2" />
-              Trazabilidad
-            </ButtonSIGL>
-            {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) && (
-              <ButtonSIGL size="sm" onClick={() => setModalPagos(true)} className="bg-green-600 hover:bg-green-700 text-white border-none">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Gestionar Pagos
-              </ButtonSIGL>
-            )}
-          </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ zIndex: 101 }}>
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Proceso {proceso.radicado}</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-6 space-y-4">
+          {/* Estado */}
+          <div className="flex items-center justify-between pb-3 border-b">
+            <span className={`px-3 py-1.5 rounded-full text-sm font-medium ${estadoConfig.color}`}>
+              {estadoConfig.label}
+            </span>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Fecha creación</p>
+              <p className="text-sm font-medium text-gray-900">
+                {proceso.fechaCreacion.toLocaleDateString('es-CO', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            </div>
+          </div>
+
           {/* Información del Deudor */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
-              <User className="w-4 h-4 text-blue-600" />
-              Datos del Deudor
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <User className="w-4 h-4 text-[#003DA5]" />
+              Información del Deudor
             </h3>
-            <div className="space-y-2">
-              <div>
-                <p className="text-xs text-gray-500">Nombre</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Identificación</p>
-                <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Contacto</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.telefono || 'N/A'} • {proceso.deudor.email || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Dirección</p>
-                <p className="text-sm text-gray-900">{proceso.deudor.direccion || 'N/A'}</p>
+            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500">Nombre</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.nombre}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Identificación</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.deudor.identificacion}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Teléfono</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.telefono}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.email}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">Dirección</p>
+                  <p className="text-sm text-gray-900">{proceso.deudor.direccion}</p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Información de la Obligación */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 border-b pb-2">
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-green-600" />
-              Detalle de la Obligación
+              Obligación
             </h3>
-            <div className="space-y-3">
+            <div className="bg-green-50 rounded-lg p-4 space-y-3">
               <div>
-                <p className="text-xs text-gray-500">Concepto</p>
+                <p className="text-xs text-green-700 mb-1">Concepto</p>
                 <p className="text-sm font-medium text-gray-900">{proceso.obligacion.concepto}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <p className="text-xs text-gray-500">Valor Capital</p>
-                  <p className="text-lg font-bold text-green-700">
+                  <p className="text-xs text-green-700">Valor</p>
+                  <p className="text-lg font-bold text-green-900">
                     ${proceso.obligacion.valor.toLocaleString('es-CO')}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Días en Mora</p>
-                  <p className={`text-lg font-bold ${proceso.obligacion.diasVencidos > 180 ? 'text-red-600' : 'text-orange-600'}`}>
-                    {proceso.obligacion.diasVencidos}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
-                <div>
-                  <p className="text-xs text-gray-500">Pagado</p>
-                  <p className="text-sm font-bold text-green-600">
-                    ${(proceso.obligacion.valorPagado || 0).toLocaleString('es-CO')}
+                  <p className="text-xs text-green-700">Vencimiento</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Saldo Pendiente</p>
-                  <p className="text-sm font-bold text-orange-600">
-                    ${(proceso.obligacion.saldoPendiente || 0).toLocaleString('es-CO')}
+                  <p className="text-xs text-green-700">Días vencidos</p>
+                  <p className="text-sm font-bold text-red-600">
+                    {proceso.obligacion.diasVencidos} días
                   </p>
                 </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Fecha de Vencimiento</p>
-                <p className="text-sm text-gray-900">
-                  {proceso.obligacion.fechaVencimiento.toLocaleDateString('es-CO')}
-                </p>
+            </div>
+          </div>
+
+          {/* Gestión del Proceso */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-blue-600" />
+              Gestión del Proceso
+            </h3>
+            <div className="bg-blue-50 rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-blue-700">Responsable</p>
+                  <p className="text-sm font-medium text-gray-900">{proceso.responsable}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Última actuación</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Documentos adjuntos</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.documentosAdjuntos}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-blue-700">Notificaciones enviadas</p>
+                  <p className="text-sm font-semibold text-gray-900">{proceso.notificacionesEnviadas}</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Gestión del Proceso */}
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-          <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-            <FileCheck className="w-4 h-4" />
-            Gestión y Seguimiento
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Observaciones */}
+          {proceso.observaciones && (
             <div>
-              <p className="text-xs text-blue-700">Responsable Asignado</p>
-              <p className="text-sm font-medium text-gray-900">{proceso.responsable || 'Sin asignar'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Última actuación</p>
-              <p className="text-sm font-medium text-gray-900">
-                {proceso.ultimaActuacion.toLocaleDateString('es-CO')}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Documentos</p>
-              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
-                <FileText className="w-3 h-3" /> {proceso.documentosAdjuntos}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-blue-700">Notificaciones</p>
-              <p className="text-sm font-semibold text-gray-900 flex items-center gap-1">
-                <Send className="w-3 h-3" /> {proceso.notificacionesEnviadas}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Observaciones */}
-        {proceso.observaciones && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <h3 className="font-semibold text-amber-900 mb-2 text-sm">Observaciones</h3>
-            <p className="text-sm text-gray-800 italic">"{proceso.observaciones}"</p>
-          </div>
-        )}
-
-        {/* Sección de Documentos Adjuntos */}
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2 text-sm">
-            <FileText className="w-4 h-4 text-blue-600" />
-            Documentos Adjuntos ({adjuntos.length})
-          </h3>
-
-          {loadingAdjuntos ? (
-            <p className="text-sm text-gray-500">Cargando documentos...</p>
-          ) : adjuntos.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">No hay documentos adjuntos a este proceso.</p>
-          ) : (
-            <div className="space-y-2">
-              {adjuntos.map((adjunto) => (
-                <div key={adjunto.id} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200 hover:bg-gray-50">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <div className="p-1.5 bg-blue-100 rounded text-blue-600">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 truncate max-w-[200px] sm:max-w-[300px]">
-                        {adjunto.nombreOriginal}
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        {(adjunto.tamano / 1024).toFixed(1)} KB • {new Date(adjunto.fechaCreacion).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleDownload(adjunto)}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Descargar"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) && (
-                      <button
-                        onClick={() => handleDeleteAdjunto(adjunto.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <h3 className="font-semibold text-gray-900 mb-3">Observaciones</h3>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-gray-900">{proceso.observaciones}</p>
+              </div>
             </div>
           )}
         </div>
 
-
-        {/* Botones de acción */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <ButtonSIGL variant="secondary" onClick={onClose}>
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+          >
             Cerrar
-          </ButtonSIGL>
-          <ButtonSIGL onClick={() => {
-            const url = procesosCoactivosService.getFichaDownloadUrl(proceso.id);
-            window.open(url, '_blank');
-          }}>
-            <Download className="w-4 h-4 mr-2" />
-            Descargar Ficha
-          </ButtonSIGL>
+          </button>
+          <button
+            onClick={() => toast.info('Función en desarrollo')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+              boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+            }}
+          >
+            <Download className="w-4 h-4" />
+            Exportar PDF
+          </button>
         </div>
       </div>
-    </ModalSIGL>
+    </div>
   );
 }

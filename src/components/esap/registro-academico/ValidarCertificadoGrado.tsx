@@ -23,6 +23,8 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
+import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogoSVG } from '../../assets/ESAPLogoSVG';
 import graduadosService, { CertificadoGraduado } from '../../../services/api/graduados.service';
 
 interface ValidacionResult {
@@ -38,10 +40,7 @@ interface ValidacionResult {
       cohorte: string;
     };
     fechaGrado: string;
-    numeroActa: string;
-    numeroFolio: string;
-    tituloOtorgado: string;
-    firmadoPor: string;
+    registroFolioLibro: string;
     estado: 'VIGENTE' | 'REVOCADO' | 'ANULADO';
   };
   error?: string;
@@ -75,10 +74,7 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
       cohorte: 'No especificado'
     },
     fechaGrado: certificado.graduationDate,
-    numeroActa: certificado.actaNumber || 'No especificado',
-    numeroFolio: certificado.diplomaNumber || 'No especificado',
-    tituloOtorgado: certificado.degreeTitle,
-    firmadoPor: [certificado.signerName, certificado.signerPosition].filter(Boolean).join(' - ') || 'No especificado',
+    registroFolioLibro: certificado.actaNumber || 'No especificado',
     estado: mapEstadoCertificado(certificado.status)
   });
 
@@ -162,50 +158,73 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
         <div
           className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)'
           }}
           onClick={onClose}
         >
+          {onBack && (
+            <motion.nav 
+              initial={{ y: -100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] w-[95%] max-w-6xl"
+            >
+              <div className="bg-[#1e5da8] rounded-2xl shadow-2xl px-4 sm:px-6 py-3 border border-blue-400/30 backdrop-blur-xl"
+                style={{
+                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  {/* Logo */}
+                  <div className="flex items-center gap-3">
+                    {/* <img 
+                      src={esapLogoWhite} 
+                      alt="ESAP Logo" 
+                      className="h-8 sm:h-10 w-auto object-contain brightness-0 invert"
+                    /> */}
+                    <ESAPLogoSVG
+                      variant="color"
+                    />
+                    <div className="hidden sm:block">
+                      <p className="text-xs font-semibold text-white">Validador de Certificados</p>
+                      <p className="text-[9px] font-medium text-white/70 -mt-0.5">Certificados de Grado</p>
+                    </div>
+                  </div>
+
+                  {/* Botón Volver */}
+                  <button
+                    onClick={onBack}
+                    className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 rounded-full font-semibold text-xs sm:text-sm transition-all duration-300 bg-white text-[#003DA5] hover:bg-blue-50 hover:scale-105 shadow-lg"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Volver</span>
+                    <span className="sm:hidden">Atrás</span>
+                  </button>
+                </div>
+              </div>
+            </motion.nav>
+          )}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto relative"
-            style={{
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
-            }}
+            className={!onBack ? 'bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto relative' : 'max-w-4xl w-full max-h-[90vh] overflow-y-auto relative'}
+            style={!onBack ? { boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' } : undefined}
           >
-            <button
-              onClick={onClose}
-              className="sticky top-4 right-4 float-right z-10 p-2 bg-white hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors shadow-lg border border-gray-200"
-              title="Cerrar (ESC)"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {!onBack && (
+              <button
+                onClick={onClose}
+                className="sticky top-4 right-4 float-right z-10 p-2 bg-white hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors shadow-lg border border-gray-200"
+                title="Cerrar (ESC)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
 
             <div className="p-8">
-              {onBack && (
-                <motion.nav
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="mb-6"
-                >
-                  <Button
-                    variant="ghost"
-                    onClick={onBack}
-                    className="flex items-center gap-2 text-[#003DA5]"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline">Volver</span>
-                    <span className="sm:hidden">Atrás</span>
-                  </Button>
-                </motion.nav>
-              )}
 
               <div className="max-w-4xl mx-auto">
                 <motion.div
@@ -463,37 +482,10 @@ export function ValidarCertificadoGrado({ isOpen, onClose, onBack }: ValidarCert
 
                                 <div>
                                   <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Acta
+                                    Registro/Folio/Libro
                                   </label>
                                   <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroActa}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Número de Folio
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.numeroFolio}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Título Otorgado
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.tituloOtorgado}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <label className="text-xs font-semibold uppercase tracking-wide mb-1 block" style={{ color: '#6B7280' }}>
-                                    Firmado por
-                                  </label>
-                                  <p className="font-medium" style={{ fontSize: '14px', color: '#1F2937' }}>
-                                    {validationResult.certificado.firmadoPor}
+                                    {validationResult.certificado.registroFolioLibro}
                                   </p>
                                 </div>
                               </div>

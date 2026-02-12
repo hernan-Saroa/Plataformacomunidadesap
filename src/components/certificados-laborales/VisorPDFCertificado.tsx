@@ -14,7 +14,8 @@ import { Button } from '../ui/button';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
-import { buildServiceAssetUrl } from '../../config/environment';
+import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface VisorPDFCertificadoProps {
   isOpen: boolean;
@@ -31,6 +32,10 @@ interface VisorPDFCertificadoProps {
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     technical_bonus?: number;
+    templateSnapshot?: any;
+    templateType?: 'docente' | 'administrador';
+    template_snapshot?: any;
+    template_type?: 'docente' | 'administrador';
     empleado: {
       nombre: string;
       documento: string;
@@ -58,7 +63,8 @@ interface VisorPDFCertificadoProps {
     // Campos adicionales del backend
     position_location?: string; // Ubicación del cargo
     department?: string; // Departamento
-    department_parent?: string; // Dependencia padre
+    cod_cargo?: string; // Dependencia padre
+    cod_grade?: string; // Grado del cargo
     campus?: string; // Sede
     signer_name?: string; // Nombre del firmante
     signer_position?: string; // Cargo del firmante
@@ -68,6 +74,7 @@ interface VisorPDFCertificadoProps {
 
 const CERTIFICATE_WIDTH = 816;
 const CERTIFICATE_HEIGHT = 1056;
+const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
 
 export function VisorPDFCertificado({
   isOpen,
@@ -91,6 +98,20 @@ export function VisorPDFCertificado({
     return Math.min(1, Math.max(0.25, (baseWidth - 24) / CERTIFICATE_WIDTH));
   });
 
+  const normalizarTipografia = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw) return DEFAULT_CERTIFICATE_FONT;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return DEFAULT_CERTIFICATE_FONT;
+    }
+    return sanitized;
+  };
+
   const normalizarTexto = (value: string) => {
     const baseTexto = String(value || '').toLowerCase();
     const textoNormalizado = typeof baseTexto.normalize === 'function' ? baseTexto.normalize('NFD') : baseTexto;
@@ -103,11 +124,76 @@ export function VisorPDFCertificado({
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
+
+  const obtenerSnapshotPlantilla = () => {
+    return (certificado as any)?.templateSnapshot || (certificado as any)?.template_snapshot || null;
+  };
+
   const resolverTipoPlantilla = (): 'docente' | 'administrador' => {
-    const fromCert = (certificado as any)?.templateType;
+    const snapshot = obtenerSnapshotPlantilla();
+    const snapshotType = snapshot?.templateType || snapshot?.template_type;
+    if (snapshotType === 'docente' || snapshotType === 'administrador') return snapshotType;
+
+    const fromCert = (certificado as any)?.templateType || (certificado as any)?.template_type;
     if (fromCert === 'docente' || fromCert === 'administrador') return fromCert;
 
-    const cargoTexto = `${certificado.empleado.cargo || ''}`;
+    const cargoTexto = `${certificado.empleado.cargo || ''} ${certificado.empleado.tipoVinculacion || ''}`;
     return esDocente(cargoTexto) ? 'docente' : 'administrador';
   };
 
@@ -115,15 +201,20 @@ export function VisorPDFCertificado({
   useEffect(() => {
     const cargarPlantilla = async () => {
       try {
+        const snapshot = obtenerSnapshotPlantilla();
         const tipoDetectado = resolverTipoPlantilla();
         setTemplateType(tipoDetectado);
+        if (snapshot) {
+          setPlantillaConfig(snapshot);
+          return;
+        }
         const config = await certificadosService.plantilla.obtenerConfiguracion(tipoDetectado);
         setPlantillaConfig(config);
       } catch (error) {
         console.error('Error al cargar configuración de plantilla:', error);
         // Si falla, usar valores por defecto
         setPlantillaConfig({
-          typography: { font: 'Times New Roman' },
+          typography: { font: DEFAULT_CERTIFICATE_FONT },
           cargoTitle: 'LA DIRECTORA TÉCNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA – ESAP',
           certificateContentHtml: '',
           logo: null,
@@ -135,9 +226,20 @@ export function VisorPDFCertificado({
     if (isOpen) {
       cargarPlantilla();
     }
-  }, [isOpen, certificado?.empleado?.cargo, certificado?.empleado?.tipoVinculacion]);
+  }, [
+    isOpen,
+    certificado?.empleado?.cargo,
+    certificado?.empleado?.tipoVinculacion,
+    (certificado as any)?.templateSnapshot,
+    (certificado as any)?.template_snapshot,
+    (certificado as any)?.templateType,
+    (certificado as any)?.template_type,
+  ]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
+  const typographyFont = normalizarTipografia(
+    plantillaConfig?.typography?.font || plantillaConfig?.typographyFont,
+  );
   const salarioBase =
     (certificado.empleado as any)?.salarioOriginal ??
     certificado.empleado.salario ??
@@ -164,6 +266,27 @@ export function VisorPDFCertificado({
     }
   };
 
+  const normalizarEstructuraParrafos = (html: string): string => {
+    if (!html) return html;
+
+    let resultado = html.replace(/\r\n?/g, '\n');
+    resultado = resultado.replace(/<div\b[^>]*>/gi, '<p>');
+    resultado = resultado.replace(/<\/div>/gi, '</p>');
+    resultado = resultado.replace(/(?:<br\s*\/?>\s*){2,}/gi, '</p><p>');
+    resultado = resultado.replace(/<p>\s*<\/p>/gi, '');
+
+    if (!/<p[\s>]/i.test(resultado)) {
+      resultado = `<p>${resultado}</p>`;
+    }
+
+    resultado = resultado.replace(/<p>\s*(?:<br\s*\/?>\s*)+/gi, '<p>');
+    resultado = resultado.replace(/(?:<br\s*\/?>\s*)+\s*<\/p>/gi, '</p>');
+    resultado = resultado.replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*<\/p>/gi, '');
+    resultado = resultado.replace(/<\/p>\s*<p>/gi, '</p><p>');
+
+    return resultado.trim();
+  };
+
   // Función para reemplazar variables en el contenido HTML Y LIMPIAR ESTILOS DE RESALTADO
   const reemplazarVariables = (html: string): string => {
     if (!html) return '';
@@ -180,19 +303,19 @@ export function VisorPDFCertificado({
     };
     const dependenciaHijo = normalizarDependencia(certificado.empleado.dependencia || certificado.department || '');
     const dependenciaPadre = normalizarDependencia(
-      certificado.empleado.dependenciaPadre || certificado.department_parent || ''
+      certificado.empleado.dependenciaPadre || certificado.cod_cargo || ''
     );
     const dependenciaPlantilla = dependenciaPadre;
-    const ubicacion = certificado.position_location || certificado.campus || dependenciaHijo || dependenciaPadre || '';
-    const ubicacionCargo = certificado.position_location || ubicacion;
+    const ubicacion = dependenciaHijo || certificado.position_location || certificado.campus || dependenciaPadre || '';
+    const ubicacionCargo = dependenciaHijo || certificado.position_location || ubicacion;
 
     const cargoPlantilla =
       templateType === 'docente'
         ? (
             cargoTexto && tipoVinculacion &&
             cargoTexto.toLowerCase() === tipoVinculacion.toLowerCase()
-              ? (grado || dependencia || cargoTexto)
-              : (cargoTexto || grado || tipoVinculacion || dependencia || '')
+              ? (grado || dependenciaHijo || cargoTexto)
+              : (cargoTexto || grado || tipoVinculacion || dependenciaHijo || '')
           )
         : (cargoTexto || grado || tipoVinculacion || '');
 
@@ -201,8 +324,8 @@ export function VisorPDFCertificado({
         ? ubicacionCargo
         : (certificado.observations || '');
 
-    const dato7 = certificado.position_location || '';
-    const cargoDato6 = cargoTexto;
+    const dato7 = dependenciaHijo || certificado.position_location || '';
+    const cargoDato6 = tipoVinculacion;
 
     const salarioEnLetras = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
     const fechaExpedicionSource =
@@ -210,6 +333,21 @@ export function VisorPDFCertificado({
       certificado.fechaSolicitud ||
       new Date().toISOString();
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
+
+    const requestData = (certificado as any)?.request || {};
+    const cargoVariable = construirCargoVariable(
+      requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
+      requestData?.cod_cargo ||
+        (certificado as any)?.cod_cargo ||
+        (certificado as any)?.codCargo ||
+        (certificado.empleado as any)?.cod_cargo ||
+        (certificado.empleado as any)?.codCargo,
+      requestData?.cod_grade ||
+        (certificado as any)?.cod_grade ||
+        (certificado as any)?.codGrade ||
+        (certificado.empleado as any)?.cod_grade ||
+        (certificado.empleado as any)?.codGrade,
+    ) || cargoTexto;
 
     const reemplazos: Record<string, string> = {
       '[DATO1]': certificado.empleado.nombre || '',
@@ -222,8 +360,11 @@ export function VisorPDFCertificado({
       '[DATO8]': incluirSalario ? (salarioTextoBase || salarioEnLetras) : '',
       '[NOMBRE_EMPLEADO]': certificado.empleado.nombre || '',
       '[DOCUMENTO]': certificado.empleado.documento || '',
-      '[CARGO]': cargoPlantilla,
+      '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
+      '[TIPO_DATO]': cargoDato6,
+      '[UBICACIÓN]': dato7,
+      '[UBICACION]': dato7,
       '[DEPENDENCIA]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
@@ -290,7 +431,7 @@ export function VisorPDFCertificado({
     // Eliminar espacio antes de signos de puntuación
     resultado = resultado.replace(/\s+([.,;:])/g, '$1');
 
-    return resultado;
+    return normalizarEstructuraParrafos(resultado);
   };
 
   // Función para convertir números a palabras en español
@@ -490,6 +631,37 @@ export function VisorPDFCertificado({
     contenido.style.boxShadow = 'none';
     contenido.style.backgroundColor = '#ffffff';
 
+    // Convertir canvases (QR) en imagenes reales para que se vean en la impresión
+    try {
+      const originalCanvases = Array.from(
+        certificadoRef.current.querySelectorAll('canvas')
+      ) as HTMLCanvasElement[];
+      const clonedCanvases = Array.from(contenido.querySelectorAll('canvas')) as HTMLCanvasElement[];
+
+      clonedCanvases.forEach((canvas, index) => {
+        const source = originalCanvases[index];
+        if (!source) return;
+        let dataUrl = '';
+        try {
+          dataUrl = source.toDataURL('image/png');
+        } catch {
+          return;
+        }
+        if (!dataUrl) return;
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.width = source.width || canvas.width;
+        img.height = source.height || canvas.height;
+        img.style.cssText = canvas.style.cssText || source.style.cssText || '';
+        if (canvas.className) {
+          img.className = canvas.className;
+        }
+        canvas.replaceWith(img);
+      });
+    } catch {
+      // Si falla la conversion, imprimir con el canvas original
+    }
+
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) {
       if (autoAction === 'print') {
@@ -510,9 +682,12 @@ export function VisorPDFCertificado({
         min-height: 100%;
       }
       body {
-        font-family: Arial Narrow, Arial, sans-serif;
+        font-family: ${typographyFont};
         display: flex;
         justify-content: center;
+      }
+      #certificado-print, #certificado-print * {
+        font-family: ${typographyFont} !important;
       }
       .print-wrapper {
         width: ${CERTIFICATE_WIDTH}px;
@@ -701,6 +876,17 @@ export function VisorPDFCertificado({
     ? `<p>Percibe mensualmente una prima tecnica de ($${primaTecnicaParaMostrar.toLocaleString('es-CO')}) adicional a su asignacion basica mensual.</p>`
     : '';
 
+  const qrToken =
+    certificado.qrCode ||
+    certificado.certificateHash ||
+    certificado.consecutivo ||
+    '';
+  const basePublicUrl = getPublicBaseUrl();
+  const qrPayload = qrToken
+    ? `${basePublicUrl}/verificar-certificado/${encodeURIComponent(qrToken)}`
+    : basePublicUrl;
+  const qrSize = 99;
+
   const contenidoFinal = (() => {
     if (!primaTecnicaParrafo) return contenidoNormalizado;
     try {
@@ -722,6 +908,7 @@ export function VisorPDFCertificado({
       return `${contenidoNormalizado}${primaTecnicaParrafo}`;
     }
   })();
+  const contenidoFinalNormalizado = normalizarEstructuraParrafos(contenidoFinal);
 
   const renderCertificate = (ref?: React.Ref<HTMLDivElement>, extraStyle?: React.CSSProperties) => (
     <div
@@ -730,7 +917,7 @@ export function VisorPDFCertificado({
       style={{
         width: `${CERTIFICATE_WIDTH}px`,
         minHeight: `${CERTIFICATE_HEIGHT}px`,
-        fontFamily: 'Arial Narrow, Arial, sans-serif',
+        fontFamily: typographyFont,
         fontSize: '12pt',
         padding: '72px 72px 72px 72px',
         position: 'relative',
@@ -738,6 +925,28 @@ export function VisorPDFCertificado({
       }}
       data-template-type={templateType}
     >
+      <style>{`
+        .certificate-content-block p,
+        .certificate-content-block div,
+        .certificate-content-block li {
+          margin: 0 0 12pt 0;
+          text-align: justify;
+          text-align-last: left;
+          text-indent: 0;
+          letter-spacing: normal;
+        }
+        .certificate-content-block p:last-child,
+        .certificate-content-block div:last-child,
+        .certificate-content-block li:last-child {
+          margin-bottom: 0;
+        }
+        .certificate-content-block span {
+          letter-spacing: normal;
+          padding: 0;
+          margin: 0;
+        }
+      `}</style>
+
       {/* Header - Logo ESAP (desde plantilla o por defecto) */}
       {plantillaConfig.logo?.url ? (
         <img
@@ -824,7 +1033,7 @@ export function VisorPDFCertificado({
         <div
           className="certificate-content-block"
           dangerouslySetInnerHTML={{
-            __html: contenidoFinal
+            __html: contenidoFinalNormalizado
           }}
           style={{
             textAlign: 'justify',
@@ -846,7 +1055,7 @@ export function VisorPDFCertificado({
             fontSize: '12pt',
             margin: '0 0 12pt 0'
           }}>
-            Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.position_location || ''}.
+            Que {certificado.empleado.nombre} identificado(a) con cédula de ciudadanía No. {certificado.empleado.documento}, se encuentra vinculado(a) con la Escuela Superior de Administración Pública - ESAP mediante nombramiento {certificado.empleado.tipoVinculacion} desde el {formatearFecha(certificado.empleado.fechaVinculacion)}, en la categoría {certificado.empleado.grado} ubicado en {certificado.empleado.dependencia || certificado.department || certificado.position_location || ''}.
           </p>
 
           {incluirSalario && (
@@ -922,7 +1131,7 @@ export function VisorPDFCertificado({
         width: '250px',
         fontSize: '7pt',
         lineHeight: '1.3',
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: typographyFont,
         color: '#000000'
       }}>
         <p style={{ margin: '0 0 2px 0' }}>Sede principal</p>
@@ -932,18 +1141,37 @@ export function VisorPDFCertificado({
         <p style={{ margin: 0 }}>Línea nacional gratuita PBX: 018000 423713</p>
       </div>
 
-      {/* Footer - Logo ESAP y URL a la DERECHA */}
+      {/* Footer - QR y URL a la DERECHA */}
       <div style={{
         position: 'absolute',
         bottom: '40px',
         right: '72px',
-        textAlign: 'right'
+        textAlign: 'right',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: '6px'
       }}>
+        <div style={{
+          width: `${qrSize}px`,
+          height: `${qrSize}px`,
+          border: '1px solid #e5e7eb',
+          padding: '4px',
+          background: '#ffffff'
+        }}>
+          <QRCodeCanvas
+            value={qrPayload}
+            size={qrSize - 8}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            includeMargin={false}
+          />
+        </div>
         <p style={{
           margin: 0,
           fontSize: '12pt',
           color: '#0066cc',
-          fontFamily: 'Arial, sans-serif'
+          fontFamily: typographyFont
         }}>
           www.esap.edu.co
         </p>

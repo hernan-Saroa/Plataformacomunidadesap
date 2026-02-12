@@ -66,13 +66,17 @@ export const useConfiguration = () => {
                  }));
                  setEtapas(mappedStages);
             } else {
+                 // Etapas por defecto completas: RECEPCION → VALORACION → INDAGACION PREVIA → INVESTIGACION → EVALUACION → JUZGAMIENTO → INDAGACION → FALLO → SEGUNDA INSTANCIA
                  setEtapas([
-                      { id: '1', nombre: 'RECEPCIÓN', dias: 3, orden: 1 },
-                      { id: '2', nombre: 'VALORACIÓN', dias: 10, orden: 2 },
-                      { id: '3', nombre: 'INDAGACIÓN', dias: 40, orden: 3 },
-                      { id: '4', nombre: 'INVESTIGACIÓN', dias: 60, orden: 4 },
-                      { id: '5', nombre: 'JUZGAMIENTO', dias: 50, orden: 5 },
-                      { id: '6', nombre: 'FALLO', dias: 10, orden: 6 }
+                      { id: '1', nombre: 'RECEPCION', dias: 3, orden: 1 },
+                      { id: '2', nombre: 'VALORACION', dias: 10, orden: 2 },
+                      { id: '3', nombre: 'INDAGACION PREVIA', dias: 40, orden: 3 },
+                      { id: '4', nombre: 'INVESTIGACION', dias: 60, orden: 4 },
+                      { id: '5', nombre: 'EVALUACION', dias: 10, orden: 5 },
+                      { id: '6', nombre: 'JUZGAMIENTO', dias: 50, orden: 6 },
+                      { id: '7', nombre: 'INDAGACION', dias: 30, orden: 7 },
+                      { id: '8', nombre: 'FALLO', dias: 10, orden: 8 },
+                      { id: '9', nombre: 'SEGUNDA INSTANCIA', dias: 10, orden: 9 }
                  ]);
             }
 

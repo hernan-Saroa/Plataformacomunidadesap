@@ -24,8 +24,7 @@ import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
 import { FooterWorldClass } from '../FooterWorldClass';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import logoESAP from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -61,6 +60,63 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
       if (v !== undefined && v !== null && String(v).trim() !== '') return v;
     }
     return 'No disponible';
+  };
+
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
   const parseDateString = (value?: string | null) => {
@@ -133,13 +189,30 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
         return;
       }
 
+      const cargoCalculado = construirCargoVariable(
+        response?.career_category
+          || response?.careerCategory
+          || response?.career_category_name
+          || response?.position_category
+          || response?.positionCategory
+          || response?.cargo,
+        response?.cod_cargo
+          || response?.codCargo
+          || response?.request?.cod_cargo
+          || response?.request?.codCargo,
+        response?.cod_grade
+          || response?.codGrade
+          || response?.request?.cod_grade
+          || response?.request?.codGrade,
+      );
+
       const certificado = {
         consecutivo,
         codigoQR: response?.verification_code || codigoNormalizado,
         empleado: {
           nombre: nombreEmpleado,
           documento: getVal(response?.id_number, response?.documento, response?.idNumber),
-          cargo: getVal(
+          cargo: cargoCalculado || getVal(
             response?.career_category,
             response?.careerCategory,
             response?.cargo,
@@ -200,10 +273,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
             <div className="flex items-center justify-between">
               {/* Logo */}
               <div className="flex items-center gap-2 sm:gap-3">
-                <img 
-                  src={esapLogoWhite} 
-                  alt="ESAP Logo" 
-                  className="h-7 sm:h-10 w-auto object-contain brightness-0 invert"
+                <ESAPLogo 
+                  variant="white"
+                  className="h-7 sm:h-10 w-auto"
                 />
                 <div className="hidden sm:block">
                   <p className="text-xs font-semibold text-white">Validador de Certificados</p>
@@ -375,10 +447,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                   <>
                     {/* Logo ESAP en Header del Certificado */}
                     <div className="flex justify-center pt-4 pb-2">
-                      <img 
-                        src={logoESAP} 
-                        alt="ESAP Logo" 
-                        className="h-16 sm:h-20 w-auto object-contain"
+                      <ESAPLogo 
+                        variant="color"
+                        className="h-16 sm:h-20 w-auto"
                       />
                     </div>
 
@@ -790,7 +861,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
       </div>
       
       {/* Footer WorldClass - Consistencia con Landing Page */}
-      <FooterWorldClass />
+      {/* <FooterWorldClass /> */}
       
       <QRScannerModal
         isOpen={isScannerOpen}

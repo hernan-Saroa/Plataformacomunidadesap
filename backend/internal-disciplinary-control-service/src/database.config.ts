@@ -48,6 +48,7 @@ import { DiaFestivo } from './entities/dia-festivo.entity';
 import { ReglaAlerta } from './entities/regla-alerta.entity';
 import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { PlantillaAuto } from './entities/plantilla-auto.entity';
+import { AutoConfiguration } from './entities/auto-configuration.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -71,7 +72,8 @@ export const databaseConfig: TypeOrmModuleOptions = {
     TerminoProcesal,
     DiaFestivo,
     ReglaAlerta,
-    AlertaEnviada
+    AlertaEnviada,
+    AutoConfiguration,
   ],
   synchronize: false,
   logging: false,

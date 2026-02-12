@@ -20,18 +20,18 @@ import {
   Loader2,
   ArrowUp
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { VerificationCertificate } from '../../types';
+import { VerificationCertificate } from '../../types/index';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
+import { QRCodeSVG } from 'qrcode.react';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -544,20 +544,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
           <Card className="border-4 border-[#1e5da8] shadow-2xl bg-white">
             {/* Official Header with Logo */}
-            <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="bg-white rounded-xl p-3 shadow-lg">
-                    <img src={esapLogo} alt="ESAP Logo" className="h-16 w-auto" />
-                  </div>
-                  <div className="text-white">
-                    <h1 className="text-2xl font-bold tracking-wide">
-                      ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
-                    </h1>
-                    <p className="text-blue-100 text-sm mt-1 tracking-wider">
-                      ESAP • República de Colombia
-                    </p>
-                  </div>
+            {/* <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6"> */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="bg-white rounded-xl p-3 shadow-lg">
+                  <ESAPLogo variant="color" className="h-16 w-auto" />
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
                   <Shield className="w-5 h-5 text-white" />

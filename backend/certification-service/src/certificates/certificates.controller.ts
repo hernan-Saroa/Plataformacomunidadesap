@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, Req, Query, HttpCode, HttpStat
 import type { Response } from 'express';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
+import { Public } from '../auth/public.decorator';
 
 @Controller('certificates')
 export class CertificatesController {
@@ -73,6 +74,7 @@ export class CertificatesController {
   }
 
   // IMPORTANTE: Esta ruta debe ir ANTES de certificados/:id para evitar conflictos
+  @Public()
   @Get('certificados/verify/:codigo')
   async verifyCertificado(
     @Param('codigo') codigo: string,
@@ -102,6 +104,7 @@ export class CertificatesController {
   }
 
   // Obtener historial de validaciones sin registrar una nueva
+  @Public()
   @Get('certificados/:codigo/validations')
   async getValidationHistory(@Param('codigo') codigo: string) {
     return await this.certificatesService.obtenerHistorialValidaciones(codigo);
@@ -134,6 +137,7 @@ export class CertificatesController {
   }
 
   @Post('certificados/:id/reenviar')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async reenviarCertificadoLaboral(
     @Param('id') id: string,
@@ -142,6 +146,7 @@ export class CertificatesController {
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
       templateType?: 'docente' | 'administrador';
+      publicBaseUrl?: string;
       to?: string;
     },
   ) {
@@ -176,12 +181,14 @@ export class CertificatesController {
   // ============================================
 
   @Post('autoservicio/verificar-documento')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async verificarDocumento(@Body() data: { documento: string }) {
     return await this.certificatesService.verificarDocumentoPorSolicitud(data.documento);
   }
 
   @Post('autoservicio/generar-codigo')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(@Body() data: { documento: string }) {
     try {
@@ -193,6 +200,7 @@ export class CertificatesController {
   }
 
   @Post('autoservicio/validar-codigo')
+  @Public()
   @HttpCode(HttpStatus.CREATED)
   async validarCodigoYGenerar(@Body() data: { documento: string; codigo: string }) {
     return await this.certificatesService.validarCodigoYGenerarCertificado(

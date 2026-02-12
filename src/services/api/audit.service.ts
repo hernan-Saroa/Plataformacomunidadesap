@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 
 const SERVICE_PREFIX = '/audit/api/v1';
 

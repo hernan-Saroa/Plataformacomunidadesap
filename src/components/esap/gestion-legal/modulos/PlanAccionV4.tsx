@@ -11,6 +11,8 @@ import { motion } from 'motion/react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { Input } from '../../../ui/input';
 import { Progress } from '../../../ui/progress';
 import { Avatar, AvatarFallback } from '../../../ui/avatar';
@@ -76,6 +78,49 @@ const mapEjeFromBackend = (eje: string) => {
     default: return 'GESTION_INSTITUCIONAL';
   }
 };
+// ==================== DATOS MOCK ====================
+const indicadoresMock: Indicador[] = [
+  // Ejemplo 1 - GESTIÓN INSTITUCIONAL
+  {
+    id: 'IND-2025-001',
+    codigo: 'GI-001',
+    nombre: 'Reducción de términos vencidos en procesos judiciales',
+    descripcion: 'Reducir en 20% los términos vencidos en defensa judicial',
+    ejeEstrategico: 'GESTION_INSTITUCIONAL',
+    responsable: 'Dr. Carlos Mendoza Torres',
+    meta: 80,
+    valorActual: 75,
+    avance: 94,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'EN_TIEMPO',
+    prioridad: 'ALTA',
+    periodicidad: 'MENSUAL',
+    tipoIndicador: 'EFICIENCIA',
+    unidadMedida: '%',
+    ultimaActualizacion: new Date('2025-12-28')
+  },
+  // Ejemplo 2 - TRANSPARENCIA
+  {
+    id: 'IND-2025-005',
+    codigo: 'TR-001',
+    nombre: 'Publicación de decisiones judiciales relevantes',
+    descripcion: 'Publicar el 100% de decisiones en plataforma institucional',
+    ejeEstrategico: 'TRANSPARENCIA',
+    responsable: 'Dra. Laura Martínez',
+    meta: 100,
+    valorActual: 92,
+    avance: 92,
+    fechaInicio: new Date('2025-01-01'),
+    fechaFin: new Date('2025-12-31'),
+    estado: 'EN_TIEMPO',
+    prioridad: 'ALTA',
+    periodicidad: 'MENSUAL',
+    tipoIndicador: 'TRANSPARENCIA',
+    unidadMedida: '%',
+    ultimaActualizacion: new Date('2025-12-27')
+  }
+];
 
 const mapEjeToBackend = (eje: string) => {
   switch (eje) {
@@ -179,6 +224,9 @@ const getSemaforoColor = (avance: number) => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanAccionV4() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
@@ -240,6 +288,43 @@ export function ModuloPlanAccionV4() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'IND-999',
+      codigo: 'GI-999',
+      nombre: 'Reducción tiempo respuesta PQRS judiciales - Meta alcanzada 100%',
+      tipo: 'Indicador Plan de Acción',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-30T18:00:00'),
+      usuarioArchivo: 'Coordinador Planeación',
+      motivoArchivo: 'Indicador completado exitosamente con cumplimiento del 100%. Meta superada en 5%. Cierre de vigencia 2024',
+      metadatos: {
+        'Código': 'GI-999',
+        'Eje Estratégico': '🏛️ Gestión Institucional',
+        'Responsable': 'Dr. Carlos Mendoza Torres',
+        'Meta': '90%',
+        'Alcanzado': '95%',
+        'Cumplimiento': '100%',
+        'Periodo': 'Enero - Diciembre 2024',
+        'Estado Final': 'Completado'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un indicador archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando indicador:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Indicador restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un indicador
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente indicador:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Indicador eliminado permanentemente');
+  };
 
   // Handlers para modales
   const handleVerDetalles = (indicador: Indicador) => {
@@ -660,6 +745,13 @@ export function ModuloPlanAccionV4() {
         indicador={indicadorSeleccionado}
         onEditar={() => handleEditarIndicador(indicadorSeleccionado!)}
         onCargarAvance={() => handleCargarAvance(indicadorSeleccionado!)}
+      />
+
+      {/* VISTA ARCHIVADOS */}
+      <VistaArchivados
+        items={itemsArchivados}
+        onRestaurar={handleRestaurar}
+        onEliminarPermanente={handleEliminarPermanente}
       />
     </div>
   );

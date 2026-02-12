@@ -42,6 +42,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
 
     async findAll(): Promise<any[]> {
         const consultas = await this.consultaRepository.find({
+            where: { estadoArchivo: 'ACTIVO' },
             relations: ['abogadoAsignado'],
             order: { fechaRecepcion: 'DESC' }
         });
@@ -160,16 +161,20 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return this.findOne(id);
     }
 
-    async updateEstado(id: string, estado: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
+    async updateEstado(id: string, estado: string, usuario: string = 'Sistema', estadoNombre?: string): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
         const estadoAnterior = consulta.estado;
         consulta.estado = estado;
 
+        // Usar el nombre legible si se proporciona, de lo contrario usar el ID
+        const nombreEstado = estadoNombre || estado;
+        const nombreEstadoAnterior = estadoAnterior || 'Sin estado';
+
         await this.registrarEvento(
             id,
             'CAMBIO_ETAPA',
-            `Cambio de etapa: ${estadoAnterior} -> ${estado}`,
-            `Nueva etapa: ${estado}`,
+            `Cambio de etapa: ${nombreEstadoAnterior} -> ${nombreEstado}`,
+            `Nueva etapa: ${nombreEstado}`,
             usuario
         );
 
@@ -254,12 +259,25 @@ export class ConsultasJuridicasService implements OnModuleInit {
         await this.consultaRepository.remove(consulta);
     }
 
-    // Helper to calculate dias restantes
+    /**
+     * Calcula días hábiles restantes hasta la fecha máxima de respuesta
+     * Usa días HÁBILES según Ley 1437 de 2011 (excluye fines de semana y festivos)
+     */
     calcularDiasRestantes(fechaMaxima: Date | null): number {
         if (!fechaMaxima) return 30; // Default if no date set
         const hoy = new Date();
-        const diff = fechaMaxima.getTime() - hoy.getTime();
-        return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+        hoy.setHours(0, 0, 0, 0);
+
+        const fechaMax = new Date(fechaMaxima);
+        fechaMax.setHours(0, 0, 0, 0);
+
+        // Si ya venció, retornar días negativos (también en días hábiles)
+        if (fechaMax < hoy) {
+            return -this.diasHabilesService.calcularDiasHabiles(fechaMax, hoy);
+        }
+
+        // Calcular días hábiles restantes
+        return this.diasHabilesService.calcularDiasHabiles(hoy, fechaMax);
     }
 
     // Calcular prioridad automáticamente basándose en días restantes
@@ -288,5 +306,92 @@ export class ConsultasJuridicasService implements OnModuleInit {
             where: { consultaId },
             order: { fecha: 'DESC' }
         });
+    }
+
+    // --- Métodos de Archivo y Eliminación ---
+
+    async getArchivadas(): Promise<ConsultaJuridica[]> {
+        return this.consultaRepository.find({
+            where: [
+                { estadoArchivo: 'ARCHIVADO' },
+                { estadoArchivo: 'ELIMINADO' }
+            ],
+            relations: ['abogadoAsignado'],
+            order: { fechaArchivo: 'DESC' }
+        });
+    }
+
+    async archivar(id: string, motivo: string, usuario: string): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+
+        consulta.estadoArchivo = 'ARCHIVADO';
+        consulta.fechaArchivo = new Date();
+        consulta.usuarioArchivo = usuario;
+        consulta.motivoArchivo = motivo;
+
+        await this.registrarEvento(
+            id,
+            'ARCHIVADO',
+            'Consulta archivada',
+            `Motivo: ${motivo}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async eliminarSoft(id: string, motivo: string, usuario: string): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+
+        consulta.estadoArchivo = 'ELIMINADO';
+        consulta.fechaArchivo = new Date();
+        consulta.usuarioArchivo = usuario;
+        consulta.motivoArchivo = motivo;
+
+        await this.registrarEvento(
+            id,
+            'ELIMINADO_SOFT',
+            'Consulta movida a papelera',
+            `Motivo: ${motivo}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async restaurar(id: string, usuario: string): Promise<ConsultaJuridica> {
+        // Buscar incluso si está archivado/eliminado
+        const consulta = await this.consultaRepository.findOne({
+            where: { id },
+            relations: ['abogadoAsignado']
+        });
+
+        if (!consulta) throw new NotFoundException('Consulta no encontrada');
+
+        const estadoAnterior = consulta.estadoArchivo;
+        consulta.estadoArchivo = 'ACTIVO';
+        consulta.fechaArchivo = null as any;
+        consulta.usuarioArchivo = null as any;
+        consulta.motivoArchivo = null as any;
+
+        await this.registrarEvento(
+            id,
+            'RESTAURADO',
+            'Consulta restaurada',
+            `Restaurada desde estado: ${estadoAnterior}`,
+            usuario
+        );
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async eliminarPermanente(id: string): Promise<void> {
+        const consulta = await this.consultaRepository.findOne({ where: { id } });
+        if (!consulta) throw new NotFoundException('Consulta no encontrada');
+
+        // Eliminar historial relacionado primero (cascade debería manejarlo pero por seguridad)
+        // await this.historialRepository.delete({ consultaId: id });
+
+        await this.consultaRepository.remove(consulta);
     }
 }

@@ -45,6 +45,9 @@ export class Audiencia {
     @Column({ name: 'notas_preparacion', type: 'text', nullable: true })
     notasPreparacion: string;
 
+    @Column({ type: 'jsonb', nullable: true })
+    historial: any[];
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 }

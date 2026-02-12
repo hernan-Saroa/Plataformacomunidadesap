@@ -112,6 +112,10 @@ export class Riesgo {
     @Column({ length: 20, default: 'ACTIVO' })
     estado: EstadoRiesgo;
 
+    // Motivo del archivado
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string | null;
+
     // Auditoría
     @Column({ name: 'created_by', length: 200, nullable: true })
     createdBy: string;

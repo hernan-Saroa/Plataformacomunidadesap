@@ -8,7 +8,10 @@ import {
   File, FolderCheck, FileCheck, Scale, Gavel, FileQuestion,
   BarChart3
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
+import { ModalExpedienteConsulta } from './ModalExpedienteConsulta';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 import { ModalSIGL } from '../design-system/ModalSIGL';
 import { legalService } from '../../../../services/api/legal.service';
 import { ModalSeleccionTipo } from './ModalSeleccionTipo';
@@ -23,6 +26,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 
 import { buildApiUrl, getServiceUrl, API_MODE } from '../../../../config/environment';
+import { isViewableInBrowser } from '../../../../utils/fileUtils';
 
 // Helper to build correct file URL for both direct and gateway modes
 // Direct mode: http://localhost:3008/files/{filename}
@@ -76,6 +80,7 @@ type TipoDocumento =
   | 'CONTESTACION'
   | 'PRUEBAS'
   | 'EVIDENCIAS'
+  | 'AUTOS'
   | 'SENTENCIAS'
   | 'TUTELAS'
   | 'RECURSOS'
@@ -146,9 +151,16 @@ export const TIPOS_DOCUMENTO = [
     icon: FolderCheck
   },
   {
+    id: 'AUTOS' as TipoDocumento,
+    nombre: 'Autos',
+    descripcion: 'Autos judiciales, providencias, decretos',
+    color: 'violet',
+    icon: Gavel
+  },
+  {
     id: 'SENTENCIAS' as TipoDocumento,
     nombre: 'Sentencias y Fallos',
-    descripcion: 'Sentencias, autos, providencias judiciales',
+    descripcion: 'Sentencias finales y fallos definitivos',
     color: 'purple',
     icon: Gavel
   },
@@ -203,20 +215,24 @@ export const TIPOS_DOCUMENTO = [
   }
 ];
 
-// Placeholder para Coactivos que no está implementado en backend aún
-const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
+// ════════════════════════════════════════════════════════════════════════════
+// DATOS MOCK (REDUCIDOS PARA OPTIMIZACIÓN)
+// ════════════════════════════════════════════════════════════════════════════
+
+const EXPEDIENTES_MOCK: Expediente[] = [
+  // Ejemplo mínimo de expediente para referencia
   {
-    id: 'exp-coa-001',
-    radicado: 'PC-2025-001',
-    nombreProceso: 'Coactivo - Juan Carlos Pérez (Matrícula)',
-    tipoProceso: 'PROCESOS_COACTIVOS',
-    fechaInicio: '2024-08-15',
-    fechaActualizacion: '2024-12-20',
+    id: 'exp-dj-001',
+    radicado: 'PJ-2025-001',
+    nombreProceso: 'Proceso de Ejemplo',
+    tipoProceso: 'DEFENSA_JUDICIAL',
+    fechaInicio: '2024-10-15',
+    fechaActualizacion: '2025-01-12',
     estado: 'EN_PROCESO',
-    responsable: 'Dra. Laura Sánchez',
-    totalDocumentos: 1,
+    responsable: 'Abogado Responsable',
+    totalDocumentos: 3,
     documentos: [
-      { id: 'd20', nombre: 'Título Ejecutivo Matrícula.pdf', tipo: 'PRUEBAS', tipoArchivo: 'PDF', tamanio: '345 KB', fechaCreacion: '2024-08-15', autor: 'Oficina Financiera' },
+      { id: 'd1', nombre: 'Documento 1.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-10-15', autor: 'Usuario' },
     ]
   },
 ];
@@ -226,6 +242,9 @@ const EXPEDIENTES_COACTIVOS_MOCK: Expediente[] = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModuloSIGL() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
   const [expedientes, setExpedientes] = useState<Expediente[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -718,6 +737,42 @@ export function ExpedientesModuloSIGL() {
     }
   };
 
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'EXP-999',
+      codigo: 'EXP-DJ-2024-999',
+      nombre: 'Expediente Demanda Laboral - Juan Pérez vs ESAP',
+      tipo: 'Expediente',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-12-01T16:30:00'),
+      usuarioArchivo: 'Dr. Carlos Mendoza',
+      motivoArchivo: 'Proceso finalizado con sentencia favorable. Todos los documentos digitalizados y respaldados en sistema central',
+      metadatos: {
+        'Radicado': 'PJ-2023-045',
+        'Tipo Proceso': 'Defensa Judicial - Laboral',
+        'Total Documentos': '47',
+        'Sentencia': 'Favorable a ESAP',
+        'Fecha Finalización': '01/12/2024',
+        'Responsable': 'Dr. Carlos Mendoza García'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un expediente archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un expediente
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente expediente:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Expediente eliminado permanentemente');
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
       {/* Header */}
@@ -1094,6 +1149,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
       CONTESTACION: [],
       PRUEBAS: [],
       EVIDENCIAS: [],
+      AUTOS: [],
       SENTENCIAS: [],
       TUTELAS: [],
       RECURSOS: [],
@@ -1162,13 +1218,13 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onUpload, onVie
 
             <div className="flex gap-2 w-full sm:w-auto">
               {authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_UPLOAD) && (
-              <button
-                onClick={onUpload}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Cargar
-              </button>
+                <button
+                  onClick={onUpload}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  Cargar
+                </button>
               )}
               <button
                 onClick={onToggleExpand}
@@ -1262,6 +1318,7 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
     red: 'bg-red-50 border-red-200 text-red-700',
     blue: 'bg-blue-50 border-blue-200 text-blue-700',
     green: 'bg-green-50 border-green-200 text-green-700',
+    violet: 'bg-violet-50 border-violet-200 text-violet-700',
     purple: 'bg-purple-50 border-purple-200 text-purple-700',
     orange: 'bg-orange-50 border-orange-200 text-orange-700',
     indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700',
@@ -1400,13 +1457,15 @@ function CarpetaTipoDocumento({ tipoDocumento, documentos, icon, onViewDoc }: Ca
                       </div>
 
                       <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleVerDocumento(doc)}
-                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
-                          title="Ver documento"
-                        >
-                          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
-                        </button>
+                        {isViewableInBrowser(doc.nombre || doc.url) && (
+                          <button
+                            onClick={() => handleVerDocumento(doc)}
+                            className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
+                            title="Ver documento"
+                          >
+                            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600" />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => handleDescargarDocumento(doc, e)}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded transition-colors"
@@ -1571,6 +1630,7 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
       DEMANDA: 0,
       CONTESTACION: 0,
       PRUEBAS: 0,
+      AUTOS: 0,
       SENTENCIAS: 0,
       TUTELAS: 0,
       RECURSOS: 0,

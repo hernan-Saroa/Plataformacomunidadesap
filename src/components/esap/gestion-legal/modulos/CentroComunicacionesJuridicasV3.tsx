@@ -9,6 +9,7 @@
  * - 📬 Judiciales: Notificaciones oficiales de juzgados
  * - 📧 Correos: Emails entrantes con clasificación IA
  * - 📄 Oficios: Comunicaciones internas
+ * - 📤 Enviados: Comunicaciones enviadas
  * - ⚠️ Urgentes: Todas las comunicaciones urgentes
  * - 📦 Archivadas: Todas las archivadas
  */
@@ -19,7 +20,8 @@ import {
   Mail, MailOpen, Inbox, Archive, AlertTriangle, CheckCircle,
   Eye, Plus, Search, XCircle, Send, FileText, Download,
   Circle, Check, Sparkles, User, Building, Clock, List, Columns3,
-  Filter, Star, Gavel, Scale, Briefcase, Paperclip
+  Filter, Star, Gavel, Scale, Briefcase, Paperclip, ChevronLeft, ChevronRight,
+  RefreshCw, Loader2
 } from 'lucide-react';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
@@ -35,13 +37,14 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { ModalExpedienteComunicacion } from './ModalExpedienteComunicacion';
 import { correosJuridicosService, CorreoJuridico } from '../../../../services/api/legal.service';
-import { RefreshCw, Loader2 } from 'lucide-react';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // TIPOS UNIFICADOS
-type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO';
-type EstadoComunicacion = 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA';
+type TipoComunicacion = 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
+type EstadoComunicacion = 'PENDIENTE' | 'LEIDA' | 'ARCHIVADA' | 'ENVIADA';
 
 interface ComunicacionUnificada {
   id: string;
@@ -50,6 +53,7 @@ interface ComunicacionUnificada {
   asunto: string;
   descripcion: string;
   remitente: string;
+  destinatario?: string; // Para comunicaciones enviadas
   despachoOrigen?: string;
   radicadoExterno?: string;
   fechaRadicacion: Date;
@@ -64,12 +68,386 @@ interface ComunicacionUnificada {
   };
 }
 
-type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'urgentes' | 'archivadas';
+// DATOS MOCK UNIFICADOS (REDUCIDOS PARA OPTIMIZACIÓN)
+const comunicacionesUnificadas: ComunicacionUnificada[] = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📬 COMUNICACIONES JUDICIALES
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'JUD-2025-001',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción de Tutela',
+    asunto: 'Notificación de admisión de tutela - Derecho a la educación',
+    descripcion: 'El Juzgado 33 Administrativo de Bogotá admite tutela interpuesta por estudiante en contra de ESAP por presunta vulneración al derecho fundamental a la educación.',
+    remitente: 'Juzgado 33 Administrativo del Circuito de Bogotá',
+    despachoOrigen: 'Juzgado 33 Administrativo',
+    radicadoExterno: '25000-33-10-001-2025-00123-00',
+    fechaRadicacion: new Date('2025-01-28'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['admision_tutela.pdf', 'demanda.pdf']
+  },
+  {
+    id: 'JUD-2025-002',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción Popular',
+    asunto: 'Auto admisorio de demanda - Moralidad administrativa',
+    descripcion: 'Juzgado admite acción popular por presuntas irregularidades en proceso de contratación. Se requiere respuesta en término de 10 días.',
+    remitente: 'Juzgado 5 Administrativo de Cundinamarca',
+    despachoOrigen: 'Juzgado 5 Administrativo',
+    radicadoExterno: '25000-05-23-001-2025-00045-00',
+    fechaRadicacion: new Date('2025-01-30'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['auto_admisorio.pdf', 'accion_popular.pdf', 'anexos.pdf']
+  },
+  {
+    id: 'JUD-2025-003',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Nulidad y Restablecimiento',
+    asunto: 'Citación a audiencia inicial - Proceso laboral',
+    descripcion: 'Se fija fecha para audiencia inicial del 15 de febrero de 2025 a las 9:00 AM. Se requiere presencia del representante legal o apoderado.',
+    remitente: 'Tribunal Administrativo de Cundinamarca',
+    despachoOrigen: 'Tribunal Administrativo',
+    radicadoExterno: '25000-23-33-001-2024-00789-01',
+    fechaRadicacion: new Date('2025-01-25'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['citacion_audiencia.pdf']
+  },
+  {
+    id: 'JUD-2025-004',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción de Cumplimiento',
+    asunto: 'Requerimiento de información - Cumplimiento de normativa',
+    descripcion: 'Solicitud del juzgado para aportar información sobre cumplimiento de normas en materia de transparencia y acceso a la información pública.',
+    remitente: 'Juzgado 18 Administrativo de Bogotá',
+    despachoOrigen: 'Juzgado 18 Administrativo',
+    radicadoExterno: '25000-18-10-001-2025-00234-00',
+    fechaRadicacion: new Date('2025-01-22'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['requerimiento.pdf']
+  },
+  {
+    id: 'JUD-2025-005',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Ejecutivo Singular',
+    asunto: 'Mandamiento de pago - Cobro obligaciones fiscales',
+    descripcion: 'Se libra mandamiento de pago dentro del proceso ejecutivo por obligaciones fiscales pendientes. Monto: $125.000.000',
+    remitente: 'Juzgado 2 Civil del Circuito',
+    despachoOrigen: 'Juzgado 2 Civil',
+    radicadoExterno: '11001-02-31-002-2024-00567-00',
+    fechaRadicacion: new Date('2025-01-20'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['mandamiento_pago.pdf', 'liquidacion.pdf']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📧 CORREOS ELECTRÓNICOS (Con Clasificación IA)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'CORREO-2025-001',
+    tipo: 'CORREO',
+    asunto: 'Consulta sobre requisitos para inscripción de título',
+    descripcion: 'Ciudadano solicita información sobre procedimiento y documentos necesarios para inscribir título profesional obtenido en ESAP.',
+    remitente: 'ciudadano@gmail.com',
+    fechaRadicacion: new Date('2025-01-29'),
+    urgente: false,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: [],
+    clasificacionIA: {
+      tipoDetectado: 'Derecho de Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.92
+    }
+  },
+  {
+    id: 'CORREO-2025-002',
+    tipo: 'CORREO',
+    asunto: 'Solicitud de certificado laboral urgente',
+    descripcion: 'Ex funcionario requiere certificado laboral para trámite pensional ante fondo de pensiones. Solicita respuesta en máximo 5 días.',
+    remitente: 'exfuncionario@outlook.com',
+    fechaRadicacion: new Date('2025-01-28'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['cedula.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'PQRS - Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.88
+    }
+  },
+  {
+    id: 'CORREO-2025-003',
+    tipo: 'CORREO',
+    asunto: 'Queja por demora en trámite de grado',
+    descripcion: 'Estudiante manifiesta inconformidad por demora de más de 6 meses en la expedición de su diploma de grado. Solicita solución inmediata.',
+    remitente: 'estudiante.esap@gmail.com',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: true,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['recibo_grado.pdf', 'comunicaciones_previas.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'PQRS - Queja',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.95
+    }
+  },
+  {
+    id: 'CORREO-2025-004',
+    tipo: 'CORREO',
+    asunto: 'Requerimiento Contraloría - Información presupuestal',
+    descripcion: 'La Contraloría General solicita información detallada sobre ejecución presupuestal del último trimestre 2024.',
+    remitente: 'contraloria@contraloria.gov.co',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['requerimiento_oficial.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'Órgano de Control',
+      moduloSugerido: 'Órganos de Control',
+      confianza: 0.98
+    }
+  },
+  {
+    id: 'CORREO-2025-005',
+    tipo: 'CORREO',
+    asunto: 'Solicitud de información pública - Transparencia',
+    descripcion: 'ONG solicita información sobre contratos suscritos en 2024 mayores a $100 millones, en cumplimiento de Ley de Transparencia.',
+    remitente: 'transparencia.colombia@ong.org',
+    fechaRadicacion: new Date('2025-01-25'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: [],
+    clasificacionIA: {
+      tipoDetectado: 'Derecho de Petición - Información Pública',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.91
+    }
+  },
+  {
+    id: 'CORREO-2025-006',
+    tipo: 'CORREO',
+    asunto: 'Propuesta de cooperación interinstitucional',
+    descripcion: 'Universidad Externado propone convenio de cooperación académica para maestría en Gestión Pública.',
+    remitente: 'convenios@uexternado.edu.co',
+    fechaRadicacion: new Date('2025-01-24'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['propuesta_convenio.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'Oficio Externo',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.85
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📄 OFICIOS INTERNOS/EXTERNOS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'OFICIO-2025-001',
+    tipo: 'OFICIO',
+    asunto: 'Concepto jurídico sobre modificación contractual',
+    descripcion: 'La Subdirección Financiera solicita concepto jurídico sobre viabilidad de modificación del contrato 045-2024.',
+    remitente: 'Subdirección Financiera - ESAP',
+    fechaRadicacion: new Date('2025-01-30'),
+    urgente: false,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['contrato_045.pdf', 'solicitud_modificacion.pdf']
+  },
+  {
+    id: 'OFICIO-2025-002',
+    tipo: 'OFICIO',
+    asunto: 'Solicitud de revisión de pliegos de condiciones',
+    descripcion: 'Dirección de Contratación solicita revisión jurídica de pliegos para licitación pública de infraestructura.',
+    remitente: 'Dirección de Contratación',
+    fechaRadicacion: new Date('2025-01-29'),
+    urgente: true,
+    leida: false,
+    estado: 'PENDIENTE',
+    documentosAdjuntos: ['pliegos_borrador.pdf', 'estudios_previos.pdf']
+  },
+  {
+    id: 'OFICIO-2025-003',
+    tipo: 'OFICIO',
+    asunto: 'Procuraduría solicita información disciplinaria',
+    descripcion: 'La Procuraduría General de la Nación solicita información sobre procesos disciplinarios en curso contra funcionarios de ESAP.',
+    remitente: 'Procuraduría General de la Nación',
+    radicadoExterno: 'PGN-2025-0123',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: true,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['oficio_procuraduria.pdf']
+  },
+  {
+    id: 'OFICIO-2025-004',
+    tipo: 'OFICIO',
+    asunto: 'Concepto sobre licencia de maternidad',
+    descripcion: 'Gestión Humana solicita concepto sobre procedimiento de licencia de maternidad para madre adoptante.',
+    remitente: 'Gestión Humana',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['solicitud_concepto.pdf']
+  },
+  {
+    id: 'OFICIO-2025-005',
+    tipo: 'OFICIO',
+    asunto: 'Ministerio de Educación - Solicitud de estadísticas',
+    descripcion: 'El Ministerio de Educación Nacional solicita estadísticas de graduados 2024 para consolidado nacional.',
+    remitente: 'Ministerio de Educación Nacional',
+    radicadoExterno: 'MINEDU-2025-0456',
+    fechaRadicacion: new Date('2025-01-23'),
+    urgente: false,
+    leida: true,
+    estado: 'LEIDA',
+    documentosAdjuntos: ['oficio_mineducacion.pdf']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📤 COMUNICACIONES ENVIADAS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'ENV-2025-001',
+    tipo: 'ENVIADO',
+    asunto: 'Respuesta a derecho de petición - Certificado laboral',
+    descripcion: 'Se da respuesta a solicitud de certificado laboral remitiendo documento solicitado.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Juan Carlos Rodríguez',
+    fechaRadicacion: new Date('2025-01-29'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['respuesta_peticion.pdf', 'certificado_laboral.pdf']
+  },
+  {
+    id: 'ENV-2025-002',
+    tipo: 'ENVIADO',
+    asunto: 'Contestación de tutela - Derecho a la educación',
+    descripcion: 'Se presenta contestación a acción de tutela radicada bajo número 25000-33-10-001-2025-00045-00.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Juzgado 33 Administrativo de Bogotá',
+    fechaRadicacion: new Date('2025-01-28'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['contestacion_tutela.pdf', 'pruebas.pdf']
+  },
+  {
+    id: 'ENV-2025-003',
+    tipo: 'ENVIADO',
+    asunto: 'Concepto jurídico sobre contratación',
+    descripcion: 'Se emite concepto jurídico favorable sobre modificación de contrato 045-2024.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Subdirección Financiera',
+    fechaRadicacion: new Date('2025-01-27'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['concepto_juridico_045.pdf']
+  },
+  {
+    id: 'ENV-2025-004',
+    tipo: 'ENVIADO',
+    asunto: 'Respuesta a requerimiento de Contraloría',
+    descripcion: 'Se da respuesta al requerimiento de información presupuestal con anexos solicitados.',
+    remitente: 'Oficina Jurídica ESAP',
+    destinatario: 'Contraloría General de la República',
+    fechaRadicacion: new Date('2025-01-26'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['respuesta_contraloria.pdf', 'anexo_presupuestal.xlsx']
+  },
+  {
+    id: 'ENV-2025-005',
+    tipo: 'ENVIADO',
+    asunto: 'Notificación de decisión disciplinaria',
+    descripcion: 'Se notifica decisión de archivo de investigación disciplinaria por atipicidad.',
+    remitente: 'Control Interno Disciplinario',
+    destinatario: 'Funcionario Investigado',
+    fechaRadicacion: new Date('2025-01-25'),
+    urgente: false,
+    leida: true,
+    estado: 'ENVIADA',
+    documentosAdjuntos: ['auto_archivo.pdf']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📦 COMUNICACIONES ARCHIVADAS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'ARCH-2025-001',
+    tipo: 'JUDICIAL',
+    tipoProceso: 'Acción de Tutela',
+    asunto: 'Notificación de fallo de tutela (ARCHIVADA)',
+    descripcion: 'Fallo favorable a ESAP en acción de tutela. Caso cerrado.',
+    remitente: 'Juzgado 10 Administrativo',
+    despachoOrigen: 'Juzgado 10 Administrativo',
+    radicadoExterno: '25000-10-10-001-2024-00789-00',
+    fechaRadicacion: new Date('2024-12-15'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['fallo.pdf']
+  },
+  {
+    id: 'ARCH-2025-002',
+    tipo: 'CORREO',
+    asunto: 'Solicitud de información resuelta (ARCHIVADA)',
+    descripcion: 'Petición de información sobre concursos docentes - Respondida y archivada.',
+    remitente: 'ciudadano123@gmail.com',
+    fechaRadicacion: new Date('2024-12-10'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['respuesta.pdf'],
+    clasificacionIA: {
+      tipoDetectado: 'Derecho de Petición',
+      moduloSugerido: 'Asesoría Jurídica',
+      confianza: 0.89
+    }
+  },
+  {
+    id: 'ARCH-2025-003',
+    tipo: 'OFICIO',
+    asunto: 'Concepto jurídico emitido (ARCHIVADO)',
+    descripcion: 'Concepto sobre validez de acto administrativo - Emitido y archivado.',
+    remitente: 'Dirección Administrativa',
+    fechaRadicacion: new Date('2024-12-05'),
+    urgente: false,
+    leida: true,
+    estado: 'ARCHIVADA',
+    documentosAdjuntos: ['concepto.pdf']
+  }
+];
+
+type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
   console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
-
+  
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
@@ -89,6 +467,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [apiConnected, setApiConnected] = useState(false);
+  // ✨ Estados para paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 50;
+
+  // Debug: Monitorear cambios en el estado del modal
+  useEffect(() => {
+    console.log('📊 Estado modalExpedienteOpen:', modalExpedienteOpen);
+    console.log('📊 Estado comunicacionParaExpediente:', comunicacionParaExpediente);
+  }, [modalExpedienteOpen, comunicacionParaExpediente]);
 
   // Función para mapear correos de API a formato UI
   const mapCorreoToUI = (correo: CorreoJuridico): ComunicacionUnificada => ({
@@ -200,6 +587,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       case 'oficios':
         resultado = resultado.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA');
         break;
+      case 'enviados':
+        resultado = resultado.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA');
+        break;
       case 'urgentes':
         resultado = resultado.filter(c => c.urgente && c.estado !== 'ARCHIVADA');
         break;
@@ -225,6 +615,19 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     });
   }, [comunicaciones, tabActiva, busqueda]);
 
+  // ✨ Aplicar paginación
+  const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
+  const comunicacionesPaginadas = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    const fin = inicio + ITEMS_POR_PAGINA;
+    return comunicacionesFiltradas.slice(inicio, fin);
+  }, [comunicacionesFiltradas, paginaActual, ITEMS_POR_PAGINA]);
+
+  // Resetear página cuando cambian filtros
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [tabActiva, busqueda]);
+
   // Calcular estadísticas
   const totalNoLeidas = comunicaciones.filter(c => !c.leida && c.estado !== 'ARCHIVADA').length;
   const totalUrgentes = comunicaciones.filter(c => c.urgente && c.estado !== 'ARCHIVADA').length;
@@ -234,6 +637,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     judiciales: comunicaciones.filter(c => c.tipo === 'JUDICIAL' && c.estado !== 'ARCHIVADA').length,
     correos: comunicaciones.filter(c => c.tipo === 'CORREO' && c.estado !== 'ARCHIVADA').length,
     oficios: comunicaciones.filter(c => c.tipo === 'OFICIO' && c.estado !== 'ARCHIVADA').length,
+    enviados: comunicaciones.filter(c => c.tipo === 'ENVIADO' && c.estado !== 'ARCHIVADA').length,
     urgentes: totalUrgentes,
     archivadas: totalArchivadas
   };
@@ -372,6 +776,25 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return arrayBtns
   };
 
+  const linkProcess = async (id: string, expedienteId: string, targetModule?: string) => {
+    try {
+      const updated = await correosJuridicosService.vincularProceso(id, expedienteId, targetModule);
+
+      // Update local state
+      setComunicaciones(prev => prev.map(c => c.id === id ? { ...c, estado: 'ARCHIVADA' } : c));
+      if (comunicacionSeleccionada?.id === id) setComunicacionSeleccionada(null);
+      if (comunicacionParaExpediente?.id === id) setComunicacionParaExpediente(null); // Close if open
+
+      toast.success('Correo vinculado al proceso correctamente');
+      setModalExpedienteOpen(false); // Close modal on success
+      return updated;
+    } catch (err: any) {
+      console.error('Error linking process:', err);
+      toast.error('Error al vincular proceso');
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -480,6 +903,14 @@ export function ModuloCentroComunicacionesJuridicasV3() {
             color="#6B7280"
           />
           <TabButton
+            active={tabActiva === 'enviados'}
+            onClick={() => setTabActiva('enviados')}
+            icon={<Send className="w-4 h-4" />}
+            label="Enviados"
+            count={contadoresTabs.enviados}
+            color="#6B7280"
+          />
+          <TabButton
             active={tabActiva === 'urgentes'}
             onClick={() => setTabActiva('urgentes')}
             icon={<AlertTriangle className="w-4 h-4" />}
@@ -537,7 +968,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Vista Inbox (Gmail style) */}
       {tipoVista === 'inbox' && (
         <VistaInbox
-          comunicaciones={comunicacionesFiltradas}
+          comunicaciones={comunicacionesPaginadas}
           comunicacionSeleccionada={comunicacionSeleccionada}
           onSeleccionar={setComunicacionSeleccionada}
           seleccionadas={seleccionadas}
@@ -560,10 +991,70 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       {/* Vista Lista */}
       {tipoVista === 'lista' && (
         <VistaLista
-          comunicaciones={comunicacionesFiltradas}
+          comunicaciones={comunicacionesPaginadas}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
         />
+      )}
+
+      {/* Controles de Paginación */}
+      {comunicacionesFiltradas.length > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600">
+              Mostrando {((paginaActual - 1) * ITEMS_POR_PAGINA) + 1} - {Math.min(paginaActual * ITEMS_POR_PAGINA, comunicacionesFiltradas.length)} de {comunicacionesFiltradas.length} comunicaciones
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.max(1, prev - 1))}
+                disabled={paginaActual === 1 || totalPaginas <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </Button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                  let pageNum;
+                  if (totalPaginas <= 5) {
+                    pageNum = i + 1;
+                  } else if (paginaActual <= 3) {
+                    pageNum = i + 1;
+                  } else if (paginaActual >= totalPaginas - 2) {
+                    pageNum = totalPaginas - 4 + i;
+                  } else {
+                    pageNum = paginaActual - 2 + i;
+                  }
+
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={paginaActual === pageNum ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPaginaActual(pageNum)}
+                      className={paginaActual === pageNum ? 'bg-[#003DA5]' : ''}
+                      disabled={totalPaginas <= 1}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaActual === totalPaginas || totalPaginas <= 1}
+              >
+                Siguiente
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Modal Nueva Comunicación */}
@@ -578,16 +1069,15 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       />
 
       {/* Modal Expediente Comunicación */}
+
       {comunicacionParaExpediente && (
         <ModalExpedienteComunicacion
           isOpen={modalExpedienteOpen}
-          onClose={() => {
-            setModalExpedienteOpen(false);
-            setComunicacionParaExpediente(null);
-          }}
+          onClose={() => setModalExpedienteOpen(false)}
           comunicacion={comunicacionParaExpediente}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
+          onLink={linkProcess}
         />
       )}
     </div>
@@ -743,7 +1233,8 @@ function ItemComunicacion({
   const iconoTipo = {
     JUDICIAL: <Gavel className="w-4 h-4 text-blue-600" />,
     CORREO: <Mail className="w-4 h-4 text-gray-600" />,
-    OFICIO: <FileText className="w-4 h-4 text-gray-600" />
+    OFICIO: <FileText className="w-4 h-4 text-gray-600" />,
+    ENVIADO: <Send className="w-4 h-4 text-gray-600" />
   };
 
   return (
@@ -837,7 +1328,8 @@ function VistaPreviaComunicacion({
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' }
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' }
   };
 
   return (
@@ -958,14 +1450,14 @@ function VistaPreviaComunicacion({
           </Button>
         )}
         {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => onArchivar(comunicacion.id)}
-        >
-          <Archive className="w-4 h-4 mr-2" />
-          Archivar
-        </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => onArchivar(comunicacion.id)}
+          >
+            <Archive className="w-4 h-4 mr-2" />
+            Archivar
+          </Button>
         )}
       </div>
     </div>
@@ -983,7 +1475,8 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' }
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700' }
   };
 
   return (
@@ -1037,7 +1530,7 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]">
                       <Eye className="w-4 h-4" />
                     </Button>
                     {!com.leida && (

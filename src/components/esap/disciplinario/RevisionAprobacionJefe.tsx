@@ -94,17 +94,19 @@ const getInitials = (nombre: string) => {
 };
 
 // Modal de Revisión y Edición - ACTUALIZADO
-function ModalRevisionEdicion({ 
-  borrador, 
-  onClose, 
-  onAprobar, 
-  onDevolver 
-}: { 
+function ModalRevisionEdicion({
+  borrador,
+  onClose,
+  onAprobar,
+  onDevolver,
+  onFirmar,
+  onNotificar
+}: {
   borrador: BorradorPendiente;
   onClose: () => void;
   onAprobar: (comentarios: string) => void;
   onDevolver: (motivo: string, comentarios: string, archivos: File[]) => void;
-  onFirmar: () => void;
+  onFirmar: (file?: File, method?: string) => void;
   onNotificar: (fecha: string, archivo: File) => void;
 }) {
   const [comentariosJefe, setComentariosJefe] = useState('');
@@ -113,6 +115,17 @@ function ModalRevisionEdicion({
   const [showConfirmAprobar, setShowConfirmAprobar] = useState(false); // For Approval
   const [showModalNotificar, setShowModalNotificar] = useState(false); // For Notification
   const [activeTab, setActiveTab] = useState<'documento' | 'historial'>('documento');
+  const [contenidoEditado, setContenidoEditado] = useState(borrador.contenido);
+  const [modoEdicion, setModoEdicion] = useState(false);
+  const [archivoAuto, setArchivoAuto] = useState<File | null>(null);
+  const [tipoVista, setTipoVista] = useState<'texto' | 'archivo'>('texto');
+
+  const handleGuardarEdicion = () => {
+    toast.success('Cambios Guardados', {
+      description: 'Las modificaciones han sido registradas en la auditoría'
+    });
+    setModoEdicion(false);
+  };
 
   const initials = getInitials(borrador.profesional.nombre);
 
@@ -237,25 +250,6 @@ function ModalRevisionEdicion({
                 </div>
               </div>
 
-              {/* Contenido Texto */}
-              <div className="mt-4">
-                <Card className="p-4 bg-gray-50 border-gray-200">
-                  <pre className="whitespace-pre-wrap font-serif text-sm text-gray-900">{borrador.contenido}</pre>
-                </Card>
-              </div>
-
-              {/* Comentarios Internos */}
-              <div className="mt-4">
-                <label className="block font-semibold text-gray-900 mb-2 text-sm">
-                  Comentarios Internos (Opcional)
-                </label>
-                <textarea
-                  value={comentariosJefe}
-                  onChange={(e) => setComentariosJefe(e.target.value)}
-                  placeholder="Agregue comentarios internos..."
-                  className="w-full h-24 p-3 border-2 border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                />
-              </div>
               {/* Observaciones */}
               <div className="p-4 rounded-xl border-2" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
                 <div className="flex gap-3">
@@ -498,54 +492,59 @@ function ModalRevisionEdicion({
         </div>
 
         {/* Footer */}
-        <div className="p-3 sm:p-6 border-t bg-gray-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div className="p-6 border-t flex gap-3" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
           {borrador.estado === 'REVISION_JEFE' && (
             <>
               {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER) && (
-              <Button
-                onClick={() => setShowModalDevolver(true)}
-                className="bg-red-600 hover:bg-red-700 text-white w-full sm:w-auto order-2 sm:order-1"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Devolver
-              </Button>
+                <button
+                  onClick={() => setShowModalDevolver(true)}
+                  className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2"
+                  style={{ borderColor: '#E5E7EB', color: '#DC2626' }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Devolver
+                </button>
               )}
               {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
-              <Button
-                onClick={() => setShowConfirmAprobar(true)}
-                style={{ background: '#10B981', color: '#FFFFFF' }}
-                className="hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                Aprobar (Visto Bueno)
-              </Button>
+                <button
+                  onClick={() => setShowConfirmAprobar(true)}
+                  className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                  style={{ background: '#059669' }}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Aprobar Auto
+                </button>
               )}
             </>
           )}
 
           {borrador.estado === 'FIRMADO' && (
-            <Button
+            <button
               onClick={() => setShowModalNotificar(true)}
-              className="bg-teal-600 hover:bg-teal-700 text-white w-full sm:flex-1 order-1 sm:order-2"
+              className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              style={{ background: '#009689' }}
             >
-              <Send className="w-4 h-4 mr-2" />
+              <Send className="w-4 h-4" />
               Registrar Notificación
-            </Button>
+            </button>
           )}
 
           {borrador.estado === 'APROBADO' && (
-            <Button
+            <button
               onClick={() => setShowModalAprobar(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white w-full sm:flex-1 order-1 sm:order-2"
+              className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              style={{ background: '#9810fa' }}
             >
-              <FileSignature className="w-4 h-4 mr-2" />
+              <FileSignature className="w-4 h-4" />
               Firmar Digitalmente
-            </Button>
+            </button>
           )}
 
-          <Button onClick={onClose} className="bg-gray-500 hover:bg-gray-600 w-full sm:w-auto order-3">
+          <button onClick={onClose}
+            className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+            style={{ borderColor: '#E5E7EB', color: '#6B7280' }}>
             Cerrar
-          </Button>
+          </button>
         </div>
 
         {/* Modales Anidados */}
@@ -555,8 +554,8 @@ function ModalRevisionEdicion({
               borrador={borrador}
               comentariosJefe={comentariosJefe}
               onClose={() => setShowModalAprobar(false)}
-              onConfirm={(comentarios) => {
-                onFirmar();
+              onConfirm={(comentarios, file, method) => {
+                onFirmar(file, method);
                 setShowModalAprobar(false);
               }}
             />
@@ -649,7 +648,7 @@ function ModalAprobar({
   borrador: BorradorPendiente;
   comentariosJefe: string;
   onClose: () => void;
-  onConfirm: (comentarios: string) => void;
+  onConfirm: (comentarios: string, file?: File, method?: string) => void;
 }) {
   const [signatureMethod, setSignatureMethod] = useState<'ELECTRONIC' | 'DIGITAL_PROVIDER' | 'LOCAL_PDF'>('ELECTRONIC');
   const [localFile, setLocalFile] = useState<File | null>(null);
@@ -684,24 +683,28 @@ function ModalAprobar({
     }
   };
 
+  const isSignatureReady =
+    (signatureMethod === 'ELECTRONIC' && hasSignature) ||
+    (signatureMethod === 'LOCAL_PDF' && !!localFile) ||
+    (signatureMethod === 'DIGITAL_PROVIDER');
+
   const handleFirmar = () => {
-    if (signatureMethod === 'ELECTRONIC') {
-      if (!hasSignature) {
+    if (!isSignatureReady) {
+      if (signatureMethod === 'ELECTRONIC' && !hasSignature) {
         toast.error('No tiene una firma configurada', {
           description: 'Debe cargar su firma digital en el Módulo de Configuración antes de firmar.'
         });
-        return;
+      } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
+        toast.error('Archivo requerido', {
+          description: 'Debe adjuntar el PDF firmado.'
+        });
       }
-    } else if (signatureMethod === 'LOCAL_PDF' && !localFile) {
-      toast.error('Archivo requerido', {
-        description: 'Debe adjuntar el PDF firmado.'
-      });
       return;
     }
 
     setLoading(true);
     setTimeout(() => {
-      onConfirm(comentariosAprobacion);
+      onConfirm(comentariosAprobacion, localFile, signatureMethod);
       setLoading(false);
     }, 1500);
   };
@@ -898,9 +901,9 @@ function ModalAprobar({
           </Button>
           <Button
             onClick={handleFirmar}
-            disabled={loading || checkingSignature || !hasSignature}
-            style={{ background: hasSignature ? '#003DA5' : '#9CA3AF', color: '#FFFFFF' }}
-            className={`hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2 ${!hasSignature ? 'cursor-not-allowed' : ''}`}
+            disabled={loading || checkingSignature || !isSignatureReady}
+            style={{ background: isSignatureReady ? '#003DA5' : '#9CA3AF', color: '#FFFFFF' }}
+            className={`hover:opacity-90 w-full sm:flex-1 order-1 sm:order-2 ${!isSignatureReady ? 'cursor-not-allowed' : ''}`}
           >
             {loading ? (
               <>
@@ -923,7 +926,6 @@ function ModalAprobar({
 }
 
 // Modal de Devolución - RESPONSIVE Y CORPORATIVO
-// Modal de Devolución - RESPONSIVE Y CORPORATIVO
 function ModalDevolver({
   borrador,
   onClose,
@@ -937,28 +939,18 @@ function ModalDevolver({
   const [comentarios, setComentarios] = useState('');
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
 
-  const borradorsFiltrados = borradores.filter(b => {
-    const matchesSearch = searchQuery === '' || 
-      b.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.titulo.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesEstado = filtroEstado === 'todos' || b.estado === filtroEstado;
-    
-    return matchesSearch && matchesEstado;
-  });
-
-  const handleAprobar = (comentarios: string) => {
-    toast.success('Auto Aprobado', {
-      description: 'El auto ha sido aprobado exitosamente'
-    });
-    setBorradorSeleccionado(null);
+  const handleAgregarArchivos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setArchivosAdjuntos([...archivosAdjuntos, ...Array.from(e.target.files)]);
+    }
   };
 
-  const handleDevolver = (motivo: string, comentarios: string, archivos: File[]) => {
-    toast.warning('Auto Devuelto', {
-      description: 'El auto ha sido devuelto al profesional'
-    });
-    setBorradorSeleccionado(null);
+  const handleConfirmar = () => {
+    if (!motivo || !comentarios) {
+      toast.error('Campos requeridos', { description: 'Debe indicar motivo y observaciones.' });
+      return;
+    }
+    onConfirm(motivo, comentarios, archivosAdjuntos);
   };
 
   return (
@@ -1178,7 +1170,7 @@ export function RevisionAprobacionJefe() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterEstado, setFilterEstado] = useState('all');
+  const [filterEstado, setFilterEstado] = useState<'todos' | 'pendiente_revision' | 'en_revision'>('todos');
   const [filterPrioridad, setFilterPrioridad] = useState('all');
   const [filterEtapa, setFilterEtapa] = useState('all');
   const [filterTipoAuto, setFilterTipoAuto] = useState('all');
@@ -1301,9 +1293,23 @@ export function RevisionAprobacionJefe() {
     }
   };
 
-  const handleFirmar = async (borradorId: string) => {
+  const handleFirmar = async (borradorId: string, file?: File, method?: string) => {
     try {
-      await disciplinaryService.firmarAuto(borradorId, currentUser.id);
+      let signData = {};
+
+      if (file && method === 'LOCAL_PDF') {
+        toast.info('Subiendo documento firmado...');
+        const uploadRes = await disciplinaryService.uploadFile(file);
+
+        signData = {
+          documentUrl: uploadRes.url,
+          documentName: uploadRes.filename,
+          documentType: file.type,
+          documentSize: file.size
+        };
+      }
+
+      await disciplinaryService.firmarAuto(borradorId, currentUser.id, signData);
 
       toast.success('Auto Firmado Exitosamente', {
         description: `El documento ha sido firmado digitalmente por ${currentUser.nombre}`
@@ -1363,7 +1369,7 @@ export function RevisionAprobacionJefe() {
       b.profesional.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.denunciado.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesEstado = filterEstado === 'all' || b.estado === filterEstado;
+    const matchesEstado = filterEstado === 'todos' || b.estado === filterEstado;
     const matchesPrioridad = filterPrioridad === 'all' || b.prioridad === filterPrioridad;
     const matchesEtapa = filterEtapa === 'all' || b.etapa === filterEtapa;
     const matchesTipo = filterTipoAuto === 'all' || b.plantilla === filterTipoAuto;
@@ -1379,31 +1385,30 @@ export function RevisionAprobacionJefe() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between py-4 sm:py-6 gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-red-600 rounded-xl shadow-lg shadow-red-200">
-                <FileSignature className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#D1FAE5' }}>
+                <CheckCircle size={20} className="sm:w-6 sm:h-6" style={{ color: '#10B981' }} />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-                  Revisión y Aprobación
+                <h1 className="text-lg sm:text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Revisión y Aprobación de Autos
                 </h1>
-                <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                  Control Interno Disciplinario
+                <p className="text-xs sm:text-sm text-gray-600 mt-0.5 sm:mt-1">
+                  Sistema Integrado de Gestión Legal (SIGL v5.0)
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowFlujoModal(true)}
-                className="hidden sm:flex text-blue-700 border-blue-200 hover:bg-blue-50"
-              >
-                <HelpCircle className="w-4 h-4 mr-2" />
-                Ver Flujo
-              </Button>
-              <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 hidden sm:block">
-                <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-0.5">Pendientes</p>
-                <p className="text-2xl font-bold text-blue-900 leading-none">
+            {/* Stats rápidas */}
+            <div className="flex items-center gap-3">
+              <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
+                <p className="text-xs text-gray-600">Total Borradores</p>
+                <p className="text-xl font-bold" style={{ color: '#003DA5' }}>
+                  {borradores.length}
+                </p>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs text-gray-600">Pendientes</p>
+                <p className="text-xl font-bold text-amber-700">
                   {borradores.filter(b => b.estado === 'pendiente_revision').length}
                 </p>
               </div>
@@ -1411,7 +1416,7 @@ export function RevisionAprobacionJefe() {
           </div>
 
           {/* Filtros Avanzados - Responsive Grid */}
-          <div className="py-4 border-t space-y-4">
+          <div className="py-4 border-t space-y-4" style={{ display: 'none' }}>
             <div className="flex flex-col sm:flex-row gap-3">
               {/* Buscador Principal */}
               <div className="relative flex-1">
@@ -1503,6 +1508,65 @@ export function RevisionAprobacionJefe() {
 
       {/* Lista de Tarjetas - GRID RESPONSIVE */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Buscador y Filtros */}
+        <div className="mb-6 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#9CA3AF' }} />
+            <input
+              type="text"
+              placeholder="Buscar por número de proceso o título..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] bg-white"
+              style={{ borderColor: '#E5E7EB' }}
+            />
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={() => setFilterEstado('todos')}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'todos'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
+              style={
+                filterEstado === 'todos'
+                  ? { background: '#003DA5' }
+                  : { borderColor: '#E5E7EB' }
+              }
+            >
+              Todos ({borradores.length})
+            </button>
+            <button
+              onClick={() => setFilterEstado('pendiente_revision')}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'pendiente_revision'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
+              style={
+                filterEstado === 'pendiente_revision'
+                  ? { background: '#003DA5' }
+                  : { borderColor: '#E5E7EB' }
+              }
+            >
+              Pendientes ({borradores.filter(b => b.estado === 'pendiente_revision').length})
+            </button>
+            <button
+              onClick={() => setFilterEstado('en_revision')}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${filterEstado === 'en_revision'
+                ? 'text-white'
+                : 'bg-white text-gray-700 border-2'
+                }`}
+              style={
+                filterEstado === 'en_revision'
+                  ? { background: '#003DA5' }
+                  : { borderColor: '#E5E7EB' }
+              }
+            >
+              En Revisión ({borradores.filter(b => b.estado === 'en_revision').length})
+            </button>
+          </div>
+        </div>
         {loading ? (
           <div className="flex justify-center py-10">
             <span className="loading loading-spinner text-primary"></span>
@@ -1518,92 +1582,66 @@ export function RevisionAprobacionJefe() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-            <AnimatePresence>
-              {filteredBorradores.map((borrador) => (
-                <motion.div
+          <div className="space-y-4">
+            {filteredBorradores.map((borrador) => {
+              const initials = getInitials(borrador.profesional.nombre);
+
+              return (
+                <div
                   key={borrador.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="bg-white rounded-xl border-2 p-5 hover:shadow-lg transition-all cursor-pointer"
+                  style={{ borderColor: '#E5E7EB' }}
+                  onClick={() => {
+                    console.log(borrador)
+                    setBorradorSeleccionado(borrador);
+                    setShowModalRevision(true);
+                  }}
                 >
-                  <Card
-                    className="group hover:shadow-xl transition-all duration-300 border-l-4 overflow-hidden relative"
-                    style={{
-                      borderLeftColor:
-                        borrador.prioridad === 'alta' ? '#EF4444' :
-                          borrador.prioridad === 'media' ? '#F59E0B' : '#10B981'
-                    }}
-                  >
-                    {/* Badge de Estado Absoluto */}
-                    <div className="absolute top-3 right-3">
-                      <Badge className={`
-                        ${getStatusConfig(borrador.estado).color}
-                        border-0 px-2 py-1 text-xs font-semibold flex items-center gap-1.5
-                      `}>
-                        {(() => {
-                          const Icon = getStatusConfig(borrador.estado).icon;
-                          return <Icon className="w-3 h-3" />;
-                        })()}
-                        {getStatusConfig(borrador.estado).label}
-                      </Badge>
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm" style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                      {initials}
                     </div>
 
-                    <div className="p-4 sm:p-5">
-                      {/* Cabecera Tarjeta */}
-                      <div className="mb-4 pr-16 sm:pr-20">
-                        <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-1 line-clamp-2" title={borrador.titulo}>
-                          {borrador.titulo}
-                        </h3>
-                        <p className="text-xs font-mono text-gray-500 flex items-center gap-2">
-                          {borrador.numeroProceso}
-                          <span className="w-1 h-1 rounded-full bg-gray-300" />
-                          v{borrador.version}
-                        </p>
-                      </div>
-
-                      {/* Info Principal */}
-                      <div className="space-y-3 mb-4 sm:mb-5">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="w-8 h-8 ring-2 ring-gray-100">
-                            <AvatarFallback className="bg-gray-100 text-gray-600 text-xs font-bold">
-                              {borrador.profesional.nombre.substring(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{borrador.profesional.nombre}</p>
-                            <p className="text-xs text-gray-500">Profesional Asignado</p>
-                          </div>
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div>
+                          <h3 className="text-xl font-extrabold mb-1" style={{ color: '#1F2937' }}>
+                            {borrador.titulo}
+                          </h3>
+                          <p className="text-sm" style={{ color: '#6B7280' }}>
+                            {borrador.numeroProceso} • {borrador.profesional.nombre}
+                          </p>
                         </div>
 
-                        <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 p-2 rounded-lg">
-                          <User className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="truncate flex-1 font-medium">{borrador.denunciado}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <Clock className="w-3.5 h-3.5 text-gray-400" />
-                          <span>Enviado: {new Date(borrador.fechaEnvio).toLocaleDateString()}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge style={{ background: '#FEF3C7', color: '#D97706' }}>
+                            {borrador.tiempoEspera}
+                          </Badge>
+                          {borrador.prioridad === 'alta' && (
+                            <Badge style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                              Alta Prioridad
+                            </Badge>
+                          )}
                         </div>
                       </div>
 
-                      {/* Botón Acción */}
-                      <Button
-                        onClick={() => {
-                          setBorradorSeleccionado(borrador);
-                          setShowModalRevision(true);
-                        }}
-                        className="w-full bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 hover:border-blue-300 font-semibold group-hover:bg-blue-600 group-hover:text-white group-hover:border-transparent transition-all duration-300 shadow-sm"
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Revisar Documento
-                      </Button>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span style={{ color: '#6B7280' }}>
+                          <Calendar className="w-4 h-4 inline-block mr-1" />
+                          {new Date(borrador.fechaEnvio).toLocaleDateString('es-CO')}
+                        </span>
+                        <span style={{ color: '#6B7280' }}>
+                          Versión {borrador.version}
+                        </span>
+                        <span style={{ color: '#6B7280' }}>
+                          {borrador.etapa}
+                        </span>
+                      </div>
                     </div>
-                  </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </main>
@@ -1619,7 +1657,7 @@ export function RevisionAprobacionJefe() {
             }}
             onAprobar={(comentarios) => handleAprobar(borradorSeleccionado.id, comentarios)}
             onDevolver={(motivo, comentarios, archivos) => handleDevolver(borradorSeleccionado.id, motivo, comentarios, archivos)}
-            onFirmar={() => handleFirmar(borradorSeleccionado.id)}
+            onFirmar={(file, method) => handleFirmar(borradorSeleccionado!.id, file, method)}
             onNotificar={(fecha, archivo) => handleNotificar(borradorSeleccionado.id, fecha, archivo)}
           />
         )}

@@ -11,6 +11,7 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner@2.0.3';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
 
 interface Indicador {
   id: string;
@@ -37,6 +38,10 @@ interface ModalEditarIndicadorProps {
 }
 
 export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: ModalEditarIndicadorProps) {
+  // Obtener ejes estratégicos desde el Context
+  const { getEjesEstrategicosActivos } = useConfiguracionesSIGL();
+  const ejesActivos = getEjesEstrategicosActivos();
+
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
@@ -168,10 +173,9 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                     required
                   >
-                    <option value="GESTION_INSTITUCIONAL">🏛️ Gestión Institucional</option>
-                    <option value="TALENTO_HUMANO">👥 Talento Humano</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
-                    <option value="TECNOLOGIA">💻 Tecnología</option>
+                    {ejesActivos.map(eje => (
+                      <option key={eje.id} value={eje.id}>{eje.icono} {eje.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>

@@ -39,12 +39,10 @@ const initialFormState = {
   probabilidadResidual: '2',
   impactoResidual: '2',
   etapa: 'IDENTIFICADO',
-  cuantiaEstimada: '',
-  // Nuevos campos para asociación con proceso
   moduloOrigen: '',
   procesoId: '',
   procesoRadicado: '',
-  porcentajeProvision: ''
+  cuantiaEstimada: '0'
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
@@ -73,12 +71,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
         etapa: riesgoEditar.etapa || 'IDENTIFICADO',
-        cuantiaEstimada: riesgoEditar.cuantiaEstimada ? String(riesgoEditar.cuantiaEstimada) : '',
-        // Campos de asociación (pueden ser null en riesgos antiguos)
         moduloOrigen: riesgoEditar.moduloOrigen || '',
         procesoId: riesgoEditar.procesoId || '',
         procesoRadicado: riesgoEditar.procesoRadicado || '',
-        porcentajeProvision: riesgoEditar.porcentajeProvision ? String(riesgoEditar.porcentajeProvision) : ''
+        cuantiaEstimada: String(riesgoEditar.cuantiaEstimada || 0)
       });
       // Cargar controles existentes
       if (Array.isArray(riesgoEditar.controlesExistentes)) {
@@ -206,11 +202,9 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       impactoInherente: parseInt(formData.impactoInherente),
       probabilidadResidual: parseInt(formData.probabilidadResidual),
       impactoResidual: parseInt(formData.impactoResidual),
-      cuantiaEstimada: formData.cuantiaEstimada ? Number(formData.cuantiaEstimada) : 0,
-      porcentajeProvision: formData.porcentajeProvision ? Number(formData.porcentajeProvision) : 0,
-      provisionContable: formData.cuantiaEstimada && formData.porcentajeProvision
-        ? (Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100))
-        : 0,
+      cuantiaEstimada: 0,
+      porcentajeProvision: 0,
+      provisionContable: 0,
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
       controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
@@ -372,10 +366,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                         handleChange('procesoId', e.target.value);
                         handleChange('procesoRadicado', selected?.radicado || '');
 
-                        // Autocompletar cuantía si es Defensa Judicial y tiene valor
-                        if (formData.moduloOrigen === 'DEFENSA_JUDICIAL' && selected?.cuantia) {
+                        handleChange('procesoId', e.target.value);
+                        handleChange('procesoRadicado', selected?.radicado || '');
+                        if (selected?.cuantia) {
                           handleChange('cuantiaEstimada', String(selected.cuantia));
-                          toast.info(`Cuantía actualizada automáticamente: $${selected.cuantia.toLocaleString()}`);
                         }
                       }}
                       className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
@@ -411,8 +405,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
 
               {/* Campo oculto para mantener compatibilidad con riesgos antiguos */}
-              <input type="hidden" value={formData.proceso} />
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
@@ -433,54 +425,29 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                 </div>
               </div>
 
-              {/* Campo Cuantía Estimada para Provisión Contable */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2">
+              {/* Campo de Cuantía (Visible para Riesgo Fiscal o si hay cuantía) */}
+              {(formData.tipoRiesgo === 'FISCAL' || Number(formData.cuantiaEstimada) > 0) && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                   <Label htmlFor="cuantiaEstimada" className="text-sm font-semibold text-gray-700">
-                    💰 Cuantía Estimada (Provisión Contable)
+                    Cuantía Estimada del Riesgo
                   </Label>
-                  <Input
-                    id="cuantiaEstimada"
-                    type="number"
-                    placeholder="Ej: 50000000"
-                    value={formData.cuantiaEstimada}
-                    onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
-                    className="border-2 border-gray-300 focus:border-green-500"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Valor monetario estimado del riesgo (para cálculo de provisión)
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                    <Input
+                      id="cuantiaEstimada"
+                      type="number"
+                      placeholder="0"
+                      value={formData.cuantiaEstimada}
+                      onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
+                      className="pl-7 border-2 border-gray-300 focus:border-green-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Para riesgos fiscales, ingrese el valor estimado de la posible pérdida.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="porcentajeProvision" className="text-sm font-semibold text-gray-700">
-                    📊 Porcentaje Provisión (%)
-                  </Label>
-                  <Input
-                    id="porcentajeProvision"
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="Ej: 50"
-                    value={formData.porcentajeProvision}
-                    onChange={(e) => handleChange('porcentajeProvision', e.target.value)}
-                    className="border-2 border-gray-300 focus:border-green-500"
-                  />
-                </div>
-              </div>
-
-              {formData.cuantiaEstimada && formData.porcentajeProvision && (
-                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200 flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-semibold text-green-700 block">Provisión Contable Calculada</span>
-                    <span className="text-xs text-green-600">
-                      ${Number(formData.cuantiaEstimada).toLocaleString()} × {formData.porcentajeProvision}%
-                    </span>
-                  </div>
-                  <div className="text-xl font-bold text-green-700">
-                    ${(Number(formData.cuantiaEstimada) * (Number(formData.porcentajeProvision) / 100)).toLocaleString()}
-                  </div>
-                </div>
               )}
+
             </div>
 
             {/* Sección 2: Análisis del Riesgo */}

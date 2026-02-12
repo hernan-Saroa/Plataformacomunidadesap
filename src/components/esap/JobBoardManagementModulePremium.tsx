@@ -30,6 +30,12 @@ import { toast } from 'sonner@2.0.3';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateJobOfferModal } from './CreateJobOfferModal';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { ResponsiveHeader } from '@/components/ui';
+
 type JobStatus = 'active' | 'paused' | 'closed' | 'draft';
 type ContractType = 'Tiempo Completo' | 'Medio Tiempo' | 'Por Proyecto' | 'Práctica';
 
@@ -244,31 +250,21 @@ export function JobBoardManagementModulePremium() {
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || locationFilter !== 'all' || contractFilter !== 'all' || sedeESAPFilter !== 'all'; // ✅ NUEVO: Incluir filtro por sede ESAP
 
   return (
-    <div className="space-y-6">
+    <Container4K className="space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <h1 className="text-2xl lg:text-xl xl:text-2xl font-extrabold text-[--esap-gray-900] tracking-tight">
-            Bolsa de Empleo
-          </h1>
-          <p className="text-xs lg:text-[11px] xl:text-xs text-[--esap-gray-600]">
-            Gestiona ofertas laborales para graduados y estudiantes ESAP
-          </p>
-        </div>
-
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Oferta</span>
-        </button>
-      </motion.div>
+      <ResponsiveHeader
+        title="Bolsa de Empleo"
+        subtitle="Gestiona ofertas laborales para graduados y estudiantes ESAP"
+        action={
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="text-sm">Crear Oferta</span>
+          </button>
+        }
+      />
 
       {/* Búsqueda y Filtros */}
       <motion.div
@@ -674,6 +670,6 @@ export function JobBoardManagementModulePremium() {
       {showCreateModal && (
         <CreateJobOfferModal onClose={() => setShowCreateModal(false)} />
       )}
-    </div>
+    </Container4K>
   );
 }

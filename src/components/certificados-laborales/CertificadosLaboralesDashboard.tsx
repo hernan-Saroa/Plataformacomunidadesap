@@ -5,7 +5,7 @@
  * - Campos: Nombre, Identificación, Tipo vinculación, Fecha vinculación, Cargo, Grado, Dependencia, Salario, Fecha solicitud
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Search,
@@ -45,14 +45,18 @@ interface CertificadoLaboral {
   position_location?: string;
   observations?: string;
   department?: string;
-  department_parent?: string;
-  department_son?: string;
+  cod_cargo?: string;
+  cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  templateSnapshot?: any;
+  templateType?: 'docente' | 'administrador';
+  estadoLaboral?: 'activo' | 'inactivo';
   empleado: {
     nombre: string;
     documento: string;
     cargo: string;
+    cargo_calculado?: string;
     dependencia: string;
     dependenciaPadre: string;
     tipoVinculacion: string;
@@ -61,7 +65,7 @@ interface CertificadoLaboral {
     salario: number;
     email: string; // Email donde se envía el certificado
   };
-  estado: 'activo' | 'revocado' | 'expirado';
+  estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
   fechaSolicitud: string;
   fechaGeneracion: string;
   cantidadEscaneos: number;
@@ -86,6 +90,122 @@ interface CertificadosLaboralesDashboardProps {
 }
 
 export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
+  const resolverTemplateType = (value?: string) => {
+    const base = String(value || '').toLowerCase();
+    const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    const texto = normalizado
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!texto) return 'administrador';
+    return /\bdocen\w*\b|\bdoc\b/.test(texto) ? 'docente' : 'administrador';
+  };
+
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+    return 'activo';
+  };
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
@@ -94,10 +214,117 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return cleaned;
   };
 
+  const transformarCertificado = (cert: any): CertificadoLaboral => {
+    const templateTypeRaw =
+      cert.template_type ||
+      cert.templateType ||
+      cert.template_snapshot?.templateType ||
+      cert.template_snapshot?.template_type ||
+      undefined;
+    const dependenciaPadreRaw =
+      cert.request?.cod_cargo ||
+      cert.request?.codCargo ||
+      cert.cod_cargo ||
+      cert.codCargo ||
+      '';
+    const cargoVariable = construirCargoVariable(
+      cert.request?.career_category || cert.career_category || cert.position_category || '',
+      cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
+      cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+    );
+
+    const employmentStatusRaw = String(
+      cert.employment_status ||
+      cert.request?.status ||
+      cert.request_status ||
+      ''
+    ).trim().toUpperCase();
+    const hiringDate =
+      cert.request?.hiring_date ||
+      cert.request?.hiringDate ||
+      cert.hiring_date ||
+      cert.hiringDate ||
+      null;
+    const endDate =
+      cert.request?.request_date ||
+      cert.request?.requestDate ||
+      cert.request_date ||
+      cert.requestDate ||
+      null;
+    const employmentEstado = resolverEstadoLaboral(hiringDate, endDate, employmentStatusRaw);
+    const certificadoEstado =
+      cert.status === 'REVOKED'
+        ? 'revocado'
+        : cert.status === 'EXPIRED'
+          ? 'expirado'
+          : employmentEstado;
+    const templateTypeNormalizado =
+      templateTypeRaw ||
+      resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
+    const ubicacionRaw = normalizarDependencia(
+      cert.department ||
+      cert.request?.department ||
+      cert.request?.departmentName ||
+      cert.request?.position_location ||
+      cert.request?.positionLocation ||
+      cert.position_location ||
+      cert.positionLocation ||
+      '',
+    );
+
+    return {
+      id: cert.id,
+      consecutivo: cert.certificate_number,
+      certificateHash: cert.verification_code,
+      qrCode: cert.verification_code,
+      position_location: ubicacionRaw,
+      observations: cert.observations || cert.request?.observations,
+      department: ubicacionRaw,
+      cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
+      cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+      campus: cert.campus,
+      technical_bonus: cert.technical_bonus,
+      templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
+      templateType: templateTypeNormalizado,
+      estadoLaboral: employmentEstado,
+      empleado: {
+        nombre: cert.full_name,
+        documento: cert.id_number,
+        cargo: cert.career_category,
+        cargo_calculado: cargoVariable || cert.career_category,
+        dependencia: ubicacionRaw,
+        dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
+        tipoVinculacion: cert.position_category,
+        fechaVinculacion: cert.hiring_date,
+        grado: ubicacionRaw,
+        salario: Number(cert.monthly_salary),
+        email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
+      },
+      estado: certificadoEstado,
+      fechaSolicitud: cert.created_at,
+      fechaGeneracion: cert.issuance_timestamp,
+      cantidadEscaneos: cert.validation_count || 0,
+      pdfUrl: cert.pdf_url,
+      firmante: {
+        nombre: cert.signer_name,
+        cargo: cert.signer_position,
+        dependencia: cert.signer_department
+      }
+    };
+  };
+  const normalizarFiltro = (value?: string | null) => {
+    const base = String(value || '').toLowerCase();
+    const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    return normalizado
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [cargoFilter, setCargoFilter] = useState<string>('all');
-  const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('all');
+  const [cargoFilter, setCargoFilter] = useState<string>('');
+  const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [totalItems, setTotalItems] = useState(0);
@@ -117,7 +344,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   // Estado para certificados y loading
   const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
+  const [certificadosRaw, setCertificadosRaw] = useState<CertificadoLaboral[]>([]);
+  const [certificadosMetricas, setCertificadosMetricas] = useState<CertificadoLaboral[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMetricasLoading, setIsMetricasLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -132,77 +362,63 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       setError(null);
 
       console.log('🔄 Cargando certificados desde el backend...');
-      const params: Record<string, any> = {
+      const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+      const baseParams: Record<string, any> = {
         page: currentPage,
         limit: itemsPerPage,
       };
       if (searchQuery.trim()) {
-        params.search = searchQuery.trim();
-      }
-      if (statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      if (cargoFilter !== 'all') {
-        params.tipoVinculacion = cargoFilter;
-      }
-      if (tipoVinculacionFilter !== 'all') {
-        params.cargo = tipoVinculacionFilter;
+        baseParams.search = searchQuery.trim();
       }
 
-      const response = await certificadosService.laborales.listar(params);
-      const items = Array.isArray(response) ? response : (response.items || []);
-      const total = Array.isArray(response) ? items.length : (response.total || 0);
-      const serverStats = Array.isArray(response) ? null : response.stats;
+      let items: any[] = [];
+      let total = 0;
+      let serverStats: any = null;
+
+      if (filtrosGlobalesActivos) {
+        const limit = 200;
+        const maxPages = 50;
+        let page = 1;
+        let totalEsperado = 0;
+
+        while (page <= maxPages) {
+          const response = await certificadosService.laborales.listar({
+            ...baseParams,
+            page,
+            limit,
+          });
+          const chunk = Array.isArray(response) ? response : (response.items || []);
+
+          if (page === 1) {
+            totalEsperado = Array.isArray(response) ? chunk.length : (response.total || 0);
+            serverStats = Array.isArray(response) ? null : response.stats;
+          }
+
+          items.push(...chunk);
+
+          if (Array.isArray(response)) {
+            break;
+          }
+          if (!chunk.length) {
+            break;
+          }
+          if (totalEsperado && items.length >= totalEsperado) {
+            break;
+          }
+          page += 1;
+        }
+
+        total = items.length;
+      } else {
+        const response = await certificadosService.laborales.listar(baseParams);
+        items = Array.isArray(response) ? response : (response.items || []);
+        total = Array.isArray(response) ? items.length : (response.total || 0);
+        serverStats = Array.isArray(response) ? null : response.stats;
+      }
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => {
-        const dependenciaPadreRaw =
-          cert.request?.department_parent ||
-          cert.request?.departmentParent ||
-          cert.department_parent ||
-          cert.departmentParent ||
-          '';
-        return {
-          id: cert.id,
-          consecutivo: cert.certificate_number,
-          certificateHash: cert.verification_code,
-          qrCode: cert.verification_code,
-          position_location:
-            cert.request?.position_location ||
-            cert.request?.positionLocation ||
-            cert.position_location ||
-            cert.positionLocation,
-          observations: cert.observations || cert.request?.observations,
-          department: cert.department,
-          department_parent: dependenciaPadreRaw || cert.department_parent || cert.departmentParent,
-          department_son: cert.department_son || cert.departmentSon,
-          campus: cert.campus,
-          technical_bonus: cert.technical_bonus,
-          empleado: {
-            nombre: cert.full_name,
-            documento: cert.id_number,
-            cargo: cert.career_category,
-            dependencia: normalizarDependencia(cert.department_son || cert.departmentSon),
-            dependenciaPadre: normalizarDependencia(dependenciaPadreRaw),
-            tipoVinculacion: cert.position_category,
-            fechaVinculacion: cert.hiring_date,
-            grado: cert.department || '',
-            salario: Number(cert.monthly_salary),
-            email: cert.email || cert.request?.email || cert.certificate_email || cert.employee_email || 'N/A'
-          },
-          estado: cert.status === 'VALID' ? 'activo' : cert.status === 'REVOKED' ? 'revocado' : 'expirado',
-          fechaSolicitud: cert.created_at,
-          fechaGeneracion: cert.issuance_timestamp,
-          cantidadEscaneos: cert.validation_count || 0,
-          pdfUrl: cert.pdf_url,
-          firmante: {
-            nombre: cert.signer_name,
-            cargo: cert.signer_position,
-            dependencia: cert.signer_department
-          }
-        };
-      });
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -215,11 +431,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         }))
       );
 
-      setCertificados(certificadosOrdenados);
-      setTotalItems(total);
+      setCertificadosRaw(certificadosOrdenados);
+      if (!filtrosGlobalesActivos) {
+        setTotalItems(total);
+      }
       setStats({
         certificadosEmitidos: serverStats?.totalEmitidos ?? total,
-        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => cert.estado === 'activo').length,
+        certificadosActivos: serverStats?.certificadosActivos ?? certificadosTransformados.filter(cert => !['revocado', 'expirado'].includes(cert.estado)).length,
         escaneosQR: serverStats?.escaneosQR ?? certificadosTransformados.reduce((sum, cert) => sum + cert.cantidadEscaneos, 0),
         solicitudesHoy: serverStats?.solicitudesHoy ?? 1,
       });
@@ -239,26 +457,142 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     }
   };
 
+  const fetchCertificadosMetricas = async () => {
+    setIsMetricasLoading(true);
+    try {
+      const limit = 10;
+      let page = 1;
+      let totalEsperado = 0;
+      const baseParams: Record<string, any> = {
+        page,
+        limit,
+      };
+      if (searchQuery.trim()) {
+        baseParams.search = searchQuery.trim();
+      }
+      if (cargoFilter.trim()) {
+        baseParams.cargo = cargoFilter.trim();
+      }
+      if (tipoVinculacionFilter.trim()) {
+        baseParams.tipoVinculacion = tipoVinculacionFilter.trim();
+      }
+
+      const items: any[] = [];
+      while (true) {
+        const response = await certificadosService.laborales.listar({
+          ...baseParams,
+          page,
+          limit,
+        });
+        const chunk = Array.isArray(response) ? response : (response.items || []);
+
+        if (page === 1) {
+          totalEsperado = Array.isArray(response) ? chunk.length : (response.total || 0);
+        }
+
+        items.push(...chunk);
+
+        if (Array.isArray(response)) {
+          break;
+        }
+        if (!chunk.length) {
+          break;
+        }
+        if (totalEsperado && items.length >= totalEsperado) {
+          break;
+        }
+        const totalPages = totalEsperado ? Math.ceil(totalEsperado / limit) : null;
+        if (totalPages && page >= totalPages) {
+          break;
+        }
+        page += 1;
+      }
+
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      setCertificadosMetricas(certificadosTransformados);
+    } catch (err) {
+      console.error('❌ Error al cargar métricas de certificados:', err);
+    } finally {
+      setIsMetricasLoading(false);
+    }
+  };
+
   // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
+    const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+    if (filtrosGlobalesActivos && currentPage !== 1) {
+      return;
+    }
     fetchCertificados();
-  }, [currentPage, searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
+  }, [currentPage, searchQuery, cargoFilter, tipoVinculacionFilter]);
+
+  useEffect(() => {
+    fetchCertificadosMetricas();
+  }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
+  }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
+
+  useEffect(() => {
+    const cargoNeedle = normalizarFiltro(cargoFilter);
+    const tipoNeedle = normalizarFiltro(tipoVinculacionFilter);
+    const certificadosFiltrados = (cargoNeedle || tipoNeedle)
+      ? certificadosRaw.filter((cert) => {
+        const cargoTexto = normalizarFiltro(cert.empleado.cargo_calculado || cert.empleado.cargo);
+        const tipoTexto = normalizarFiltro(cert.empleado.tipoVinculacion);
+        const cargoOk = !cargoNeedle || cargoTexto.includes(cargoNeedle);
+        const tipoOk = !tipoNeedle || tipoTexto.includes(tipoNeedle);
+        return cargoOk && tipoOk;
+      })
+      : certificadosRaw;
+
+    if (cargoNeedle || tipoNeedle) {
+      setTotalItems(certificadosFiltrados.length);
+      const start = (currentPage - 1) * itemsPerPage;
+      const end = start + itemsPerPage;
+      setCertificados(certificadosFiltrados.slice(start, end));
+    } else {
+      setCertificados(certificadosRaw);
+    }
+  }, [certificadosRaw, cargoFilter, tipoVinculacionFilter, currentPage]);
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const paginatedCertificados = certificados;
 
-  const hasActiveFilters = searchQuery || statusFilter !== 'all' || cargoFilter !== 'all' || tipoVinculacionFilter !== 'all';
+  const empleadosUnicos = useMemo(() => {
+    const map = new Map<string, CertificadoLaboral>();
+    certificadosMetricas.forEach((cert) => {
+      const documentoRaw = String(cert.empleado.documento || '').trim();
+      const documentoKey = documentoRaw.replace(/\D+/g, '') || documentoRaw;
+      const fallbackKey = `${cert.empleado.nombre || ''}-${cert.empleado.email || ''}`.trim().toLowerCase();
+      const key = documentoKey || fallbackKey;
+      if (!key) return;
+      const existente = map.get(key);
+      if (!existente) {
+        map.set(key, cert);
+        return;
+      }
+      const fechaActual = new Date(existente.fechaSolicitud || 0).getTime();
+      const fechaNueva = new Date(cert.fechaSolicitud || 0).getTime();
+      if (fechaNueva > fechaActual) {
+        map.set(key, cert);
+      }
+    });
+    return Array.from(map.values());
+  }, [certificadosMetricas]);
+
+  const empleadosElegibles = empleadosUnicos.length;
+  const docentesActivos = empleadosUnicos.filter((cert) => cert.templateType === 'docente' && cert.estadoLaboral === 'activo').length;
+  const administrativosActivos = empleadosUnicos.filter((cert) => cert.templateType === 'administrador' && cert.estadoLaboral === 'activo').length;
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || cargoFilter.trim() || tipoVinculacionFilter.trim());
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
 
   const clearAllFilters = () => {
     setSearchQuery('');
-    setStatusFilter('all');
-    setCargoFilter('all');
-    setTipoVinculacionFilter('all');
+    setCargoFilter('');
+    setTipoVinculacionFilter('');
   };
 
   const handleVerDetalle = (cert: CertificadoLaboral) => {
@@ -273,6 +607,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', label: 'Activo' },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', label: 'Inactivo' },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', label: 'Revocado' },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Expirado' }
     };
@@ -516,7 +851,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Empleados Elegibles</p>
-                  <p className="text-lg font-bold text-gray-900">{isLoading ? '...' : certificados.length}</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {isLoading || isMetricasLoading ? '...' : empleadosElegibles}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -526,9 +863,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Docentes Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {isLoading ? '...' : certificados.filter(cert =>
-                      cert.empleado.cargo.toLowerCase().includes('docente')
-                    ).length}
+                    {isLoading || isMetricasLoading ? '...' : docentesActivos}
                   </p>
                 </div>
               </div>
@@ -539,9 +874,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 truncate">Administrativos Activos</p>
                   <p className="text-lg font-bold text-gray-900">
-                    {isLoading ? '...' : certificados.filter(cert =>
-                      !cert.empleado.cargo.toLowerCase().includes('docente')
-                    ).length}
+                    {isLoading || isMetricasLoading ? '...' : administrativosActivos}
                   </p>
                 </div>
               </div>
@@ -558,11 +891,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         className="bg-white rounded-xl border border-[#E5E7EB] p-3 sm:p-4"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
-        <div className="space-y-3">
+        <div className="flex flex-col lg:flex-row gap-4">
           {/* Búsqueda - Siempre full width en mobile */}
-          <div className="relative">
+          <div className="flex-1 relative">
             <Search 
-              className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
               style={{ color: '#9CA3AF' }}
             />
             <input
@@ -602,89 +935,114 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             )}
           </div>
 
-          {/* Filtros - Stacked en mobile, row en desktop */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Filtro Estado */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
-              style={{
-                fontSize: '14px',
-                color: '#1F2937',
-                borderColor: '#D1D5DB',
-                height: '48px',
-                outline: 'none'
-              }}
-            >
-              <option value="all">Todos los estados</option>
-              <option value="activo">Activo</option>
-              <option value="revocado">Revocado</option>
-              <option value="expirado">Expirado</option>
-            </select>
-
-            {/* Filtro Cargo */}
-            <select
+          {/* Filtro Cargo */}
+          <div className="relative" style={{ minWidth: '220px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar cargo..."
               value={cargoFilter}
               onChange={(e) => setCargoFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar cargo"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: cargoFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="all">Todos los cargos</option>
-              <option value="Docente Tiempo Completo">Docente TC</option>
-              <option value="Coordinador GIT">Coordinador GIT</option>
-              <option value="Asistente Administrativo">Asist. Admin.</option>
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {cargoFilter && (
+              <button
+                onClick={() => setCargoFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de cargo"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
 
-            {/* Filtro Tipo Vinculación */}
-            <select
+          {/* Filtro Tipo Vinculación */}
+          <div className="relative" style={{ minWidth: '240px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar tipo de vinculación..."
               value={tipoVinculacionFilter}
               onChange={(e) => setTipoVinculacionFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar tipo de vinculación"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: tipoVinculacionFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="all">Tipo vinculación</option>
-              <option value="Docente Tiempo Completo">Docente TC</option>
-              <option value="Coordinador GIT - Planta">Coordinador - Planta</option>
-              <option value="Contrato de Prestación de Servicios">Contrato Prestación</option>
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {tipoVinculacionFilter && (
+              <button
+                onClick={() => setTipoVinculacionFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de tipo de vinculación"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Active Filters */}
         {hasActiveFilters && (
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs sm:text-sm text-gray-600">Filtros activos:</span>
-            {searchQuery && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                Búsqueda: {searchQuery.substring(0, 15)}{searchQuery.length > 15 ? '...' : ''}
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-sm text-gray-600">Filtros activos:</span>
+            {searchQuery.trim() && (
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                Búsqueda: {searchQuery.trim()}
               </Badge>
             )}
-            {statusFilter !== 'all' && (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                Estado: {statusFilter}
+            {cargoFilter.trim() && (
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                Cargo: {cargoFilter.trim()}
               </Badge>
             )}
-            {cargoFilter !== 'all' && (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
-                Cargo: {cargoFilter}
-              </Badge>
-            )}
-            {tipoVinculacionFilter !== 'all' && (
-              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
-                Tipo Vinculación: {tipoVinculacionFilter}
+            {tipoVinculacionFilter.trim() && (
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                Tipo Vinculación: {tipoVinculacionFilter.trim()}
               </Badge>
             )}
             <button
@@ -825,7 +1183,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                         {/* Cargo */}
                         <td className="px-4 py-4">
                           <p className="text-sm text-gray-900 font-medium">
-                            {cert.empleado.cargo}
+                          {cert.empleado.cargo_calculado || cert.empleado.cargo}
                           </p>
                         </td>
 
@@ -843,7 +1201,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
                         {/* Ubicación */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.position_location || ''}</p>
+                          <p className="text-sm text-gray-900">{cert.department || cert.position_location || ''}</p>
                         </td>
 
                         {/* Fecha Solicitud */}

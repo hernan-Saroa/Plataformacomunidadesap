@@ -12,4 +12,7 @@ export interface ApproveRequestDto {
   graduationDate?: string | Date;
   campus?: string;
   seccionalName?: string;
+  numRegistro?: string;
+  numFolio?: string;
+  numLibro?: string;
 }

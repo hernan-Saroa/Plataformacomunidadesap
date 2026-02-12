@@ -1,607 +1,599 @@
 /**
- * Datos Mock EXPANDIDOS - Expedientes Judiciales (MOD-01: Defensa Judicial)
- * 80 expedientes de prueba distribuidos realísticamente
- * 
- * DISTRIBUCIÓN:
- * - NOTIFICADA: 12 (15%) - Crítico: Menos de 10 días
- * - CONTESTACIÓN: 15 (19%) - En proceso de respuesta
- * - PRUEBAS: 18 (22%) - Recolección de evidencias
- * - ALEGATOS: 10 (12%) - Argumentación final
- * - SENTENCIA: 8 (10%) - Esperando fallo
- * - APELACIÓN: 10 (12%) - Segunda instancia
- * - FINALIZADO: 7 (9%) - Archivados
+ * DATOS MOCK EXPANDIDOS - MÓDULO DEFENSA JUDICIAL
+ * Base de datos completa para pruebas con cliente
+ * Incluye casos variados con todas las etapas del proceso judicial
  */
 
-import { ExpedienteJudicial } from '../core/types';
-
-// Función auxiliar para calcular días restantes
-function calcularDiasRestantes(fechaNotificacion: Date, diasTotales: number): number {
-  const hoy = new Date();
-  const diff = hoy.getTime() - fechaNotificacion.getTime();
-  const diasTranscurridos = Math.floor(diff / (1000 * 60 * 60 * 24));
-  return Math.max(0, diasTotales - diasTranscurridos);
-}
-
-// Función para crear fecha relativa
-function fechaHace(dias: number): Date {
-  const fecha = new Date();
-  fecha.setDate(fecha.getDate() - dias);
-  return fecha;
-}
-
-// Nombres realistas para demandantes
-const demandantes = [
-  'María González Pérez', 'Pedro Martínez Ruiz', 'Ana López García', 'Carlos Ramírez Soto',
-  'Laura Fernández Cruz', 'Jorge Sánchez Mora', 'Claudia Torres Vega', 'Luis Herrera Castro',
-  'Patricia Rojas Muñoz', 'Roberto Silva Díaz', 'Carmen Ortiz Peña', 'Fernando Castro López',
-  'Sandra Moreno Gil', 'Miguel Ángel Ruiz', 'Gloria Ramírez Ortiz', 'Andrés Gómez Pérez',
-  'Beatriz Jiménez Soto', 'Ricardo Vargas León', 'Marta Delgado Ruiz', 'Diego Torres Mora',
-  'Lucía Mendoza Vega', 'Javier Castillo Ruiz', 'Elena Suárez Díaz', 'Pablo Navarro Gil',
-  'Isabel Cruz Moreno', 'Óscar Peña López', 'Cristina Vega Torres', 'Raúl Mora Castro',
-  'Silvia Díaz Pérez', 'Antonio Gil Sánchez', 'Rosa López Vargas', 'Julio Ortiz Cruz',
-  'Teresa Soto Mendoza', 'Ramón Castro Peña', 'Amparo Ruiz Mora', 'Francisco Vega López',
-  'Dolores Moreno Cruz', 'Emilio Torres Díaz', 'Pilar Sánchez Gil', 'Alberto Pérez Castro'
-];
-
-// Abogados asignados
-const abogados = [
-  'Dr. Juan Pérez López',
-  'Dra. Ana López García',
-  'Dr. Carlos Ramírez Soto',
-  'Dra. María González Cruz',
-  'Dr. Luis Herrera Castro',
-  'Dra. Patricia Rojas Muñoz',
-  'Dr. Roberto Silva Díaz',
-  'Dra. Carmen Ortiz Peña'
-];
-
-// Juzgados variados
-const juzgados = [
-  'Tribunal Administrativo de Cundinamarca - Sección Segunda',
-  'Juzgado Administrativo del Circuito de Bogotá',
-  'Tribunal Administrativo de Antioquia',
-  'Juzgado Administrativo de Medellín',
-  'Tribunal Administrativo del Valle del Cauca',
-  'Juzgado Administrativo de Cali',
-  'Tribunal Administrativo de Santander',
-  'Juzgado Administrativo de Bucaramanga',
-  'Consejo de Estado - Sección Tercera',
-  'Tribunal Administrativo del Atlántico'
-];
-
-// Tipos de procesos
-const tiposExpediente = [
-  'Nulidad y Restablecimiento del Derecho',
-  'Reparación Directa',
-  'Acción de Cumplimiento',
-  'Controversias Contractuales',
-  'Nulidad Simple',
-  'Acción Popular',
-  'Acción de Grupo'
-];
+import type { ExpedienteJudicial } from '../core/types';
 
 export const expedientesJudicialesMock: ExpedienteJudicial[] = [
-  // ========================================
-  // ETAPA 1: NOTIFICADA (12 expedientes) - CRÍTICOS
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: NOTIFICADA (Demandas recién notificadas - Requiere contestación urgente)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2025-001',
-    tipo: 'Nulidad y Restablecimiento del Derecho',
-    medioControl: 'NRD Art.138',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'María González Pérez',
-    apoderado: 'Dr. Carlos Ramírez - Bufete Legal SA',
-    juzgado: 'Tribunal Administrativo de Cundinamarca - Sección Segunda',
-    radicado: '2025-00001-00',
-    cuantia: 150000000,
-    fechaNotificacion: fechaHace(87),
-    diasTotales: 90,
-    diasRestantes: 3,
-    abogadoAsignado: 'Dr. Juan Pérez López',
-    hechos: 'Acto administrativo que declaró insubsistencia del nombramiento de la demandante como Directora Territorial. Se alega violación del debido proceso y desconocimiento de derechos adquiridos.',
-    pretensiones: '1. Declarar nulo el acto administrativo No. 0123 de 2024. 2. Restablecer el derecho mediante reintegro al cargo. 3. Ordenar el pago de salarios y prestaciones dejados de percibir.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(87),
-    fechaActualizacion: fechaHace(85),
+    id: 'DJ-2025-001',
+    radicado: '25000-23-33-001-2025-00045-00',
+    demandante: 'María Rodríguez López',
+    tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Notificación del auto admisorio y traslado para contestación de la demanda',
+    etapa: 'NOTIFICADA',
+    prioridad: 'ALTA',
+    fechaNotificacion: '2025-01-20',
+    fechaVencimiento: '2025-02-20',
+    juzgado: 'Juzgado 12 Administrativo de Bogotá',
+    abogadoResponsable: 'Dra. Ana María López',
+    cuantia: '85000000',
+    pretensiones: 'Nulidad del acto administrativo por el cual se declaró insubsistencia del cargo y restablecimiento del derecho con reintegro y pago de salarios dejados de percibir.',
+    demandantes: [
+      {
+        id: 'DEM-001',
+        nombre: 'María Rodríguez López',
+        tipoPersona: 'natural',
+        identificacion: '52123456'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-001',
+        nombre: 'ESAP - Escuela Superior de Administración Pública',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
   {
-    id: 'PJ-2025-002',
-    tipo: 'Reparación Directa',
-    medioControl: 'Reparación Directa',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Pedro Martínez Ruiz',
-    apoderado: 'Dra. Ana López - Abogados Asociados',
-    juzgado: 'Juzgado Administrativo del Circuito de Bogotá',
-    radicado: '2025-00002-00',
-    cuantia: 85000000,
-    fechaNotificacion: fechaHace(82),
-    diasTotales: 90,
-    diasRestantes: 8,
-    abogadoAsignado: 'Dra. Ana López García',
-    hechos: 'Daños causados por falla en el servicio de vigilancia en instalaciones de ESAP Territorial Bogotá. Hurto de elementos personales durante evento académico.',
-    pretensiones: '1. Declarar responsabilidad administrativa de ESAP. 2. Condenar al pago de perjuicios materiales por $50.000.000. 3. Perjuicios morales por $35.000.000.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(82),
-    fechaActualizacion: fechaHace(80),
+    id: 'DJ-2025-002',
+    radicado: '25000-33-10-001-2025-00123-00',
+    demandante: 'Carlos Andrés Pérez',
+    tipoAccion: 'ACCION DE TUTELA',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Auto admisorio notificado. Pendiente contestación de demanda.',
+    etapa: 'NOTIFICADA',
+    prioridad: 'URGENTE',
+    fechaNotificacion: '2025-01-28',
+    fechaVencimiento: '2025-02-02',
+    juzgado: 'Juzgado 33 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Roberto Jiménez',
+    cuantia: '0',
+    pretensiones: 'Amparo del derecho fundamental a la educación por presunta vulneración en proceso de matrícula académica.',
+    demandantes: [
+      {
+        id: 'DEM-002',
+        nombre: 'Carlos Andrés Pérez',
+        tipoPersona: 'natural',
+        identificacion: '1012345678'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-002',
+        nombre: 'ESAP - Escuela Superior de Administración Pública',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
   {
-    id: 'PJ-2025-003',
-    tipo: 'Controversias Contractuales',
-    medioControl: 'Controversias Contractuales',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Constructora ABC Ltda.',
-    apoderado: 'Dr. Luis Herrera - Firma Jurídica',
-    juzgado: 'Tribunal Administrativo de Antioquia',
-    radicado: '2025-00003-00',
-    cuantia: 320000000,
-    fechaNotificacion: fechaHace(86),
-    diasTotales: 90,
-    diasRestantes: 4,
-    abogadoAsignado: 'Dr. Carlos Ramírez Soto',
-    hechos: 'Incumplimiento contractual en Contrato de Obra No. 045-2023 para remodelación de sede territorial. Se alega pago incompleto de acta final.',
-    pretensiones: '1. Declarar incumplimiento contractual de ESAP. 2. Condenar al pago de saldo adeudado $250.000.000. 3. Intereses moratorios y cláusula penal.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(86),
-    fechaActualizacion: fechaHace(84),
+    id: 'DJ-2025-003',
+    radicado: '25000-05-23-001-2025-00067-00',
+    demandante: 'Asociación de Estudiantes ESAP',
+    tipoAccion: 'ACCION POPULAR',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Demanda admitida. Término para contestar próximo a vencer.',
-  },
-  {
-    id: 'PJ-2025-004',
-    tipo: 'Nulidad y Restablecimiento del Derecho',
-    medioControl: 'NRD Art.138',
-    jurisdiccion: 'Contencioso Administrativo',
     etapa: 'NOTIFICADA',
-    demandante: 'Ana López García',
-    apoderado: 'Dr. Fernando Castro - Abogados y Cía',
-    juzgado: 'Juzgado Administrativo de Medellín',
-    radicado: '2025-00004-00',
-    cuantia: 95000000,
-    fechaNotificacion: fechaHace(84),
-    diasTotales: 90,
-    diasRestantes: 6,
-    abogadoAsignado: 'Dra. María González Cruz',
-    hechos: 'Acto que negó reconocimiento de bonificación por servicios prestados. Alega derecho adquirido por antigüedad de 15 años en la institución.',
-    pretensiones: '1. Nulidad del acto administrativo de negación. 2. Reconocimiento y pago de bonificación. 3. Indexación y actualización.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(84),
-    fechaActualizacion: fechaHace(82),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Notificado auto admisorio. Urge contestación.',
-  },
-  {
-    id: 'PJ-2025-005',
-    tipo: 'Acción de Cumplimiento',
-    medioControl: 'Cumplimiento de Norma',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Sindicato de Empleados ESAP',
-    apoderado: 'Dra. Patricia Rojas - Abogados Laborales',
-    juzgado: 'Tribunal Administrativo del Valle del Cauca',
-    radicado: '2025-00005-00',
-    cuantia: 0,
-    fechaNotificacion: fechaHace(85),
-    diasTotales: 90,
-    diasRestantes: 5,
-    abogadoAsignado: 'Dr. Luis Herrera Castro',
-    hechos: 'Incumplimiento de acuerdos sindicales pactados en acta de negociación colectiva 2024. Específicamente prima de vacaciones y bonificación navideña.',
-    pretensiones: '1. Orden de cumplir acuerdos sindicales. 2. Pago inmediato de primas adeudadas. 3. Garantías de no repetición.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(85),
-    fechaActualizacion: fechaHace(83),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Auto admisorio. Término perentorio para contestar.',
-  },
-  {
-    id: 'PJ-2025-006',
-    tipo: 'Reparación Directa',
-    medioControl: 'Reparación Directa',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Carlos Ramírez Soto',
-    apoderado: 'Dr. Roberto Silva - Consultores Jurídicos',
-    juzgado: 'Juzgado Administrativo de Cali',
-    radicado: '2025-00006-00',
-    cuantia: 120000000,
-    fechaNotificacion: fechaHace(81),
-    diasTotales: 90,
-    diasRestantes: 9,
-    abogadoAsignado: 'Dra. Patricia Rojas Muñoz',
-    hechos: 'Accidente de trabajo en instalaciones ESAP durante mantenimiento de aires acondicionados. Lesiones que causaron incapacidad permanente.',
-    pretensiones: '1. Declarar responsabilidad por falla del servicio. 2. Indemnización por lesiones $80.000.000. 3. Lucro cesante y daño emergente.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(81),
-    fechaActualizacion: fechaHace(79),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Demanda admitida y notificada. Pendiente respuesta.',
-  },
-  {
-    id: 'PJ-2025-007',
-    tipo: 'Nulidad Simple',
-    medioControl: 'Nulidad',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Asociación de Profesores ESAP',
-    apoderado: 'Dra. Carmen Ortiz - Firma Legal',
-    juzgado: 'Tribunal Administrativo de Santander',
-    radicado: '2025-00007-00',
-    cuantia: 0,
-    fechaNotificacion: fechaHace(83),
-    diasTotales: 90,
-    diasRestantes: 7,
-    abogadoAsignado: 'Dr. Roberto Silva Díaz',
-    hechos: 'Resolución que modifica reglamento interno de evaluación docente sin concertación previa con asociación. Alega violación de procedimiento.',
-    pretensiones: '1. Declarar nulidad de Resolución No. 089 de 2024. 2. Ordenar nueva concertación. 3. Suspensión provisional de efectos.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(83),
-    fechaActualizacion: fechaHace(81),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Auto admisorio notificado. Vence término pronto.',
-  },
-  {
-    id: 'PJ-2025-008',
-    tipo: 'Controversias Contractuales',
-    medioControl: 'Controversias Contractuales',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Tecnología y Sistemas SAS',
-    apoderado: 'Dr. Miguel Vargas - Bufete Empresarial',
-    juzgado: 'Juzgado Administrativo de Bucaramanga',
-    radicado: '2025-00008-00',
-    cuantia: 180000000,
-    fechaNotificacion: fechaHace(80),
-    diasTotales: 90,
-    diasRestantes: 10,
-    abogadoAsignado: 'Dra. Carmen Ortiz Peña',
-    hechos: 'Terminación unilateral de contrato de prestación de servicios tecnológicos sin justa causa. Contrato No. 098-2023 para plataforma virtual.',
-    pretensiones: '1. Declarar terminación ilegal del contrato. 2. Indemnización por lucro cesante $120.000.000. 3. Daño emergente y costas procesales.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(80),
-    fechaActualizacion: fechaHace(78),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Admisión de demanda. Término para contestar en curso.',
-  },
-  {
-    id: 'PJ-2025-009',
-    tipo: 'Nulidad y Restablecimiento del Derecho',
-    medioControl: 'NRD Art.138',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Laura Fernández Cruz',
-    apoderado: 'Dr. Alberto Mendoza - Abogados y Asesores',
-    juzgado: 'Consejo de Estado - Sección Tercera',
-    radicado: '2025-00009-00',
-    cuantia: 200000000,
-    fechaNotificacion: fechaHace(88),
-    diasTotales: 90,
-    diasRestantes: 2,
-    abogadoAsignado: 'Dr. Juan Pérez López',
-    hechos: 'Destitución del cargo de Coordinadora Académica por supuestas irregularidades en proceso de selección. Alega persecución laboral y falta de pruebas.',
-    pretensiones: '1. Nulidad del acto de destitución. 2. Reintegro inmediato al cargo. 3. Pago de salarios dejados de percibir y daños morales.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(88),
-    fechaActualizacion: fechaHace(86),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'URGENTE: Vence término en 2 días. Contestación pendiente.',
-  },
-  {
-    id: 'PJ-2025-010',
-    tipo: 'Acción Popular',
-    medioControl: 'Protección Derechos Colectivos',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Comunidad Vecinal Barrio Las Américas',
-    apoderado: 'Dra. Isabel Gómez - Defensores Comunitarios',
-    juzgado: 'Tribunal Administrativo del Atlántico',
-    radicado: '2025-00010-00',
-    cuantia: 0,
-    fechaNotificacion: fechaHace(79),
-    diasTotales: 90,
-    diasRestantes: 11,
-    abogadoAsignado: 'Dra. Ana López García',
-    hechos: 'Contaminación auditiva por eventos nocturnos en sede ESAP sin permisos ambientales. Afectación a derecho colectivo al ambiente sano.',
-    pretensiones: '1. Ordenar cumplir normativa ambiental. 2. Suspender eventos sin permisos. 3. Compensación a comunidad afectada.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(79),
-    fechaActualizacion: fechaHace(77),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Auto admisorio. Pendiente vinculación de autoridades ambientales.',
-  },
-  {
-    id: 'PJ-2025-011',
-    tipo: 'Reparación Directa',
-    medioControl: 'Reparación Directa',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Jorge Sánchez Mora',
-    apoderado: 'Dr. Ricardo Torres - Abogados Litigantes',
-    juzgado: 'Juzgado Administrativo del Circuito de Bogotá',
-    radicado: '2025-00011-00',
-    cuantia: 140000000,
-    fechaNotificacion: fechaHace(78),
-    diasTotales: 90,
-    diasRestantes: 12,
-    abogadoAsignado: 'Dr. Carlos Ramírez Soto',
-    hechos: 'Caída en escaleras de sede ESAP por falta de señalización y mantenimiento. Fractura de fémur que requirió cirugía y rehabilitación prolongada.',
-    pretensiones: '1. Responsabilidad por omisión de deber de seguridad. 2. Gastos médicos $60.000.000. 3. Perjuicios morales y lucro cesante.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(78),
-    fechaActualizacion: fechaHace(76),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Demanda admitida. Término para contestación en curso.',
-  },
-  {
-    id: 'PJ-2025-012',
-    tipo: 'Nulidad y Restablecimiento del Derecho',
-    medioControl: 'NRD Art.138',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'NOTIFICADA',
-    demandante: 'Claudia Torres Vega',
-    apoderado: 'Dra. Mónica Ruiz - Firma Jurídica',
-    juzgado: 'Tribunal Administrativo de Cundinamarca - Sección Primera',
-    radicado: '2025-00012-00',
-    cuantia: 110000000,
-    fechaNotificacion: fechaHace(77),
-    diasTotales: 90,
-    diasRestantes: 13,
-    abogadoAsignado: 'Dra. María González Cruz',
-    hechos: 'Negativa de reconocimiento de prima de antigüedad pese a cumplir 20 años de servicio. Alega discriminación por tipo de vinculación.',
-    pretensiones: '1. Nulidad del acto de negación. 2. Reconocimiento retroactivo de prima. 3. Indexación desde fecha de causación.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(77),
-    fechaActualizacion: fechaHace(75),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Notificación efectuada. Plazo para responder.',
+    prioridad: 'MEDIA',
+    fechaNotificacion: '2025-01-25',
+    fechaVencimiento: '2025-02-25',
+    juzgado: 'Juzgado 5 Administrativo de Cundinamarca',
+    abogadoResponsable: 'Dra. Claudia Torres',
+    cuantia: '0',
+    pretensiones: 'Protección de derechos colectivos relacionados con la moralidad administrativa en proceso de contratación.',
+    demandantes: [
+      {
+        id: 'DEM-003',
+        nombre: 'Asociación de Estudiantes ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '900123456-7'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-003',
+        nombre: 'ESAP - Escuela Superior de Administración Pública',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
 
-  // ========================================
-  // ETAPA 2: CONTESTACIÓN (15 expedientes)
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: CONTESTADA (Contestación presentada - Esperando trámite procesal)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2024-035',
-    tipo: 'Controversias Contractuales',
-    medioControl: 'Controversias Contractuales',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'CONTESTACIÓN',
-    demandante: 'Suministros Integrales SAS',
-    apoderado: 'Dr. Andrés Gómez - Comercial Legal',
-    juzgado: 'Tribunal Administrativo de Cundinamarca - Sección Segunda',
-    radicado: '2024-03500-00',
-    cuantia: 95000000,
-    fechaNotificacion: fechaHace(120),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dr. Luis Herrera Castro',
-    hechos: 'Incumplimiento en contrato de suministro de papelería y útiles de oficina. Pago parcial de facturas causadas en 2023.',
-    pretensiones: '1. Pago total de facturas pendientes $80.000.000. 2. Intereses de mora. 3. Costas procesales.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(120),
-    fechaActualizacion: fechaHace(15),
+    id: 'DJ-2024-089',
+    radicado: '25000-23-31-001-2024-00234-00',
+    demandante: 'Jorge Luis Martínez',
+    tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Contestación de demanda presentada. Pendiente réplica de demandante.',
+    etapa: 'CONTESTADA',
+    prioridad: 'MEDIA',
+    fechaNotificacion: '2024-11-10',
+    fechaVencimiento: '2024-12-10',
+    juzgado: 'Juzgado 31 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Fernando Sánchez',
+    cuantia: '120000000',
+    pretensiones: 'Nulidad de la resolución por la cual se impuso sanción disciplinaria y restablecimiento del buen nombre.',
+    demandantes: [
+      {
+        id: 'DEM-004',
+        nombre: 'Jorge Luis Martínez',
+        tipoPersona: 'natural',
+        identificacion: '79456123'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-004',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
   {
-    id: 'PJ-2024-036',
-    tipo: 'Nulidad Simple',
-    medioControl: 'Nulidad',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'CONTESTACIÓN',
-    demandante: 'Veeduría Ciudadana ESAP',
-    apoderado: 'Dr. Pablo Navarro - Transparencia Legal',
-    juzgado: 'Juzgado Administrativo de Medellín',
-    radicado: '2024-03600-00',
-    cuantia: 0,
-    fechaNotificacion: fechaHace(115),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dra. Patricia Rojas Muñoz',
-    hechos: 'Resolución que aprueba modificación presupuestal sin publicación previa. Alega falta de transparencia.',
-    pretensiones: '1. Nulidad de Resolución Presupuestal No. 045-2024. 2. Ordenar nueva publicación y audiencia pública.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(115),
-    fechaActualizacion: fechaHace(12),
+    id: 'DJ-2024-092',
+    radicado: '11001-03-15-001-2024-00456-00',
+    demandante: 'Sandra Patricia Gómez',
+    tipoAccion: 'ACCION DE CUMPLIMIENTO',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Excepciones previas propuestas. En etapa de respuesta.',
-  },
-  // ... continúan más registros para completar 80 total
-
-  // ========================================
-  // ETAPA 3: PRUEBAS (18 expedientes)
-  // ========================================
-  {
-    id: 'PJ-2024-020',
-    tipo: 'Reparación Directa',
-    medioControl: 'Reparación Directa',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'PRUEBAS',
-    demandante: 'Roberto Silva Díaz',
-    apoderado: 'Dra. Teresa Soto - Abogados Civiles',
-    juzgado: 'Tribunal Administrativo del Valle del Cauca',
-    radicado: '2024-02000-00',
-    cuantia: 175000000,
-    fechaNotificacion: fechaHace(250),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dr. Roberto Silva Díaz',
-    hechos: 'Daños en vehículo particular por hundimiento de vía interna en parqueadero ESAP Sede Cali. Falta de mantenimiento preventivo.',
-    pretensiones: '1. Responsabilidad por omisión. 2. Pago de reparación vehículo $120.000.000. 3. Lucro cesante por tiempo sin vehículo.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(250),
-    fechaActualizacion: fechaHace(30),
-    estado: 'ACTIVO',
-    ultimaActuacion: 'Etapa probatoria abierta. Pendiente testimonio de testigos.',
+    etapa: 'CONTESTADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2024-12-05',
+    fechaVencimiento: '2025-01-05',
+    juzgado: 'Tribunal Administrativo de Cundinamarca',
+    abogadoResponsable: 'Dra. Laura Mendoza',
+    cuantia: '0',
+    pretensiones: 'Cumplimiento de normas sobre transparencia y acceso a la información pública.',
+    demandantes: [
+      {
+        id: 'DEM-005',
+        nombre: 'Sandra Patricia Gómez',
+        tipoPersona: 'natural',
+        identificacion: '52987654'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-005',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
 
-  // ========================================
-  // ETAPA 4: ALEGATOS (10 expedientes)
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: EN PRUEBAS (Periodo probatorio en curso)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2023-075',
-    tipo: 'Nulidad y Restablecimiento del Derecho',
-    medioControl: 'NRD Art.138',
-    jurisdiccion: 'Contencioso Administrativo',
+    id: 'DJ-2024-067',
+    radicado: '25000-23-24-001-2024-00789-00',
+    demandante: 'Luis Alberto Ramírez',
+    tipoAccion: 'NULIDAD SIMPLE',
+    estado: 'ACTIVO',
+    etapa: 'EN PRUEBAS',
+    prioridad: 'MEDIA',
+    fechaNotificacion: '2024-08-15',
+    fechaVencimiento: '2024-09-15',
+    juzgado: 'Juzgado 24 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Andrés Castro',
+    cuantia: '0',
+    pretensiones: 'Declaratoria de nulidad del acto administrativo que modificó el reglamento estudiantil.',
+    demandantes: [
+      {
+        id: 'DEM-006',
+        nombre: 'Luis Alberto Ramírez',
+        tipoPersona: 'natural',
+        identificacion: '1019876543'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-006',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2024-071',
+    radicado: '25000-23-18-001-2024-00345-00',
+    demandante: 'Patricia Elena Vargas',
+    tipoAccion: 'REPARACION DIRECTA',
+    estado: 'ACTIVO',
+    etapa: 'EN PRUEBAS',
+    prioridad: 'ALTA',
+    fechaNotificacion: '2024-09-20',
+    fechaVencimiento: '2024-10-20',
+    juzgado: 'Juzgado 18 Administrativo de Bogotá',
+    abogadoResponsable: 'Dra. Carolina Restrepo',
+    cuantia: '250000000',
+    pretensiones: 'Reparación de daños causados por demora injustificada en expedición de diploma de grado.',
+    demandantes: [
+      {
+        id: 'DEM-007',
+        nombre: 'Patricia Elena Vargas',
+        tipoPersona: 'natural',
+        identificacion: '52345678'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-007',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: ALEGATOS (Presentación de alegatos de conclusión)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'DJ-2024-045',
+    radicado: '25000-23-27-001-2024-00567-00',
+    demandante: 'Diego Fernando Herrera',
+    tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
+    estado: 'ACTIVO',
     etapa: 'ALEGATOS',
-    demandante: 'Gloria Ramírez Ortiz',
-    apoderado: 'Dr. Emilio Torres - Firma Legal Integral',
-    juzgado: 'Consejo de Estado - Sección Segunda',
-    radicado: '2023-07500-00',
-    cuantia: 180000000,
-    fechaNotificacion: fechaHace(450),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dra. Carmen Ortiz Peña',
-    hechos: 'Remoción de cargo de confianza sin motivación. Alega estabilidad laboral reforzada por fuero de salud.',
-    pretensiones: '1. Nulidad del acto de remoción. 2. Reintegro con pago retroactivo. 3. Daños morales.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(450),
-    fechaActualizacion: fechaHace(45),
+    prioridad: 'ALTA',
+    fechaNotificacion: '2024-05-10',
+    fechaVencimiento: '2024-06-10',
+    juzgado: 'Juzgado 27 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Miguel Ángel Ruiz',
+    cuantia: '95000000',
+    pretensiones: 'Nulidad de resolución de terminación de contrato laboral y reintegro.',
+    demandantes: [
+      {
+        id: 'DEM-008',
+        nombre: 'Diego Fernando Herrera',
+        tipoPersona: 'natural',
+        identificacion: '79234567'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-008',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2024-051',
+    radicado: '11001-03-27-001-2024-00890-00',
+    demandante: 'Consorcio Infraestructura SAS',
+    tipoAccion: 'CONTROVERSIAS CONTRACTUALES',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Alegatos de conclusión presentados. Esperando sentencia.',
+    etapa: 'ALEGATOS',
+    prioridad: 'URGENTE',
+    fechaNotificacion: '2024-06-15',
+    fechaVencimiento: '2024-07-15',
+    juzgado: 'Tribunal Administrativo de Cundinamarca',
+    abogadoResponsable: 'Dr. Pablo Guerrero',
+    cuantia: '850000000',
+    pretensiones: 'Declaratoria de incumplimiento contractual y reconocimiento de perjuicios.',
+    demandantes: [
+      {
+        id: 'DEM-009',
+        nombre: 'Consorcio Infraestructura SAS',
+        tipoPersona: 'juridica',
+        identificacion: '900456789-1'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-009',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
 
-  // ========================================
-  // ETAPA 5: SENTENCIA (8 expedientes)
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: SENTENCIA I INSTANCIA (Sentencia de primera instancia emitida)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2023-042',
-    tipo: 'Controversias Contractuales',
-    medioControl: 'Controversias Contractuales',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'SENTENCIA',
-    demandante: 'Consultoría y Auditoría Ltda.',
-    apoderado: 'Dr. Francisco Vega - Abogados Consultores',
-    juzgado: 'Tribunal Administrativo de Santander',
-    radicado: '2023-04200-00',
-    cuantia: 280000000,
-    fechaNotificacion: fechaHace(520),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dr. Juan Pérez López',
-    hechos: 'Liquidación unilateral de contrato de consultoría con descuentos no pactados. Contrato No. 033-2022.',
-    pretensiones: '1. Anulación de liquidación. 2. Nueva liquidación sin descuentos. 3. Pago diferencia $200.000.000.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(520),
-    fechaActualizacion: fechaHace(60),
+    id: 'DJ-2024-028',
+    radicado: '25000-23-15-001-2024-00234-00',
+    demandante: 'Gloria Inés Martínez',
+    tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
     estado: 'ACTIVO',
-    ultimaActuacion: 'En espera de sentencia de primera instancia.',
+    etapa: 'SENTENCIA I INSTANCIA',
+    prioridad: 'ALTA',
+    fechaNotificacion: '2024-03-01',
+    fechaVencimiento: '2024-04-01',
+    juzgado: 'Juzgado 15 Administrativo de Bogotá',
+    abogadoResponsable: 'Dra. Mariana Ospina',
+    cuantia: '75000000',
+    pretensiones: 'Nulidad de acto administrativo sancionatorio y restablecimiento de derechos.',
+    demandantes: [
+      {
+        id: 'DEM-010',
+        nombre: 'Gloria Inés Martínez',
+        tipoPersona: 'natural',
+        identificacion: '52678901'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-010',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2023-156',
+    radicado: '25000-23-09-001-2023-01234-00',
+    demandante: 'Ricardo Alonso Pérez',
+    tipoAccion: 'REPARACION DIRECTA',
+    estado: 'ACTIVO',
+    etapa: 'SENTENCIA I INSTANCIA',
+    prioridad: 'MEDIA',
+    fechaNotificacion: '2023-11-10',
+    fechaVencimiento: '2023-12-10',
+    juzgado: 'Juzgado 9 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Gustavo Moreno',
+    cuantia: '180000000',
+    pretensiones: 'Indemnización de perjuicios por falla en el servicio educativo.',
+    demandantes: [
+      {
+        id: 'DEM-011',
+        nombre: 'Ricardo Alonso Pérez',
+        tipoPersona: 'natural',
+        identificacion: '79890123'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-011',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
 
-  // ========================================
-  // ETAPA 6: APELACIÓN (10 expedientes)
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: SEGUNDA INSTANCIA (En apelación ante tribunal)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2023-015',
-    tipo: 'Reparación Directa',
-    medioControl: 'Reparación Directa',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'APELACIÓN',
-    demandante: 'Marta Delgado Ruiz',
-    apoderado: 'Dra. Amparo Ruiz - Abogados de Familia',
-    juzgado: 'Consejo de Estado - Sección Tercera',
-    radicado: '2023-01500-00',
-    cuantia: 250000000,
-    fechaNotificacion: fechaHace(680),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dra. Ana López García',
-    hechos: 'Accidente en instalaciones por falta de barandas de seguridad. Sentencia de primera instancia favorable parcialmente.',
-    pretensiones: '1. Aumento de indemnización reconocida. 2. Inclusión de daños no reconocidos en primera instancia.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(680),
-    fechaActualizacion: fechaHace(90),
+    id: 'DJ-2023-134',
+    radicado: '11001-03-15-001-2023-00987-00',
+    demandante: 'Mónica Andrea Salazar',
+    tipoAccion: 'NULIDAD Y RESTABLECIMIENTO',
     estado: 'ACTIVO',
-    ultimaActuacion: 'Recurso de apelación admitido. Trámite en segunda instancia.',
+    etapa: 'SEGUNDA INSTANCIA',
+    prioridad: 'ALTA',
+    fechaNotificacion: '2023-09-05',
+    fechaVencimiento: '2023-10-05',
+    juzgado: 'Tribunal Administrativo de Cundinamarca',
+    abogadoResponsable: 'Dr. Hernán Díaz',
+    cuantia: '110000000',
+    pretensiones: 'Nulidad de evaluación de desempeño y reintegro laboral.',
+    demandantes: [
+      {
+        id: 'DEM-012',
+        nombre: 'Mónica Andrea Salazar',
+        tipoPersona: 'natural',
+        identificacion: '52456789'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-012',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2023-145',
+    radicado: '11001-03-24-001-2023-01456-00',
+    demandante: 'Empresa Tecnología y Servicios SAS',
+    tipoAccion: 'CONTROVERSIAS CONTRACTUALES',
+    estado: 'ACTIVO',
+    etapa: 'SEGUNDA INSTANCIA',
+    prioridad: 'URGENTE',
+    fechaNotificacion: '2023-10-20',
+    fechaVencimiento: '2023-11-20',
+    juzgado: 'Tribunal Administrativo de Cundinamarca',
+    abogadoResponsable: 'Dra. Isabel Ramírez',
+    cuantia: '450000000',
+    pretensiones: 'Reconocimiento económico por trabajos adicionales no contemplados en contrato.',
+    demandantes: [
+      {
+        id: 'DEM-013',
+        nombre: 'Empresa Tecnología y Servicios SAS',
+        tipoPersona: 'juridica',
+        identificacion: '900567890-2'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-013',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
 
-  // ========================================
-  // ETAPA 7: FINALIZADO (7 expedientes)
-  // ========================================
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: EJECUTORIADA (Sentencia en firme - Proceso finalizado)
+  // ═══════════════════════════════════════════════════════════════════════════
   {
-    id: 'PJ-2022-089',
-    tipo: 'Acción de Cumplimiento',
-    medioControl: 'Cumplimiento de Norma',
-    jurisdiccion: 'Contencioso Administrativo',
-    etapa: 'FINALIZADO',
-    demandante: 'Javier Castillo Ruiz',
-    apoderado: 'Dr. Diego Torres - Firma Laboral',
-    juzgado: 'Tribunal Administrativo de Cundinamarca - Sección Cuarta',
-    radicado: '2022-08900-00',
-    cuantia: 0,
-    fechaNotificacion: fechaHace(850),
-    diasTotales: 90,
-    diasRestantes: 0,
-    abogadoAsignado: 'Dr. Carlos Ramírez Soto',
-    hechos: 'Incumplimiento de sentencia judicial que ordenaba reconocimiento de tiempo de servicio. Desacato ejecutoriado.',
-    pretensiones: '1. Ordenar cumplimiento de sentencia. 2. Sanciones por desacato.',
-    documentos: [],
-    actuaciones: [],
-    timeline: [],
-    fechaCreacion: fechaHace(850),
-    fechaActualizacion: fechaHace(180),
+    id: 'DJ-2023-089',
+    radicado: '25000-23-11-001-2023-00456-00',
+    demandante: 'Alberto José Ramírez',
+    tipoAccion: 'ACCION DE TUTELA',
+    estado: 'FINALIZADO',
+    etapa: 'EJECUTORIADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2023-07-10',
+    fechaVencimiento: '2023-07-20',
+    juzgado: 'Juzgado 11 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Carlos Mendoza',
+    cuantia: '0',
+    pretensiones: 'Amparo del derecho de petición.',
+    demandantes: [
+      {
+        id: 'DEM-014',
+        nombre: 'Alberto José Ramírez',
+        tipoPersona: 'natural',
+        identificacion: '1015678901'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-014',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2023-067',
+    radicado: '25000-23-08-001-2023-00234-00',
+    demandante: 'Claudia Fernanda Torres',
+    tipoAccion: 'NULIDAD SIMPLE',
+    estado: 'FINALIZADO',
+    etapa: 'EJECUTORIADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2023-05-15',
+    fechaVencimiento: '2023-06-15',
+    juzgado: 'Juzgado 8 Administrativo de Bogotá',
+    abogadoResponsable: 'Dra. Beatriz Gómez',
+    cuantia: '0',
+    pretensiones: 'Nulidad de resolución administrativa por vicios de forma.',
+    demandantes: [
+      {
+        id: 'DEM-015',
+        nombre: 'Claudia Fernanda Torres',
+        tipoPersona: 'natural',
+        identificacion: '52234567'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-015',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+  {
+    id: 'DJ-2022-234',
+    radicado: '25000-23-19-001-2022-01789-00',
+    demandante: 'Fundación Transparencia Colombia',
+    tipoAccion: 'ACCION POPULAR',
+    estado: 'FINALIZADO',
+    etapa: 'EJECUTORIADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2022-10-01',
+    fechaVencimiento: '2022-11-01',
+    juzgado: 'Juzgado 19 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Javier Ruiz',
+    cuantia: '0',
+    pretensiones: 'Protección de derechos colectivos sobre acceso a la información.',
+    demandantes: [
+      {
+        id: 'DEM-016',
+        nombre: 'Fundación Transparencia Colombia',
+        tipoPersona: 'juridica',
+        identificacion: '900345678-9'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-016',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ETAPA: ARCHIVADA (Procesos archivados - Desistimientos, transacciones, etc.)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'DJ-2024-012',
+    radicado: '25000-23-22-001-2024-00123-00',
+    demandante: 'Andrés Felipe García',
+    tipoAccion: 'ACCION DE TUTELA',
     estado: 'ARCHIVADO',
-    ultimaActuacion: 'Proceso finalizado. Cumplimiento total de sentencia verificado.',
+    etapa: 'ARCHIVADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2024-01-15',
+    fechaVencimiento: '2024-01-25',
+    juzgado: 'Juzgado 22 Administrativo de Bogotá',
+    abogadoResponsable: 'Dra. Sandra Rojas',
+    cuantia: '0',
+    pretensiones: 'Tutela por presunta vulneración de derechos (DESISTIDA).',
+    demandantes: [
+      {
+        id: 'DEM-017',
+        nombre: 'Andrés Felipe García',
+        tipoPersona: 'natural',
+        identificacion: '1016789012'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-017',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
   },
+  {
+    id: 'DJ-2023-178',
+    radicado: '25000-23-14-001-2023-00678-00',
+    demandante: 'Servicios Integrales Ltda',
+    tipoAccion: 'CONTROVERSIAS CONTRACTUALES',
+    estado: 'ARCHIVADO',
+    etapa: 'ARCHIVADA',
+    prioridad: 'BAJA',
+    fechaNotificacion: '2023-12-01',
+    fechaVencimiento: '2024-01-01',
+    juzgado: 'Juzgado 14 Administrativo de Bogotá',
+    abogadoResponsable: 'Dr. Eduardo Vargas',
+    cuantia: '320000000',
+    pretensiones: 'Reclamación contractual (CONCILIACIÓN EXITOSA).',
+    demandantes: [
+      {
+        id: 'DEM-018',
+        nombre: 'Servicios Integrales Ltda',
+        tipoPersona: 'juridica',
+        identificacion: '900234567-3'
+      }
+    ],
+    demandados: [
+      {
+        id: 'DEMAN-018',
+        nombre: 'ESAP',
+        tipoPersona: 'juridica',
+        identificacion: '899999061-4'
+      }
+    ]
+  }
 ];
-
-// Estadísticas del módulo
-export const estadisticasDefensaJudicial = {
-  totalExpedientes: expedientesJudicialesMock.length,
-  porEtapa: {
-    notificada: expedientesJudicialesMock.filter(e => e.etapa === 'NOTIFICADA').length,
-    contestacion: expedientesJudicialesMock.filter(e => e.etapa === 'CONTESTACIÓN').length,
-    pruebas: expedientesJudicialesMock.filter(e => e.etapa === 'PRUEBAS').length,
-    alegatos: expedientesJudicialesMock.filter(e => e.etapa === 'ALEGATOS').length,
-    sentencia: expedientesJudicialesMock.filter(e => e.etapa === 'SENTENCIA').length,
-    apelacion: expedientesJudicialesMock.filter(e => e.etapa === 'APELACIÓN').length,
-    finalizado: expedientesJudicialesMock.filter(e => e.etapa === 'FINALIZADO').length,
-  },
-  expedientesCriticos: expedientesJudicialesMock.filter(e => e.diasRestantes > 0 && e.diasRestantes <= 10).length,
-  cuantiaTotal: expedientesJudicialesMock.reduce((sum, e) => sum + (e.cuantia || 0), 0),
-  porAbogado: abogados.map(abogado => ({
-    nombre: abogado,
-    cantidad: expedientesJudicialesMock.filter(e => e.abogadoAsignado === abogado).length,
-  })),
-};

@@ -59,6 +59,28 @@ declare module 'jspdf' {
 }
 import { useEffect } from 'react';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ NUEVO: Importar validaciones Decreto 648/2017
+import {
+  validarDecreto648,
+  validarAntesDeAprobar,
+  validacionRapida,
+  generarMensajeToast,
+  obtenerEstadisticasPlan,
+  type ResultadoValidacion
+} from './utils/validacionesDecreto648';
+
+// ✅ NUEVO: Importar badge de cumplimiento Decreto 648
+import { BadgeDecreto648Completo, BadgeDecreto648Simple } from './components/BadgeDecreto648';
+
+// ✅ NUEVO: Importar servicio de generación de PDF
+import { generarPDFPlanAnual, validarDatosParaPDF } from './services/pdfPlanAnual';
+
+// ✅ NUEVO: Importar helper de configuración
+import { cargarConfiguracionPDF } from './utils/configuracionHelper';
+
 // ============ TIPOS ============
 
 interface Actividad {
@@ -727,6 +749,39 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
   };
 
   const handleAprobar = (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar antes de mostrar modal de aprobación
+    const validacion = validarAntesDeAprobar(plan);
+    
+    if (!validacion.valido) {
+      // Mostrar errores en toast
+      const mensaje = generarMensajeToast(validacion);
+      
+      toast.error(mensaje.titulo, {
+        description: mensaje.descripcion,
+        duration: 8000,
+      });
+      
+      // Mostrar detalles en consola para debugging
+      console.error('❌ Validación Decreto 648/2017 falló:', validacion);
+      
+      // Mostrar errores específicos
+      if (validacion.errores.length > 0) {
+        setTimeout(() => {
+          validacion.errores.forEach((error, idx) => {
+            setTimeout(() => {
+              toast.error(`Error ${idx + 1}`, {
+                description: error,
+                duration: 6000
+              });
+            }, idx * 500);
+          });
+        }, 1000);
+      }
+      
+      return; // Bloquear aprobación
+    }
+    
+    // Si pasa validación, mostrar modal
     setPlanActual(plan);
     setMostrarModalAprobacion(true);
   };
@@ -1331,7 +1386,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
   };
 
   return (
-    <div className="space-y-4 pb-8">
+    <Container4K>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -1420,7 +1475,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
           onAprobar={handleConfirmarAprobacion}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -1563,6 +1618,11 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
                   <span className="text-gray-700">
                     {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades
                   </span>
+                </div>
+
+                {/* ✅ NUEVO: Badge de cumplimiento Decreto 648 */}
+                <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                  <BadgeDecreto648Simple plan={plan} />
                 </div>
               </div>
 
@@ -2724,22 +2784,27 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
         )}
       </div>
 
-      {/* TABS DE NAVEGACIÓN */}
-      <Card className="p-1">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setTabActiva('detalle')}
-            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-              tabActiva === 'detalle'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+      {/* ✅ NUEVO: BADGE CUMPLIMIENTO DECRETO 648/2017 */}
+      <BadgeDecreto648Completo plan={plan} />
+
+      {/* ESTADO Y JEFE OCI */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-6">
+          <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
+          <Badge
+            className={`text-sm px-3 py-1 ${
+              plan.estado === 'Aprobado'
+                ? 'bg-green-100 text-green-800'
+                : plan.estado === 'En Revisión'
+                ? 'bg-yellow-100 text-yellow-800'
+                : 'bg-gray-100 text-gray-800'
             }`}
           >
             <div className="flex items-center justify-center gap-2">
               <FileText className="w-4 h-4" />
               <span>Detalle</span>
             </div>
-          </button>
+          </Badge>
           <button
             onClick={() => setTabActiva('indicadores')}
             className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
@@ -2754,7 +2819,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
             </div>
           </button>
         </div>
-      </Card>
+      </div>
 
       {/* CONTENIDO DE LAS TABS */}
       {tabActiva === 'detalle' && (

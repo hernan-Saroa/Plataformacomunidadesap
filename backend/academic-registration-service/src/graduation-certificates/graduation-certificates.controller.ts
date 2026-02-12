@@ -16,6 +16,7 @@ import { LandingCertificateRequestDto } from './dto/landing-certificate-request.
 import type { ApproveRequestDto } from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
+import { Public } from '../auth/public.decorator';
 
 const getClientIp = (req: Request): string | undefined => {
   const forwarded = req.headers['x-forwarded-for'];
@@ -90,6 +91,7 @@ export class GraduationCertificatesController {
    * Enviar solicitud desde landing; valida al graduado y envía el certificado si existe
    */
   @Post('autoservicio/solicitar-certificado')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async solicitarCertificado(
     @Body() body: LandingCertificateRequestDto,
@@ -149,6 +151,17 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/autoservicio/empresa
+   * Consultar empresa por NIT (datos.gov.co)
+   */
+  @Public()
+  @Get('autoservicio/empresa')
+  @HttpCode(HttpStatus.OK)
+  async buscarEmpresaPorNit(@Query('nit') nit: string) {
+    return await this.service.buscarEmpresaPorNit(nit);
+  }
+
+  /**
    * ====================================
    * ENDPOINTS DE VALIDACIÓN PÚBLICA
    * ====================================
@@ -159,6 +172,7 @@ export class GraduationCertificatesController {
    * Validar un certificado por su código QR
    */
   @Post('validacion/qr')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async validarPorQR(
     @Body() body: { verificationCode: string },

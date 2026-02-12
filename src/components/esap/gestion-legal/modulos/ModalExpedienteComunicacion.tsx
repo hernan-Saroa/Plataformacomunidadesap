@@ -10,7 +10,7 @@ import {
   Mail, Gavel, FileText, User, Calendar, Clock, AlertTriangle,
   Download, Eye, Paperclip, CheckCircle, Share, Send,
   Building2, Activity, MessageSquare, History, Archive,
-  ExternalLink, Target, Flag, Loader2
+  ExternalLink, Target, Flag, Loader2, Scale, Search
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
@@ -25,9 +25,12 @@ import { Permissions } from '../../../../enums/permissions';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { correosJuridicosService, AdjuntoCorreo } from '../../../../services/api/legal.service';
 
+import { Input } from '../../../ui/input';
+import { legalService } from '../../../../services/api/legal.service';
+
 interface ComunicacionUnificada {
   id: string;
-  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO';
+  tipo: 'JUDICIAL' | 'CORREO' | 'OFICIO' | 'ENVIADO';
   tipoProceso?: string;
   asunto: string;
   descripcion: string;
@@ -52,6 +55,7 @@ interface ModalExpedienteComunicacionProps {
   comunicacion: ComunicacionUnificada;
   onMarcarLeida?: (id: string) => void;
   onArchivar?: (id: string) => void;
+  onLink?: (id: string, expedienteId: string, targetModule: string) => Promise<any>;
 }
 
 export function ModalExpedienteComunicacion({
@@ -59,9 +63,65 @@ export function ModalExpedienteComunicacion({
   onClose,
   comunicacion,
   onMarcarLeida,
-  onArchivar
+  onArchivar,
+  onLink
 }: ModalExpedienteComunicacionProps) {
   const [tabActivo, setTabActivo] = useState('general');
+  // Linking State
+  const [selectedModule, setSelectedModule] = useState<'DEFENSA' | 'DISCIPLINARIO' | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  // Auto-fetch when module changes
+  useEffect(() => {
+    if (selectedModule) {
+      handleSearch();
+    }
+  }, [selectedModule]);
+
+  const handleSearch = async () => {
+    if (!selectedModule) return;
+    setIsSearching(true);
+    // Don't clear results immediately to avoid flash, but maybe safe enough
+    try {
+      if (selectedModule === 'DEFENSA') {
+        // Fetch all/recent if no term, or search if term exists
+        const expedientes = await legalService.getExpedientes(searchTerm ? { search: searchTerm } : {});
+        setSearchResults(expedientes);
+      } else if (selectedModule === 'DISCIPLINARIO') {
+        const procesos = await legalService.getJuzgamientoProcesos();
+        // Client-side filter
+        const filtered = !searchTerm ? procesos : procesos.filter((p: any) =>
+          (p.radicado && p.radicado.includes(searchTerm)) ||
+          (p.investigado && p.investigado.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+        setSearchResults(filtered);
+      }
+    } catch (error) {
+      toast.error('Error buscando procesos');
+      console.error(error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const executeLink = async () => {
+    if (!selectedProcess || !selectedModule || !onLink) return;
+    setLinking(true);
+    try {
+      const processId = selectedProcess.id;
+      await onLink(comunicacion.id, processId, selectedModule);
+      // UI success handled by parent toast, but maybe we close or reset?
+      // Parent closes modal, so we are good.
+    } catch (e) {
+      // Handled by parent
+    } finally {
+      setLinking(false);
+    }
+  };
   const [adjuntos, setAdjuntos] = useState<AdjuntoCorreo[]>([]);
   const [loadingAdjuntos, setLoadingAdjuntos] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -207,14 +267,16 @@ export function ModalExpedienteComunicacion({
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700', icon: '⚖️' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700', icon: '📧' },
-    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' }
-  }[comunicacion.tipo];
+    OFICIO: { label: 'Oficio', color: 'bg-green-100 text-green-700', icon: '📄' },
+    ENVIADO: { label: 'Enviado', color: 'bg-gray-100 text-gray-700', icon: '📤' }
+  }[comunicacion.tipo] || { label: 'Otro', color: 'bg-gray-100 text-gray-700', icon: '📋' };
 
   const getIcono = () => {
     switch (comunicacion.tipo) {
       case 'JUDICIAL': return Gavel;
       case 'CORREO': return Mail;
       case 'OFICIO': return FileText;
+      case 'ENVIADO': return Send;
       default: return Mail;
     }
   };
@@ -491,14 +553,116 @@ export function ModalExpedienteComunicacion({
                           </div>
                         </div>
 
-                        <Button
-                          className="w-full"
-                          style={{ background: '#8B5CF6', color: '#FFFFFF' }}
-                          onClick={handleDerivarModulo}
-                        >
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Derivar a {comunicacion.clasificacionIA.moduloSugerido}
-                        </Button>
+                        {/* SECCIÓN DE DERIVACIÓN MANUAL START */}
+                        <div className="mt-4 pt-4 border-t border-purple-200">
+                          <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                            <Send className="w-4 h-4 text-purple-600" />
+                            Derivar a Proceso / Expediente
+                          </h4>
+
+                          {/* Selector de Módulo */}
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <button
+                              onClick={() => setSelectedModule('DEFENSA')}
+                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DEFENSA'
+                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                              <Gavel className="w-4 h-4" />
+                              Defensa Judicial
+                            </button>
+                            <button
+                              onClick={() => setSelectedModule('DISCIPLINARIO')}
+                              className={`py-2 px-3 rounded-md border text-sm transition-all flex items-center justify-center gap-2 ${selectedModule === 'DISCIPLINARIO'
+                                ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold shadow-sm'
+                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                              <Scale className="w-4 h-4" />
+                              Disciplinario
+                            </button>
+                          </div>
+
+                          {/* Buscador (Solo si hay módulo seleccionado) */}
+                          {selectedModule && (
+                            <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                              <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                  <Input
+                                    placeholder={selectedModule === 'DEFENSA' ? "Filtrar por radicado, demandante o ID..." : "Filtrar por radicado o investigado..."}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-9 bg-white"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                  />
+                                </div>
+                                <Button onClick={handleSearch} disabled={isSearching} variant="default" className="bg-purple-600 hover:bg-purple-700">
+                                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                </Button>
+                              </div>
+
+                              {/* Resultados */}
+                              {searchResults.length > 0 && (
+                                <div className="bg-white border border-gray-200 rounded-md max-h-[180px] overflow-y-auto shadow-inner">
+                                  {searchResults.map((proc) => (
+                                    <div
+                                      key={proc.id}
+                                      onClick={() => setSelectedProcess(proc)}
+                                      className={`p-3 text-sm border-b border-gray-100 cursor-pointer hover:bg-purple-50 transition-colors ${selectedProcess?.id === proc.id ? 'bg-purple-50 border-l-4 border-purple-600 pl-2' : ''
+                                        }`}
+                                    >
+                                      <div className="flex justify-between items-start">
+                                        <p className="font-bold text-gray-900">{proc.radicado}</p>
+                                        <Badge variant="outline" className="text-[10px]">{selectedModule === 'DEFENSA' ? 'Judicial' : 'Disciplinario'}</Badge>
+                                      </div>
+                                      <p className="text-gray-600 truncate mt-1">
+                                        {selectedModule === 'DEFENSA'
+                                          ? `Dte: ${proc.demandante} - Dda: ${proc.demandado}`
+                                          : `Inv: ${proc.investigado || proc.nombreInvestigado}`}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {searchResults.length === 0 && !isSearching && (
+                                <div className="text-center py-4 text-gray-500 italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                  No se encontraron procesos con ese criterio
+                                </div>
+                              )}
+
+                              {/* Botón Acción Final */}
+                              <Button
+                                className="w-full h-10 font-bold shadow-md transform active:scale-95 transition-all"
+                                style={{ background: '#003DA5' }} // Corporate Blue
+                                disabled={!selectedProcess || linking}
+                                onClick={executeLink}
+                              >
+                                {linking ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Vinculando Correo...
+                                  </>
+                                ) : (
+                                  <>
+                                    <ExternalLink className="w-4 h-4 mr-2" />
+                                    Confirmar Vinculación al Expediente
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Info Default (Sin selección) */}
+                          {!selectedModule && (
+                            <div className="text-center p-4 bg-purple-50/50 rounded-lg border border-dashed border-purple-200 text-purple-800 text-sm">
+                              Seleccione el módulo destino para derivar esta comunicación
+                            </div>
+                          )}
+                        </div>
+                        {/* SECCIÓN DE DERIVACIÓN MANUAL END */}
                       </div>
                     </Card>
                   ) : (
@@ -613,10 +777,10 @@ export function ModalExpedienteComunicacion({
               </div>
               <div className="flex items-center gap-2">
                 {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
-                <Button variant="outline" size="sm" onClick={handleArchivarLocal}>
-                  <Archive className="w-4 h-4 mr-2" />
-                  Archivar
-                </Button>
+                  <Button variant="outline" size="sm" onClick={handleArchivarLocal}>
+                    <Archive className="w-4 h-4 mr-2" />
+                    Archivar
+                  </Button>
                 )}
                 <Button onClick={onClose}>
                   Cerrar

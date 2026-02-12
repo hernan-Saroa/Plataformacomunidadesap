@@ -13,8 +13,8 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { Card } from '../../../ui/card';
 import { Badge } from '../../../ui/badge';
-import { 
-  Bookmark, X, Save, AlertCircle, CheckCircle, 
+import {
+  Bookmark, X, Save, AlertCircle, CheckCircle,
   Flag, MessageSquare, Plus
 } from 'lucide-react';
 import { useState } from 'react';
@@ -26,9 +26,10 @@ interface ModalAgregarNotaProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  onGuardar?: (nota: any) => void;
 }
 
-export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNotaProps) {
+export function ModalAgregarNota({ isOpen, onClose, expediente, onGuardar }: ModalAgregarNotaProps) {
   const [titulo, setTitulo] = useState('');
   const [contenido, setContenido] = useState('');
   const [tipo, setTipo] = useState<'Importante' | 'Seguimiento' | 'Informativa'>('Informativa');
@@ -59,22 +60,23 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
         duration: 4000
       });
 
-      // Log para trazabilidad
-      console.log('📝 NOTA AGREGADA AL EXPEDIENTE:', {
-        expediente: expediente.id,
-        titulo,
-        contenido,
-        tipo,
-        autor: 'Usuario Actual', // En producción vendría del contexto de autenticación
-        fecha: new Date().toISOString()
-      });
+
 
       // Limpiar formulario
       setTitulo('');
       setContenido('');
       setTipo('Informativa');
       setGuardando(false);
-      
+
+      if (onGuardar) {
+        onGuardar({
+          titulo,
+          contenido,
+          tipo,
+          fecha: new Date().toISOString()
+        });
+      }
+
       onClose();
     }, 1500);
   };
@@ -82,25 +84,25 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
   const getTipoConfig = (tipoNota: typeof tipo) => {
     switch (tipoNota) {
       case 'Importante':
-        return { 
-          color: '#DC2626', 
-          bg: '#FEE2E2', 
+        return {
+          color: '#DC2626',
+          bg: '#FEE2E2',
           icon: Flag,
           label: 'Importante',
           description: 'Nota de alta prioridad que requiere atención inmediata'
         };
       case 'Seguimiento':
-        return { 
-          color: '#3B82F6', 
-          bg: '#DBEAFE', 
+        return {
+          color: '#3B82F6',
+          bg: '#DBEAFE',
           icon: CheckCircle,
           label: 'Seguimiento',
           description: 'Nota sobre el progreso y seguimiento del expediente'
         };
       case 'Informativa':
-        return { 
-          color: '#10B981', 
-          bg: '#D1FAE5', 
+        return {
+          color: '#10B981',
+          bg: '#D1FAE5',
           icon: MessageSquare,
           label: 'Informativa',
           description: 'Nota general con información del expediente'
@@ -113,7 +115,7 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl max-h-[75vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Agregar Nota - Expediente {expediente.id}
         </DialogTitle>
@@ -171,23 +173,22 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
                 const config = getTipoConfig(tipoOpcion);
                 const isSelected = tipo === tipoOpcion;
                 const Icon = config.icon;
-                
+
                 return (
                   <Card
                     key={tipoOpcion}
-                    className={`p-4 cursor-pointer transition-all hover:shadow-md ${
-                      isSelected ? 'border-2' : 'border-2 border-transparent'
-                    }`}
-                    style={isSelected ? { 
+                    className={`p-4 cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-2' : 'border-2 border-transparent'
+                      }`}
+                    style={isSelected ? {
                       borderColor: config.color,
-                      background: config.bg 
+                      background: config.bg
                     } : {}}
                     onClick={() => setTipo(tipoOpcion)}
                   >
                     <div className="flex items-start gap-3">
-                      <div 
+                      <div
                         className="p-2 rounded-lg"
-                        style={{ 
+                        style={{
                           background: isSelected ? config.color : config.bg,
                           color: isSelected ? '#FFFFFF' : config.color
                         }}
@@ -211,9 +212,9 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
           </div>
 
           {/* Vista previa del tipo seleccionado */}
-          <Card 
+          <Card
             className="p-4 border-2"
-            style={{ 
+            style={{
               background: tipoActual.bg,
               borderColor: tipoActual.color
             }}
@@ -278,16 +279,16 @@ export function ModalAgregarNota({ isOpen, onClose, expediente }: ModalAgregarNo
           <Card className="p-3 bg-blue-50 border-blue-300">
             <p className="text-xs text-blue-900 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial. 
+              Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial.
               Se registrará automáticamente quién creó la nota y cuándo.
             </p>
           </Card>
         </div>
 
         {/* ==================== FOOTER STICKY CON BOTONES ==================== */}
-        <div 
+        <div
           className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
+          style={{
             borderTopColor: '#F59E0B',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
           }}

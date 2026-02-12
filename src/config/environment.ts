@@ -70,8 +70,8 @@ export const ONLYOFFICE_URL = VITE_ONLYOFFICE_URL || (isLocalhost ? 'http://loca
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
   development: 'http://localhost:3000', // API Gateway local
-  dev: 'http://4.156.71.181:3000', // Servidor de desarrollo del equipo
-  production: 'http://4.156.71.181:3000',
+  dev: 'http://4.156.71.181/services', // Servidor de desarrollo del equipo (via Nginx)
+  production: 'http://4.156.71.181/services', // Gateway expuesto en /services
 };
 
 // URLs directas a cada microservicio (para desarrollo local sin Docker)
@@ -195,7 +195,22 @@ export const config = {
   API_RETRY_DELAY: 1000,
 
   // WebSocket URL (para notificaciones en tiempo real)
-  WS_URL: getEnvVar('VITE_WS_URL') || (ENV === 'dev' ? 'ws://4.156.71.181:3000' : 'ws://localhost:3000'),
+  WS_URL: (() => {
+    const defaultHttp =
+      VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+
+    const asWs = (() => {
+      try {
+        const url = new URL(defaultHttp);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        return url.toString();
+      } catch {
+        return defaultHttp.replace(/^http/, 'ws');
+      }
+    })();
+
+    return getEnvVar('VITE_WS_URL') || asWs;
+  })(),
 
   // Configuración de paginación por defecto
   DEFAULT_PAGE_SIZE: 20,

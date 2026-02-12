@@ -6,7 +6,7 @@
  * URL: /certificados/api/v1/* -> certification-service:3004/*
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type { PaginatedResponse } from './config';
 import type {
   CertificadoGraduado,
@@ -19,10 +19,6 @@ import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environ
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/certificados/api/v1';
-const TEMPLATE_BASE_URL =
-  API_MODE === 'direct'
-    ? `${MICROSERVICE_URLS.certificados}`
-    : `${getServiceUrl('certificados')}/certificados/api/v1`;
 
 export const certificadosService = {
   /**
@@ -96,35 +92,35 @@ export const certificadosService = {
       page?: number;
       limit?: number;
     }): Promise<any> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, { params, requiresAuth: false });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, { params });
     },
 
     /**
      * Obtener certificado laboral por ID
      */
     async obtenerPorId(id: string): Promise<CertificadoLaboral> {
-      return apiClient.get<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/certificados/${id}`, { requiresAuth: false });
+      return apiClient.get<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/certificados/${id}`);
     },
 
     /**
      * Aprobar certificado laboral
      */
     async aprobar(id: string): Promise<CertificadoLaboral> {
-      return apiClient.patch<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/solicitudes/${id}`, { estado: 'APROBADO' }, { requiresAuth: false });
+      return apiClient.patch<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/solicitudes/${id}`, { estado: 'APROBADO' });
     },
 
     /**
      * Rechazar certificado laboral
      */
     async rechazar(id: string, motivo: string): Promise<CertificadoLaboral> {
-      return apiClient.patch<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/solicitudes/${id}`, { estado: 'RECHAZADO', observaciones: motivo }, { requiresAuth: false });
+      return apiClient.patch<CertificadoLaboral>(`${SERVICE_PREFIX}/certificates/solicitudes/${id}`, { estado: 'RECHAZADO', observaciones: motivo });
     },
 
     /**
      * Generar PDF de certificado laboral
      */
     async generarPDF(id: string): Promise<{ pdfUrl: string }> {
-      return apiClient.post<{ pdfUrl: string }>(`${SERVICE_PREFIX}/certificates/certificados/generate/${id}`, {}, { requiresAuth: false });
+      return apiClient.post<{ pdfUrl: string }>(`${SERVICE_PREFIX}/certificates/certificados/generate/${id}`, {});
     },
 
     /**
@@ -136,12 +132,12 @@ export const certificadosService = {
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
         templateType?: 'docente' | 'administrador';
+        publicBaseUrl?: string;
       },
     ): Promise<{ mensaje: string; email: string }> {
       return apiClient.post(
         `${SERVICE_PREFIX}/certificates/certificados/${id}/reenviar`,
         options || {},
-        { requiresAuth: false },
       );
     },
   },
@@ -261,29 +257,17 @@ export const certificadosService = {
      * Obtener configuración activa de la plantilla
      */
     async obtenerConfiguracion(tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config`, {
-        params: { tipo },
-      });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config?tipo=${tipo}`);
     },
 
     /**
      * Actualizar nombre del firmante
      */
     async actualizarNombreFirmante(signerName: string, updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/signer-name?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ signerName, updatedBy }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/signer-name?tipo=${tipo}`,
+        { signerName, updatedBy },
+      );
     },
 
     /**
@@ -296,18 +280,10 @@ export const certificadosService = {
         formData.append('updatedBy', updatedBy);
       }
 
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/upload-signature?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/template-config/upload-signature?tipo=${tipo}`,
+        formData,
+      );
     },
 
     /**
@@ -320,18 +296,10 @@ export const certificadosService = {
         formData.append('updatedBy', updatedBy);
       }
 
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/upload-logo?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/template-config/upload-logo?tipo=${tipo}`,
+        formData,
+      );
     },
 
     /**
@@ -349,97 +317,47 @@ export const certificadosService = {
       * Quitar firma (dejar vacía)
       */
     async resetFirma(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-signature?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ updatedBy }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/reset-signature?tipo=${tipo}`,
+        { updatedBy },
+      );
     },
 
     /**
       * Restablecer nombre del firmante al predeterminado
       */
     async resetNombreFirmante(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-signer?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ updatedBy }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
+      try {
+        return await apiClient.post(
+          `${SERVICE_PREFIX}/certificates/template-config/reset-signer?tipo=${tipo}`,
+          { updatedBy },
+        );
+      } catch (error: any) {
+        if (error.status === 404) {
           return await certificadosService.plantilla.actualizarNombreFirmante('', updatedBy, tipo);
         }
-
-        let errorMessage = `Error ${response.status}: ${response.statusText}`;
-        try {
-          const error = await response.json();
-          errorMessage = error.message || errorMessage;
-        } catch {
-          const errorText = await response.text();
-          if (errorText) {
-            errorMessage = errorText;
-          }
-        }
-        throw new Error(errorMessage);
+        throw error;
       }
-
-      return await response.json();
     },
 
     /**
       * Restablecer titulo del cargo al predeterminado
       */
     async resetTituloCargo(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-cargo-title?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ updatedBy }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/reset-cargo-title?tipo=${tipo}`,
+        { updatedBy },
+      );
     },
 
     /**
       * Restablecer contenido del certificado al predeterminado
       */
     async resetContenido(updatedBy?: string, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/reset-content?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ updatedBy }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/reset-content?tipo=${tipo}`,
+        { updatedBy },
+      );
     },
 
     /**
@@ -461,9 +379,7 @@ export const certificadosService = {
       limit: number = 10,
       offset: number = 0
     ): Promise<{ items: any[]; total: number; limit: number; offset: number }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config/change-history`, {
-        params: { tipo, limit, offset },
-      });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config/change-history?tipo=${tipo}&limit=${limit}&offset=${offset}`);
     },
 
     /**
@@ -475,21 +391,10 @@ export const certificadosService = {
       certificateContentHtml?: string;
       updatedBy?: string;
     }, tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      const url = `${TEMPLATE_BASE_URL}/certificates/template-config/content?tipo=${tipo}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `Error ${response.status}: ${response.statusText}`);
-      }
-
-      return await response.json();
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/template-config/content?tipo=${tipo}`,
+        data,
+      );
     },
   },
 };

@@ -37,6 +37,7 @@ interface CertificadoDetallePanelProps {
       documento: string;
       email: string;
       cargo: string;
+      cargo_calculado?: string;
       dependencia: string;
       dependenciaPadre: string;
       tipoVinculacion: string;
@@ -44,12 +45,17 @@ interface CertificadoDetallePanelProps {
       grado: string;
       salario: number;
     };
-    estado: 'activo' | 'revocado' | 'expirado';
+    estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
     tipoSolicitud?: 'AUTOSERVICIO' | 'MANUAL';
     fechaSolicitud: string;
     fechaGeneracion: string;
     position_location?: string;
+    department?: string;
     campus?: string;
+    cod_cargo?: string;
+    cod_grade?: string;
+    templateSnapshot?: any;
+    templateType?: 'docente' | 'administrador';
     solicitante?: {
       nombre: string;
       tipo: 'autoservicio' | 'manual';
@@ -75,7 +81,76 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
   };
-  const ubicacionCargo = normalizarDependencia(certificado.position_location) || '';
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
+  const ubicacionCargo =
+    normalizarDependencia(
+      certificado.department ||
+      certificado.position_location ||
+      certificado.empleado.dependencia ||
+      '',
+    ) || '';
+  const cargoCalculado = (
+    certificado.empleado.cargo_calculado ||
+    construirCargoVariable(
+      certificado.empleado.cargo,
+      certificado.cod_cargo,
+      certificado.cod_grade,
+    ) ||
+    certificado.empleado.cargo
+  );
 
   // Helper para formatear fechas de forma segura
   const parseDateOnly = (fechaStr: string) => {
@@ -368,21 +443,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
 
   const handleDescargar = () => {
-    if (certificado.pdfUrl) {
-      const link = document.createElement('a');
-      link.href = certificado.pdfUrl;
-      link.download = `${certificado.consecutivo}.pdf`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Descarga iniciada', {
-        description: `${certificado.consecutivo}.pdf`
-      });
-      return;
-    }
-
-    // Generar mediante visor en modo oculto
+    // Generar mediante visor en modo oculto para asegurar variables actualizadas
     setAutoPDFAction('download');
     setShowPDFViewer(true);
     setTimeout(() => {
@@ -401,7 +462,9 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
 
     try {
-      const response = await certificadosService.laborales.reenviar(certificado.id);
+      const response = await certificadosService.laborales.reenviar(certificado.id, {
+        publicBaseUrl: getPublicBaseUrl(),
+      });
       toast.success('Correo reenviado', {
         id: 'send-certificate-email',
         description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
@@ -420,18 +483,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const handleImprimir = () => {
-    if (certificado.pdfUrl) {
-      const printWindow = window.open(certificado.pdfUrl, '_blank');
-      if (printWindow) {
-        printWindow.addEventListener('load', () => {
-          printWindow.focus();
-          printWindow.print();
-        });
-      }
-      toast.info('Enviando a impresion...');
-      return;
-    }
-
     setAutoPDFAction('print');
     setShowPDFViewer(true);
     setTimeout(() => {
@@ -497,6 +548,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       activo: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, label: 'Activo' },
+      inactivo: { bg: 'bg-red-100', text: 'text-red-800', icon: Clock, label: 'Inactivo' },
       revocado: { bg: 'bg-red-100', text: 'text-red-800', icon: Clock, label: 'Revocado' },
       expirado: { bg: 'bg-gray-100', text: 'text-gray-800', icon: Clock, label: 'Expirado' }
     };
@@ -566,7 +618,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
                           <Briefcase className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.cargo}
+                          {cargoCalculado}
                         </p>
                       </div>
                       <div>
@@ -698,7 +750,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
                             <QRCodeCanvas
                               value={verificationUrl}
-                              size={72}
+                              size={79}
                               level="H"
                               includeMargin
                               className="block"

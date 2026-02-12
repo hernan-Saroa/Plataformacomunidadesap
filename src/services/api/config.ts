@@ -16,7 +16,7 @@ const VITE_MODE = import.meta.env.MODE || 'development';
 const API_URLS = {
   development: 'http://localhost:3000',
   // En servidor dev usamos la IP; cambiar a https://api.esap.edu.co en prod real
-  production: 'http://4.156.71.181:3000',
+  production: 'http://4.156.71.181/services',
 };
 
 export const API_CONFIG = {
@@ -42,7 +42,11 @@ const getDevBaseURL = (): string => {
   if (VITE_API_URL) return VITE_API_URL;
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const protocol = window.location.protocol || 'http:';
-    return `${protocol}//${window.location.hostname}:3000`;
+    const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+    if (isLoopback) {
+      return `${protocol}//${window.location.hostname}:3000`;
+    }
+    return `${protocol}//${window.location.hostname}/services`;
   }
   return API_URLS.development;
 };
