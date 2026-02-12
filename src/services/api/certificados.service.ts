@@ -257,9 +257,7 @@ export const certificadosService = {
      * Obtener configuración activa de la plantilla
      */
     async obtenerConfiguracion(tipo: 'docente' | 'administrador' = 'docente'): Promise<any> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config`, {
-        params: { tipo },
-      });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config?tipo=${tipo}`);
     },
 
     /**
@@ -388,9 +386,7 @@ export const certificadosService = {
       limit: number = 10,
       offset: number = 0
     ): Promise<{ items: any[]; total: number; limit: number; offset: number }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config/change-history`, {
-        params: { tipo, limit, offset },
-      });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/template-config/change-history?tipo=${tipo}&limit=${limit}&offset=${offset}`);
     },
 
     /**
