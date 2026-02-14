@@ -269,22 +269,24 @@ export function VisorPDFCertificado({
   const normalizarEstructuraParrafos = (html: string): string => {
     if (!html) return html;
 
-    let resultado = html.replace(/\r\n?/g, '\n');
-    resultado = resultado.replace(/<div\b[^>]*>/gi, '<p>');
-    resultado = resultado.replace(/<\/div>/gi, '</p>');
-    resultado = resultado.replace(/(?:<br\s*\/?>\s*){2,}/gi, '</p><p>');
-    resultado = resultado.replace(/<p>\s*<\/p>/gi, '');
+    let resultado = html.replace(/\r\n?/g, '\n').replace(/&nbsp;/g, ' ');
+    resultado = resultado.replace(
+      /<(\/)?(p|div|li|ul|ol|section|article|blockquote)\b[^>]*>/gi,
+      '\n'
+    );
+    resultado = resultado.replace(/<br\s*\/?>/gi, '\n');
+    resultado = resultado.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
 
-    if (!/<p[\s>]/i.test(resultado)) {
-      resultado = `<p>${resultado}</p>`;
+    const parrafos = resultado
+      .split(/\n+/)
+      .map((segmento) => segmento.trim())
+      .filter(Boolean);
+
+    if (!parrafos.length) {
+      return '';
     }
 
-    resultado = resultado.replace(/<p>\s*(?:<br\s*\/?>\s*)+/gi, '<p>');
-    resultado = resultado.replace(/(?:<br\s*\/?>\s*)+\s*<\/p>/gi, '</p>');
-    resultado = resultado.replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*<\/p>/gi, '');
-    resultado = resultado.replace(/<\/p>\s*<p>/gi, '</p><p>');
-
-    return resultado.trim();
+    return parrafos.map((parrafo) => `<p>${parrafo}</p>`).join('');
   };
 
   // Función para reemplazar variables en el contenido HTML Y LIMPIAR ESTILOS DE RESALTADO

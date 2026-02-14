@@ -667,7 +667,7 @@ export class CertificatesService {
         ? 'fallida'
         : 'exitosa';
 
-    const ciudad = validation.city || validation.location || 'Desconocido';
+    const ciudad = validation.city || validation.region || validation.location || 'Desconocido';
     const pais = validation.country || 'Desconocido';
 
     return {
@@ -692,11 +692,23 @@ export class CertificatesService {
     };
   }
 
-  private normalizeIp(ip?: string): string | null {
-    if (!ip) return null;
-    const trimmed = ip.split(',')[0]?.trim();
-    if (!trimmed) return null;
-    let normalized = trimmed;
+  private isIpLike(value: string): boolean {
+    if (!value) return false;
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(value)) return true;
+    return value.includes(':');
+  }
+
+  private normalizeSingleIp(raw?: string): string | null {
+    if (!raw) return null;
+    let normalized = String(raw).trim();
+    if (!normalized) return null;
+
+    if (normalized.toLowerCase().startsWith('for=')) {
+      normalized = normalized.slice(4).trim();
+    }
+
+    normalized = normalized.replace(/^"+|"+$/g, '');
+    normalized = normalized.split(';')[0]?.trim() || normalized;
 
     if (normalized.startsWith('[') && normalized.includes(']')) {
       normalized = normalized.slice(1, normalized.indexOf(']'));
@@ -704,17 +716,38 @@ export class CertificatesService {
 
     normalized = normalized.replace(/^::ffff:/i, '');
 
-    if (/^\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+$/.test(normalized)) {
+    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
       normalized = normalized.split(':')[0];
     }
 
+    if (!this.isIpLike(normalized)) return null;
     return normalized || null;
+  }
+
+  private normalizeIp(ip?: string): string | null {
+    if (!ip) return null;
+
+    const candidates = String(ip)
+      .split(',')
+      .map((item) => this.normalizeSingleIp(item))
+      .filter((item): item is string => Boolean(item));
+
+    if (!candidates.length) return null;
+
+    const publicIp = candidates.find((candidate) => !this.isPrivateIp(candidate));
+    return publicIp || candidates[0];
   }
 
   private isPrivateIp(ip: string): boolean {
     if (!ip) return true;
     const lower = ip.toLowerCase();
-    if (lower === '::1' || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80')) {
+    if (
+      lower === '::1' ||
+      lower === '::' ||
+      lower.startsWith('fc') ||
+      lower.startsWith('fd') ||
+      lower.startsWith('fe80')
+    ) {
       return true;
     }
 
@@ -725,10 +758,27 @@ export class CertificatesService {
 
     const [a, b] = parts;
     if (a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
     if (a === 192 && b === 168) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
 
     return false;
+  }
+
+  private async fetchJsonWithTimeout(url: string, timeoutMs = 2500): Promise<any | null> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private async resolveGeoFromIp(ip?: string): Promise<{
@@ -743,25 +793,49 @@ export class CertificatesService {
     if (!normalizedIp || this.isPrivateIp(normalizedIp)) return null;
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
-      const response = await fetch(`https://ipwho.is/${encodeURIComponent(normalizedIp)}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      const ipWho = await this.fetchJsonWithTimeout(
+        `https://ipwho.is/${encodeURIComponent(normalizedIp)}`,
+      );
+      if (ipWho && ipWho.success !== false) {
+        const geo = {
+          city: ipWho.city || undefined,
+          region: ipWho.region || undefined,
+          country: ipWho.country || undefined,
+          latitude: typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
+          longitude: typeof ipWho.longitude === 'number' ? ipWho.longitude : undefined,
+          isp: ipWho.connection?.isp || undefined,
+        };
+        if (geo.city || geo.region || geo.country) {
+          return geo;
+        }
+      }
 
-      if (!response.ok) return null;
-      const data = await response.json();
-      if (!data || data.success === false) return null;
+      const ipApiCo = await this.fetchJsonWithTimeout(
+        `https://ipapi.co/${encodeURIComponent(normalizedIp)}/json/`,
+      );
+      if (ipApiCo && !ipApiCo.error) {
+        const latitude =
+          typeof ipApiCo.latitude === 'number'
+            ? ipApiCo.latitude
+            : Number(ipApiCo.latitude) || undefined;
+        const longitude =
+          typeof ipApiCo.longitude === 'number'
+            ? ipApiCo.longitude
+            : Number(ipApiCo.longitude) || undefined;
+        const geo = {
+          city: ipApiCo.city || undefined,
+          region: ipApiCo.region || undefined,
+          country: ipApiCo.country_name || ipApiCo.country || undefined,
+          latitude,
+          longitude,
+          isp: ipApiCo.org || undefined,
+        };
+        if (geo.city || geo.region || geo.country) {
+          return geo;
+        }
+      }
 
-      return {
-        city: data.city || undefined,
-        region: data.region || undefined,
-        country: data.country || undefined,
-        latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
-        longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
-        isp: data.connection?.isp || undefined,
-      };
+      return null;
     } catch (error) {
       this.logger.warn(`No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`);
       return null;
@@ -776,7 +850,7 @@ export class CertificatesService {
 
     const mapped = await Promise.all(
       validaciones.map(async (validation) => {
-        if (!validation.city && !validation.country && validation.ip_address) {
+        if ((!validation.city || !validation.country) && validation.ip_address) {
           const geo = await this.resolveGeoFromIp(validation.ip_address);
           if (geo) {
             validation.city = geo.city || validation.city;
@@ -814,7 +888,9 @@ export class CertificatesService {
     const location =
       geo?.city && geo?.country
         ? `${geo.city}, ${geo.country}`
-        : geo?.city || geo?.country || undefined;
+        : geo?.region && geo?.country
+          ? `${geo.region}, ${geo.country}`
+          : geo?.city || geo?.region || geo?.country || undefined;
 
     const validation = this.validationRepo.create({
       certificate_id: certificate.id,
