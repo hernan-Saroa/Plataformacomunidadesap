@@ -13,7 +13,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 22 Enero 2025
  */
 
-import { createContext, useContext, useState, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
 // ============ TIPOS ============
 
@@ -103,7 +103,6 @@ interface IntegracionContextType {
   // Lista de auditorías que requieren plan
   auditoriasConHallazgos: AuditoriaParaPlan[];
   agregarAuditoriaConHallazgos: (auditoria: AuditoriaParaPlan) => void;
-  limpiarAuditoriasConHallazgos: () => void; // Nuevo método para limpiar
   actualizarEstadoPlan: (auditoriaId: string, estado: AuditoriaParaPlan['estadoPlan']) => void;
 
   // Planes creados
@@ -170,10 +169,6 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
     });
   };
 
-  const limpiarAuditoriasConHallazgos = () => {
-    setAuditoriasConHallazgos([]);
-  };
-
   const actualizarEstadoPlan = (auditoriaId: string, estado: AuditoriaParaPlan['estadoPlan']) => {
     setAuditoriasConHallazgos((prev) =>
       prev.map((a) => (a.id === auditoriaId ? { ...a, estadoPlan: estado } : a))
@@ -214,27 +209,7 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
     return expedientes.find((e) => e.auditoriaId === auditoriaId);
   };
 
-  const value = useMemo(() => ({
-    auditoriaSeleccionada,
-    seleccionarAuditoria,
-    limpiarSeleccion,
-    auditoriasConHallazgos,
-    agregarAuditoriaConHallazgos,
-    limpiarAuditoriasConHallazgos,
-    actualizarEstadoPlan,
-    planesCreados,
-    crearPlan,
-    navegarAFormulacion,
-    setNavegarAFormulacion,
-  }), [
-    auditoriaSeleccionada,
-    auditoriasConHallazgos,
-    planesCreados,
-    navegarAFormulacion
-  ]);
-
   return (
-    // <IntegracionContext.Provider value={value}>
     <IntegracionContext.Provider
       value={{
         // Existentes

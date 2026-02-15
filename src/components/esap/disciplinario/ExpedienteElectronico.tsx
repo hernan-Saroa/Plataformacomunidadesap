@@ -1407,9 +1407,8 @@ function ModalSubirDocumento({
               Archivo *
             </label>
             <div
-              className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
+              className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                }`}
               onDragEnter={(e) => {
                 e.preventDefault();
                 setDragActive(true);
@@ -2356,10 +2355,13 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
       d.descripcion.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesTipo = filterTipo === 'all' || d.tipo === filterTipo;
+    return matchesSearch && matchesTipo;
+  });
+
 
   // Obtener color según tipo de proceso
   const getTipoColor = (tipo: string) => {
-    switch(tipo) {
+    switch (tipo) {
       case 'Defensa Judicial':
         return {
           bg: '#10B981',
@@ -2389,7 +2391,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
 
   // Obtener badge de estado
   const getEstadoBadge = (estado: string) => {
-    switch(estado) {
+    switch (estado) {
       case 'En Proceso':
         return { bg: '#FEF3C7', color: '#D97706', text: 'En Proceso' };
       case 'Finalizado':
@@ -2417,11 +2419,10 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
       <div className="flex items-center gap-6 mb-6 border-b" style={{ borderColor: '#E5E7EB' }}>
         <button
           onClick={() => setVistaActual('procesos')}
-          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${
-            vistaActual === 'procesos'
-              ? 'border-[#003DA5] text-[#003DA5]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
+          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${vistaActual === 'procesos'
+            ? 'border-[#003DA5] text-[#003DA5]'
+            : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
         >
           <Folder className="w-4 h-4" />
           Expedientes por Proceso
@@ -2431,18 +2432,17 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
         </button>
         <button
           onClick={() => setVistaActual('estadisticas')}
-          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${
-            vistaActual === 'estadisticas'
-              ? 'border-[#003DA5] text-[#003DA5]'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
+          className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-colors ${vistaActual === 'estadisticas'
+            ? 'border-[#003DA5] text-[#003DA5]'
+            : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
         >
           <BarChart3 className="w-4 h-4" />
           Estadísticas
         </button>
       </div>
 
-      {vistaActual === 'procesos' ? (
+      {vistaActual === 'procesos' && (
         <>
           {/* Buscador */}
           <div className="mb-6">
@@ -2468,148 +2468,151 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             <Package className="w-5 h-5" />
             Exportar Todos (ZIP)
           </button>
-        </div>
 
-        {/* Selector de Proceso - DESTACADO CON CARD NARANJA */}
-        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-lg p-5 mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-              <FolderOpen className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-gray-900">
-                Proceso Disciplinario
-              </label>
-              <p className="text-xs text-gray-600">Seleccione el proceso para ver su expediente electrónico</p>
-            </div>
-          </div>
-          <div className="relative">
-            <input
-              type="text"
-              value={procesoSearchQuery}
-              onChange={(e) => setProcesoSearchQuery(e.target.value)}
-              placeholder="Buscar proceso (ej: P-120-2025)..."
-              className="w-full px-4 py-3 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-900"
-              onFocus={() => setShowProcesoDropdown(true)}
-              onBlur={() => setTimeout(() => setShowProcesoDropdown(false), 200)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && radicadosFiltrados.length === 1) {
-                  handleSeleccionarProceso(radicadosFiltrados[0]);
-                }
-              }}
-            />
-            {showProcesoDropdown && radicadosFiltrados.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-40 overflow-y-auto">
-                {radicadosFiltrados.map(radicado => (
-                  <div
-                    key={radicado}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-100 font-medium"
-                    onClick={() => handleSeleccionarProceso(radicado)}
-                  >
-                    {radicado}
-                  </div>
-                ))}
+
+          {/* Selector de Proceso - DESTACADO CON CARD NARANJA */}
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-lg p-5 mb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
+                <FolderOpen className="w-6 h-6 text-white" />
               </div>
-            )}
-            {showProcesoDropdown && radicadosFiltrados.length === 0 && procesoSearchQuery && (
-              <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg">
-                <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
+              <div>
+                <label className="block text-sm font-bold text-gray-900">
+                  Proceso Disciplinario
+                </label>
+                <p className="text-xs text-gray-600">Seleccione el proceso para ver su expediente electrónico</p>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Métricas del Proceso Seleccionado */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-gray-600">Total Documentos</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{metrics.totalDocumentos}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-blue-600">Autos</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{metrics.autos}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-purple-600">Evidencias</p>
-            <p className="text-2xl font-bold text-purple-600 mt-1">{metrics.evidencias}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-green-600">Firmados</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{metrics.firmados}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-orange-600">Notificados</p>
-            <p className="text-2xl font-bold text-orange-600 mt-1">{metrics.notificados}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-sm text-indigo-600">Notificaciones</p>
-            <p className="text-2xl font-bold text-indigo-600 mt-1">{metrics.notificaciones}</p>
-          </div>
-        </div>
-
-        {/* Pestañas con Íconos destacados */}
-        <div className="bg-white border border-gray-200 rounded-lg mb-6">
-          <div className="flex gap-1 p-2">
-            <button
-              onClick={() => setVistaActual('documentos')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'documentos'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-                }`}
-            >
-              <FileText className="w-4 h-4" />
-              Documentos ({filteredDocumentos.length})
-            </button>
-            <button
-              onClick={() => setVistaActual('indice')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'indice'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-                }`}
-            >
-              <Archive className="w-4 h-4" />
-              Índice Electrónico
-            </button>
-            <button
-              onClick={() => setVistaActual('auditoria')}
-              className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'auditoria'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-gray-600 hover:bg-gray-100'
-                }`}
-            >
-              <Shield className="w-4 h-4" />
-              Auditoría ({AUDITORIA_MOCK.length})
-            </button>
-          </div>
-        </div>
-
-        {/* Filtros - Solo para vista Documentos */}
-        {vistaActual === 'documentos' && (
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            </div>
+            <div className="relative">
               <input
                 type="text"
-                placeholder="Buscar documentos en este proceso..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={procesoSearchQuery}
+                onChange={(e) => setProcesoSearchQuery(e.target.value)}
+                placeholder="Buscar proceso (ej: P-120-2025)..."
+                className="w-full px-4 py-3 border-2 border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white font-medium text-gray-900"
+                onFocus={() => setShowProcesoDropdown(true)}
+                onBlur={() => setTimeout(() => setShowProcesoDropdown(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && radicadosFiltrados.length === 1) {
+                    handleSeleccionarProceso(radicadosFiltrados[0]);
+                  }
+                }}
               />
+              {showProcesoDropdown && radicadosFiltrados.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg max-h-40 overflow-y-auto">
+                  {radicadosFiltrados.map(radicado => (
+                    <div
+                      key={radicado}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100 font-medium"
+                      onClick={() => handleSeleccionarProceso(radicado)}
+                    >
+                      {radicado}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showProcesoDropdown && radicadosFiltrados.length === 0 && procesoSearchQuery && (
+                <div className="absolute left-0 right-0 top-full z-10 bg-white border border-gray-300 rounded-b-lg shadow-lg">
+                  <div className="px-4 py-2 text-gray-500">No se encontraron procesos</div>
+                </div>
+              )}
             </div>
-            <select
-              value={filterTipo}
-              onChange={(e) => setFilterTipo(e.target.value)}
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            >
-              <option value="all">Todos los tipos</option>
-              <option value="auto">Autos</option>
-              <option value="evidencia">Evidencias</option>
-              <option value="oficio">Oficios</option>
-              <option value="notificacion">Notificaciones</option>
-              <option value="acta">Actas</option>
-              <option value="otro">Otros</option>
-            </select>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
+          </div>
+
+          {/* Métricas del Proceso Seleccionado */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-gray-600">Total Documentos</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{metrics.totalDocumentos}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-blue-600">Autos</p>
+              <p className="text-2xl font-bold text-blue-600 mt-1">{metrics.autos}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-purple-600">Evidencias</p>
+              <p className="text-2xl font-bold text-purple-600 mt-1">{metrics.evidencias}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-green-600">Firmados</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{metrics.firmados}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-orange-600">Notificados</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">{metrics.notificados}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-indigo-600">Notificaciones</p>
+              <p className="text-2xl font-bold text-indigo-600 mt-1">{metrics.notificaciones}</p>
+            </div>
+          </div>
+
+          {/* Pestañas con Íconos destacados */}
+          <div className="bg-white border border-gray-200 rounded-lg mb-6">
+            <div className="flex gap-1 p-2">
+              <button
+                onClick={() => setVistaActual('documentos')}
+                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'documentos'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+              >
+                <FileText className="w-4 h-4" />
+                Documentos ({filteredDocumentos.length})
+              </button>
+              <button
+                onClick={() => setVistaActual('indice')}
+                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'indice'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+              >
+                <Archive className="w-4 h-4" />
+                Índice Electrónico
+              </button>
+              <button
+                onClick={() => setVistaActual('auditoria')}
+                className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 ${vistaActual === 'auditoria'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+              >
+                <Shield className="w-4 h-4" />
+                Auditoría ({AUDITORIA_MOCK.length})
+              </button>
+            </div>
+          </div>
+        </>
+      )
+      }
+
+      {/* Filtros - Solo para vista Documentos */}
+      {vistaActual === 'documentos' && (
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar documentos en este proceso..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <select
+            value={filterTipo}
+            onChange={(e) => setFilterTipo(e.target.value)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="all">Todos los tipos</option>
+            <option value="auto">Autos</option>
+            <option value="evidencia">Evidencias</option>
+            <option value="oficio">Oficios</option>
+            <option value="notificacion">Notificaciones</option>
+            <option value="acta">Actas</option>
+            <option value="otro">Otros</option>
+          </select>
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_DOC_UPLOAD) && (
             <button
               onClick={() => setShowModalSeleccion(true)}
               className="px-4 py-2.5 rounded-lg text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
@@ -2618,259 +2621,266 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
               <Upload className="w-4 h-4" />
               Cargar Documento
             </button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )
+      }
 
       {/* Vista: Documentos - TABLA */}
-      {vistaActual === 'documentos' && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {cargandoDocumentos && (
-            <div className="p-8 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="mt-2 text-gray-600">Cargando documentos...</p>
-            </div>
-          )}
-          {!cargandoDocumentos && documentos.length === 0 && (
-            <div className="p-8 text-center">
-              <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 font-medium">No hay documentos en este expediente</p>
-              <p className="text-sm text-gray-500 mt-2">Sube un documento para comenzar</p>
-            </div>
-          )}
-          {!cargandoDocumentos && documentos.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Documento
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Tipo
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Etapa
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Usuario
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Fecha
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Estado
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredDocumentos.map((doc) => (
-                    <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                            style={{ background: doc.urlExterna ? '#FEF3C7' : '#DBEAFE' }}
-                          >
-                            {doc.urlExterna ? (
-                              <LinkIcon className="w-5 h-5" style={{ color: '#F59E0B' }} />
-                            ) : (
-                              <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+
+      {
+        vistaActual === 'documentos' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {cargandoDocumentos && (
+              <div className="p-8 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-gray-600">Cargando documentos...</p>
+              </div>
+            )}
+            {!cargandoDocumentos && documentos.length === 0 && (
+              <div className="p-8 text-center">
+                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 font-medium">No hay documentos en este expediente</p>
+                <p className="text-sm text-gray-500 mt-2">Sube un documento para comenzar</p>
+              </div>
+            )}
+            {!cargandoDocumentos && documentos.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Documento
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Tipo
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Etapa
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Usuario
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Fecha
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Estado
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredDocumentos.map((doc) => (
+                      <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: doc.urlExterna ? '#FEF3C7' : '#DBEAFE' }}
+                            >
+                              {doc.urlExterna ? (
+                                <LinkIcon className="w-5 h-5" style={{ color: '#F59E0B' }} />
+                              ) : (
+                                <FileText className="w-5 h-5" style={{ color: '#3B82F6' }} />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
+                              <p className="text-xs text-gray-500">{doc.tamaño}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge className="text-xs">{doc.tipo}</Badge>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-900">{doc.etapa}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-600">{doc.usuarioCarga}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-600">
+                            {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex gap-1.5">
+                            {doc.metadatos.firmado && (
+                              <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                                ✓ Firmado
+                              </Badge>
+                            )}
+                            {doc.metadatos.notificado && (
+                              <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                                ✓ Notificado
+                              </Badge>
                             )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate">{doc.nombre}</p>
-                            <p className="text-xs text-gray-500">{doc.tamaño}</p>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleVerDocumento(doc)}
+                              className="px-3 py-1.5 text-xs font-medium rounded-lg hover:opacity-80 transition-opacity text-white"
+                              style={{ background: '#003DA5' }}
+                            >
+                              <Eye className="w-3.5 h-3.5 inline mr-1" />
+                              Ver
+                            </button>
+                            <button
+                              onClick={() => handleDescargarDocumento(doc)}
+                              className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
+                            >
+                              <Download className="w-3.5 h-3.5 inline mr-1" />
+                              Descargar
+                            </button>
                           </div>
-                        </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      {/* Vista: Índice Electrónico */}
+      {
+        vistaActual === 'indice' && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
+                Índice Electrónico del Expediente
+              </h2>
+              <button
+                onClick={handleImprimirIndice}
+                className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
+                style={{ background: '#DC2626' }}
+                title="Imprimir índice electrónico del expediente"
+              >
+                <Printer className="w-5 h-5" />
+                Imprimir Índice
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Folio</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Documento</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Tipo</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Etapa</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Fecha</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Usuario</th>
+                    <th className="p-3 text-left text-sm font-bold text-gray-900">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {documentos.map((doc, index) => (
+                    <tr key={doc.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 text-sm text-gray-900 font-mono">{String(index + 1).padStart(3, '0')}</td>
+                      <td className="p-3 text-sm text-gray-900">{doc.nombre}</td>
+                      <td className="p-3"><Badge className="text-xs">{doc.tipo}</Badge></td>
+                      <td className="p-3 text-sm text-gray-600">{doc.etapa}</td>
+                      <td className="p-3 text-sm text-gray-600">
+                        {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
                       </td>
-                      <td className="px-6 py-4">
-                        <Badge className="text-xs">{doc.tipo}</Badge>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-900">{doc.etapa}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-600">{doc.usuarioCarga}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-gray-600">
-                          {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-1.5">
-                          {doc.metadatos.firmado && (
-                            <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
-                              ✓ Firmado
-                            </Badge>
-                          )}
-                          {doc.metadatos.notificado && (
-                            <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
-                              ✓ Notificado
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleVerDocumento(doc)}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg hover:opacity-80 transition-opacity text-white"
-                            style={{ background: '#003DA5' }}
-                          >
-                            <Eye className="w-3.5 h-3.5 inline mr-1" />
-                            Ver
-                          </button>
-                          <button
-                            onClick={() => handleDescargarDocumento(doc)}
-                            className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
-                          >
-                            <Download className="w-3.5 h-3.5 inline mr-1" />
-                            Descargar
-                          </button>
-                        </div>
+                      <td className="p-3 text-sm text-gray-600">{doc.usuarioCarga}</td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => handleVerDocumento(doc)}
+                          className="text-blue-600 hover:underline text-sm"
+                        >
+                          Ver
+                        </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Vista: Índice Electrónico */}
-      {vistaActual === 'indice' && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
-              Índice Electrónico del Expediente
-            </h2>
-            <button
-              onClick={handleImprimirIndice}
-              className="px-5 py-2.5 rounded-lg text-white font-semibold hover:shadow-lg transition-all duration-200 flex items-center gap-2 hover:scale-105"
-              style={{ background: '#DC2626' }}
-              title="Imprimir índice electrónico del expediente"
-            >
-              <Printer className="w-5 h-5" />
-              Imprimir Índice
-            </button>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Folio</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Documento</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Tipo</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Etapa</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Fecha</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Usuario</th>
-                  <th className="p-3 text-left text-sm font-bold text-gray-900">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documentos.map((doc, index) => (
-                  <tr key={doc.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3 text-sm text-gray-900 font-mono">{String(index + 1).padStart(3, '0')}</td>
-                    <td className="p-3 text-sm text-gray-900">{doc.nombre}</td>
-                    <td className="p-3"><Badge className="text-xs">{doc.tipo}</Badge></td>
-                    <td className="p-3 text-sm text-gray-600">{doc.etapa}</td>
-                    <td className="p-3 text-sm text-gray-600">
-                      {new Date(doc.fechaCarga).toLocaleDateString('es-CO')}
-                    </td>
-                    <td className="p-3 text-sm text-gray-600">{doc.usuarioCarga}</td>
-                    <td className="p-3">
-                      <button
-                        onClick={() => handleVerDocumento(doc)}
-                        className="text-blue-600 hover:underline text-sm"
-                      >
-                        Ver
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Vista: Auditoría */}
-      {vistaActual === 'auditoria' && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
-              Registro de Auditoría
-            </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Clock className="w-4 h-4" />
-              <span>Últimas {AUDITORIA_MOCK.length} actividades</span>
+      {
+        vistaActual === 'auditoria' && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold" style={{ color: '#003DA5' }}>
+                Registro de Auditoría
+              </h2>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Clock className="w-4 h-4" />
+                <span>Últimas {AUDITORIA_MOCK.length} actividades</span>
+              </div>
             </div>
-          </div>
 
-          {AUDITORIA_MOCK.length === 0 ? (
-            <div className="text-center py-12">
-              <Shield className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-600">No hay actividades registradas</p>
-              <p className="text-sm text-gray-500 mt-2">
-                Las actividades del expediente se registrarán automáticamente aquí
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {AUDITORIA_MOCK.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).map((actividad) => (
-                <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div className="flex items-start gap-4">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{ background: '#E0EDFF' }}
-                    >
-                      {actividad.tipo === 'carga' && <Upload className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                      {actividad.tipo === 'descarga' && <Download className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                      {actividad.tipo === 'visualizacion' && <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                      {actividad.tipo === 'modificacion' && <Edit2 className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                      {actividad.tipo === 'enlace_externo' && <LinkIcon className="w-5 h-5" style={{ color: '#003DA5' }} />}
-                      {actividad.tipo === 'exportacion' && <Package className="w-5 h-5" style={{ color: '#003DA5' }} />}
+            {AUDITORIA_MOCK.length === 0 ? (
+              <div className="text-center py-12">
+                <Shield className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <p className="text-gray-600">No hay actividades registradas</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Las actividades del expediente se registrarán automáticamente aquí
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {AUDITORIA_MOCK.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()).map((actividad) => (
+                  <div key={actividad.id} className="p-4 border-l-4 border-blue-500 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: '#E0EDFF' }}
+                      >
+                        {actividad.tipo === 'carga' && <Upload className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                        {actividad.tipo === 'descarga' && <Download className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                        {actividad.tipo === 'visualizacion' && <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                        {actividad.tipo === 'modificacion' && <Edit2 className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                        {actividad.tipo === 'enlace_externo' && <LinkIcon className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                        {actividad.tipo === 'exportacion' && <Package className="w-5 h-5" style={{ color: '#003DA5' }} />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{actividad.documento}</p>
+                        <p className="text-sm text-gray-700 mt-1">{actividad.detalles}</p>
+                        <p className="text-xs text-gray-600 mt-2">
+                          {actividad.usuario} • {new Date(actividad.fecha).toLocaleString('es-CO')}
+                        </p>
+                      </div>
+                      <Badge
+                        className={
+                          actividad.tipo === 'carga' ? 'bg-green-100 text-green-700 border-green-200' :
+                            actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              actividad.tipo === 'visualizacion' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                  actividad.tipo === 'enlace_externo' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' :
+                                    'bg-gray-100 text-gray-700 border-gray-200'
+                        }
+                      >
+                        {actividad.tipo === 'carga' ? 'Carga' :
+                          actividad.tipo === 'descarga' ? 'Descarga' :
+                            actividad.tipo === 'visualizacion' ? 'Visualización' :
+                              actividad.tipo === 'exportacion' ? 'Exportación' :
+                                actividad.tipo === 'enlace_externo' ? 'Enlace Externo' :
+                                  actividad.tipo === 'modificacion' ? 'Modificación' :
+                                    actividad.tipo}
+                      </Badge>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{actividad.documento}</p>
-                      <p className="text-sm text-gray-700 mt-1">{actividad.detalles}</p>
-                      <p className="text-xs text-gray-600 mt-2">
-                        {actividad.usuario} • {new Date(actividad.fecha).toLocaleString('es-CO')}
-                      </p>
-                    </div>
-                    <Badge
-                      className={
-                        actividad.tipo === 'carga' ? 'bg-green-100 text-green-700 border-green-200' :
-                          actividad.tipo === 'descarga' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                            actividad.tipo === 'visualizacion' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                              actividad.tipo === 'exportacion' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                actividad.tipo === 'enlace_externo' ? 'bg-cyan-100 text-cyan-700 border-cyan-200' :
-                                  'bg-gray-100 text-gray-700 border-gray-200'
-                      }
-                    >
-                      {actividad.tipo === 'carga' ? 'Carga' :
-                        actividad.tipo === 'descarga' ? 'Descarga' :
-                          actividad.tipo === 'visualizacion' ? 'Visualización' :
-                            actividad.tipo === 'exportacion' ? 'Exportación' :
-                              actividad.tipo === 'enlace_externo' ? 'Enlace Externo' :
-                                actividad.tipo === 'modificacion' ? 'Modificación' :
-                                  actividad.tipo}
-                    </Badge>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      }
 
       {/* Modales */}
       <AnimatePresence>
@@ -2997,6 +3007,6 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
           ¿Cómo funciona?
         </span>
       </button>
-    </div>
+    </div >
   );
 }

@@ -10,7 +10,7 @@
  * Integración completa Proceso de Auditoría → Expediente Kanban
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronDown, ChevronRight, CheckCircle2, AlertCircle, CheckCircle,
@@ -22,9 +22,6 @@ import { toast } from 'sonner@2.0.3';
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
 import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
 import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { auditoriasApi } from './services/api';
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -196,9 +193,6 @@ interface ActividadesIntegratedProps {
   faseColor: string;
   estadoRequerido?: 'Planeación' | 'Ejecución' | 'Comunicación';
   estadoActual?: string;
-  auditoriaId?: string;
-  checklistInicial?: Record<string, boolean>;
-  onChecklistChange?: (checklist: Record<string, boolean>) => void;
 }
 
 export function ActividadesIntegradas({
@@ -207,82 +201,16 @@ export function ActividadesIntegradas({
   faseColor,
   estadoRequerido,
   estadoActual,
-  auditoriaId,
-  checklistInicial,
-  onChecklistChange,
 }: ActividadesIntegratedProps) {
   const [actividadExpandida, setActividadExpandida] = useState<string | null>(actividades[0]?.id || null);
-  const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>(checklistInicial || {});
-  const [guardando, setGuardando] = useState(false);
-  
-  // Verificar permisos de edición
-  const puedeEditar = authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_EDIT) && onChecklistChange !== undefined;
+  const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>({});
 
-  // Cargar estado inicial desde la BD
-  useEffect(() => {
-    if (checklistInicial && typeof checklistInicial === 'object' && Object.keys(checklistInicial).length > 0) {
-      setChecklistCompletados(checklistInicial);
-    } else if (checklistInicial === undefined || checklistInicial === null) {
-      // Si no hay datos, mantener el estado actual (no resetear)
-    }
-  }, [checklistInicial]);
-
-  const toggleChecklist = async (id: string) => {
-    // Verificar permisos antes de permitir modificación
-    if (!puedeEditar) {
-      toast.info('Solo lectura', {
-        description: 'No tienes permisos para modificar esta lista de chequeo',
-      });
-      return;
-    }
-    
-    // Guardar el estado anterior antes de hacer el cambio optimista
-    const estadoAnterior = { ...checklistCompletados };
-    const nuevoEstado = !checklistCompletados[id];
-    
-    // Actualizar estado local inmediatamente (optimistic update)
-    const nuevoChecklist = {
-      ...checklistCompletados,
-      [id]: nuevoEstado,
-    };
-    setChecklistCompletados(nuevoChecklist);
-
-    // Guardar en la base de datos
-    if (auditoriaId) {
-      setGuardando(true);
-      try {
-        const response = await auditoriasApi.update(auditoriaId, {
-          checklistCompletados: nuevoChecklist,
-        });
-
-        if (response.success) {
-          // Notificar al componente padre del cambio
-          if (onChecklistChange) {
-            onChecklistChange(nuevoChecklist);
-          }
-          // Mostrar toast más visible
-          toast.success(nuevoEstado ? '✅ Tarea completada' : '⏳ Tarea pendiente', {
-            description: 'Cambio guardado en la base de datos',
-            duration: 3000,
-          });
-        } else {
-          // Revertir cambio si falla usando el estado anterior guardado
-          setChecklistCompletados(estadoAnterior);
-          throw new Error(response.error || 'Error al guardar');
-        }
-      } catch (error) {
-        // Revertir cambio local usando el estado anterior guardado
-        setChecklistCompletados(estadoAnterior);
-        console.error('Error al guardar checkbox:', error);
-        toast.error('Error al guardar', {
-          description: error instanceof Error ? error.message : 'No se pudo guardar el cambio',
-        });
-      } finally {
-        setGuardando(false);
-      }
-    } else {
-      toast.success(nuevoEstado ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
-    }
+  const toggleChecklist = (id: string) => {
+    setChecklistCompletados(prev => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+    toast.success(!checklistCompletados[id] ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
   };
 
   const calcularProgreso = (actividadId: string) => {
@@ -399,24 +327,14 @@ export function ActividadesIntegradas({
                       {actividad.checklist.map((item) => (
                         <div
                           key={item.id}
-                          onClick={() => !guardando && puedeEditar && toggleChecklist(item.id)}
-                          className={`flex items-start gap-3 p-2 rounded transition-colors group ${
-                            puedeEditar 
-                              ? 'hover:bg-gray-50 cursor-pointer' 
-                              : 'cursor-default opacity-90'
-                          } ${
-                            guardando ? 'opacity-50 cursor-wait' : ''
-                          }`}
+                          onClick={() => toggleChecklist(item.id)}
+                          className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors group"
                         >
-                          <div className="mt-0.5 relative">
+                          <div className="mt-0.5">
                             {checklistCompletados[item.id] ? (
-                              <CheckCircle2 className={`w-5 h-5 ${puedeEditar ? 'text-green-600' : 'text-green-500'}`} />
+                              <CheckCircle2 className="w-5 h-5 text-green-600" />
                             ) : (
-                              <div className={`w-5 h-5 border-2 rounded transition-colors ${
-                                puedeEditar 
-                                  ? 'border-gray-300 group-hover:border-blue-400' 
-                                  : 'border-gray-200'
-                              }`} />
+                              <div className="w-5 h-5 border-2 border-gray-300 rounded group-hover:border-blue-400 transition-colors" />
                             )}
                           </div>
                           <p

@@ -231,7 +231,7 @@ export function ListasChequeoModule() {
             onAplicarPlantilla={handleAplicarPlantilla}
           />
         )}
-        {tabActiva === "mis-listas" && <MisListasTab />}
+        {tabActiva === "mis-listas" && <MisListasTab onLlenarLista={handleLlenarLista} />}
         {tabActiva === "historial" && <HistorialTab />}
         {tabActiva === "reportes" && <DashboardReportes />}
       </div>
@@ -563,7 +563,7 @@ function PlantillaCard({
 // TAB: MIS LISTAS (En proceso/Borrador) - CON DATOS REALES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function MisListasTab() {
+function MisListasTab({ onLlenarLista }: { onLlenarLista: (listaId: string) => void }) {
   const { obtenerListasPorEstado } = useListasChequeo();
   
   const listasEnProceso = obtenerListasPorEstado("en-proceso");
@@ -604,7 +604,7 @@ function MisListasTab() {
             {/* Acciones */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handleLlenarLista(lista.id)}
+                onClick={() => onLlenarLista(lista.id)}
                 className="px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#0051D5] text-white text-sm font-medium rounded-lg hover:shadow-md transition-all duration-200"
               >
                 Continuar

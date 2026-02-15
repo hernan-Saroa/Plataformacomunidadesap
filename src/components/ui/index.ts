@@ -25,6 +25,9 @@ export type { TouchButtonProps } from './touch-button';
 export { ResponsiveGrid } from './responsive-grid';
 export type { ResponsiveGridProps } from './responsive-grid';
 
+export { ResponsiveTableWrapper } from './responsive-table-wrapper';
+export type { ResponsiveTableWrapperProps } from './responsive-table-wrapper';
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // COMPONENTES EXISTENTES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

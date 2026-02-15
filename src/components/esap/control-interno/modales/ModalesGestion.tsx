@@ -215,8 +215,8 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onAprobar(comentario);
-    toast.success('Auditoría aprobada', {
-      description: 'La auditoría ha sido aprobada y puede iniciar su ejecución'
+    toast.success('Plan de Auditoría Aprobado', {
+      description: 'El plan ha sido aprobado y la auditoría puede iniciar su ejecución'
     });
     onClose();
     setComentario('');
@@ -239,7 +239,7 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
         className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2"
       >
         <Check className="w-4 h-4" />
-        Aprobar Auditoría
+        Aprobar Plan de Auditoría
       </button>
     </div>
   );
@@ -248,13 +248,33 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
     <ModalBaseWorldClass
       isOpen={isOpen}
       onClose={onClose}
-      title="Aprobar Auditoría"
-      subtitle="Confirme la aprobación de la auditoría"
+      title="Aprobar Plan de Auditoría"
+      subtitle="Autorizar el inicio de ejecución de la auditoría"
       size="md"
       headerIcon={headerIcon}
       footerActions={footerActions}
     >
       <div className="space-y-6">
+        {/* Explicación del proceso */}
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <FileText className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h4 className="text-base font-semibold text-gray-900 mb-2">
+                ¿Qué significa "Aprobar el Plan de Auditoría"?
+              </h4>
+              <ul className="text-sm text-gray-700 space-y-1.5 list-disc list-inside">
+                <li>El <strong>plan preliminar de auditoría</strong> (alcance, objetivos, metodología) ha sido revisado</li>
+                <li>Se autoriza formalmente el <strong>inicio de la fase de ejecución</strong></li>
+                <li>El equipo auditor puede comenzar a <strong>realizar el trabajo de campo</strong></li>
+                <li>Se activa el <strong>cronograma de ejecución</strong> y se notifica a los responsables</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         {/* Alert de confirmación */}
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-5">
           <div className="flex items-start gap-3">
@@ -263,11 +283,11 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
             </div>
             <div>
               <h4 className="text-base font-semibold text-gray-900 mb-2">
-                ¿Confirma la aprobación?
+                ¿Confirma la aprobación del plan?
               </h4>
               <p className="text-sm text-gray-700">
-                Al aprobar esta auditoría, se habilitará automáticamente la fase de ejecución 
-                y se notificará al equipo auditor responsable.
+                Al aprobar, la auditoría pasará de <span className="font-semibold text-blue-600">"Planificación"</span> a <span className="font-semibold text-green-600">"Ejecución"</span>, 
+                habilitando el trabajo de campo y notificando al equipo auditor y al proceso auditado.
               </p>
             </div>
           </div>
@@ -276,17 +296,18 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
         {/* Campo de comentarios */}
         <div>
           <label className="block text-base font-semibold text-gray-900 mb-2">
-            Comentarios u Observaciones
+            Comentarios de Aprobación
+            <span className="text-sm text-gray-500 font-normal ml-2">(Opcional)</span>
           </label>
           <p className="text-sm text-gray-600 mb-3">
-            Agregue comentarios adicionales sobre la aprobación (opcional)
+            Agregue observaciones, recomendaciones o condiciones para la ejecución
           </p>
           <textarea
             value={comentario}
             onChange={(e) => setComentario(e.target.value)}
             rows={5}
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base resize-none"
-            placeholder="Ej: Se aprueba el plan de auditoría presentado. Proceder con la ejecución según cronograma establecido."
+            placeholder="Ej: Se aprueba el plan de auditoría presentado. El equipo debe priorizar la revisión de controles financieros durante la primera semana de ejecución."
           />
           <div className="flex justify-between items-center mt-2">
             <span className="text-sm text-gray-500">

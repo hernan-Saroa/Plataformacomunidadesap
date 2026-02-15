@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { ESAPLogo } from '../assets/ESAPLogo';
-import { 
-  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, 
-  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck
+import {
+  ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp,
+  CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck, Menu, X
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { motion, useScroll, useTransform, useReducedMotion } from 'motion/react';
-import { FooterWorldClass } from '../FooterWorldClass';
-import { NewsletterSection } from '../NewsletterSection';
 import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
 import { PublicTitleVerification } from './PublicTitleVerification';
 import { EnrollmentActivationModal } from './EnrollmentActivationModal';
@@ -20,14 +18,14 @@ const STUDENTS_IMAGE_URL = 'https://images.unsplash.com/photo-1769092992447-1805
 interface LandingPageProps {
   onIrALogin?: () => void;
   onLoginClick?: () => void;
-  onNavigate?: (section: string) => void;
+  onNavigate?: (view: string) => void;
 }
 
 export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPageProps) {
   const [vistaActual, setVistaActual] = useState<'landing' | 'certificados-laborales' | 'certificados-graduados' | 'validador-certificados'>('landing');
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  
+
   const handleLoginClick = () => {
     if (onIrALogin) {
       onIrALogin();
@@ -49,9 +47,9 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   const handleActivateNowClick = () => {
     setIsEnrollmentModalOpen(true);
   };
-  
+
   const prefersReducedMotion = useReducedMotion();
-  
+
   const { scrollY } = useScroll();
   const heroOpacity = useTransform(scrollY, [0, 300], [1, 0]);
   const heroScale = useTransform(scrollY, [0, 300], [1, 0.95]);
@@ -61,7 +59,13 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       icon: <Award className="w-7 h-7" />,
       title: 'Certificación de Títulos',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
-      action: () => setVistaActual('certificados-graduados'),
+      action: () => {
+        if (onNavigate) {
+          onNavigate('solicitar-certificados-graduados');
+        } else {
+          setVistaActual('certificados-graduados');
+        }
+      },
       gradient: 'from-[#1e5da8] to-blue-700',
       badge: 'Seguro'
     },
@@ -82,26 +86,26 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   ];
 
   const stats = [
-    { 
-      value: '+17 mil', 
+    {
+      value: '+17 mil',
       label: 'Estudiantes',
       icon: <Users className="w-6 h-6" />,
       trend: 'Comunidad universitaria'
     },
-    { 
-      value: '66', 
+    {
+      value: '66',
       label: 'Años de Trayectoria',
       icon: <Award className="w-6 h-6" />,
       trend: 'Desde 1958'
     },
-    { 
-      value: '84%', 
+    {
+      value: '84%',
       label: 'Cobertura Nacional',
       icon: <Globe className="w-6 h-6" />,
       trend: 'Todo el país'
     },
-    { 
-      value: '348', 
+    {
+      value: '348',
       label: 'Entidades Aliadas',
       icon: <Star className="w-6 h-6" />,
       trend: 'Red institucional'
@@ -146,9 +150,8 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   // Renderizar vista de certificados laborales si está activa
   if (vistaActual === 'certificados-laborales') {
     return (
-      <SolicitarCertificadoLaboral 
+      <SolicitarCertificadoLaboral
         onBack={() => setVistaActual('landing')}
-        onLoginClick={handleLoginClick}
       />
     );
   }
@@ -156,7 +159,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   // Renderizar vista de certificados de graduados si está activa
   if (vistaActual === 'certificados-graduados') {
     return (
-      <PublicTitleVerification 
+      <PublicTitleVerification
         onBack={() => setVistaActual('landing')}
         onLoginClick={handleLoginClick}
       />
@@ -166,7 +169,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   // Renderizar vista de validador de certificados si está activa
   if (vistaActual === 'validador-certificados') {
     return (
-      <ValidadorCertificadosPublico 
+      <ValidadorCertificadosPublico
         onBack={() => setVistaActual('landing')}
       />
     );
@@ -175,7 +178,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">
       {/* Navbar Superior Flotante - Diseño Moderno con Azul Medio */}
-      <motion.nav 
+      <motion.nav
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.2 }}
@@ -189,12 +192,12 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <ESAPLogo 
+              <ESAPLogo
                 variant="white"
                 className="h-8 sm:h-10 w-auto"
               />
               <div className="hidden sm:block">
-                <p className="text-[9px] font-medium text-white/90 -mt-0.5">ComUNIdad</p>
+
               </div>
             </div>
 
@@ -206,7 +209,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               <a href="#servicios" className="text-sm font-semibold text-white/90 hover:text-white transition-colors">
                 Servicios
               </a>
-              
+
               {/* Botón Validar Certificados - DESTACADO */}
               <button
                 onClick={() => setVistaActual('validador-certificados')}
@@ -248,17 +251,17 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         {/* Animated Background - OPTIMIZADO */}
         <div className="absolute inset-0 z-0" style={{ willChange: 'transform' }}>
           {/* Gradient Base */}
-          <div 
+          <div
             className="absolute inset-0"
             style={{
               background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #1e5da8 50%, #2563eb 75%, #3b82f6 100%)',
               transform: 'translateZ(0)', // Forzar GPU acceleration
             }}
           />
-          
+
           {/* Animated Gradient Overlay - OPTIMIZADO: Reducida duración y solo si no prefiere movimiento reducido */}
           {!prefersReducedMotion && (
-            <motion.div 
+            <motion.div
               className="absolute inset-0 opacity-30"
               style={{ willChange: 'opacity, transform' }}
               animate={{
@@ -272,9 +275,9 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               transition={{ duration: 20, repeat: Infinity, ease: "linear" }} // Aumentado a 20s para reducir re-renders
             />
           )}
-          
+
           {/* Grid Pattern */}
-          <div 
+          <div
             className="absolute inset-0 opacity-10"
             style={{
               backgroundImage: `
@@ -284,7 +287,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
               backgroundSize: '50px 50px'
             }}
           />
-          
+
           {/* Floating Elements - OPTIMIZADO: Solo si no prefiere movimiento reducido */}
           {!prefersReducedMotion && (
             <>
@@ -313,17 +316,17 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         </div>
 
         {/* Hero Content - OPTIMIZADO */}
-        <motion.div 
+        <motion.div
           className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 xl:py-16 max-w-7xl"
-          style={{ 
-            opacity: heroOpacity, 
+          style={{
+            opacity: heroOpacity,
             scale: heroScale,
             willChange: 'transform, opacity',
             transform: 'translateZ(0)', // GPU acceleration
           }}
         >
           <div className="grid md:grid-cols-2 gap-8 sm:gap-8 lg:gap-10 items-center pb-4 sm:pb-4 lg:pb-8">
-            
+
             {/* Left Column - Text Content */}
             <motion.div
               initial={{ opacity: 0, x: -50 }}
@@ -357,7 +360,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
               {/* Subtitle */}
               <p className="text-sm xs:text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl text-blue-100 mb-4 sm:mb-6 lg:mb-8 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia. 
+                En la  <span className="font-semibold text-white">ComUNIdad ESAP</span> de Colombia.
                 Todos tus trámites, servicios académicos y comunidad <span className="font-semibold text-white">en un solo lugar</span>.
               </p>
 
@@ -445,7 +448,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                       </div>
                     </div>
                   )}
-                  
+
                   <img
                     src={STUDENTS_IMAGE_URL}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
@@ -455,7 +458,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                     onLoad={() => setImageLoaded(true)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-blue-900/90 via-blue-900/20 to-transparent" />
-                  
+
                   {/* Floating Stats - Solo mostrar cuando la imagen ha cargado */}
                   {imageLoaded && (
                     <motion.div
@@ -549,7 +552,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       {/* Services Section - Interactive Cards */}
       <section id="servicios" className="py-8 sm:py-10 lg:py-12 xl:py-16 bg-gradient-to-b from-white to-gray-50 scroll-mt-24">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          
+
           {/* Section Header */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -588,7 +591,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                 <Card className="h-full border-2 border-gray-200 hover:border-transparent transition-all duration-300 overflow-hidden relative">
                   {/* Gradient Background */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${service.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                  
+
                   <CardContent className="p-6 lg:p-8 xl:p-10 relative z-10">
                     {/* Badge */}
                     <div className="absolute top-6 right-6">
@@ -634,7 +637,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
           backgroundImage: `radial-gradient(circle at 50% 50%, white 1px, transparent 1px)`,
           backgroundSize: '40px 40px'
         }} />
-        
+
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -677,10 +680,10 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                     </span>
                   </h3>
                   <p className="text-gray-600 mb-6 leading-relaxed">
-                    Para <strong>estudiantes, docentes, administrativos y graduados</strong>. 
+                    Para <strong>estudiantes, docentes, administrativos y graduados</strong>.
                     Mucho más que trámites: es el corazón comunitario de ESAP.
                   </p>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -749,10 +752,10 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                     </span>
                   </h3>
                   <p className="text-gray-600 mb-6 leading-relaxed">
-                    Para <strong>personal administrativo y directivo</strong>. 
+                    Para <strong>personal administrativo y directivo</strong>.
                     Herramientas avanzadas para gestión eficiente de ESAP.
                   </p>
-                  
+
                   <div className="space-y-4">
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -833,11 +836,15 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
         </div>
       </section>
 
-      {/* Newsletter Section - MOVIDO ANTES DEL CTA */}
-      <NewsletterSection />
-
-      {/* Footer World Class - Conforme a Normativas del Gobierno Colombiano */}
-      <FooterWorldClass />
+      {/* Footer Simple */}
+      <footer className="bg-gray-900 text-white py-12">
+        <div className="container mx-auto px-4 text-center">
+          <ESAPLogo variant="white" className="h-12 w-auto mx-auto mb-4" />
+          <p className="text-gray-400 text-sm">
+            © 2026 ESAP - Escuela Superior de Administración Pública
+          </p>
+        </div>
+      </footer>
 
       {/* Modal de Enrolamiento - Actívate Ahora */}
       <EnrollmentActivationModal

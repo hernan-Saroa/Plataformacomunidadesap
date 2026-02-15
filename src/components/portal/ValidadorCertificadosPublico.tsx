@@ -29,7 +29,6 @@ import {
 import { ValidarCertificadoQR } from '../certificados-laborales/ValidarCertificadoQR';
 import { ValidarCertificadoGrado } from '../esap/registro-academico/ValidarCertificadoGrado';
 import { Card } from '../ui/card';
-import { FooterWorldClass } from '../FooterWorldClass';
 import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface ValidadorCertificadosPublicoProps {
@@ -47,8 +46,7 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
       {/* ✅ Modal de Certificado de Grado */}
       <ValidarCertificadoGrado 
         isOpen={tipoSeleccionado === 'grado'} 
-        onClose={() => setTipoSeleccionado('selector')}
-        onBack={() => setTipoSeleccionado('selector')}
+        onClose={() => setTipoSeleccionado('selector')} 
       />
 
       {/* Si el usuario seleccionó Certificado Laboral - Vista completa */}
@@ -375,8 +373,15 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
           </motion.div>
         </div>
         
-        {/* Footer del Landing */}
-        <FooterWorldClass />
+        {/* Footer Simple */}
+        <footer className="bg-gray-900 text-white py-12 mt-16">
+          <div className="container mx-auto px-4 text-center">
+            <ESAPLogo variant="white" className="h-12 w-auto mx-auto mb-4" />
+            <p className="text-gray-400 text-sm">
+              © 2026 ESAP - Escuela Superior de Administración Pública
+            </p>
+          </div>
+        </footer>
       </div>
         </>
       )}

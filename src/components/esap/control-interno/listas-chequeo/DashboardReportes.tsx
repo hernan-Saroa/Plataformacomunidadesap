@@ -19,16 +19,15 @@ import { useListasChequeo } from "./ListasChequeoContext";
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function DashboardReportes() {
-  const { plantillas, obtenerListasPorEstado, listasAplicadas } = useListasChequeo();
+  const { plantillas, obtenerListasPorEstado, listas } = useListasChequeo();
   const [periodoFiltro, setPeriodoFiltro] = useState<string>("mes");
-  console.log('🚀 Listas:', listasAplicadas);
 
   // Calcular estadísticas
   const listasCompletadas = obtenerListasPorEstado("completada");
   const listasEnProceso = obtenerListasPorEstado("en-proceso");
   const listasBorrador = obtenerListasPorEstado("borrador");
 
-  const totalListas = listasAplicadas.length;
+  const totalListas = listas.length;
   const tasaCompletadas = totalListas > 0 
     ? Math.round((listasCompletadas.length / totalListas) * 100)
     : 0;
@@ -50,7 +49,7 @@ export function DashboardReportes() {
     : 0;
 
   // Plantillas más usadas
-  const plantillasUsadas = listasAplicadas.reduce((acc, lista) => {
+  const plantillasUsadas = listas.reduce((acc, lista) => {
     acc[lista.plantillaId] = (acc[lista.plantillaId] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
@@ -367,7 +366,7 @@ export function DashboardReportes() {
               </tr>
             </thead>
             <tbody>
-              {listasAplicadas.slice(0, 10).map((lista) => (
+              {listas.slice(0, 10).map((lista) => (
                 <tr key={lista.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <span className="text-xs font-mono text-[#003DA5] bg-[#E0EDFF] px-2 py-1 rounded">

@@ -86,7 +86,6 @@ import {
 } from '../../ui/select';
 import { PortalUsuarioAuditado } from './PortalUsuarioAuditado';
 import { ESAPLogo } from '../../assets/ESAPLogo';
-import { FooterWorldClass } from '../../FooterWorldClass';
 import { BreadcrumbNavegacion, StickyNavBar } from './BreadcrumbNavegacion';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 
@@ -548,7 +547,14 @@ export function PortalTransaccionalUsuarioMD3({ onLogout }: PortalTransaccionalU
       </AnimatePresence>
 
       {/* FOOTER PORTAL TRANSACCIONAL (Simple y minimalista) */}
-      <FooterWorldClass />
+      <footer className="bg-gray-900 text-white py-12 mt-16">
+        <div className="container mx-auto px-4 text-center">
+          <ESAPLogo variant="white" className="h-12 w-auto mx-auto mb-4" />
+          <p className="text-gray-400 text-sm">
+            © 2026 ESAP - Escuela Superior de Administración Pública
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -14,7 +14,7 @@
  * CLASIFICACIÓN DE UNIDADES AUDITABLES
  * ============================================
  */
-export type TipoUnidadAuditable = 
+export type TipoUnidadAuditable =
   | 'Proceso Estratégico'
   | 'Proceso Misional'
   | 'Proceso de Apoyo'
@@ -25,7 +25,7 @@ export type TipoUnidadAuditable =
   | 'Sistema'
   | 'Programa';
 
-export type CategoriaRiesgo = 
+export type CategoriaRiesgo =
   | 'Crítico'
   | 'Alto'
   | 'Medio'
@@ -43,32 +43,32 @@ export interface UnidadAuditable {
   nombre: string;
   descripcion: string;
   tipo: TipoUnidadAuditable;
-  
+
   // Responsable
   responsable: ResponsableUnidad;
   procesoAsociado?: string;             // Nombre del proceso en mapa de procesos
-  
+
   // Ubicación organizacional
   dependencia: string;                  // Ej: "Vicerrectoría Académica"
   area: string;                         // Ej: "Gestión Curricular"
   sede?: string;                        // Ej: "Bogotá", "Territorial"
-  
+
   // Recursos
   presupuestoAnual: number;             // En pesos colombianos
   numeroEmpleados: number;
   activos: ActivosUnidad;
-  
+
   // Características operacionales
   objetivos: string[];
   funciones: string[];
   servicios: string[];
   parteInteresadas: string[];
-  
+
   // Ciclo de auditoría
   ultimaAuditoria?: AuditoriaHistorico;
   frecuenciaAuditoriaRecomendada: FrecuenciaAuditoria;
   prioridadAuditoria: number;           // 1-10 (calculado con DAFP)
-  
+
   // Estado
   activa: boolean;
   observaciones: string;
@@ -96,16 +96,16 @@ export interface ActivosUnidad {
   // Tecnológicos
   sistemasInformaticos: string[];       // Ej: ["SIGIA", "MOODLE"]
   infraestructuraTI: string;            // Descripción general
-  
+
   // Físicos
   inmuebles: string[];
   vehiculos: number;
   equipos: string;                      // Descripción general
-  
+
   // Financieros
   cuentasBancarias: number;
   fondosPropios: number;
-  
+
   // Documentales
   archivos: string;                     // Descripción de archivos críticos
   baseDatos: string[];                  // Bases de datos manejadas
@@ -127,7 +127,7 @@ export interface AuditoriaHistorico {
   estadoPlanMejoramiento?: EstadoPlanMejoramiento;
 }
 
-export type TipoAuditoria = 
+export type TipoAuditoria =
   | 'Auditoría Interna'
   | 'Auditoría Externa'
   | 'Auditoría Especial'
@@ -135,13 +135,13 @@ export type TipoAuditoria =
   | 'Auditoría de Desempeño'
   | 'Revisión de Control';
 
-export type ResultadoAuditoria = 
+export type ResultadoAuditoria =
   | 'Favorable'
   | 'Favorable con Observaciones'
   | 'Con Hallazgos'
   | 'Desfavorable';
 
-export type EstadoPlanMejoramiento = 
+export type EstadoPlanMejoramiento =
   | 'No Aplica'
   | 'En Construcción'
   | 'En Ejecución'
@@ -153,7 +153,7 @@ export type EstadoPlanMejoramiento =
  * FRECUENCIA DE AUDITORÍA
  * ============================================
  */
-export type FrecuenciaAuditoria = 
+export type FrecuenciaAuditoria =
   | 'Anual'
   | 'Bianual'
   | 'Trienal'
@@ -170,21 +170,21 @@ export interface UniversoAuditable {
   vigencia: number;
   fechaActualizacion: string;
   actualizadoPor: string;
-  
+
   // Unidades
   unidades: UnidadAuditable[];
   totalUnidades: number;
-  
+
   // Clasificación
   unidadesPorTipo: ClasificacionUnidades;
   unidadesPorRiesgo: ClasificacionRiesgo;
-  
+
   // Cobertura
   coberturaAuditoriaPlanificada: number;    // Porcentaje 0-100
   unidadesIncluidas: string[];              // IDs unidades en PAI
   unidadesExcluidas: string[];              // IDs unidades no incluidas
   justificacionExclusiones: { [unidadId: string]: string };
-  
+
   // Estadísticas
   estadisticas: EstadisticasUniverso;
 }
@@ -226,9 +226,9 @@ export interface EstadisticasUniverso {
 export interface MatrizCobertura {
   vigencia: number;
   unidadesAuditables: number;
-  unidadesProgra madas: number;
+  unidadesProgramadas: number;
   porcentajeCobertura: number;
-  
+
   // Detalle por categoría de riesgo
   coberturaPorRiesgo: {
     categoria: CategoriaRiesgo;
@@ -236,7 +236,7 @@ export interface MatrizCobertura {
     programadas: number;
     porcentaje: number;
   }[];
-  
+
   // Detalle por tipo
   coberturaPorTipo: {
     tipo: TipoUnidadAuditable;
@@ -298,16 +298,16 @@ export interface FiltrosUnidadAuditable {
 export interface AnalisisUniversoAuditable {
   fecha: string;
   analista: string;
-  
+
   // Hallazgos
   unidadesSinAuditarPorMasDe2Anos: UnidadAuditable[];
   unidadesRiesgoCriticoSinCobertura: UnidadAuditable[];
   unidadesConPresupuestoSignificativo: UnidadAuditable[];
-  
+
   // Recomendaciones
   recomendacionesCobertura: string[];
   recomendacionesPriorización: string[];
-  
+
   // Brechas
   brechaCoberturaActual: number;        // Porcentaje faltante
   unidadesRecomendadasProximaVigencia: string[];
@@ -320,22 +320,22 @@ export interface AnalisisUniversoAuditable {
  */
 export function esUnidadCritica(unidad: UnidadAuditable): boolean {
   return unidad.presupuestoAnual > 1000000000 || // > 1.000M
-         unidad.tipo === 'Proceso Estratégico' ||
-         unidad.tipo === 'Proceso Misional';
+    unidad.tipo === 'Proceso Estratégico' ||
+    unidad.tipo === 'Proceso Misional';
 }
 
 export function requiereAuditoriaPronto(unidad: UnidadAuditable): boolean {
   if (!unidad.ultimaAuditoria) return true;
-  
+
   const fechaUltima = new Date(unidad.ultimaAuditoria.fecha);
   const hoy = new Date();
   const diasTranscurridos = Math.floor((hoy.getTime() - fechaUltima.getTime()) / (1000 * 60 * 60 * 24));
-  
+
   // Más de 2 años sin auditar
   return diasTranscurridos > 730;
 }
 
 export function tieneHallazgosPendientes(unidad: UnidadAuditable): boolean {
   return unidad.ultimaAuditoria?.planMejoramiento === true &&
-         unidad.ultimaAuditoria?.estadoPlanMejoramiento === 'En Ejecución';
+    unidad.ultimaAuditoria?.estadoPlanMejoramiento === 'En Ejecución';
 }

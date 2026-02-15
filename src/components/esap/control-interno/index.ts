@@ -1,72 +1,77 @@
 /**
  * CONTROL INTERNO DE GESTIÓN - Exportaciones Optimizadas
- * Incluye módulos consolidados y componentes individuales
+ * ✅ Solo incluye módulos que realmente existen
  */
 
 // ⭐ MÓDULO PRINCIPAL
 export { ControlInternoFull } from './ControlInternoFull';
 
-// ⭐ COMPONENTES DE UI UNIFICADOS
+// ⭐ COMPONENTES DE UI
 export { HeaderModuloCIG } from './HeaderModuloCIG';
 
-// ⭐ MÓDULOS CONSOLIDADOS (NUEVOS)
-export { PlanificacionModule } from './PlanificacionModule';
+// ⭐ MÓDULOS PRINCIPALES
 export { PlanificacionModuleRediseno } from './PlanificacionModuleRediseno';
-export { ProcesoAuditoriaModule } from './ProcesoAuditoriaModule';
-export { ProcesoAuditoriaModuleRediseno } from './ProcesoAuditoriaModuleRediseno';
-export { PlanesMejoramientoModule } from './PlanesMejoramientoModule';
-export { SoporteModule } from './SoporteModule';
-export { ModulosAvanzadosModule } from './ModulosAvanzadosModule';
+export { PlanesMejoramientoModuleRediseno } from './PlanesMejoramientoModuleRediseno';
+export { ExpedientesModulePremium } from './ExpedientesModulePremium';
+export { ConfiguracionesModulePremium } from './ConfiguracionesModulePremium';
 
-// ⭐ MÓDULOS INDIVIDUALES
-export { UniversoAuditorias } from './UniversoAuditorias';
-export { PlanAnualModule } from './PlanAnualModule';
+// ⭐ PLAN ANUAL
+export { PlanAnualAuditoriaDefinitivo } from './PlanAnualAuditoriaDefinitivo';
+export { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 export { ProgramaAnualCIG } from './ProgramaAnualCIG';
 
-// ⭐ FASES DE AUDITORÍA (RF004-009)
-export { InicioAuditoriaWizard } from './InicioAuditoriaWizard';
+// ⭐ UNIVERSO AUDITABLE
+export { UniversoAuditableUnificado } from './UniversoAuditableUnificado';
+export { UniversoAuditorias } from './UniversoAuditorias';
+
+// ⭐ DASHBOARDS Y KANBAN
+export { GestionAuditoriasKanbanSimple } from './GestionAuditoriasKanbanSimple';
+
+// ⭐ FORMULARIOS Y WIZARDS
+export { FormularioAuditoriaUnificado } from './FormularioAuditoriaUnificado';
+export { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
+export { InicioAuditoriaWizardWorldClass } from './InicioAuditoriaWizardWorldClass';
+export { WizardAuditoriaEspecial } from './WizardAuditoriaEspecial';
+export { WizardAuditoriaTerritorial } from './WizardAuditoriaTerritorial';
+
+// ⭐ EXPEDIENTES Y DETALLES
+export { ExpedienteAuditoriaCompleto } from './ExpedienteAuditoriaCompleto';
+export { ModalDetalleAuditoriaCompleto } from './ModalDetalleAuditoriaCompleto';
+
+// ⭐ HALLAZGOS Y MEJORAMIENTO
+export { HallazgosYMejoramientoCompleto } from './HallazgosYMejoramientoCompleto';
+export { FormulacionPlanMejoramientoModule } from './FormulacionPlanMejoramientoModule';
+export { SeguimientoPlanMejoramientoModule } from './SeguimientoPlanMejoramientoModule';
+export { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
+
+// ⭐ ROLES Y PERMISOS
+export { RolesYPermisosModulePremium } from './RolesYPermisosModulePremium';
+
+// ⭐ LISTAS DE CHEQUEO
+export { ListasChequeoModule } from './listas-chequeo/ListasChequeoModuleComplete';
+
+// ⭐ AUDITORÍA DE CAMBIOS
+export { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
+
+// ⭐ OTROS MÓDULOS
+export { ProcesoAuditoriaModule } from './ProcesoAuditoriaModule';
 export { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 export { EjecucionAuditoriaModule } from './EjecucionAuditoriaModule';
 export { ComunicacionAuditoriaModule } from './ComunicacionAuditoriaModule';
-
-// ⭐ PLANES DE MEJORAMIENTO (RF010-011)
-export { FormulacionPlanMejoramientoModule } from './FormulacionPlanMejoramientoModule';
-export { SeguimientoPlanMejoramientoModule } from './SeguimientoPlanMejoramientoModule';
-
-// ⭐ MÓDULOS DE SOPORTE (RF012-014)
-export { InformesLeyModule } from './InformesLeyModule';
 export { GestionDocumentalModule } from './GestionDocumentalModule';
 export { NotificacionesModule } from './NotificacionesModule';
-export { NotificacionesControlInternoDropdown } from './NotificacionesControlInternoDropdown';
+export { InformesYDocumentalCompleto } from './InformesYDocumentalCompleto';
+export { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 
-// ⭐ MÓDULOS AVANZADOS (RF015-019)
-export { RolesYPermisos } from './RolesYPermisos';
-export { ReportesEjecutivosModule } from './ReportesEjecutivosModule';
-// ❌ ELIMINADO: DashboardEjecutivoCIG (no usado)
-export { GestionAuditoriasTerritoriales } from './GestionAuditoriasTerritoriales';
-export { WizardAuditoriaTerritorial } from './WizardAuditoriaTerritorial';
-export { AuditoriasEspecialesModule } from './AuditoriasEspecialesModule';
-export { AuditoriasEspecialesModuleCompleto } from './AuditoriasEspecialesModuleCompleto';
-export { WizardAuditoriaEspecial } from './WizardAuditoriaEspecial';
+// ⭐ PORTALES
+export { PortalTransaccionalUsuarioMD3 } from './PortalTransaccionalUsuarioMD3';
+export { PortalUsuarioAuditado } from './PortalUsuarioAuditado';
 
-// ⭐ AUDITORÍA DE CAMBIOS (RF020) - COMPLETADO 100% ⭐
-export { AuditoriaCambiosModule } from './AuditoriaCambiosModule';
-export { DemoAuditoriaCambios } from './DemoAuditoriaCambios';
-
-// ⭐ HOOKS Y SERVICIOS - NUEVO ⭐
+// ⭐ CONTEXT Y HOOKS
+export { ControlInternoProvider, useControlInterno } from './ControlInternoContext';
 export { useAuditLog } from './hooks/useAuditLog';
 export { auditLogService } from './services/auditLogService';
 export type { AuditLog, TipoAccion, TipoEntidad } from './services/auditLogService';
 
-// ⭐ DASHBOARDS
-export { GestionAuditoriasKanbanSimple } from './GestionAuditoriasKanbanSimple';
-
-// ⭐ CONFIGURACIÓN
-export { ConfiguracionSistemaCompleto } from './ConfiguracionSistemaCompleto';
-export { ConfiguracionAvanzadaCIG } from './ConfiguracionAvanzadaCIG';
-
-// ⭐ DEMOS
-export { DemoPlaneacionAuditoria } from './DemoPlaneacionAuditoria';
-
-// ⭐ CONTEXT Y HOOKS
-export { ControlInternoProvider, useControlInterno } from './ControlInternoContext';
+// ⭐ COMPONENTS
+export * from './components';

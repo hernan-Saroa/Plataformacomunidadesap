@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Bell,
@@ -12,14 +12,9 @@ import {
   Eye,
   Filter,
   X,
-  Loader2,
   CheckCheck
 } from 'lucide-react';
-import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
-import { ButtonSIGL } from '../gestion-legal/design-system/ButtonSIGL';
-import { BadgeSIGL } from '../gestion-legal/design-system/BadgeSIGL';
-import { toast } from 'sonner';
-import { useNotificacionesControlInterno } from './hooks/useNotificacionesControlInterno';
+import { toast } from 'sonner@2.0.3';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 import { Container4K } from '@/components/ui';
@@ -46,75 +41,9 @@ type FiltroTipo = 'todos' | 'info' | 'exito' | 'advertencia' | 'error' | 'record
 type FiltroEstado = 'todos' | 'leidas' | 'no-leidas';
 
 // ====================================
-// FUNCIONES DE MAPEO
+// DATOS MOCK
 // ====================================
 
-/**
- * Mapea el tipo de notificación del backend al tipo de UI
- */
-function mapearTipoNotificacion(tipoNotificacion: string): Notificacion['tipo'] {
-  const tipoMap: Record<string, Notificacion['tipo']> = {
-    'recordatorio_plazo': 'recordatorio',
-    'alerta_vencimiento': 'advertencia',
-    'rechazo_plan': 'error',
-    'validacion_evidencia': 'error',
-    'ampliacion_plazo_rechazada': 'error',
-    'aprobacion_plan': 'exito',
-    'ampliacion_plazo_aprobada': 'exito',
-    'hallazgo_identificado': 'advertencia',
-    'solicitud_evidencia': 'info',
-    'recepcion_documento': 'info',
-    'anuncio_auditoria': 'info',
-    'controversia_hallazgo': 'advertencia',
-    'solicitud_ampliacion_plazo': 'info',
-    'otro': 'info',
-  };
-  return tipoMap[tipoNotificacion] || 'info';
-}
-
-/**
- * Obtiene el origen de la notificación basado en el tipo
- */
-function obtenerOrigen(tipoNotificacion: string): string {
-  const origenMap: Record<string, string> = {
-    'anuncio_auditoria': 'Programa Anual',
-    'hallazgo_identificado': 'Auditorías',
-    'aprobacion_plan': 'Planes de Mejoramiento',
-    'rechazo_plan': 'Planes de Mejoramiento',
-    'solicitud_ampliacion_plazo': 'Auditorías',
-    'ampliacion_plazo_aprobada': 'Auditorías',
-    'ampliacion_plazo_rechazada': 'Auditorías',
-    'recepcion_documento': 'Gestión Documental',
-    'validacion_evidencia': 'Validación de Evidencias',
-    'solicitud_evidencia': 'Validación de Evidencias',
-    'recordatorio_plazo': 'Sistema de Seguimiento',
-    'alerta_vencimiento': 'Sistema de Seguimiento',
-    'controversia_hallazgo': 'Auditorías',
-  };
-  return origenMap[tipoNotificacion] || 'Sistema';
-}
-
-/**
- * Convierte una notificación del backend al formato de UI
- */
-function mapearNotificacionBackend(notif: any): Notificacion {
-  // Asegurarse de usar createdAt del backend (created_at en snake_case)
-  const fechaCreacion = notif.createdAt || notif.created_at || notif.fecha;
-  
-  return {
-    id: notif.id,
-    tipo: mapearTipoNotificacion(notif.tipoNotificacion),
-    titulo: notif.titulo,
-    mensaje: notif.mensaje,
-    fecha: fechaCreacion,
-    leida: notif.leida,
-    origen: obtenerOrigen(notif.tipoNotificacion),
-    accion: notif.accionUrl ? {
-      texto: 'Ver Detalles',
-      url: notif.accionUrl
-    } : undefined
-  };
-}
 const NOTIFICACIONES_MOCK: Notificacion[] = [
   {
     id: 'n1',
@@ -207,39 +136,9 @@ const NOTIFICACIONES_MOCK: Notificacion[] = [
 // ====================================
 
 export const NotificacionesModule: React.FC = () => {
-  const {
-    notificaciones: notificacionesBackend,
-    loading,
-    error,
-    cargarNotificaciones,
-    marcarLeida,
-    marcarTodasLeidas,
-    eliminarNotificacion
-  } = useNotificacionesControlInterno();
-
+  const [notificaciones, setNotificaciones] = useState<Notificacion[]>(NOTIFICACIONES_MOCK);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
-
-  // Mapear notificaciones del backend al formato de UI
-  const notificaciones = useMemo(() => {
-    return notificacionesBackend.map(mapearNotificacionBackend);
-  }, [notificacionesBackend]);
-
-  // Recargar notificaciones periódicamente
-  useEffect(() => {
-    // Solo crear el interval si hay un usuario autenticado
-    if (!notificacionesBackend.length && loading) {
-      return; // Esperar a que se carguen las notificaciones iniciales
-    }
-
-    const interval = setInterval(() => {
-      cargarNotificaciones();
-    }, 30000); // Recargar cada 30 segundos
-
-    return () => clearInterval(interval);
-    // Solo ejecutar cuando cambie cargarNotificaciones (que depende de user)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cargarNotificaciones]);
 
   // Notificaciones filtradas
   const notificacionesFiltradas = useMemo(() => {
@@ -263,24 +162,24 @@ export const NotificacionesModule: React.FC = () => {
   }, [notificaciones]);
 
   // Handlers
-  const handleMarcarComoLeida = async (id: string) => {
-    await marcarLeida(id);
+  const marcarComoLeida = (id: string) => {
+    setNotificaciones(prev => prev.map(n =>
+      n.id === id ? { ...n, leida: true } : n
+    ));
   };
 
-  const handleMarcarTodasLeidas = async () => {
-    await marcarTodasLeidas();
+  const marcarTodasLeidas = () => {
+    setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })));
+    toast.success('Todas las notificaciones marcadas como leídas');
   };
 
-  const handleEliminarNotificacion = async (id: string) => {
-    await eliminarNotificacion(id);
+  const eliminarNotificacion = (id: string) => {
+    setNotificaciones(prev => prev.filter(n => n.id !== id));
+    toast.success('Notificación eliminada');
   };
 
-  const handleLimpiarLeidas = async () => {
-    // Eliminar todas las notificaciones leídas
-    const leidas = notificaciones.filter(n => n.leida);
-    for (const notif of leidas) {
-      await eliminarNotificacion(notif.id);
-    }
+  const limpiarLeidas = () => {
+    setNotificaciones(prev => prev.filter(n => !n.leida));
     toast.success('Notificaciones leídas eliminadas');
   };
 
@@ -312,15 +211,22 @@ export const NotificacionesModule: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <ButtonSIGL variant="secondary" onClick={handleMarcarTodasLeidas} disabled={estadisticas.noLeidas === 0 || loading}>
-                <CheckCircle2 className="w-4 h-4" />
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={marcarTodasLeidas}
+                disabled={estadisticas.noLeidas === 0}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-xl font-semibold text-sm shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCheck className="w-4 h-4" />
                 Marcar Todas Leídas
-              </ButtonSIGL>
-              <ButtonSIGL variant="secondary" onClick={handleLimpiarLeidas} disabled={loading}>
+              </button>
+              <button
+                onClick={limpiarLeidas}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all"
+              >
                 <Trash2 className="w-4 h-4" />
                 Limpiar Leídas
-              </ButtonSIGL>
+              </button>
             </div>
           </div>
         </motion.div>
@@ -472,33 +378,9 @@ export const NotificacionesModule: React.FC = () => {
           </div>
         </motion.div>
 
-        {/* LISTA DE NOTIFICACIONES */}
-        <div className="space-y-2">
-          {loading && (
-            <CardSIGL>
-              <div className="p-12 text-center">
-                <Loader2 className="w-8 h-8 animate-spin text-violet-600 mx-auto mb-4" />
-                <p className="text-gray-600">Cargando notificaciones...</p>
-              </div>
-            </CardSIGL>
-          )}
-
-          {error && (
-            <CardSIGL>
-              <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-red-800">
-                  <AlertTriangle className="w-5 h-5" />
-                  <p className="font-medium">Error al cargar notificaciones</p>
-                </div>
-                <p className="text-sm text-red-600 mt-2">{error}</p>
-                <ButtonSIGL variant="secondary" onClick={cargarNotificaciones} className="mt-4">
-                  Reintentar
-                </ButtonSIGL>
-              </div>
-            </CardSIGL>
-          )}
-
-          {!loading && !error && notificacionesFiltradas.map((notif, index) => (
+        {/* LISTA DE NOTIFICACIONES WORLD CLASS */}
+        <div className="space-y-3">
+          {notificacionesFiltradas.map((notif, index) => (
             <motion.div
               key={notif.id}
               initial={{ opacity: 0, x: -20 }}
@@ -544,52 +426,35 @@ export const NotificacionesModule: React.FC = () => {
                       </button>
                     </div>
 
-                    {/* Contenido */}
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-3">
-                          <h3 className={`font-semibold ${!notif.leida ? 'text-gray-900' : 'text-gray-700'}`}>
-                            {notif.titulo}
-                          </h3>
-                          {!notif.leida && (
-                            <div className="w-2 h-2 bg-violet-500 rounded-full" />
-                          )}
-                        </div>
-                        <button
-                          onClick={() => handleEliminarNotificacion(notif.id)}
-                          className="text-gray-400 hover:text-red-600 transition-colors"
-                          disabled={loading}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <p className="text-sm text-gray-600 mb-4 leading-relaxed">{notif.mensaje}</p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                        <span className="inline-flex items-center gap-1.5 text-gray-500">
+                          <Clock className="w-3.5 h-3.5" />
+                          {formatFechaRelativa(notif.fecha)}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#E0EDFF] text-[#003DA5] rounded-lg font-medium">
+                          <FileText className="w-3.5 h-3.5" />
+                          {notif.origen}
+                        </span>
                       </div>
 
-                      <p className="text-sm text-gray-600 mb-3">{notif.mensaje}</p>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="text-gray-500">
-                            <Calendar className="w-4 h-4 inline mr-1" />
-                            {formatFechaRelativa(notif.fecha)}
-                          </span>
-                          <span className="text-gray-500">
-                            <FileText className="w-4 h-4 inline mr-1" />
-                            {notif.origen}
-                          </span>
-                        </div>
-
-                        <div className="flex gap-2">
-                          {!notif.leida && (
-                            <ButtonSIGL
-                              variant="secondary"
-                              type="button"
-                              onClick={() => handleMarcarComoLeida(notif.id)}
-                              disabled={loading}
-                            >
-                              Marcar como Leída
-                            </ButtonSIGL>
-                          )}
-                        </div>
+                      <div className="flex flex-wrap gap-2">
+                        {notif.accion && (
+                          <button className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg font-semibold text-sm shadow-sm hover:shadow-md transition-all">
+                            {notif.accion.texto}
+                          </button>
+                        )}
+                        {!notif.leida && (
+                          <button
+                            onClick={() => marcarComoLeida(notif.id)}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Marcar Leída
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -598,16 +463,18 @@ export const NotificacionesModule: React.FC = () => {
             </motion.div>
           ))}
 
-          {!loading && !error && notificacionesFiltradas.length === 0 && (
-            <CardSIGL>
-              <div className="p-12 text-center">
-                <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No hay notificaciones</h3>
-                <p className="text-gray-600">No se encontraron notificaciones con los filtros seleccionados</p>
+          {notificacionesFiltradas.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-white rounded-xl p-12 text-center shadow-sm border border-[#E0EDFF]"
+            >
+              <div className="w-20 h-20 bg-[#E0EDFF] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Bell className="w-10 h-10 text-[#003DA5]" strokeWidth={2} />
               </div>
               <h3 className="text-lg font-semibold text-[#003DA5] mb-2">No hay notificaciones</h3>
               <p className="text-gray-600">No se encontraron notificaciones con los filtros seleccionados</p>
-            </CardSIGL>
+            </motion.div>
           )}
         </div>
       </div>
@@ -620,86 +487,19 @@ export const NotificacionesModule: React.FC = () => {
 // ====================================
 
 function formatFechaRelativa(fecha: string): string {
-  if (!fecha) return 'Fecha no disponible';
-  
   const ahora = new Date();
-  // Parsear la fecha correctamente, manejando diferentes formatos del backend
-  let fechaNotif: Date;
-  
-  try {
-    // Si la fecha viene en formato ISO (con T) o ya es un objeto Date válido
-    if (fecha.includes('T')) {
-      fechaNotif = new Date(fecha);
-    } else if (fecha.includes(' ')) {
-      // Formato del backend: "2026-01-16 03:17:40.938797"
-      // Convertir a formato ISO reemplazando el espacio con T
-      const fechaISO = fecha.replace(' ', 'T');
-      fechaNotif = new Date(fechaISO);
-    } else {
-      fechaNotif = new Date(fecha);
-    }
-    
-    // Validar que la fecha sea válida
-    if (isNaN(fechaNotif.getTime())) {
-      console.warn('[formatFechaRelativa] Fecha inválida:', fecha);
-      return 'Fecha inválida';
-    }
-    
-    const diff = ahora.getTime() - fechaNotif.getTime();
-    
-    // Si la diferencia es negativa (fecha futura), mostrar la fecha directamente
-    if (diff < 0) {
-      return fechaNotif.toLocaleDateString('es-CO', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
-    
-    const segundos = Math.floor(diff / 1000);
-    const minutos = Math.floor(diff / (1000 * 60));
-    const horas = Math.floor(diff / (1000 * 60 * 60));
-    const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const fechaNotif = new Date(fecha);
+  const diff = ahora.getTime() - fechaNotif.getTime();
+  const minutos = Math.floor(diff / (1000 * 60));
+  const horas = Math.floor(diff / (1000 * 60 * 60));
+  const dias = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-    // Solo mostrar "Ahora" si realmente fue hace menos de 1 minuto
-    if (minutos < 1) {
-      return segundos < 10 ? 'Ahora' : `Hace ${segundos} segundos`;
-    }
-    if (minutos < 60) {
-      return `Hace ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`;
-    }
-    if (horas < 24) {
-      return `Hace ${horas} ${horas === 1 ? 'hora' : 'horas'}`;
-    }
-    if (dias === 1) {
-      return 'Ayer';
-    }
-    if (dias < 7) {
-      return `Hace ${dias} días`;
-    }
-    if (dias < 30) {
-      const semanas = Math.floor(dias / 7);
-      return `Hace ${semanas} ${semanas === 1 ? 'semana' : 'semanas'}`;
-    }
-    if (dias < 365) {
-      const meses = Math.floor(dias / 30);
-      return `Hace ${meses} ${meses === 1 ? 'mes' : 'meses'}`;
-    }
-    
-    // Para fechas más antiguas, mostrar la fecha completa
-    return fechaNotif.toLocaleDateString('es-CO', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch (error) {
-    console.error('[formatFechaRelativa] Error al formatear fecha:', fecha, error);
-    return 'Fecha inválida';
-  }
+  if (minutos < 1) return 'Ahora';
+  if (minutos < 60) return `Hace ${minutos} minutos`;
+  if (horas < 24) return `Hace ${horas} horas`;
+  if (dias === 1) return 'Ayer';
+  if (dias < 7) return `Hace ${dias} días`;
+  return fechaNotif.toLocaleDateString();
 }
 
 export default NotificacionesModule;

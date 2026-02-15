@@ -40,56 +40,6 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner@2.0.3';
-import { tiposAuditoriaService, type TipoAuditoria } from '../../../services/api/tiposAuditoriaService';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TIPOS POR DEFECTO
-// ═══════════════════════════════════════════════════════════════════════════
-
-const TIPOS_AUDITORIA_DEFAULT: TipoAuditoria[] = [
-  {
-    id: '1',
-    codigo: 'REG',
-    nombre: 'Regular',
-    descripcion: 'Auditoría regular',
-    alcance: 'General',
-    duracionPromedio: 30,
-    equipoPromedio: 3,
-    color: '#3B82F6',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    codigo: 'TER',
-    nombre: 'Territorial',
-    descripcion: 'Auditoría territorial',
-    alcance: 'Regional',
-    duracionPromedio: 45,
-    equipoPromedio: 4,
-    color: '#10B981',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    codigo: 'ESP',
-    nombre: 'Especial',
-    descripcion: 'Auditoría especial',
-    alcance: 'Específico',
-    duracionPromedio: 60,
-    equipoPromedio: 5,
-    color: '#F59E0B',
-    activa: true,
-    auditoriasProgramadas: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
-];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -130,7 +80,7 @@ export interface HitoAuditoria {
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: string; // Cambiado a string para ser dinámico
+  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
   titulo: string;
   descripcion: string;
   
@@ -139,9 +89,6 @@ export interface AuditoriaUnificadaFormData {
   areaObjetivo: string;
   procesoAuditado: string;
   alcance: string;
-  responsableAreaNombre?: string;
-  responsableAreaCargo?: string;
-  responsableAreaEmail?: string;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -173,6 +120,7 @@ export interface AuditoriaUnificadaFormData {
   
   // 8. HALLAZGOS (opcional - para auditorías en ejecución)
   hallazgos: Hallazgo[];
+  incluirHallazgosPreliminares: boolean; // 🆕 Indica si se incluyen hallazgos preliminares
   
   // 9. VINCULACIÓN PLAN ANUAL
   vinculadaPlanAnual: boolean;
@@ -304,45 +252,16 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
-  // Función auxiliar para normalizar tipo de auditoría
-  const normalizarTipo = (tipo: any): string => {
-    if (!tipo) return 'Regular';
-    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-    if (tiposValidos.includes(tipo)) return tipo;
-    // Mapeo de tipos antiguos
-    const mapping: Record<string, string> = {
-      'gestión': 'Regular',
-      'cumplimiento': 'Regular',
-      'desempeño': 'Regular',
-      'sistemas': 'Regular',
-      'financiera': 'Regular',
-      'seguimiento': 'Regular',
-      'control interno': 'Regular',
-      'académica': 'Regular',
-      'rrhh': 'Regular',
-      'ti': 'Regular',
-      'operacional': 'Regular',
-      'regular': 'Regular',
-      'territorial': 'Territorial',
-      'especial': 'Especial'
-    };
-    return mapping[tipo.toString().toLowerCase()] || 'Regular';
-  };
-
   const [pasoActual, setPasoActual] = useState(1);
-  const [tiposAuditoria, setTiposAuditoria] = useState<TipoAuditoria[]>(TIPOS_AUDITORIA_DEFAULT);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: normalizarTipo(initialData?.tipoAuditoria),
+    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
-    responsableAreaNombre: initialData?.responsableAreaNombre || '',
-    responsableAreaCargo: initialData?.responsableAreaCargo || '',
-    responsableAreaEmail: initialData?.responsableAreaEmail || '',
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
@@ -362,6 +281,7 @@ export function FormularioAuditoriaUnificado({
     riesgosIdentificados: initialData?.riesgosIdentificados || [],
     controlesAplicar: initialData?.controlesAplicar || [],
     hallazgos: initialData?.hallazgos || [],
+    incluirHallazgosPreliminares: initialData?.incluirHallazgosPreliminares || false,
     vinculadaPlanAnual: initialData?.vinculadaPlanAnual || false,
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
@@ -376,28 +296,6 @@ export function FormularioAuditoriaUnificado({
   const [controlTemporal, setControlTemporal] = useState('');
 
   const TOTAL_PASOS = 9;
-
-  // Cargar tipos de auditoría desde la BD
-  useEffect(() => {
-    const cargarTipos = async () => {
-      try {
-        const tipos = await tiposAuditoriaService.getAll(false);
-        if (tipos.length > 0) {
-          // Filtrar solo los activos
-          const tiposActivos = tipos.filter(t => t.activa);
-          setTiposAuditoria(tiposActivos);
-        } else {
-          console.warn('[FormularioAuditoria] ⚠️ No se encontraron tipos, usando valores por defecto');
-        }
-      } catch (error) {
-        console.error('[FormularioAuditoria] ❌ Error al cargar tipos:', error);
-        console.log('[FormularioAuditoria] Usando tipos por defecto');
-        // Ya está inicializado con TIPOS_AUDITORIA_DEFAULT, no hacer nada
-      }
-    };
-
-    cargarTipos();
-  }, []);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -533,13 +431,6 @@ export function FormularioAuditoriaUnificado({
       return;
     }
 
-    // Validar que fechaFin sea posterior a fechaInicio
-    if (new Date(formData.fechaFin) < new Date(formData.fechaInicio)) {
-      toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
-      setPasoActual(4);
-      return;
-    }
-
     if (formData.objetivos.length === 0) {
       toast.error('Debe agregar al menos un objetivo');
       setPasoActual(5);
@@ -550,11 +441,41 @@ export function FormularioAuditoriaUnificado({
 
     try {
       await onSubmit(formData);
-      toast.success(
-        mode === 'create'
-          ? '✅ Auditoría creada exitosamente'
-          : '✅ Auditoría actualizada exitosamente'
-      );
+      
+      // Log detallado en consola si incluye hallazgos preliminares
+      if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log('✅ AUDITORÍA GUARDADA CON HALLAZGOS PRELIMINARES');
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log(`📋 Auditoría: ${formData.titulo}`);
+        console.log(`⚠️  Hallazgos preliminares: ${formData.hallazgos.length}`);
+        console.log('');
+        formData.hallazgos.forEach((h, idx) => {
+          console.log(`   ${idx + 1}. ${h.tipo.toUpperCase()}: ${h.descripcion.substring(0, 60)}...`);
+        });
+        console.log('');
+        console.log('⚡ IMPORTANTE: Los hallazgos son PRELIMINARES y deben ser comunicados al auditado');
+        console.log('═══════════════════════════════════════════════════════════════');
+      }
+      
+      // Toast personalizado si incluye hallazgos preliminares
+      if (formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0) {
+        toast.success(
+          mode === 'create'
+            ? `✅ Auditoría creada exitosamente con ${formData.hallazgos.length} hallazgo${formData.hallazgos.length > 1 ? 's' : ''} preliminar${formData.hallazgos.length > 1 ? 'es' : ''}`
+            : `✅ Auditoría actualizada exitosamente con ${formData.hallazgos.length} hallazgo${formData.hallazgos.length > 1 ? 's' : ''} preliminar${formData.hallazgos.length > 1 ? 'es' : ''}`,
+          {
+            description: '⚠️ Recuerda: Los hallazgos tienen carácter preliminar y deben ser comunicados al auditado'
+          }
+        );
+      } else {
+        toast.success(
+          mode === 'create'
+            ? '✅ Auditoría creada exitosamente'
+            : '✅ Auditoría actualizada exitosamente'
+        );
+      }
+      
       onClose();
     } catch (error) {
       toast.error('Error al guardar la auditoría');
@@ -579,7 +500,7 @@ export function FormularioAuditoriaUnificado({
   const renderPaso = () => {
     switch (pasoActual) {
       case 1:
-        return <Paso1InformacionBasica formData={formData} onChange={handleChange} tiposAuditoria={tiposAuditoria} />;
+        return <Paso1InformacionBasica formData={formData} onChange={handleChange} />;
       case 2:
         return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} />;
       case 3:
@@ -625,6 +546,7 @@ export function FormularioAuditoriaUnificado({
             onAgregarHallazgo={handleAgregarHallazgo}
             onEliminarHallazgo={handleEliminarHallazgo}
             onActualizarHallazgo={handleActualizarHallazgo}
+            onChange={handleChange}
           />
         );
       case 9:
@@ -642,7 +564,7 @@ export function FormularioAuditoriaUnificado({
     { numero: 5, titulo: 'Objetivos y Criterios', icono: <Target className="w-4 h-4" /> },
     { numero: 6, titulo: 'Recursos y Productos', icono: <DollarSign className="w-4 h-4" /> },
     { numero: 7, titulo: 'Riesgos y Controles', icono: <Shield className="w-4 h-4" /> },
-    { numero: 8, titulo: 'Hallazgos', icono: <AlertTriangle className="w-4 h-4" /> },
+    { numero: 8, titulo: 'Hallazgos Preliminares', icono: <AlertTriangle className="w-4 h-4" /> },
     { numero: 9, titulo: 'Vinculación Plan', icono: <ClipboardCheck className="w-4 h-4" /> }
   ];
 
@@ -768,15 +690,25 @@ export function FormularioAuditoriaUnificado({
 
               {/* FOOTER */}
               <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
-                <Button
-                  variant="outline"
-                  onClick={handleAnterior}
-                  disabled={pasoActual === 1}
-                  className="gap-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Anterior
-                </Button>
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={handleAnterior}
+                    disabled={pasoActual === 1}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Anterior
+                  </Button>
+                  
+                  {/* Badge de hallazgos preliminares */}
+                  {formData.incluirHallazgosPreliminares && (
+                    <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 px-3 py-1.5 text-xs font-bold">
+                      <AlertTriangle className="w-3 h-3 mr-1 inline" />
+                      {formData.hallazgos.length} Hallazgo{formData.hallazgos.length !== 1 ? 's' : ''} Preliminar{formData.hallazgos.length !== 1 ? 'es' : ''}
+                    </Badge>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   {pasoActual < TOTAL_PASOS ? (
@@ -830,10 +762,9 @@ export function FormularioAuditoriaUnificado({
 interface PasoProps {
   formData: AuditoriaUnificadaFormData;
   onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
-  tiposAuditoria?: TipoAuditoria[];
 }
 
-function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUDITORIA_DEFAULT }: PasoProps) {
+function Paso1InformacionBasica({ formData, onChange }: PasoProps) {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -852,38 +783,36 @@ function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUD
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {tiposAuditoria.map((tipo: TipoAuditoria) => {
-                // Mapear iconos basados en el nombre del tipo
-                const IconoComponente = tipo.nombre === 'Territorial' ? MapPin : 
-                                       tipo.nombre === 'Especial' ? Zap : 
-                                       Shield;
-                
-                return (
-                  <button
-                    key={tipo.id}
-                    type="button"
-                    onClick={() => onChange('tipoAuditoria', tipo.nombre)}
-                    className={`
-                      px-4 py-3 rounded-lg border-2 transition-all duration-200
-                      flex flex-col items-center justify-center gap-2 font-medium
-                      ${
-                        formData.tipoAuditoria === tipo.nombre
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }
-                    `}
-                  >
-                    <IconoComponente className="w-5 h-5" />
-                    <span className="text-sm">{tipo.nombre}</span>
-                  </button>
-                );
-              })}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
+                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
+              ].map(tipo => (
+                <button
+                  key={tipo.value}
+                  type="button"
+                  onClick={() => onChange('tipoAuditoria', tipo.value)}
+                  className={`
+                    px-4 py-3 rounded-lg border-2 transition-all duration-200
+                    flex flex-col items-center justify-center gap-2 font-medium
+                    ${
+                      formData.tipoAuditoria === tipo.value
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                    }
+                  `}
+                >
+                  {tipo.icono}
+                  <span className="text-sm">{tipo.label}</span>
+                </button>
+              ))}
             </div>
           </FieldWrapper>
 
           {/* Información contextual según tipo */}
-          {formData.tipoAuditoria === 'Especial' && (
+          {formData.tipoAuditoria === 'especial' && (
             <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -891,20 +820,6 @@ function Paso1InformacionBasica({ formData, onChange, tiposAuditoria = TIPOS_AUD
                   <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
                   <p className="text-amber-700">
                     Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual. Requieren justificación detallada.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {formData.tipoAuditoria === 'Territorial' && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
-                  <p className="text-blue-700">
-                    Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
                   </p>
                 </div>
               </div>
@@ -1030,43 +945,6 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </FieldWrapper>
-
-          {/* Responsable del Área Auditada */}
-          <div className="pt-4 border-t border-gray-200">
-            <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Responsable del Área Auditada
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FieldWrapper label="Nombre Completo">
-                <Input
-                  value={formData.responsableAreaNombre || ''}
-                  onChange={(e) => onChange('responsableAreaNombre', e.target.value)}
-                  placeholder="Nombre del responsable"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-              
-              <FieldWrapper label="Cargo">
-                <Input
-                  value={formData.responsableAreaCargo || ''}
-                  onChange={(e) => onChange('responsableAreaCargo', e.target.value)}
-                  placeholder="Cargo o puesto"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-              
-              <FieldWrapper label="Email">
-                <Input
-                  type="email"
-                  value={formData.responsableAreaEmail || ''}
-                  onChange={(e) => onChange('responsableAreaEmail', e.target.value)}
-                  placeholder="email@esap.edu.co"
-                  className="border-gray-300"
-                />
-              </FieldWrapper>
-            </div>
-          </div>
         </div>
       </Card>
     </div>
@@ -1231,39 +1109,16 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               <Input
                 type="date"
                 value={formData.fechaInicio}
-                onChange={(e) => {
-                  const nuevaFechaInicio = e.target.value;
-                  onChange('fechaInicio', nuevaFechaInicio);
-                  // Si la fecha de fin es anterior a la nueva fecha de inicio, ajustarla
-                  if (formData.fechaFin && nuevaFechaInicio && formData.fechaFin < nuevaFechaInicio) {
-                    onChange('fechaFin', '');
-                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
-                  }
-                }}
-                max={formData.fechaFin || undefined}
+                onChange={(e) => onChange('fechaInicio', e.target.value)}
                 className="border-gray-300"
               />
             </FieldWrapper>
 
-            <FieldWrapper 
-              label="Fecha de Finalización" 
-              required
-              error={formData.fechaInicio && formData.fechaFin && formData.fechaFin < formData.fechaInicio 
-                ? 'La fecha de finalización debe ser posterior a la fecha de inicio' 
-                : null}
-            >
+            <FieldWrapper label="Fecha de Finalización" required>
               <Input
                 type="date"
                 value={formData.fechaFin}
-                onChange={(e) => {
-                  const nuevaFechaFin = e.target.value;
-                  if (formData.fechaInicio && nuevaFechaFin && nuevaFechaFin < formData.fechaInicio) {
-                    toast.error('La fecha de finalización debe ser posterior a la fecha de inicio');
-                    return;
-                  }
-                  onChange('fechaFin', nuevaFechaFin);
-                }}
-                min={formData.fechaInicio || undefined}
+                onChange={(e) => onChange('fechaFin', e.target.value)}
                 className="border-gray-300"
               />
             </FieldWrapper>
@@ -1571,29 +1426,9 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
             helpText="Costo aproximado de la auditoría"
           >
             <Input
-              type="number"
+              type="text"
               value={formData.presupuestoEstimado}
-              onChange={(e) => {
-                const value = e.target.value;
-                // Permitir campo vacío o valores numéricos no negativos
-                if (value === '') {
-                  onChange('presupuestoEstimado', '');
-                } else {
-                  const numValue = parseFloat(value);
-                  // Solo actualizar si el valor es un número válido y no negativo
-                  if (!isNaN(numValue) && numValue >= 0) {
-                    onChange('presupuestoEstimado', value);
-                  }
-                }
-              }}
-              onKeyDown={(e) => {
-                // Prevenir el ingreso del signo menos, 'e', 'E', '+'
-                if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+') {
-                  e.preventDefault();
-                }
-              }}
-              min="0"
-              step="1000"
+              onChange={(e) => onChange('presupuestoEstimado', e.target.value)}
               placeholder="Ej: $5,000,000 COP"
               className="border-gray-300"
             />
@@ -1818,13 +1653,15 @@ interface Paso8Props {
   onAgregarHallazgo: () => void;
   onEliminarHallazgo: (id: string) => void;
   onActualizarHallazgo: (id: string, campo: keyof Hallazgo, valor: any) => void;
+  onChange: (field: keyof AuditoriaUnificadaFormData, value: any) => void;
 }
 
 function Paso8Hallazgos({
   formData,
   onAgregarHallazgo,
   onEliminarHallazgo,
-  onActualizarHallazgo
+  onActualizarHallazgo,
+  onChange
 }: Paso8Props) {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -1836,43 +1673,86 @@ function Paso8Hallazgos({
         </p>
       </div>
 
-      <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 mb-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Nota:</strong> Esta sección es opcional durante la creación. Puede agregar hallazgos
-          ahora o posteriormente durante la ejecución de la auditoría.
-        </p>
-      </div>
+      {/* ✅ CHECKBOX PARA INCLUIR HALLAZGOS PRELIMINARES */}
+      <Card className="p-6 border-2 border-blue-200 bg-blue-50">
+        <div className="flex items-start gap-4">
+          <input
+            type="checkbox"
+            id="incluirHallazgosPreliminares"
+            checked={formData.incluirHallazgosPreliminares}
+            onChange={(e) => onChange('incluirHallazgosPreliminares', e.target.checked)}
+            className="w-5 h-5 mt-1 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex-1">
+            <label htmlFor="incluirHallazgosPreliminares" className="font-bold text-blue-900 cursor-pointer">
+              ✍️ Incluir hallazgos preliminares identificados durante la auditoría
+            </label>
+            <p className="text-sm text-blue-800 mt-2">
+              <strong>Nota:</strong> Los hallazgos incluidos aquí tienen carácter{' '}
+              <span className="font-bold underline">PRELIMINAR</span> y están sujetos a validación,
+              verificación y comunicación formal al auditado antes de ser considerados definitivos.
+            </p>
+          </div>
+        </div>
+      </Card>
 
-      {formData.hallazgos.length === 0 ? (
-        <Card className="p-8 text-center border-2 border-dashed border-gray-300">
-          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-          <p className="text-gray-600 mb-4">No hay hallazgos registrados</p>
-          <Button
-            type="button"
-            onClick={onAgregarHallazgo}
-            style={{ background: '#EF4444' }}
-            className="gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Agregar Primer Hallazgo
-          </Button>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {formData.hallazgos.map((hallazgo, index) => (
-            <Card key={hallazgo.id} className="p-6 border-2 border-gray-200">
-              <div className="flex items-start justify-between mb-4">
-                <h4 className="font-bold text-gray-900">Hallazgo #{index + 1}</h4>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEliminarHallazgo(hallazgo.id)}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+      {/* BANNER DE HALLAZGOS PRELIMINARES */}
+      {formData.incluirHallazgosPreliminares && (
+        <div className="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-400">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-yellow-900">
+                ⚠️ HALLAZGOS PRELIMINARES
+              </p>
+              <p className="text-sm text-yellow-800 mt-1">
+                Los hallazgos registrados a continuación tienen carácter <strong>preliminar</strong>.
+                Deben ser comunicados al auditado para el derecho de contradicción antes de su
+                formalización en el informe final de auditoría.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECCIÓN DE HALLAZGOS (solo visible si el checkbox está activado) */}
+      {formData.incluirHallazgosPreliminares && (
+        <>
+          {formData.hallazgos.length === 0 ? (
+            <Card className="p-8 text-center border-2 border-dashed border-gray-300">
+              <AlertCircle className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+              <p className="text-gray-600 mb-4">No hay hallazgos preliminares registrados</p>
+              <Button
+                type="button"
+                onClick={onAgregarHallazgo}
+                style={{ background: '#EF4444' }}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Agregar Primer Hallazgo Preliminar
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {formData.hallazgos.map((hallazgo, index) => (
+                <Card key={hallazgo.id} className="p-6 border-2 border-yellow-300 bg-yellow-50/30">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-bold text-gray-900">Hallazgo Preliminar #{index + 1}</h4>
+                      <span className="px-2 py-1 bg-yellow-200 text-yellow-800 text-xs font-bold rounded-full">
+                        PRELIMINAR
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEliminarHallazgo(hallazgo.id)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
 
               <div className="space-y-4">
                 {/* Tipo de Hallazgo */}
@@ -1954,13 +1834,15 @@ function Paso8Hallazgos({
             type="button"
             onClick={onAgregarHallazgo}
             variant="outline"
-            className="w-full gap-2"
+            className="w-full gap-2 border-2 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
           >
             <Plus className="w-4 h-4" />
-            Agregar Otro Hallazgo
+            Agregar Otro Hallazgo Preliminar
           </Button>
         </div>
       )}
+    </>
+    )}
     </div>
   );
 }
@@ -2078,10 +1960,34 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
             <p className="font-bold text-gray-900">{formData.objetivos.length} definidos</p>
           </div>
           <div>
-            <p className="text-gray-600">Hallazgos:</p>
-            <p className="font-bold text-gray-900">{formData.hallazgos.length} registrados</p>
+            <p className="text-gray-600">Hallazgos Preliminares:</p>
+            <p className="font-bold text-gray-900">
+              {formData.incluirHallazgosPreliminares 
+                ? `${formData.hallazgos.length} registrado${formData.hallazgos.length !== 1 ? 's' : ''}`
+                : 'Sin hallazgos'
+              }
+            </p>
           </div>
         </div>
+        
+        {/* Alerta de hallazgos preliminares en resumen */}
+        {formData.incluirHallazgosPreliminares && formData.hallazgos.length > 0 && (
+          <div className="mt-4 p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-yellow-900">
+                  ⚠️ Esta auditoría incluye {formData.hallazgos.length} hallazgo{formData.hallazgos.length !== 1 ? 's' : ''} preliminar{formData.hallazgos.length !== 1 ? 'es' : ''}
+                </p>
+                <p className="text-sm text-yellow-800 mt-1">
+                  Recuerde que estos hallazgos deben ser comunicados formalmente al auditado
+                  para el ejercicio del derecho de contradicción antes de su inclusión en el
+                  informe final.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

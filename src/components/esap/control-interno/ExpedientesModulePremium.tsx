@@ -18,27 +18,20 @@
  * - Integración con auditorías
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
-  ChevronRight, ChevronDown, Plus, Filter, Calendar, User, ArrowLeft, X,
+  ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
   Archive, CheckCircle2, AlertCircle, Clock,
-  File, FolderCheck, FileCheck, Loader2
+  File, FolderCheck, FileCheck
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'sonner@2.0.3';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 
-// API Services
-import { auditoriasApi } from './services/api';
-import { controlInternoService } from '../../../services/api/controlInternoService';
-import { LoadingSpinner } from '../../ui/loading-spinner';
-import { EmptyState } from '../../ui/empty-state';
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
 // ✅ FASE 1 DÍA 3: Componentes responsive
 import { Container4K, ResponsiveGrid } from '@/components/ui';
 
@@ -46,7 +39,7 @@ import { Container4K, ResponsiveGrid } from '@/components/ui';
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type FaseAuditoria =
+type FaseAuditoria = 
   | 'PLANIFICACION'
   | 'EJECUCION'
   | 'HALLAZGOS'
@@ -129,60 +122,39 @@ const FASES_AUDITORIA = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCIONES AUXILIARES PARA MAPEO DE DATOS
+// DATOS MOCK
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Mapea el estado de auditoría al estado del expediente
- */
-const mapearEstadoExpediente = (estadoAuditoria: string): 'ABIERTO' | 'EN_PROCESO' | 'CERRADO' => {
-  const estadoLower = estadoAuditoria.toLowerCase();
-  if (estadoLower === 'planeación' || estadoLower === 'planeacion') {
-    return 'ABIERTO';
+const EXPEDIENTES_MOCK: Expediente[] = [
+  {
+    id: 'exp-1',
+    codigoAuditoria: 'AU-2025-001',
+    nombreAuditoria: 'Auditoría Gestión Contractual',
+    tipoAuditoria: 'Auditoría de Gestión',
+    fechaInicio: '2025-01-15',
+    estado: 'EN_PROCESO',
+    responsable: 'Fernando Ávila',
+    totalDocumentos: 6,
+    documentos: [
+      { id: 'd1', nombre: 'Programa de Auditoría AU-2025-001.pdf', tipo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
+      { id: 'd2', nombre: 'Informe Final AU-2025-001.pdf', tipo: 'PDF', tamanio: '3.5 MB', fechaCreacion: '2025-02-20', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' }
+    ]
+  },
+  {
+    id: 'exp-2',
+    codigoAuditoria: 'AU-2024-012',
+    nombreAuditoria: 'Auditoría Control Interno Contable',
+    tipoAuditoria: 'Auditoría de Cumplimiento',
+    fechaInicio: '2024-09-10',
+    fechaFin: '2024-12-20',
+    estado: 'CERRADO',
+    responsable: 'María Rodríguez',
+    totalDocumentos: 3,
+    documentos: [
+      { id: 'd13', nombre: 'Programa de Auditoría AU-2024-012.pdf', tipo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'María Rodríguez', fase: 'PLANIFICACION' }
+    ]
   }
-  if (estadoLower === 'finalizada' || estadoLower === 'finalizado') {
-    return 'CERRADO';
-  }
-  return 'EN_PROCESO';
-};
-
-/**
- * Mapea la etapa del documento a la fase del expediente
- */
-const mapearFaseDocumento = (etapa: string | undefined): FaseAuditoria => {
-  if (!etapa) return 'PLANIFICACION';
-
-  const etapaLower = etapa.toLowerCase();
-  if (etapaLower.includes('planificacion') || etapaLower.includes('planeacion')) {
-    return 'PLANIFICACION';
-  }
-  if (etapaLower.includes('ejecucion') || etapaLower.includes('ejecución')) {
-    return 'EJECUCION';
-  }
-  if (etapaLower.includes('hallazgo')) {
-    return 'HALLAZGOS';
-  }
-  if (etapaLower.includes('comunicacion') || etapaLower.includes('comunicación')) {
-    return 'COMUNICACION_RESULTADOS';
-  }
-  if (etapaLower.includes('seguimiento')) {
-    return 'SEGUIMIENTO';
-  }
-  if (etapaLower.includes('cierre')) {
-    return 'CIERRE';
-  }
-  return 'PLANIFICACION';
-};
-
-/**
- * Formatea el tamaño del archivo
- */
-const formatearTamanio = (bytes: number | undefined): string => {
-  if (!bytes) return '0 KB';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
+];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -190,92 +162,6 @@ const formatearTamanio = (bytes: number | undefined): string => {
 
 export function ExpedientesModulePremium() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
-  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Función para cargar expedientes desde la API
-  const cargarExpedientes = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Obtener todas las auditorías
-      const response = await auditoriasApi.getAllKanban();
-
-      if (!response.success || !response.data) {
-        throw new Error(response.message || 'Error al cargar auditorías');
-      }
-
-      const auditorias = response.data;
-
-      // Para cada auditoría, obtener sus documentos y construir el expediente
-      const expedientesPromises = auditorias.map(async (auditoria: any) => {
-        try {
-          // Obtener documentos de la auditoría
-          const documentos = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
-
-          // Mapear documentos al formato esperado
-          const documentosMapeados: Documento[] = documentos.map((doc: any) => ({
-            id: doc.id || doc.documentoId || String(Math.random()),
-            nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
-            tipo: doc.tipo || doc.tipoArchivo || 'PDF',
-            tamanio: formatearTamanio(doc.tamanio || doc.size),
-            fechaCreacion: doc.fechaCreacion || doc.createdAt || new Date().toISOString().split('T')[0],
-            autor: doc.autor || doc.creadoPor || doc.usuarioNombre || 'Sistema',
-            fase: mapearFaseDocumento(doc.etapa || doc.fase)
-          }));
-
-          // Construir el expediente
-          const expediente: Expediente = {
-            id: auditoria.id,
-            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
-            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
-            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
-            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
-            fechaFin: auditoria.fechaFin,
-            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
-            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
-            totalDocumentos: documentosMapeados.length,
-            documentos: documentosMapeados
-          };
-
-          return expediente;
-        } catch (err) {
-          console.error(`Error al cargar documentos de auditoría ${auditoria.id}:`, err);
-          // Retornar expediente sin documentos si hay error
-          return {
-            id: auditoria.id,
-            codigoAuditoria: auditoria.codigo || auditoria.codigoAuditoria || `AUD-${auditoria.id}`,
-            nombreAuditoria: auditoria.titulo || auditoria.nombre || 'Sin título',
-            tipoAuditoria: auditoria.tipo || 'Auditoría de Gestión',
-            fechaInicio: auditoria.fechaInicio || auditoria.fechaCreacion || new Date().toISOString().split('T')[0],
-            fechaFin: auditoria.fechaFin,
-            estado: mapearEstadoExpediente(auditoria.estado || 'Planeación'),
-            responsable: auditoria.auditorLider?.nombre || auditoria.responsable || 'Sin asignar',
-            totalDocumentos: 0,
-            documentos: []
-          };
-        }
-      });
-
-      const expedientesData = await Promise.all(expedientesPromises);
-      setExpedientes(expedientesData);
-    } catch (err: any) {
-      console.error('Error al cargar expedientes:', err);
-      setError(err.message || 'Error al cargar los expedientes');
-      toast.error('Error al cargar expedientes', {
-        description: err.message || 'No se pudieron cargar los expedientes desde el servidor'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Cargar expedientes al montar el componente
-  useEffect(() => {
-    cargarExpedientes();
-  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -286,14 +172,14 @@ export function ExpedientesModulePremium() {
 
       {/* Navegación */}
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="mx-auto px-8 max-w-[1920px]">
+        <div className="w-full px-8">
           <div className="flex gap-1">
             <TabButton
               active={vistaActiva === 'expedientes'}
               onClick={() => setVistaActiva('expedientes')}
               icon={<Folder className="w-4 h-4" />}
               label="Expedientes por Auditoría"
-              badge={expedientes.length.toString()}
+              badge={EXPEDIENTES_MOCK.length.toString()}
             />
             <TabButton
               active={vistaActiva === 'estadisticas'}
@@ -314,28 +200,8 @@ export function ExpedientesModulePremium() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {loading ? (
-            <div className="flex items-center justify-center min-h-[400px]">
-              <LoadingSpinner />
-            </div>
-          ) : error ? (
-            <div className="mx-auto px-8 py-6 max-w-[1920px]">
-              <EmptyState
-                icon={AlertCircle}
-                title="Error al cargar expedientes"
-                description={error}
-                action={{
-                  label: "Reintentar",
-                  onClick: () => window.location.reload()
-                }}
-              />
-            </div>
-          ) : (
-            <>
-              {vistaActiva === 'expedientes' && <VistaExpedientes expedientes={expedientes} onRefresh={cargarExpedientes} />}
-              {vistaActiva === 'estadisticas' && <VistaEstadisticas expedientes={expedientes} />}
-            </>
-          )}
+          {vistaActiva === 'expedientes' && <VistaExpedientes />}
+          {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -360,8 +226,8 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       onClick={onClick}
       className={`
         relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active
-          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50'
+        ${active 
+          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
         }
       `}
@@ -369,8 +235,9 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
       {icon}
       {label}
       {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
-          }`}>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
+        }`}>
           {badge}
         </span>
       )}
@@ -382,18 +249,13 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EXPEDIENTES POR AUDITORÍA
 // ════════════════════════════════════════════════════════════════════════════
 
-interface VistaExpedientesProps {
-  expedientes: Expediente[];
-  onRefresh?: () => void;
-}
-
-function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
+function VistaExpedientes() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
 
   const expedientesFiltrados = useMemo(() => {
-    let resultado = expedientes;
+    let resultado = EXPEDIENTES_MOCK;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -408,17 +270,17 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado, expedientes]);
+  }, [busqueda, filtroEstado]);
 
   const estadisticas = useMemo(() => {
-    const total = expedientes.length;
-    const abiertos = expedientes.filter(e => e.estado === 'ABIERTO').length;
-    const enProceso = expedientes.filter(e => e.estado === 'EN_PROCESO').length;
-    const cerrados = expedientes.filter(e => e.estado === 'CERRADO').length;
-    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const total = EXPEDIENTES_MOCK.length;
+    const abiertos = EXPEDIENTES_MOCK.filter(e => e.estado === 'ABIERTO').length;
+    const enProceso = EXPEDIENTES_MOCK.filter(e => e.estado === 'EN_PROCESO').length;
+    const cerrados = EXPEDIENTES_MOCK.filter(e => e.estado === 'CERRADO').length;
+    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
 
     return { total, abiertos, enProceso, cerrados, totalDocs };
-  }, [expedientes]);
+  }, []);
 
   return (
     <Container4K className="py-6">
@@ -512,33 +374,18 @@ function VistaExpedientes({ expedientes, onRefresh }: VistaExpedientesProps) {
       </div>
 
       {/* Lista de Expedientes */}
-      {expedientesFiltrados.length === 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
-          <EmptyState
-            icon={Folder}
-            title="No se encontraron expedientes"
-            description={
-              busqueda || filtroEstado !== 'TODOS'
-                ? 'Intenta ajustar los filtros de búsqueda'
-                : 'No hay expedientes disponibles en este momento'
-            }
+      <div className="space-y-4">
+        {expedientesFiltrados.map((expediente) => (
+          <CardExpediente
+            key={expediente.id}
+            expediente={expediente}
+            expandido={expedienteExpandido === expediente.id}
+            onToggleExpand={() => setExpedienteExpandido(
+              expedienteExpandido === expediente.id ? null : expediente.id
+            )}
           />
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {expedientesFiltrados.map((expediente) => (
-            <CardExpediente
-              key={expediente.id}
-              expediente={expediente}
-              expandido={expedienteExpandido === expediente.id}
-              onToggleExpand={() => setExpedienteExpandido(
-                expedienteExpandido === expediente.id ? null : expediente.id
-              )}
-              onRefresh={onRefresh}
-            />
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </Container4K>
   );
 }
@@ -551,12 +398,11 @@ interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
-  onRefresh?: () => void;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: CardExpedienteProps) {
+function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
   const [modalCargar, setModalCargar] = useState(false);
-
+  
   const estadoConfig = {
     ABIERTO: { bg: 'bg-green-100', text: 'text-green-700', label: 'Abierto' },
     EN_PROCESO: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'En Proceso' },
@@ -585,7 +431,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
 
   const handleCargarDocumento = () => {
     setModalCargar(true);
-
+    
     toast.info('Abrir cargador de documentos', {
       description: `Expediente ${expediente.codigoAuditoria}`,
       duration: 2000,
@@ -648,15 +494,13 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
             </div>
 
             <div className="flex gap-2">
-              {authService.hasPermission(Permissions.CONTROL_INTERNO_EXPEDIENTES_UPLOAD) && (
-                <button
-                  onClick={handleCargarDocumento}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
-                >
-                  <Upload className="w-4 h-4" />
-                  Cargar
-                </button>
-              )}
+              <button 
+                onClick={handleCargarDocumento}
+                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Cargar
+              </button>
               <button
                 onClick={onToggleExpand}
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
@@ -719,10 +563,6 @@ function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: Ca
           onCargar={() => {
             setModalCargar(false);
             toast.success('Documento cargado exitosamente');
-            // Refrescar la lista de expedientes después de cargar
-            if (onRefresh) {
-              onRefresh();
-            }
           }}
         />
       )}
@@ -757,7 +597,7 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoVisualizando(doc);
-
+    
     toast.info('Visualizar documento', {
       description: doc.nombre,
       duration: 2000,
@@ -782,7 +622,7 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
-
+    
     toast.success('Descargando documento', {
       description: `${doc.nombre} (${doc.tamanio})`,
       duration: 3000,
@@ -859,14 +699,14 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
                         </div>
 
                         <div className="flex gap-2">
-                          <button
+                          <button 
                             onClick={() => handleVerDocumento(doc)}
                             className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
                             title="Ver documento"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
+                          <button 
                             onClick={(e) => handleDescargarDocumento(doc, e)}
                             className="p-2 text-gray-600 hover:text-[#1e5da8] hover:bg-blue-50 rounded transition-colors"
                             title="Descargar documento"
@@ -900,13 +740,9 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 // VISTA: ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 
-interface VistaEstadisticasProps {
-  expedientes: Expediente[];
-}
-
-function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
+function VistaEstadisticas() {
   const stats = useMemo(() => {
-    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
     const docsPorFase: Record<FaseAuditoria, number> = {
       PLANIFICACION: 0,
       EJECUCION: 0,
@@ -916,14 +752,14 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
       CIERRE: 0
     };
 
-    expedientes.forEach(exp => {
+    EXPEDIENTES_MOCK.forEach(exp => {
       exp.documentos.forEach(doc => {
         docsPorFase[doc.fase]++;
       });
     });
 
     return { totalDocs, docsPorFase };
-  }, [expedientes]);
+  }, []);
 
   return (
     <Container4K className="py-6">
@@ -937,13 +773,11 @@ function VistaEstadisticas({ expedientes }: VistaEstadisticasProps) {
           </div>
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
             <div className="text-xs text-green-700 mb-1">Expedientes Activos</div>
-            <div className="text-2xl font-semibold text-green-900">{expedientes.filter(e => e.estado !== 'CERRADO').length}</div>
+            <div className="text-2xl font-semibold text-green-900">{EXPEDIENTES_MOCK.filter(e => e.estado !== 'CERRADO').length}</div>
           </div>
           <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
             <div className="text-xs text-purple-700 mb-1">Promedio Docs/Expediente</div>
-            <div className="text-2xl font-semibold text-purple-900">
-              {expedientes.length > 0 ? Math.round(stats.totalDocs / expedientes.length) : 0}
-            </div>
+            <div className="text-2xl font-semibold text-purple-900">{Math.round(stats.totalDocs / EXPEDIENTES_MOCK.length)}</div>
           </div>
         </ResponsiveGrid>
 
@@ -1011,235 +845,167 @@ interface ModalCargarDocumentoProps {
   onCargar: () => void;
 }
 
-// Adapting the new design to this module's context
 function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocumentoProps) {
-  const [step, setStep] = useState<'SELECCION' | 'CARGA'>('SELECCION');
-  const [selectedFase, setSelectedFase] = useState<FaseAuditoria | null>(null);
+  const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [archivoSeleccionado, setArchivoSeleccionado] = useState<File | null>(null);
-  const [cargando, setCargando] = useState(false);
-  const [progresoCarga, setProgresoCarga] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mapear fase a etapa (logic existing)
-  const mapearFaseAEtapa = (fase: FaseAuditoria): string => {
-    const mapeo: Record<FaseAuditoria, string> = {
-      PLANIFICACION: 'planeacion',
-      EJECUCION: 'ejecucion',
-      HALLAZGOS: 'ejecucion',
-      COMUNICACION_RESULTADOS: 'comunicacion',
-      SEGUIMIENTO: 'seguimiento',
-      CIERRE: 'comunicacion'
-    };
-    return mapeo[fase] || 'planeacion';
-  };
-
-  const handleFaseSelect = (faseId: FaseAuditoria) => {
-    setSelectedFase(faseId);
-    setStep('CARGA');
-  };
-
-  const handleBack = () => {
-    setStep('SELECCION');
-    setSelectedFase(null);
-    setArchivoSeleccionado(null);
-    setNombreDocumento('');
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setArchivoSeleccionado(file);
-      if (!nombreDocumento) setNombreDocumento(file.name.split('.')[0]);
+  const handleCargar = () => {
+    // Validaciones
+    if (!nombreDocumento.trim()) {
+      toast.error('El nombre del documento es obligatorio');
+      return;
     }
+
+    // Simular carga del documento
+    toast.success('Documento Cargado Exitosamente', {
+      description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
+      duration: 4000,
+    });
+
+    console.log('📤 Cargar documento al expediente:', {
+      expedienteId: expediente.id,
+      codigoAuditoria: expediente.codigoAuditoria,
+      nombreAuditoria: expediente.nombreAuditoria,
+      documento: {
+        nombre: nombreDocumento,
+        fase: fase,
+        faseNombre: FASES_AUDITORIA.find(f => f.id === fase)?.nombre,
+        descripcion,
+        fechaCarga: new Date().toISOString(),
+        usuario: expediente.responsable
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    // En producción: llamar al backend para cargar el documento
+    // POST /api/expedientes/${expediente.id}/documentos
+    // FormData con archivo + metadatos
+
+    onCargar();
   };
-
-  const handleCargar = async () => {
-    if (!archivoSeleccionado || !selectedFase || !nombreDocumento) return;
-    setCargando(true);
-    setProgresoCarga(10); // Start progress
-
-    try {
-      // Simulate progress
-      const interval = setInterval(() => {
-        setProgresoCarga(prev => Math.min(prev + 10, 90));
-      }, 200);
-
-      await controlInternoService.createDocumento(
-        archivoSeleccionado,
-        {
-          nombre: nombreDocumento.trim(),
-          descripcion: descripcion.trim() || undefined,
-          tipoDocumento: 'otro',
-          etapa: mapearFaseAEtapa(selectedFase),
-          auditoriaId: expediente.id,
-          subidoPor: expediente.responsable || 'Usuario',
-        },
-        (progress) => setProgresoCarga(progress)
-      );
-
-      clearInterval(interval);
-      setProgresoCarga(100);
-      toast.success('Documento cargado exitosamente');
-      onCargar(); // Close and refresh
-    } catch (error: any) {
-      console.error('Error uploading:', error);
-      toast.error('Error al cargar documento');
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  const selectedFaseInfo = FASES_AUDITORIA.find(f => f.id === selectedFase);
 
   return (
     <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-
-      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10 overflow-hidden flex flex-col max-h-[90vh]">
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl z-10">
         {/* Header */}
-        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">
-              {step === 'SELECCION' ? 'Seleccionar Fase del Proceso' : `Cargar a ${selectedFaseInfo?.nombre}`}
-            </h3>
-            <p className="text-sm text-gray-500">{expediente.codigoAuditoria} - {expediente.nombreAuditoria}</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+          <h3 className="text-xl font-medium">Cargar Documento al Expediente</h3>
+          <p className="text-sm text-blue-100 mt-1">{expediente.codigoAuditoria} - {expediente.nombreAuditoria}</p>
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto">
-          {step === 'SELECCION' && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {FASES_AUDITORIA.map((fase) => {
-                const Icon = fase.icon;
-                const colorClasses = {
-                  blue: 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-400',
-                  green: 'bg-green-50 text-green-700 border-green-200 hover:border-green-400',
-                  orange: 'bg-orange-50 text-orange-700 border-orange-200 hover:border-orange-400',
-                  purple: 'bg-purple-50 text-purple-700 border-purple-200 hover:border-purple-400',
-                  cyan: 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:border-cyan-400',
-                  gray: 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
-                };
-                const colorClass = colorClasses[fase.color as keyof typeof colorClasses] || colorClasses.gray;
-
-                return (
-                  <button
-                    key={fase.id}
-                    onClick={() => handleFaseSelect(fase.id)}
-                    className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all hover:shadow-md hover:scale-[1.02] gap-3 text-center ${colorClass} min-h-[160px]`}
-                  >
-                    <div className="p-4 rounded-full bg-white bg-opacity-60 shadow-sm">
-                      <Icon className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <span className="font-bold text-base block">{fase.nombre}</span>
-                      <span className="text-xs opacity-80 mt-1 block">{fase.descripcion}</span>
-                    </div>
-                  </button>
-                );
-              })}
+        {/* Contenido */}
+        <div className="px-6 py-6">
+          <div className="space-y-4">
+            {/* Información del Expediente */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <span className="text-blue-700 font-medium">Expediente:</span>
+                  <span className="ml-2 text-blue-900">{expediente.codigoAuditoria}</span>
+                </div>
+                <span className="text-blue-400">•</span>
+                <div>
+                  <span className="text-blue-700 font-medium">Estado:</span>
+                  <span className="ml-2 text-blue-900">{expediente.estado}</span>
+                </div>
+                <span className="text-blue-400">•</span>
+                <div>
+                  <span className="text-blue-700 font-medium">Docs actuales:</span>
+                  <span className="ml-2 text-blue-900 font-semibold">{expediente.totalDocumentos}</span>
+                </div>
+              </div>
             </div>
-          )}
 
-          {step === 'CARGA' && (
-            <div className="space-y-6 max-w-2xl mx-auto">
-              <button
-                onClick={handleBack}
-                className="flex items-center text-sm text-gray-500 hover:text-blue-700 transition-colors"
+            {/* Selección de Fase */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fase del Proceso <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={fase}
+                onChange={(e) => setFase(e.target.value as FaseAuditoria)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
               >
-                <ArrowLeft className="w-4 h-4 mr-1" /> Volver a selección de fase
-              </button>
+                {FASES_AUDITORIA.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.nombre} - {f.descripcion}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Selecciona la fase a la que pertenece este documento
+              </p>
+            </div>
 
-              <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex items-center gap-4">
-                <div className="p-3 bg-white rounded-lg shadow-sm text-blue-700">
-                  {selectedFaseInfo && <selectedFaseInfo.icon className="w-6 h-6" />}
-                </div>
-                <div>
-                  <h4 className="font-bold text-gray-900">{selectedFaseInfo?.nombre}</h4>
-                  <p className="text-sm text-gray-600">{selectedFaseInfo?.descripcion}</p>
-                </div>
-              </div>
+            {/* Nombre del Documento */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nombre del Documento <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={nombreDocumento}
+                onChange={(e) => setNombreDocumento(e.target.value)}
+                placeholder="Ej: Programa de Auditoría AU-2025-001.pdf"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+              />
+            </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Documento</label>
-                  <input
-                    type="text"
-                    value={nombreDocumento}
-                    onChange={(e) => setNombreDocumento(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent"
-                    placeholder="Ej: Informe de hallazgos preliminares..."
-                  />
-                </div>
+            {/* Descripción */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción / Notas
+              </label>
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent text-sm"
+                placeholder="Información adicional sobre este documento (opcional)"
+              />
+            </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (Opcional)</label>
-                  <textarea
-                    rows={2}
-                    value={descripcion}
-                    onChange={(e) => setDescripcion(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1e5da8] focus:border-transparent"
-                    placeholder="Detalles adicionales..."
-                  />
-                </div>
-
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-[#1e5da8] hover:bg-gray-50 transition-all text-center relative cursor-pointer group">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
-                  />
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-[#1e5da8] group-hover:scale-110 transition-transform">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 text-lg">
-                        {archivoSeleccionado ? archivoSeleccionado.name : 'Haz clic o arrastra un archivo aquí'}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">PDF, Excel, Word, Imágenes (Máx 50MB)</p>
-                    </div>
-                  </div>
-                </div>
+            {/* Selector de Archivo (simulado) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Archivo
+              </label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors cursor-pointer">
+                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 mb-1">
+                  Haz clic para seleccionar o arrastra el archivo aquí
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF, DOCX, XLSX, hasta 50MB
+                </p>
               </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3 shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium"
-          >
-            Cancelar
-          </button>
-          {step === 'CARGA' && (
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            >
+              Cancelar
+            </button>
             <button
               onClick={handleCargar}
-              disabled={cargando || !archivoSeleccionado || !nombreDocumento}
-              className="px-6 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002a70] disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2 shadow-sm transition-all hover:shadow-md"
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
             >
-              {cargando ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Cargando... {progresoCarga}%
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Subir Documento
-                </>
-              )}
+              <Upload className="w-4 h-4" />
+              Cargar Documento
             </button>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -1259,11 +1025,11 @@ interface ModalVerDocumentoProps {
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
   return (
     <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
         onClick={onClose}
       />
-
+      
       <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">

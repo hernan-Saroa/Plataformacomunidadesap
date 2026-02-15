@@ -110,10 +110,10 @@ export function ModalDetallesNoticia({ noticia, onClose }: { noticia: any; onClo
     ? noticia.denunciante.nombre
     : (Array.isArray(noticia.denunciante) ? noticia.denunciante[0]?.nombre : 'Anónimo');
 
-export function ModalDetallesNoticia({ noticia, onClose }: Props) {
+
   // Obtener color del estado
   const getEstadoColor = (estado: string) => {
-    switch(estado) {
+    switch (estado) {
       case 'pendiente':
         return { bg: '#FEF3C7', color: '#D97706' };
       case 'en_revision':
@@ -321,7 +321,7 @@ export function ModalDetallesNoticia({ noticia, onClose }: Props) {
           {/* Descripción */}
           {noticia.descripcion && (
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <h3 className="flex items-center gap-2 mb-3">
                 <MessageSquare className="w-5 h-5" style={{ color: '#003DA5' }} />
                 Descripción de Hechos
               </h3>

@@ -60,11 +60,6 @@ import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
-import { controlInternoService } from '../../../services/api/controlInternoService';
-import { universoAuditoriasApi } from './services/api';
-import { useEffect } from 'react';
-import { authService } from '../../../services/api/authService';
-import { Permissions } from '../../../enums/permissions';
 import { ModalNuevaAreaWorldClass } from './ModalNuevaAreaWorldClass';
 
 // ============ TIPOS ============
@@ -539,18 +534,8 @@ const getEstadoInfo = (estado: EstadoSeleccion) => {
 
 // ============ COMPONENTE PRINCIPAL ============
 
-interface UniversoAuditoriasProps {
-  filtros?: {
-    año: number;
-    estado: string;
-    area: string;
-    busqueda: string;
-  };
-}
-
-export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as UniversoAuditoriasProps) {
-  const [areas, setAreas] = useState<AreaAuditable[]>([]);
-  const [loading, setLoading] = useState(true);
+export function UniversoAuditorias() {
+  const [areas, setAreas] = useState<AreaAuditable[]>(AREAS_AUDITABLES_MOCK);
   const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
   const [modoVista, setModoVista] = useState<'grid' | 'tabla'>('grid');
   const [busqueda, setBusqueda] = useState('');
@@ -559,159 +544,19 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoSeleccion>('Todos');
   const [areaEditando, setAreaEditando] = useState<string | null>(null);
   const [modalNuevaArea, setModalNuevaArea] = useState(false);
-  const [areaViendoDetalle, setAreaViendoDetalle] = useState<AreaAuditable | null>(null);
-
-  // Función para normalizar nivel de riesgo (BD puede venir en minúsculas)
-  const normalizarNivelRiesgo = (nivel: string | undefined): NivelRiesgo => {
-    if (!nivel) return 'Bajo';
-    const nivelLower = nivel.toLowerCase();
-    if (nivelLower === 'crítico' || nivelLower === 'critico') return 'Crítico';
-    if (nivelLower === 'alto') return 'Alto';
-    if (nivelLower === 'medio') return 'Medio';
-    return 'Bajo';
-  };
-
-  // Función para mapear ProcesoAuditable a AreaAuditable
-  const mapearProcesoAArea = (proceso: any): AreaAuditable => {
-    const evaluacionRiesgo = proceso.evaluacionRiesgo || {};
-    
-    // Mapear prioridad a estado (1=seleccionada, 2=pendiente, 3=no-aplica)
-    let estado: EstadoSeleccion = 'pendiente';
-    if (proceso.prioridad === 1) estado = 'seleccionada';
-    else if (proceso.prioridad === 2) estado = 'pendiente';
-    else if (proceso.prioridad === 3) estado = 'no-aplica';
-
-    // Mapear criticidad y exposición desde evaluacionRiesgo
-    // Backend usa escala 1-3, Frontend usa escala 1,3,5
-    // Backend: 1=Baja, 2=Media, 3=Alta
-    // Frontend: 1=Baja, 3=Media, 5=Alta
-    const criticidad = evaluacionRiesgo.impacto === 3 ? 5 : evaluacionRiesgo.impacto === 2 ? 3 : 1;
-    const exposicion = evaluacionRiesgo.probabilidad === 3 ? 5 : evaluacionRiesgo.probabilidad === 2 ? 3 : 1;
-    // Backend nivelControl: 1-3, Frontend mitigantes: 1-10
-    // Mapeo inverso: 1->1, 2->5, 3->10 (valores medios para mejor UX)
-    const mitigantes = evaluacionRiesgo.nivelControl === 1 ? 1 : evaluacionRiesgo.nivelControl === 2 ? 5 : 10;
-
-    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-
-    // Normalizar nivel de riesgo (puede venir de BD como 'alto', 'medio', 'bajo')
-    // Usar el nivel calculado si está disponible, sino usar el de la BD
-    const nivelRiesgoBD = normalizarNivelRiesgo(evaluacionRiesgo.nivelRiesgo);
-    const nivelRiesgoFinal = nivel || nivelRiesgoBD;
-
-    // Determinar si es Sede o Territorial basado en el campo territorial
-    // Si tiene territorial definido, es Territorial, sino es Sede
-    const tipoArea: TipoArea = proceso.territorial ? 'Territorial' : 'Sede';
-
-    return {
-      id: proceso.id,
-      codigo: proceso.codigo || '',
-      nombre: proceso.nombre || '',
-      tipo: tipoArea,
-      descripcion: proceso.descripcion || '',
-      responsable: proceso.responsable || '',
-      criticidad: criticidad as CriticidadNivel,
-      factorExposicion: exposicion as ExposicionNivel,
-      factoresMitigantes: mitigantes,
-      nivelRiesgo: nivelRiesgoFinal,
-      scoreRiesgo: score,
-      estado,
-      ultimaAuditoria: proceso.ultimaAuditoria,
-      proximaAuditoria: proceso.proximaAuditoria,
-      numeroAuditorias: 0 // TODO: calcular desde auditorías relacionadas
-    };
-  };
-
-  // Cargar procesos desde la BD
-  useEffect(() => {
-    const cargarProcesos = async () => {
-      try {
-        setLoading(true);
-        const response = await universoAuditoriasApi.getAllProcesos();
-        
-        if (response.success && response.data) {
-          const areasMapeadas = response.data.map(mapearProcesoAArea);
-          setAreas(areasMapeadas);
-          
-          if (areasMapeadas.length === 0) {
-            // Si la BD está vacía, usar mock como fallback
-            setAreas(AREAS_AUDITABLES_MOCK);
-            toast.info('No hay procesos en la BD, mostrando datos de demostración', {
-              description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
-            });
-          } else {
-            toast.success(`${areasMapeadas.length} áreas auditables cargadas`, {
-              description: 'Datos actualizados desde la base de datos'
-            });
-          }
-        } else {
-          // Si no hay datos en BD, usar mock como fallback (útil para desarrollo/demo)
-          setAreas(AREAS_AUDITABLES_MOCK);
-          if (!response.success) {
-            toast.warning('Error al cargar desde BD, usando datos de demostración', {
-              description: response.error || 'No se pudieron obtener los datos desde el servidor'
-            });
-          } else {
-            toast.info('No hay procesos en la BD, mostrando datos de demostración', {
-              description: 'Puedes crear nuevos procesos desde el botón "Nueva Área"'
-            });
-          }
-        }
-      } catch (error) {
-        // En caso de error, usar mock como fallback
-        setAreas(AREAS_AUDITABLES_MOCK);
-        toast.warning('Error al conectar con el servidor, usando datos de demostración', {
-          description: error instanceof Error ? error.message : 'No se pudieron obtener los datos desde el servidor'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    cargarProcesos();
-  }, []);
-
-  // Sincronizar filtros externos con estados locales
-  useEffect(() => {
-    if (filtros) {
-      if (filtros.busqueda !== undefined && filtros.busqueda !== busqueda) {
-        setBusqueda(filtros.busqueda);
-      }
-    }
-  }, [filtros]);
 
   // Filtrado de áreas
   const areasFiltradas = useMemo(() => {
     return areas.filter(area => {
-      // Usar búsqueda de filtros externos si está disponible
-      const busquedaActual = filtros?.busqueda || busqueda;
-      const matchBusqueda = area.nombre.toLowerCase().includes(busquedaActual.toLowerCase()) ||
-                          area.codigo.toLowerCase().includes(busquedaActual.toLowerCase());
+      const matchBusqueda = area.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+                          area.codigo.toLowerCase().includes(busqueda.toLowerCase());
       const matchTipo = filtroTipo === 'Todos' || area.tipo === filtroTipo;
       const matchRiesgo = filtroRiesgo === 'Todos' || area.nivelRiesgo === filtroRiesgo;
-      
-      // Usar filtro de estado externo si está disponible
-      const estadoFiltro = filtros?.estado && filtros.estado !== 'TODOS' ? filtros.estado : filtroEstado;
-      
-      // Mapear estados del padre (BORRADOR, EN_REVISION, etc.) a estados del universo (seleccionada, pendiente, no-aplica)
-      let matchEstado = true;
-      if (estadoFiltro !== 'Todos' && estadoFiltro !== 'TODOS') {
-        // Mapeo de estados del filtro padre a estados del universo
-        // BORRADOR -> pendiente, EN_REVISION -> pendiente, APROBADO -> seleccionada, PUBLICADO -> seleccionada
-        if (estadoFiltro === 'BORRADOR' || estadoFiltro === 'EN_REVISION') {
-          matchEstado = area.estado === 'pendiente';
-        } else if (estadoFiltro === 'APROBADO' || estadoFiltro === 'PUBLICADO') {
-          matchEstado = area.estado === 'seleccionada';
-        } else {
-          // Si es un estado del universo directamente
-          matchEstado = area.estado === estadoFiltro;
-        }
-      } else {
-        matchEstado = filtroEstado === 'Todos' || area.estado === filtroEstado;
-      }
+      const matchEstado = filtroEstado === 'Todos' || area.estado === filtroEstado;
       
       return matchBusqueda && matchTipo && matchRiesgo && matchEstado;
     });
-  }, [areas, busqueda, filtroTipo, filtroRiesgo, filtroEstado, filtros]);
+  }, [areas, busqueda, filtroTipo, filtroRiesgo, filtroEstado]);
 
   // Métricas
   const metricas = useMemo(() => {
@@ -727,116 +572,38 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
     return { total, sede, territorial, critico, alto, medio, bajo, seleccionadas };
   }, [areas]);
 
-  const handleCambiarEstado = async (areaId: string, nuevoEstado: EstadoSeleccion) => {
-    try {
-      // Mapear estado a prioridad (1=seleccionada, 2=pendiente, 3=no-aplica)
-      // Nota: La prioridad en BD es inversa: 1 = mayor prioridad (4 años), 4 = menor prioridad (1 año)
-      // Pero para el estado usamos: 1=seleccionada, 2=pendiente, 3=no-aplica
-      // Necesitamos mapear: seleccionada=1, pendiente=2, no-aplica=3
-      const prioridad = nuevoEstado === 'seleccionada' ? 1 : nuevoEstado === 'pendiente' ? 2 : 3;
-      
-      const response = await universoAuditoriasApi.updateProceso(areaId, { prioridad } as any);
-      
-      if (response.success) {
-        setAreas(prev => prev.map(area => 
-          area.id === areaId ? { ...area, estado: nuevoEstado } : area
-        ));
-        toast.success('Estado actualizado', {
-          description: `Área ${areas.find(a => a.id === areaId)?.nombre} marcada como ${nuevoEstado}`
-        });
-      } else {
-        throw new Error('Error al actualizar estado');
-      }
-    } catch (error) {
-      console.error('Error al actualizar estado:', error);
-      toast.error('Error al actualizar estado', {
-        description: 'No se pudo guardar el cambio en el servidor'
-      });
-    }
+  const handleCambiarEstado = (areaId: string, nuevoEstado: EstadoSeleccion) => {
+    setAreas(prev => prev.map(area => 
+      area.id === areaId ? { ...area, estado: nuevoEstado } : area
+    ));
+    toast.success('Estado actualizado', {
+      description: `Área ${areas.find(a => a.id === areaId)?.nombre} marcada como ${nuevoEstado}`
+    });
   };
 
-  const handleActualizarRiesgo = async (
+  const handleActualizarRiesgo = (
     areaId: string, 
     criticidad: CriticidadNivel, 
     exposicion: ExposicionNivel, 
     mitigantes: number
   ) => {
-    try {
-      const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-      
-      // Mapear a formato del backend (igual que en el modal de nueva área)
-      const mapearCriticidadAImpacto = (criticidad: CriticidadNivel): number => {
-        // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
-        return criticidad === 5 ? 3 : criticidad === 3 ? 2 : 1;
-      };
-
-      const mapearExposicionAProbabilidad = (exposicion: ExposicionNivel): number => {
-        // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
-        return exposicion === 5 ? 3 : exposicion === 3 ? 2 : 1;
-      };
-
-      const mapearMitigantesANivelControl = (mitigantes: number): number => {
-        // 1-3 -> 1 (bajo), 4-6 -> 2 (medio), 7-10 -> 3 (alto)
-        if (mitigantes <= 3) return 1;
-        if (mitigantes <= 6) return 2;
-        return 3;
-      };
-
-      const impacto = mapearCriticidadAImpacto(criticidad);
-      const probabilidad = mapearExposicionAProbabilidad(exposicion);
-      const nivelControl = mapearMitigantesANivelControl(mitigantes);
-      
-      // Obtener el área actual para preservar su estado (prioridad)
-      const areaActual = areas.find(a => a.id === areaId);
-      if (!areaActual) {
-        throw new Error('Área no encontrada');
-      }
-      
-      // Mapear estado actual a prioridad para preservarlo
-      // El backend recalcula prioridad basándose en riesgo, pero queremos preservar el estado
-      const prioridadActual = areaActual.estado === 'seleccionada' ? 1 : 
-                              areaActual.estado === 'pendiente' ? 2 : 3;
-      
-      // Mapear a formato del backend (el backend calcula automáticamente nivelRiesgo)
-      const evaluacionRiesgo = {
-        probabilidad,
-        impacto,
-        nivelControl
-        // NO enviar nivelRiesgo - el backend lo calcula automáticamente
-      };
-
-      // Enviar tanto evaluacionRiesgo como prioridad para preservar el estado
-      // El backend actualizará evaluacionRiesgo pero mantendrá la prioridad (estado) que enviamos
-      const response = await universoAuditoriasApi.updateProceso(areaId, { 
-        evaluacionRiesgo,
-        prioridad: prioridadActual  // Preservar el estado actual
-      } as any);
-      
-      if (response.success) {
-        setAreas(prev => prev.map(area => 
-          area.id === areaId ? {
-            ...area,
-            criticidad,
-            factorExposicion: exposicion,
-            factoresMitigantes: mitigantes,
-            nivelRiesgo: nivel,
-            scoreRiesgo: score
-          } : area
-        ));
-        
-        setAreaEditando(null);
-        toast.success('Riesgo actualizado', {
-          description: `Nuevo nivel de riesgo: ${nivel} (${score})`
-        });
-      } else {
-        throw new Error('Error al actualizar riesgo');
-      }
-    } catch (error) {
-      console.error('Error al actualizar riesgo:', error);
-      toast.error('Error al actualizar riesgo', {
-        description: 'No se pudo guardar el cambio en el servidor'
-      });
-    }
+    const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
+    
+    setAreas(prev => prev.map(area => 
+      area.id === areaId ? {
+        ...area,
+        criticidad,
+        factorExposicion: exposicion,
+        factoresMitigantes: mitigantes,
+        nivelRiesgo: nivel,
+        scoreRiesgo: score
+      } : area
+    ));
+    
+    setAreaEditando(null);
+    toast.success('Riesgo actualizado', {
+      description: `Nuevo nivel de riesgo: ${nivel} (${score})`
+    });
   };
 
   return (
@@ -880,7 +647,6 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
           </div>
 
           {/* Acción principal */}
-          {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_CREATE) && (
           <Button 
             style={{ background: '#003DA5' }}
             className="gap-2"
@@ -890,7 +656,6 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Nueva Área</span>
           </Button>
-          )}
         </div>
       </div>
 
@@ -1006,7 +771,6 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
                     editando={areaEditando === area.id}
                     onGuardarRiesgo={handleActualizarRiesgo}
                     onCancelarEdicion={() => setAreaEditando(null)}
-                    onVerDetalle={(area) => setAreaViendoDetalle(area)}
                   />
                 ))}
               </div>
@@ -1014,7 +778,6 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
               <TablaAreasAuditables
                 areas={areasFiltradas}
                 onCambiarEstado={handleCambiarEstado}
-                onVerDetalle={(area) => setAreaViendoDetalle(area)}
               />
             )}
 
@@ -1041,86 +804,12 @@ export function UniversoAuditorias({ filtros }: UniversoAuditoriasProps = {} as 
         <ModalNuevaAreaWorldClass
           open={modalNuevaArea}
           onClose={() => setModalNuevaArea(false)}
-          onGuardar={async (nuevaArea) => {
-            try {
-              // Mapear AreaAuditable a formato del backend (CreateProcesoAuditableDto)
-              const mapearCriticidadAImpacto = (criticidad: CriticidadNivel): number => {
-                // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
-                return criticidad === 5 ? 3 : criticidad === 3 ? 2 : 1;
-              };
-
-              const mapearExposicionAProbabilidad = (exposicion: ExposicionNivel): number => {
-                // 5 -> 3 (alta), 3 -> 2 (media), 1 -> 1 (baja)
-                return exposicion === 5 ? 3 : exposicion === 3 ? 2 : 1;
-              };
-
-              const mapearMitigantesANivelControl = (mitigantes: number): number => {
-                // 1-3 -> 1 (bajo), 4-6 -> 2 (medio), 7-10 -> 3 (alto)
-                if (mitigantes <= 3) return 1;
-                if (mitigantes <= 6) return 2;
-                return 3;
-              };
-
-              const mapearNivelRiesgo = (nivel: NivelRiesgo): 'bajo' | 'medio' | 'alto' => {
-                if (nivel === 'Crítico' || nivel === 'Alto') return 'alto';
-                if (nivel === 'Medio') return 'medio';
-                return 'bajo';
-              };
-
-              const mapearTipo = (tipo: TipoArea): 'estrategico' | 'misional' | 'apoyo' | 'evaluacion' => {
-                // Mapear Sede/Territorial a tipos de proceso
-                // Por defecto, usar 'misional' para ambos
-                return 'misional';
-              };
-
-              const impacto = mapearCriticidadAImpacto(nuevaArea.criticidad);
-              const probabilidad = mapearExposicionAProbabilidad(nuevaArea.factorExposicion);
-              const nivelControl = mapearMitigantesANivelControl(nuevaArea.factoresMitigantes);
-
-              // El backend calcula automáticamente riesgoInherente, riesgoResidual y nivelRiesgo
-              // Solo enviamos los campos base que el DTO acepta
-              const procesoData = {
-                codigo: nuevaArea.codigo,
-                nombre: nuevaArea.nombre,
-                descripcion: nuevaArea.descripcion,
-                tipo: mapearTipo(nuevaArea.tipo),
-                macroproceso: nuevaArea.tipo === 'Sede' ? 'Procesos Sede' : 'Procesos Territoriales',
-                responsable: nuevaArea.responsable,
-                dependencia: nuevaArea.tipo === 'Sede' ? 'Sede Central' : nuevaArea.nombre,
-                territorial: nuevaArea.tipo === 'Territorial' ? nuevaArea.nombre : undefined,
-                evaluacionRiesgo: {
-                  probabilidad,
-                  impacto,
-                  nivelControl,
-                  // NO enviar: riesgoInherente, riesgoResidual, nivelRiesgo
-                  // El backend los calcula automáticamente
-                },
-                frecuenciaAuditoria: 'Anual',
-              };
-
-              // Guardar en la base de datos
-              const response = await universoAuditoriasApi.createProceso(procesoData);
-              
-              if (!response.success || !response.data) {
-                throw new Error('Error al crear el proceso');
-              }
-              
-              const procesoGuardado = response.data;
-
-              // Mapear el proceso guardado a AreaAuditable
-              const areaGuardada = mapearProcesoAArea(procesoGuardado);
-
-              setAreas(prev => [...prev, areaGuardada]);
-              setModalNuevaArea(false);
-              toast.success('¡Área creada exitosamente!', {
-                description: `${nuevaArea.nombre} guardada en la base de datos`
-              });
-            } catch (error) {
-              console.error('Error al guardar área:', error);
-              toast.error('Error al guardar el área', {
-                description: error instanceof Error ? error.message : 'No se pudo guardar en la base de datos'
-              });
-            }
+          onGuardar={(nuevaArea) => {
+            setAreas(prev => [...prev, nuevaArea]);
+            setModalNuevaArea(false);
+            toast.success('¡Área creada exitosamente!', {
+              description: `${nuevaArea.nombre} agregada al universo de auditorías`
+            });
           }}
           ultimoCodigo={areas.length > 0 ? Math.max(...areas.map(a => {
             const num = parseInt(a.codigo.split('-')[1]);
@@ -1200,121 +889,28 @@ function DashboardUniverso({ metricas, areas }: DashboardUniversoProps) {
         </p>
 
         <div className="space-y-3">
-          {areas.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p className="text-sm">No hay áreas auditables disponibles</p>
-            </div>
-          ) : areas
+          {areas
+            .filter(a => a.nivelRiesgo === 'Crítico' || a.nivelRiesgo === 'Alto')
             .sort((a, b) => b.scoreRiesgo - a.scoreRiesgo)
             .slice(0, 5)
-            .map((area, idx) => {
-              // Normalizar nivel de riesgo (puede venir de BD como 'alto', 'medio', 'bajo' en minúsculas)
-              const normalizarNivelRiesgo = (nivel: string): NivelRiesgo => {
-                const nivelLower = nivel?.toLowerCase() || 'bajo';
-                if (nivelLower === 'crítico' || nivelLower === 'critico') return 'Crítico';
-                if (nivelLower === 'alto') return 'Alto';
-                if (nivelLower === 'medio') return 'Medio';
-                return 'Bajo';
-              };
-
-              const nivelNormalizado = normalizarNivelRiesgo(area.nivelRiesgo);
-
-              // Estilos según nivel de riesgo
-              const getRiesgoStyles = (nivel: NivelRiesgo) => {
-                switch (nivel) {
-                  case 'Crítico':
-                    return {
-                      cardBg: 'bg-red-50',
-                      cardBorder: 'border-red-200',
-                      cardHover: 'hover:bg-red-100',
-                      numberBg: '#DC2626',
-                      badgeBg: '#DC2626',
-                      badgeText: 'white',
-                      scoreColor: '#DC2626',
-                      textColor: 'text-red-600'
-                    };
-                  case 'Alto':
-                    return {
-                      cardBg: 'bg-orange-50',
-                      cardBorder: 'border-orange-200',
-                      cardHover: 'hover:bg-orange-100',
-                      numberBg: '#F59E0B',
-                      badgeBg: '#F59E0B',
-                      badgeText: 'white',
-                      scoreColor: '#F59E0B',
-                      textColor: 'text-orange-600'
-                    };
-                  case 'Medio':
-                    return {
-                      cardBg: 'bg-blue-50',
-                      cardBorder: 'border-blue-200',
-                      cardHover: 'hover:bg-blue-100',
-                      numberBg: '#3B82F6',
-                      badgeBg: '#3B82F6',
-                      badgeText: 'white',
-                      scoreColor: '#3B82F6',
-                      textColor: 'text-blue-600'
-                    };
-                  case 'Bajo':
-                    return {
-                      cardBg: 'bg-green-50',
-                      cardBorder: 'border-green-200',
-                      cardHover: 'hover:bg-green-100',
-                      numberBg: '#10B981',
-                      badgeBg: '#10B981',
-                      badgeText: 'white',
-                      scoreColor: '#10B981',
-                      textColor: 'text-green-600'
-                    };
-                  default:
-                    // Fallback por si acaso
-                    return {
-                      cardBg: 'bg-gray-50',
-                      cardBorder: 'border-gray-200',
-                      cardHover: 'hover:bg-gray-100',
-                      numberBg: '#6B7280',
-                      badgeBg: '#6B7280',
-                      badgeText: 'white',
-                      scoreColor: '#6B7280',
-                      textColor: 'text-gray-600'
-                    };
-                }
-              };
-
-              const styles = getRiesgoStyles(nivelNormalizado);
-
-              return (
-                <div 
-                  key={area.id} 
-                  className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${styles.cardBg} ${styles.cardBorder} ${styles.cardHover}`}
-                >
-                  <div 
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 shadow-sm" 
-                    style={{ background: styles.numberBg }}
-                  >
-                    {idx + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-gray-900 mb-1">{area.nombre}</p>
-                    <p className="text-xs text-gray-600">{area.codigo} - {area.tipo}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <Badge 
-                      style={{ 
-                        background: styles.badgeBg, 
-                        color: styles.badgeText 
-                      }}
-                      className="mb-2"
-                    >
-                      {nivelNormalizado}
-                    </Badge>
-                    <p className={`text-xs mt-1 font-bold ${styles.textColor}`}>
-                      Score DAFP: {area.scoreRiesgo}
-                    </p>
-                  </div>
+            .map((area, idx) => (
+              <div key={area.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white" 
+                     style={{ background: getRiesgoColor(area.nivelRiesgo) }}>
+                  {idx + 1}
                 </div>
-              );
-            })}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-gray-900">{area.nombre}</p>
+                  <p className="text-xs text-gray-600">{area.codigo} - {area.tipo}</p>
+                </div>
+                <div className="text-right">
+                  <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
+                    {area.nivelRiesgo}
+                  </Badge>
+                  <p className="text-xs text-gray-600 mt-1">Score DAFP: {area.scoreRiesgo}</p>
+                </div>
+              </div>
+            ))}
         </div>
       </Card>
     </div>
@@ -1330,7 +926,6 @@ interface CardAreaAuditableProps {
   editando: boolean;
   onGuardarRiesgo: (areaId: string, criticidad: CriticidadNivel, exposicion: ExposicionNivel, mitigantes: number) => void;
   onCancelarEdicion: () => void;
-  onVerDetalle?: (area: AreaAuditable) => void;
 }
 
 function CardAreaAuditable({ 
@@ -1339,8 +934,7 @@ function CardAreaAuditable({
   onEditarRiesgo, 
   editando, 
   onGuardarRiesgo,
-  onCancelarEdicion,
-  onVerDetalle
+  onCancelarEdicion 
 }: CardAreaAuditableProps) {
   const [criticidad, setCriticidad] = useState<CriticidadNivel>(area.criticidad);
   const [exposicion, setExposicion] = useState<ExposicionNivel>(area.factorExposicion);
@@ -1446,19 +1040,16 @@ function CardAreaAuditable({
             <span className="text-gray-600">Auditorías:</span>
             <span className="font-bold text-gray-900">{area.numeroAuditorias}</span>
           </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-600">Última:</span>
-            <span className="text-gray-900">
-              {area.ultimaAuditoria || (
-                <span className="text-gray-400 italic text-xs">No ha sido auditado</span>
-              )}
-            </span>
-          </div>
+          {area.ultimaAuditoria && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600">Última:</span>
+              <span className="text-gray-900">{area.ultimaAuditoria}</span>
+            </div>
+          )}
         </div>
       )}
 
       <div className="flex gap-2">
-        {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_STATE_CHANGE) && (
         <select
           value={area.estado}
           onChange={(e) => onCambiarEstado(area.id, e.target.value as EstadoSeleccion)}
@@ -1472,8 +1063,8 @@ function CardAreaAuditable({
           <option value="pendiente">⏳ Pendiente</option>
           <option value="no-aplica">❌ No Aplica</option>
         </select>
-        )}
-        {!editando && authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_AREA_EDIT) && (
+
+        {!editando && (
           <Button
             size="sm"
             variant="outline"
@@ -1492,10 +1083,9 @@ function CardAreaAuditable({
 interface TablaAreasAuditablesProps {
   areas: AreaAuditable[];
   onCambiarEstado: (areaId: string, estado: EstadoSeleccion) => void;
-  onVerDetalle: (area: AreaAuditable) => void;
 }
 
-function TablaAreasAuditables({ areas, onCambiarEstado, onVerDetalle }: TablaAreasAuditablesProps) {
+function TablaAreasAuditables({ areas, onCambiarEstado }: TablaAreasAuditablesProps) {
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
@@ -1561,11 +1151,7 @@ function TablaAreasAuditables({ areas, onCambiarEstado, onVerDetalle }: TablaAre
                     </select>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => onVerDetalle(area)}
-                    >
+                    <Button size="sm" variant="outline">
                       <Eye className="w-3 h-3" />
                     </Button>
                   </td>
@@ -1576,532 +1162,5 @@ function TablaAreasAuditables({ areas, onCambiarEstado, onVerDetalle }: TablaAre
         </table>
       </div>
     </Card>
-  );
-}
-
-// ============ MODAL NUEVA ÁREA ============
-
-interface ModalNuevaAreaProps {
-  onClose: () => void;
-  onGuardar: (nuevaArea: AreaAuditable) => Promise<void>;
-  ultimoCodigoPorTipo: {
-    Sede: number;
-    Territorial: number;
-  };
-}
-
-function ModalNuevaArea({ onClose, onGuardar, ultimoCodigoPorTipo }: ModalNuevaAreaProps) {
-  const [nombre, setNombre] = useState('');
-  const [tipo, setTipo] = useState<TipoArea>('Sede');
-  const [descripcion, setDescripcion] = useState('');
-  const [responsable, setResponsable] = useState('');
-  const [criticidad, setCriticidad] = useState<CriticidadNivel>(5);
-  const [exposicion, setExposicion] = useState<ExposicionNivel>(5);
-  const [mitigantes, setMitigantes] = useState(2);
-  const [unidadSeleccionada, setUnidadSeleccionada] = useState('');
-
-  // Manejar selección de unidad organizacional
-  const handleSeleccionarUnidad = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const unidadId = e.target.value;
-    setUnidadSeleccionada(unidadId);
-    
-    const unidad = TERRITORIALES_ESAP.find(t => t.id === unidadId);
-    if (unidad) {
-      setNombre(unidad.nombre);
-      setTipo(unidad.codigo === 'ESAP-CENTRAL' ? 'Sede' : 'Territorial');
-      setDescripcion(`Dirección ${unidad.nombre} - ${unidad.departamentos.join(', ')}`);
-      setResponsable(`Director ${unidad.nombreCorto}`);
-    }
-  };
-
-  const [guardando, setGuardando] = useState(false);
-
-  const handleGuardar = async () => {
-    if (!nombre || !descripcion || !responsable) {
-      toast.error('Datos incompletos', {
-        description: 'Por favor completa todos los campos obligatorios'
-      });
-      return;
-    }
-
-    setGuardando(true);
-    try {
-      const { nivel, score } = calcularRiesgo(criticidad, exposicion, mitigantes);
-      // Generar código según el tipo, usando el último código del tipo correspondiente
-      const prefijoCodigo = tipo === 'Sede' ? 'SEDE' : 'TERR';
-      const ultimoCodigo = tipo === 'Sede' ? ultimoCodigoPorTipo.Sede : ultimoCodigoPorTipo.Territorial;
-      const nuevoCodigo = `${prefijoCodigo}-${String(ultimoCodigo + 1).padStart(3, '0')}`;
-      const nuevaArea: AreaAuditable = {
-        id: `area-${ultimoCodigo + 1}`, // ID temporal, se reemplazará con el de la BD
-        codigo: nuevoCodigo,
-        nombre,
-        tipo,
-        descripcion,
-        responsable,
-        criticidad,
-        factorExposicion: exposicion,
-        factoresMitigantes: mitigantes,
-        nivelRiesgo: nivel,
-        scoreRiesgo: score,
-        estado: 'pendiente',
-        numeroAuditorias: 0
-      };
-      await onGuardar(nuevaArea);
-    } catch (error) {
-      console.error('Error en handleGuardar:', error);
-      // El error ya se maneja en onGuardar
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto"
-      >
-        <Card className="p-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-gray-900 text-lg flex items-center gap-2">
-              <Plus className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Nueva Área Auditable
-            </h3>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-        <div className="space-y-4">
-          {/* SELECTOR DE ESTRUCTURA ORGANIZACIONAL */}
-          <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2" style={{ borderColor: '#003DA5' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Link2 className="w-5 h-5" style={{ color: '#003DA5' }} />
-              <h4 className="font-bold text-gray-900">Importar desde Estructura Organizacional</h4>
-              <Badge style={{ background: '#003DA5', color: 'white' }} className="text-xs">
-                {TERRITORIALES_ESAP.length} Unidades
-              </Badge>
-            </div>
-            <p className="text-xs text-gray-600 mb-3">
-              Selecciona una unidad organizacional existente para auto-completar los datos
-            </p>
-            <select
-              value={unidadSeleccionada}
-              onChange={handleSeleccionarUnidad}
-              className="w-full px-3 py-2 border-2 rounded-lg text-sm"
-              style={{ borderColor: unidadSeleccionada ? '#003DA5' : '#D1D5DB' }}
-            >
-              <option value="">➕ Crear área personalizada (sin vincular)</option>
-              <optgroup label="🏛️ SEDE CENTRAL (1)">
-                {TERRITORIALES_ESAP.filter(t => t.codigo === 'ESAP-CENTRAL').map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="📍 TERRITORIALES (17)">
-                {TERRITORIALES_ESAP.filter(t => t.codigo !== 'ESAP-CENTRAL').map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombre} - {t.ciudadPrincipal} ({t.totalCetap} CETAP)
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            {unidadSeleccionada && (
-              <div className="mt-2 p-2 bg-white rounded border" style={{ borderColor: '#003DA5' }}>
-                <p className="text-xs font-bold" style={{ color: '#003DA5' }}>
-                  ✓ Unidad vinculada - Datos auto-completados
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Nombre</label>
-              <Input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre del área"
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-gray-700 block mb-1">Tipo</label>
-              <select
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoArea)}
-                className="px-2 py-1 text-sm border rounded"
-              >
-                <option value="Sede">Sede</option>
-                <option value="Territorial">Territorial</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Descripción</label>
-            <Input
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Descripción del área"
-              className="text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">Responsable</label>
-            <Input
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Responsable del área"
-              className="text-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">📊 Criticidad (Impacto)</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>Alta (5):</strong> Crítico/Financiero</li>
-                <li><strong>Media (3):</strong> Apoyo importante</li>
-                <li><strong>Baja (1):</strong> Secundario</li>
-              </ul>
-              <select
-                value={criticidad}
-                onChange={(e) => setCriticidad(Number(e.target.value) as CriticidadNivel)}
-                className="w-full px-2 py-1 text-xs border rounded"
-              >
-                <option value={5}>Alta (5) - Crítico/Financiero</option>
-                <option value={3}>Media (3) - Apoyo importante</option>
-                <option value={1}>Baja (1) - Secundario</option>
-              </select>
-            </div>
-
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">👥 Factor Exposición</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>Alta (5):</strong> &gt;100 personas</li>
-                <li><strong>Media (3):</strong> 50-100 personas</li>
-                <li><strong>Baja (1):</strong> &lt;50 personas</li>
-              </ul>
-              <select
-                value={exposicion}
-                onChange={(e) => setExposicion(Number(e.target.value) as ExposicionNivel)}
-                className="w-full px-2 py-1 text-xs border rounded"
-              >
-                <option value={5}>Alta (5) - &gt;100 personas</option>
-                <option value={3}>Media (3) - 50-100 personas</option>
-                <option value={1}>Baja (1) - &lt;50 personas</option>
-              </select>
-            </div>
-
-            <div className="bg-white p-3 rounded-lg border border-orange-200">
-              <p className="text-xs font-bold text-gray-700 mb-1">🛡️ Factores Mitigantes</p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li><strong>1-10:</strong> Controles existentes</li>
-                <li>Mayor valor = Más controles</li>
-                <li>Más controles = Menor riesgo</li>
-              </ul>
-              <Input
-                type="number"
-                value={mitigantes}
-                onChange={(e) => setMitigantes(Number(e.target.value))}
-                min={1}
-                max={10}
-                className="text-xs"
-                placeholder="Controles existentes"
-              />
-              <p className="text-xs text-gray-500 mt-1">Mayor valor = más controles = menor riesgo</p>
-            </div>
-          </div>
-
-          {/* Preview del cálculo DAFP */}
-          <div className="mt-3 p-3 bg-white rounded-lg border-2 border-orange-300">
-            <p className="text-xs font-bold text-gray-700 mb-1">Vista Previa - Score DAFP:</p>
-            <div className="flex items-center gap-2">
-              <code className="text-lg font-black" style={{ color: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel) }}>
-                {calcularRiesgo(criticidad, exposicion, mitigantes).score}
-              </code>
-              <Badge style={{ 
-                background: getRiesgoColor(calcularRiesgo(criticidad, exposicion, mitigantes).nivel),
-                color: 'white'
-              }}>
-                {calcularRiesgo(criticidad, exposicion, mitigantes).nivel}
-              </Badge>
-              <p className="text-xs text-gray-600 ml-auto">
-                ({criticidad} × {exposicion}) ÷ {mitigantes}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onClose}
-          >
-            <X className="w-4 h-4 mr-1" />
-            Cancelar
-          </Button>
-          <Button
-            size="sm"
-            style={{ background: '#003DA5' }}
-            className="gap-2"
-            onClick={handleGuardar}
-            disabled={!nombre || !descripcion || !responsable || guardando}
-          >
-            <Save className="w-4 h-4" />
-            {guardando ? 'Guardando...' : 'Crear Área'}
-          </Button>
-        </div>
-      </Card>
-      </motion.div>
-    </div>
-  );
-}
-
-// ============ MODAL DETALLE ÁREA ============
-
-interface ModalDetalleAreaProps {
-  area: AreaAuditable;
-  onClose: () => void;
-}
-
-function ModalDetalleArea({ area, onClose }: ModalDetalleAreaProps) {
-  const estadoInfo = getEstadoInfo(area.estado);
-  
-  return (
-    <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-4xl max-h-[90vh] overflow-y-auto"
-      >
-        <Card className="p-6 shadow-2xl">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                {area.tipo === 'Sede' ? (
-                  <Building2 className="w-6 h-6 text-purple-600" />
-                ) : (
-                  <MapPin className="w-6 h-6 text-green-600" />
-                )}
-                <Badge variant="outline" className="text-sm">
-                  {area.codigo}
-                </Badge>
-                <Badge style={{ background: getRiesgoColor(area.nivelRiesgo), color: 'white' }}>
-                  {area.nivelRiesgo}
-                </Badge>
-              </div>
-              <h2 className="font-black text-gray-900 text-2xl mb-1">
-                {area.nombre}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {area.descripcion}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-
-          {/* Información General */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Card className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Target className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-gray-900">Información General</h3>
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-xs text-gray-600">Tipo de Área</p>
-                  <p className="font-bold text-gray-900">{area.tipo}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Responsable</p>
-                  <p className="font-bold text-gray-900">{area.responsable}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Estado</p>
-                  <Badge style={{ 
-                    background: estadoInfo.color,
-                    color: 'white'
-                  }}>
-                    {estadoInfo.label}
-                  </Badge>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-4 bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-200">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-orange-600" />
-                <h3 className="font-bold text-gray-900">Evaluación de Riesgo DAFP</h3>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs text-gray-600 mb-1">Score de Riesgo</p>
-                  <div className="flex items-center gap-2">
-                    <code 
-                      className="text-3xl font-black"
-                      style={{ color: getRiesgoColor(area.nivelRiesgo) }}
-                    >
-                      {area.scoreRiesgo}
-                    </code>
-                    <Badge 
-                      style={{ 
-                        background: getRiesgoColor(area.nivelRiesgo),
-                        color: 'white'
-                      }}
-                      className="text-sm"
-                    >
-                      {area.nivelRiesgo}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="text-xs text-gray-600">
-                  <p className="font-bold mb-1">Cálculo:</p>
-                  <code className="bg-white px-2 py-1 rounded border">
-                    ({area.criticidad} × {area.factorExposicion}) ÷ {area.factoresMitigantes} = {area.scoreRiesgo}
-                  </code>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Parámetros de Riesgo */}
-          <Card className="p-4 mb-6 bg-gray-50">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Parámetros de Evaluación DAFP
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-4 rounded-lg border-2 border-orange-200">
-                <p className="text-xs font-bold text-gray-700 mb-2">📊 Criticidad (Impacto)</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
-                    style={{ background: '#F59E0B' }}
-                  >
-                    {area.criticidad}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">
-                      {area.criticidad === 5 ? 'Alta' : area.criticidad === 3 ? 'Media' : 'Baja'}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      {area.criticidad === 5 ? 'Crítico/Financiero' : 
-                       area.criticidad === 3 ? 'Apoyo importante' : 
-                       'Secundario'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
-                <p className="text-xs font-bold text-gray-700 mb-2">👥 Factor Exposición</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
-                    style={{ background: '#3B82F6' }}
-                  >
-                    {area.factorExposicion}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">
-                      {area.factorExposicion === 5 ? 'Alta' : area.factorExposicion === 3 ? 'Media' : 'Baja'}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      {area.factorExposicion === 5 ? '>100 personas' : 
-                       area.factorExposicion === 3 ? '50-100 personas' : 
-                       '<50 personas'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-2 border-green-200">
-                <p className="text-xs font-bold text-gray-700 mb-2">🛡️ Factores Mitigantes</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="w-12 h-12 rounded-full flex items-center justify-center font-black text-white"
-                    style={{ background: '#10B981' }}
-                  >
-                    {area.factoresMitigantes}
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900">
-                      {area.factoresMitigantes >= 7 ? 'Alto' : 
-                       area.factoresMitigantes >= 4 ? 'Medio' : 
-                       'Bajo'}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Controles existentes
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Historial de Auditorías */}
-          <Card className="p-4 mb-6">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Historial de Auditorías
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center">
-                <p className="text-xs text-gray-600 mb-1">Total de Auditorías</p>
-                <p className="text-3xl font-black" style={{ color: '#003DA5' }}>
-                  {area.numeroAuditorias}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-gray-600 mb-1">Última Auditoría</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {area.ultimaAuditoria || (
-                    <span className="text-gray-400 italic">No ha sido auditado</span>
-                  )}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-gray-600 mb-1">Próxima Auditoría</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {area.proximaAuditoria || (
-                    <span className="text-gray-400 italic">
-                      {area.ultimaAuditoria ? 'N/A' : 'No ha sido auditado'}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Botones de Acción */}
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onClose}
-            >
-              <X className="w-4 h-4 mr-1" />
-              Cerrar
-            </Button>
-          </div>
-        </Card>
-      </motion.div>
-    </div>
   );
 }

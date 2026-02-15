@@ -78,11 +78,13 @@ type AppView =
   | 'verificacion'
   | 'solicitar-certificados-laborales'
   | 'verificar-certificado'
+  | 'verificar-certificado'
+  | 'solicitar-certificados-graduados'
   | 'convocatorias-docentes';
 
 type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | 'portal' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'solicitar-certificados-graduados' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 // type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 
 interface Usuario {
@@ -800,6 +802,13 @@ export default function App() {
       return;
     }
 
+    if (section === 'solicitar-certificados-graduados') {
+      setCurrentView('solicitar-certificados-graduados');
+      setVistaActual('solicitar-certificados-graduados');
+      navigate('/solicitar-certificado-graduado');
+      return;
+    }
+
     if (section === 'convocatorias-docentes') {
       setCurrentView('convocatorias-docentes');
       return;
@@ -836,7 +845,7 @@ export default function App() {
         return renderViewLanding();
 
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />;
 
       case 'login':
         return (
@@ -945,7 +954,7 @@ export default function App() {
       case 'pta-demo':
         return (
           <GestionProfesoralApp
-            usuario={usuarioActual!}
+            usuario={usuarioActual as any}
             onLogout={handleLogout}
           />
         );
@@ -965,7 +974,9 @@ export default function App() {
   const renderViewLanding = () => {
     switch (currentView) {
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />
+      case 'solicitar-certificados-graduados':
+        return <ValidarCertificadoGraduado onVolver={handleBackToHome} />
       case 'enrollment-qr':
         return (
           <EnrollmentQRLandingUnified
@@ -974,11 +985,10 @@ export default function App() {
               console.log('Iniciando proceso de enrolamiento');
             }}
             onBackToHome={handleBackToHome}
-            onLoginClick={handleLoginClick}
           />
         );
       case 'vinculaciones':
-        return <VinculacionForm onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+        return <VinculacionForm onBack={handleBackToHome} />;
       case 'verificacion':
         return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
 
@@ -1078,7 +1088,7 @@ export default function App() {
               {/* Botones */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleLogout}
+                  onClick={() => handleLogout()}
                   className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
                 >
                   Cerrar Sesión
@@ -1096,7 +1106,7 @@ export default function App() {
 
         <Toaster position="top-right" richColors expand={true} />
       </ErrorBoundary>
-    </NotificacionesProvider>
+    </NotificacionesProvider >
   );
 
 }

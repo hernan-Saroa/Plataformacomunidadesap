@@ -41,6 +41,9 @@ export interface Container4KProps {
   
   /** Desactivar padding automático (usar solo si necesitas padding custom) */
   noPadding?: boolean;
+  
+  /** Ancho mínimo del contenido (útil para tablas y layouts anchos) */
+  minWidth?: string;
 }
 
 /**
@@ -70,19 +73,23 @@ export function Container4K({
   children, 
   className = "", 
   maxWidth = '1920px',
-  noPadding = false
+  noPadding = false,
+  minWidth
 }: Container4KProps) {
-  // Seleccionar clase de max-width
-  const maxWidthClass = 
-    maxWidth === '7xl' ? 'max-w-7xl' :
-    maxWidth === '1600px' ? 'max-w-[1600px]' :
-    'max-w-[1920px]';
+  // Seleccionar clase de max-width (sin limitar, solo informativo)
+  // NO usamos max-w porque corta el contenido en pantallas pequeñas
   
   // Padding responsive (solo si no está desactivado)
   const paddingClass = noPadding ? '' : 'px-4 sm:px-6 lg:px-8';
+  
+  // Aplicar min-width si está definido
+  const style = minWidth ? { minWidth } : undefined;
     
   return (
-    <div className={`mx-auto ${paddingClass} ${maxWidthClass} ${className}`}>
+    <div 
+      className={`w-full ${paddingClass} ${className}`}
+      style={style}
+    >
       {children}
     </div>
   );
