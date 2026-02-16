@@ -1250,8 +1250,27 @@ export function PlanAnualAuditoriaDefinitivo() {
             // Cast a any para acceder campos extendidos que vienen del backend
             const actExtendido = act as any;
             
-            // Obtener configuración de evidencias del backend (ya viene correcta)
-            const configEvidencias = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;
+            // Obtener configuración de evidencias del backend y transformar al formato del frontend
+            const configBackend = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;
+            
+            // Transformar booleans del backend a strings del frontend
+            let configEvidencias: ConfiguracionEvidencias;
+            if (configBackend) {
+              configEvidencias = {
+                adjuntosRequeridos: configBackend.documentos ? 'OBLIGATORIO' : 'NO_REQUERIDO',
+                observacionRequerida: configBackend.observaciones ? 'OBLIGATORIO' : 'NO_REQUERIDO',
+                minimoAdjuntos: configBackend.minimoAdjuntos || 1,
+                longitudMinimaObservacion: configBackend.longitudMinimaObservacion || 10
+              };
+            } else {
+              // Fallback si no hay configuración
+              configEvidencias = {
+                adjuntosRequeridos: 'OPCIONAL',
+                observacionRequerida: 'OPCIONAL',
+                minimoAdjuntos: 0,
+                longitudMinimaObservacion: 0
+              };
+            }
             
             return {
               id: act.id, // UUID string desde el backend
@@ -1317,6 +1336,26 @@ export function PlanAnualAuditoriaDefinitivo() {
               ? responsables[i % responsables.length]?.nombre 
               : jefeOCI.nombre;
 
+            // ⚡ Convertir tipoEvidencia del Wizard a configuracionEvidencias del backend
+            let configuracionEvidencias = act.configuracionEvidencias;
+            if (!configuracionEvidencias && act.tipoEvidencia) {
+              // Mapear tipoEvidencia a configuracionEvidencias
+              switch (act.tipoEvidencia) {
+                case 'SOLO_CHECK':
+                  configuracionEvidencias = { documentos: false, observaciones: false };
+                  break;
+                case 'OBSERVACIONES':
+                  configuracionEvidencias = { documentos: false, observaciones: true };
+                  break;
+                case 'ADJUNTOS':
+                  configuracionEvidencias = { documentos: true, observaciones: false };
+                  break;
+                case 'COMPLETO':
+                  configuracionEvidencias = { documentos: true, observaciones: true };
+                  break;
+              }
+            }
+
             await actividadesApi.create(rolBackend.id, {
               nombre: act.nombre,
               descripcion: act.descripcion || '',
@@ -1329,7 +1368,7 @@ export function PlanAnualAuditoriaDefinitivo() {
               evaluacion: act.evaluacion || '',
               seguimiento: act.seguimiento || '',
               requiereVerificacionDirector: act.requiereVerificacionDirector || false,
-              configuracionEvidencias: act.configuracionEvidencias || undefined
+              configuracionEvidencias: configuracionEvidencias
             });
           }
         }

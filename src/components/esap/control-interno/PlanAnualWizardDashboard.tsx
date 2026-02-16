@@ -130,6 +130,7 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
 
 // Tipo para configuración de roles en el wizard
 interface ActividadBase {
+  id?: string; // ⚡ ID único para identificar cada actividad
   nombre: string;
   descripcion: string;
   fechaInicio: string;
@@ -137,7 +138,7 @@ interface ActividadBase {
   control: string;
   evaluacion: string;
   seguimiento: string;
-  requiereAutorizacionJefeOCIG?: boolean; // Checkbox configurable por actividad
+  requiereAutorizacionJefeOCIG?: boolean; // Checkbox      por actividad
   tipoEvidencia?: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO'; // Tipo de evidencia requerida
   // ✅ NUEVO: Configuración de puntos de control
   puntosControl?: PuntoControl[];
@@ -228,11 +229,15 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       const actividades = getActividadesPorRol(rol.numero);
       
       // Agregar puntos de control de ejemplo a las primeras 2 actividades de cada rol
+      // ⚡ También agregar tipoEvidencia por defecto 'SOLO_CHECK' e ID único
       const actividadesConPuntos = actividades.map((act, idx) => {
+        const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
         if (idx === 0) {
           // Primera actividad: Puntos trimestrales
           return {
             ...act,
+            id: uniqueId, // ⚡ Agregar ID
+            tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
             puntosControl: [
               { id: 'pc-1', orden: 1, nombre: 'Trimestral #1', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-03-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
               { id: 'pc-2', orden: 2, nombre: 'Trimestral #2', descripcion: 'Punto de control trimestral', fechaProgramada: '2026-06-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
@@ -245,6 +250,8 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
           // Segunda actividad: Puntos semestrales
           return {
             ...act,
+            id: uniqueId, // ⚡ Agregar ID
+            tipoEvidencia: 'SOLO_CHECK' as const, // ⚡ Valor por defecto
             puntosControl: [
               { id: 'pc-5', orden: 1, nombre: 'Semestral #1', descripcion: 'Punto de control semestral', fechaProgramada: '2026-06-30', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
               { id: 'pc-6', orden: 2, nombre: 'Semestral #2', descripcion: 'Punto de control semestral', fechaProgramada: '2026-12-31', fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] }
@@ -252,7 +259,12 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
             frecuenciaPuntosControl: 'semestral' as const
           };
         }
-        return act;
+        // ⚡ Actividades sin puntos de control también tienen tipoEvidencia por defecto
+        return {
+          ...act,
+          id: uniqueId, // ⚡ Agregar ID
+          tipoEvidencia: 'SOLO_CHECK' as const
+        };
       });
       
       return {
@@ -471,15 +483,15 @@ function Paso2({
     indexCustom?: number;
   } | null>(null);
 
-  const toggleActividad = (numeroRol: number, nombreActividad: string) => {
+  const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
-        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.nombre === nombreActividad);
+        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId);
         if (yaSeleccionada) {
           // Deseleccionar
           return {
             ...rol,
-            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.nombre !== nombreActividad)
+            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.id !== actId)
           };
         } else {
           // Seleccionar
@@ -487,7 +499,12 @@ function Paso2({
           if (actividadBase) {
             return {
               ...rol,
-              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, actividadBase]
+              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+                ...actividadBase,
+                id: actId, // ⚡ Usar el ID único
+                // ⚡ Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
+                tipoEvidencia: 'SOLO_CHECK' as const
+              }]
             };
           }
         }
@@ -497,49 +514,42 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  const estaSeleccionada = (numeroRol: number, nombreActividad: string) => {
-    const rol = rolesConfig.find(r => r.numero === numeroRol);
-    return rol?.actividadesSeleccionadas.some(a => a.nombre === nombreActividad) || false;
+  const estaSeleccionada = (actId: string) => {
+    return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId));
   };
 
-  const toggleAutorizacionJefeOCIG = (numeroRol: number, nombreActividad: string) => {
+  const toggleAutorizacionJefeOCIG = (actId: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
-      if (rol.numero === numeroRol) {
-        return {
-          ...rol,
-          actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
-            if (act.nombre === nombreActividad) {
-              return {
-                ...act,
-                requiereAutorizacionJefeOCIG: !act.requiereAutorizacionJefeOCIG
-              };
-            }
-            return act;
-          })
-        };
-      }
-      return rol;
+      return {
+        ...rol,
+        actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+          if (act.id === actId) {
+            return {
+              ...act,
+              requiereAutorizacionJefeOCIG: !act.requiereAutorizacionJefeOCIG
+            };
+          }
+          return act;
+        })
+      };
     });
     onRolesChange(nuevaConfig);
   };
 
-  const cambiarTipoEvidencia = (numeroRol: number, nombreActividad: string, tipo: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO') => {
+  const cambiarTipoEvidencia = (actId: string, tipo: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO') => {
     const nuevaConfig = rolesConfig.map(rol => {
-      if (rol.numero === numeroRol) {
-        return {
-          ...rol,
-          actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
-            if (act.nombre === nombreActividad) {
-              return {
-                ...act,
-                tipoEvidencia: tipo
-              };
-            }
-            return act;
-          })
-        };
-      }
-      return rol;
+      return {
+        ...rol,
+        actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
+          if (act.id === actId) {
+            return {
+              ...act,
+              tipoEvidencia: tipo
+            };
+          }
+          return act;
+        })
+      };
     });
     onRolesChange(nuevaConfig);
   };
@@ -554,7 +564,11 @@ function Paso2({
       if (rol.numero === numeroRol) {
         return {
           ...rol,
-          actividadesCustom: [...rol.actividadesCustom, { ...nuevaActividad }]
+          actividadesCustom: [...rol.actividadesCustom, { 
+            ...nuevaActividad,
+            // ⚡ Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
+            tipoEvidencia: 'SOLO_CHECK' as const
+          }]
         };
       }
       return rol;
@@ -853,11 +867,13 @@ function Paso2({
                         </h4>
                         <div className="space-y-2">
                           {actividadesBase.map((actividad, index) => {
-                            const seleccionada = estaSeleccionada(rol.numero, actividad.nombre);
-                            const actividadData = rol.actividadesSeleccionadas.find(a => a.nombre === actividad.nombre);
+                            // ⚡ Generar ID único para esta actividad
+                            const actId = `rol-${rol.numero}-act-${index}`;
+                            const seleccionada = estaSeleccionada(actId);
+                            const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId);
                             return (
                               <div
-                                key={index}
+                                key={actId}
                                 className={`border-2 rounded-lg transition-colors ${
                                   seleccionada
                                     ? 'border-blue-400 bg-blue-50'
@@ -869,7 +885,7 @@ function Paso2({
                                   <input
                                     type="checkbox"
                                     checked={seleccionada}
-                                    onChange={() => toggleActividad(rol.numero, actividad.nombre)}
+                                    onChange={() => toggleActividad(rol.numero, actId, actividad.nombre)}
                                     className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5"
                                   />
                                   <div className="flex-1 min-w-0">
@@ -912,7 +928,7 @@ function Paso2({
                                         checked={actividadData?.requiereAutorizacionJefeOCIG || false}
                                         onChange={(e) => {
                                           e.stopPropagation();
-                                          toggleAutorizacionJefeOCIG(rol.numero, actividad.nombre);
+                                          toggleAutorizacionJefeOCIG(actId);
                                         }}
                                         className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-2 focus:ring-orange-500 mt-0.5"
                                       />
@@ -947,13 +963,13 @@ function Paso2({
                                               const requiereObservaciones = e.target.checked;
                                               
                                               if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'COMPLETO');
+                                                cambiarTipoEvidencia(actId, 'COMPLETO');
                                               } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'OBSERVACIONES');
+                                                cambiarTipoEvidencia(actId, 'OBSERVACIONES');
                                               } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'ADJUNTOS');
+                                                cambiarTipoEvidencia(actId, 'ADJUNTOS');
                                               } else {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'SOLO_CHECK');
+                                                cambiarTipoEvidencia(actId, 'SOLO_CHECK');
                                               }
                                             }}
                                             className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
@@ -972,13 +988,13 @@ function Paso2({
                                               const requiereAdjuntos = e.target.checked;
                                               
                                               if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'COMPLETO');
+                                                cambiarTipoEvidencia(actId, 'COMPLETO');
                                               } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'ADJUNTOS');
+                                                cambiarTipoEvidencia(actId, 'ADJUNTOS');
                                               } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'OBSERVACIONES');
+                                                cambiarTipoEvidencia(actId, 'OBSERVACIONES');
                                               } else {
-                                                cambiarTipoEvidencia(rol.numero, actividad.nombre, 'SOLO_CHECK');
+                                                cambiarTipoEvidencia(actId, 'SOLO_CHECK');
                                               }
                                             }}
                                             className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
@@ -1026,7 +1042,7 @@ function Paso2({
                           <div className="space-y-2">
                             {rol.actividadesCustom.map((actividad, index) => (
                               <div
-                                key={index}
+                                key={`rol-${rol.numero}-custom-${index}-${actividad.nombre.slice(0, 20)}`}
                                 className="border-2 border-green-200 bg-green-50 rounded-lg"
                                 onClick={(e) => e.stopPropagation()}
                               >

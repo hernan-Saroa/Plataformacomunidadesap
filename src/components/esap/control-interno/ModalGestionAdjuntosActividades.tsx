@@ -25,10 +25,12 @@ interface ArchivoAdjunto {
 type RequisitoEvidencia = 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
 
 interface ConfiguracionEvidencias {
+  // Formato del backend (booleans)
   observaciones?: boolean;
   documentos?: boolean;
-  adjuntosRequeridos: RequisitoEvidencia;
-  observacionRequerida: RequisitoEvidencia;
+  // Formato del frontend (strings)
+  adjuntosRequeridos?: RequisitoEvidencia;
+  observacionRequerida?: RequisitoEvidencia;
   minimoAdjuntos?: number;
   tiposAdjuntosPermitidos?: string[];
   longitudMinimaObservacion?: number;
@@ -75,9 +77,16 @@ export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: Moda
   let fileInputRef: HTMLInputElement | null = null;
 
   // Configuración de evidencias (usa valores por defecto si no está definida)
-  const config = actividad.configuracionEvidencias || {
-    adjuntosRequeridos: 'OPCIONAL',
-    observacionRequerida: 'OPCIONAL'
+  // Acepta tanto el formato nuevo (adjuntosRequeridos/observacionRequerida) como el del backend (documentos/observaciones booleans)
+  const rawConfig = actividad.configuracionEvidencias || {};
+  const config = {
+    // Si tiene el formato del backend (booleans), convertir a strings
+    adjuntosRequeridos: rawConfig.adjuntosRequeridos || 
+      (rawConfig.documentos === true ? 'OBLIGATORIO' : rawConfig.documentos === false ? 'NO_REQUERIDO' : 'OPCIONAL'),
+    observacionRequerida: rawConfig.observacionRequerida || 
+      (rawConfig.observaciones === true ? 'OBLIGATORIO' : rawConfig.observaciones === false ? 'NO_REQUERIDO' : 'OPCIONAL'),
+    minimoAdjuntos: rawConfig.minimoAdjuntos || 1,
+    longitudMinimaObservacion: rawConfig.longitudMinimaObservacion || 10
   };
 
   // Determinar qué secciones mostrar

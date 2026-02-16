@@ -203,6 +203,13 @@ export class PlanAnual5RolesService {
   }
 
   async addActividad(rolId: string, createDto: CreateActividadDto, usuarioId?: string | number): Promise<ActividadPlanAnual5> {
+    // 🔍 LOG: Ver qué llega del frontend
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📥 [addActividad] Recibido createDto:');
+    console.log('   - nombre:', createDto.nombre);
+    console.log('   - configuracionEvidencias (RAW):', JSON.stringify(createDto.configuracionEvidencias, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     const rol = await this.rolRepository.findOne({
       where: { id: rolId },
       relations: ['plan'],
@@ -218,27 +225,58 @@ export class PlanAnual5RolesService {
     const fechaFin = createDto.fecha_fin || new Date().toISOString().split('T')[0];
     
     // Asignar configuración de evidencias por defecto si no se proporciona
-    // Lógica: si documentos/observaciones están en true, son OBLIGATORIOS para completar la actividad
+    // Los campos documentos/observaciones se derivan de adjuntosRequeridos/observacionRequerida
     let configEvidencias = createDto.configuracionEvidencias;
+    console.log('🔧 [addActividad] configEvidencias ANTES de procesar:', configEvidencias ? 'TIENE VALOR' : 'ES NULL/UNDEFINED');
+    
     if (!configEvidencias) {
-      // Por defecto: ambas secciones habilitadas y OBLIGATORIAS
+      // Por defecto: todo flexible/opcional  
       configEvidencias = {
-        observaciones: true,
-        documentos: true,
-        observacionRequerida: 'OBLIGATORIO' as const,
-        adjuntosRequeridos: 'OBLIGATORIO' as const,
-        minimoAdjuntos: 1,
-        longitudMinimaObservacion: 10
+        observaciones: false,
+        documentos: false,
+        observacionRequerida: 'OPCIONAL' as const,
+        adjuntosRequeridos: 'OPCIONAL' as const,
+        minimoAdjuntos: 0,
+        longitudMinimaObservacion: 0
       };
+      console.log('⚠️ [addActividad] No vino configuración, usando defaults');
     } else {
-      // Si se proporciona configuración, asegurar que si una sección está en true sea OBLIGATORIA
-      if (configEvidencias.documentos === true && !configEvidencias.adjuntosRequeridos) {
-        configEvidencias.adjuntosRequeridos = 'OBLIGATORIO';
+      console.log('📋 [addActividad] Procesando configuración recibida...');
+      console.log('   - adjuntosRequeridos:', configEvidencias.adjuntosRequeridos);
+      console.log('   - observacionRequerida:', configEvidencias.observacionRequerida);
+      console.log('   - documentos (recibido):', configEvidencias.documentos);
+      console.log('   - observaciones (recibido):', configEvidencias.observaciones);
+      
+      // Si vienen adjuntosRequeridos/observacionRequerida (formato legacy), derivar documentos/observaciones
+      // Si solo vienen documentos/observaciones como booleanos (formato nuevo), usarlos directamente
+      if (configEvidencias.adjuntosRequeridos !== undefined) {
+        configEvidencias.documentos = configEvidencias.adjuntosRequeridos !== 'NO_REQUERIDO';
+      } else if (configEvidencias.documentos === undefined) {
+        configEvidencias.documentos = false; // Default
       }
-      if (configEvidencias.observaciones === true && !configEvidencias.observacionRequerida) {
-        configEvidencias.observacionRequerida = 'OBLIGATORIO';
+      // Si ya viene documentos como booleano, lo respetamos
+      
+      if (configEvidencias.observacionRequerida !== undefined) {
+        configEvidencias.observaciones = configEvidencias.observacionRequerida !== 'NO_REQUERIDO';
+      } else if (configEvidencias.observaciones === undefined) {
+        configEvidencias.observaciones = false; // Default
+      }
+      // Si ya viene observaciones como booleano, lo respetamos
+      
+      console.log('   - documentos (final):', configEvidencias.documentos);
+      console.log('   - observaciones (final):', configEvidencias.observaciones);
+      
+      // Asegurar valores por defecto para campos numéricos
+      if (configEvidencias.minimoAdjuntos === undefined) {
+        configEvidencias.minimoAdjuntos = configEvidencias.adjuntosRequeridos === 'OBLIGATORIO' ? 1 : 0;
+      }
+      if (configEvidencias.longitudMinimaObservacion === undefined) {
+        configEvidencias.longitudMinimaObservacion = configEvidencias.observacionRequerida === 'OBLIGATORIO' ? 10 : 0;
       }
     }
+    
+    console.log('✅ [addActividad] configEvidencias FINAL:', JSON.stringify(configEvidencias, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 

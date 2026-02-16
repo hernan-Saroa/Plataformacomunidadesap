@@ -556,6 +556,12 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                                 actividad.estado === 'En Ejecución' ? 'en-progreso' :
                                 actividad.estado === 'Completada' ? 'completada' : 'retrasada';
                 
+                // 🔍 LOG: Ver configuración de evidencias de la actividad
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('🎯 [handleGuardarPlan] Actividad:', actividad.nombre);
+                console.log('   - configuracionEvidencias (original):', JSON.stringify(actividad.configuracionEvidencias, null, 2));
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                
                 const actividadData = {
                   nombre: actividad.nombre.trim(),
                   descripcion: (actividad.descripcion || '').trim(),
@@ -564,7 +570,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                   fecha_fin: actividad.fechaFin,
                   estado: estadoBD,
                   porcentaje_avance: actividad.porcentaje || 0,
-                  prioridad: 'Media' as const
+                  prioridad: 'Media' as const,
+                  // ✅ AGREGADO: Incluir configuración de evidencias
+                  configuracionEvidencias: actividad.configuracionEvidencias || undefined
                 };
 
                 if (!actividad.id || actividad.id.startsWith('act-')) {
@@ -694,7 +702,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
                   fecha_fin: actividad.fechaFin,
                   estado: estadoBD,
                   porcentaje_avance: actividad.porcentaje || 0,
-                  prioridad: 'Media' as const
+                  prioridad: 'Media' as const,
+                  // ✅ AGREGADO: Incluir configuración de evidencias
+                  configuracionEvidencias: actividad.configuracionEvidencias || undefined
                 };
 
                 if (!actividad.id || actividad.id.startsWith('act-')) {
