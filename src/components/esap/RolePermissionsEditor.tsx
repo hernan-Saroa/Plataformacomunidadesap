@@ -42,8 +42,8 @@ import {
 import { toast } from 'sonner@2.0.3';
 
 // Importar configuración centralizada de permisos (fallback)
-import { PERMISSION_MODULES } from '../../data/permissions-config';
-import type { Permission, PermissionModule } from '../../data/permissions-config';
+import { PERMISSION_MODULES } from '../../data/permissions-config-updated';
+import type { Permission, PermissionModule } from '../../data/permissions-config-updated';
 import { modulesService } from '../../services/api/modules.service';
 import { rolesService } from '../../services/api';
 
@@ -109,8 +109,10 @@ export function RolePermissionsEditor({
     return icon || Shield;
   };
 
+  const formatGroupName = (group: string) => (group || '').split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ').trim() || 'Grupo';
+
   useEffect(() => {
-    if (!open) return;
+    if (!open || !role?.id) return;
 
     let cancelled = false;
     const loadPermissions = async () => {
@@ -269,6 +271,7 @@ export function RolePermissionsEditor({
             filteredModules.map((module) => {
               const Icon = resolveIcon(module.icon);
               const modulePermissions = module.permissions;
+              const modulePermissionsGroups = module.permissionGroups || [];  
               const enabledCount = modulePermissions.filter(p => 
                 selectedPermissions.has(p.id)
               ).length;
@@ -317,6 +320,47 @@ export function RolePermissionsEditor({
                   </div>
 
                   {/* Permissions */}
+                  {modulePermissionsGroups.length > 0 ? (
+                    <div className="space-y-4">
+                      {modulePermissionsGroups.map((permissionGroup) => (
+                        <div key={permissionGroup.group} className="space-y-2">
+                          <p className="text-md font-bold text-gray-800" style={{ margin: 0 }}>
+                            {formatGroupName(permissionGroup.group)}
+                          </p>
+                          <hr></hr>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3">
+                            {permissionGroup.permissions.map((permission) => {
+                              const isEnabled = selectedPermissions.has(permission.id);
+                              return (
+                                <button
+                                  key={permission.id}
+                                  onClick={() => togglePermission(permission.id)}
+                                  className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                                    isEnabled
+                                      ? 'bg-green-50 border-green-300 hover:bg-green-100'
+                                      : 'bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                    isEnabled ? 'bg-green-500' : 'bg-gray-300'
+                                  }`}>
+                                    {isEnabled && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-sm text-[--esap-gray-900]">{permission.name}</p>
+                                    <p className="text-xs font-medium text-[--esap-gray-600] mt-0.5">
+                                      {permission.description}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) :(
+                  <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {modulePermissions.map((permission) => {
                       const isEnabled = selectedPermissions.has(permission.id);
@@ -346,6 +390,8 @@ export function RolePermissionsEditor({
                       );
                     })}
                   </div>
+                  </>
+                  )}
                 </motion.div>
               );
             })

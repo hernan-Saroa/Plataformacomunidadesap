@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{{nombreInforme}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; padding: 20mm 15mm; }
+    .header { background: linear-gradient(135deg, #003DA5 0%, #0052CC 100%); color: white; padding: 20px 30px; margin-bottom: 30px; border-radius: 5px; }
+    .titulo-informe { text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-left: 5px solid #003DA5; }
+    .seccion { margin-bottom: 30px; }
+    .seccion h3 { font-size: 13pt; color: #003DA5; border-bottom: 2px solid #003DA5; padding-bottom: 8px; margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    table th, table td { padding: 10px; text-align: left; border: 1px solid #ddd; }
+    table th { background: #003DA5; color: white; }
+    ul { list-style: none; padding: 0; }
+    ul li { padding: 10px; margin-bottom: 10px; background: #f8f9fa; border-left: 4px solid #003DA5; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP</h1><p>Oficina de Control Interno de Gestión</p></div>
+  <div class="titulo-informe"><h2>{{nombreInforme}}</h2><p>Periodo: {{periodo}}</p></div>
+  <div class="seccion">
+    <h3>1. Mapa de Riesgos</h3>
+    {{#if mapaRiesgos}}{{#if mapaRiesgos.length}}<table><thead><tr><th>Riesgo</th><th>Nivel</th><th>Medidas</th></tr></thead><tbody>{{#each mapaRiesgos}}<tr><td>{{this.riesgo}}</td><td>{{this.nivel}}</td><td>{{this.medidas}}</td></tr>{{/each}}</tbody></table>{{else}}<p style="color: #999; font-style: italic;">No hay riesgos identificados.</p>{{/if}}{{else}}<p style="color: #999; font-style: italic;">No hay riesgos identificados.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>2. Acciones de Prevención</h3>
+    {{#if accionesPrevencion}}{{#if accionesPrevencion.length}}<ul>{{#each accionesPrevencion}}<li>{{this}}</li>{{/each}}</ul>{{else}}<p style="color: #999; font-style: italic;">No hay acciones de prevención registradas.</p>{{/if}}{{else}}<p style="color: #999; font-style: italic;">No hay acciones de prevención registradas.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>3. Gestión de PQRS</h3>
+    {{#if pqrs}}<p><strong>Total PQRS:</strong> {{pqrs.total}}</p><p><strong>Resueltas:</strong> {{pqrs.resueltas}}</p><p><strong>Pendientes:</strong> {{pqrs.pendientes}}</p>{{else}}<p style="color: #999; font-style: italic;">No hay datos de PQRS disponibles.</p>{{/if}}
+  </div>
+  <div class="seccion">
+    <h3>4. Resultados</h3>
+    {{#if resultados}}<p><strong>Resumen:</strong> {{resultados.resumen}}</p><p><strong>Cumplimiento:</strong> {{resultados.cumplimiento}}</p>{{else}}<p style="color: #999; font-style: italic;">No hay resultados disponibles.</p>{{/if}}
+  </div>
+  {{#if baseNormativa}}<div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107;"><strong>Base Normativa:</strong> {{baseNormativa}}</div>{{/if}}
+  <div style="margin-top: 50px; padding-top: 20px; border-top: 2px solid #ddd; text-align: center; font-size: 9pt;"><p>Documento generado el {{fechaGeneracion}} por {{responsable}}</p></div>
+</body>
+</html>

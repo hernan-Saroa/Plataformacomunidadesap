@@ -25,7 +25,7 @@ import {
   Calendar, 
   MapPin, 
   FileText, 
-  Clock, 
+  Hash,
   Shield,
   Edit,
   Trash2,
@@ -41,7 +41,8 @@ import {
   BadgeCheck,
   Send,
   AlertTriangle,
-  Building2  // ✅ NUEVO: Para filtro de sedes
+  Building2,  // ✅ NUEVO: Para filtro de sedes
+  Database
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
@@ -53,15 +54,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import React from 'react';
-import graduadosService, { GraduadoData } from '../../services/api/graduados.service';
+import graduadosService, { GraduadoArchivo, GraduadoData } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
 import type { Seccional, Sede } from '../../services/api/types';
+import { ValidarCertificadoGrado } from './registro-academico/ValidarCertificadoGrado';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
+import { buildServiceAssetUrl } from '../../config/environment';
 
 type GraduateRow = {
   id: string;
@@ -79,16 +85,22 @@ type GraduateRow = {
   location: string;
   program?: string;
   document: string;
-  enrollmentMethod: 'qr' | 'manual' | 'massive';
+  enrollmentMethod: 'qr' | 'manual' | 'massive' | 'integration';
   enrollmentDate: string;
   graduationDate: string;
-  lastActivity?: string;
   documentsCount: number;
   createdBy?: string;
   asignacionesSedes?: Array<{ nombreSede: string }>;
   territorial?: string;
   certificatesCount: number;
+  numRegistro?: string;
+  numFolio?: string;
+  numLibro?: string;
 };
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 export function GraduatesManagementModule() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -104,6 +116,7 @@ export function GraduatesManagementModule() {
   const [isSaving, setIsSaving] = useState(false);
   const [sedesCatalog, setSedesCatalog] = useState<Sede[]>([]);
   const [seccionalesCatalog, setSeccionalesCatalog] = useState<Seccional[]>([]);
+  const [mostrarValidador, setMostrarValidador] = useState(false); // ✅ NUEVO: Estado para vista de validación
 
   // Estados para modales
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -112,11 +125,37 @@ export function GraduatesManagementModule() {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isFilesModalOpen, setIsFilesModalOpen] = useState(false);
+  const [filesModalUser, setFilesModalUser] = useState<GraduateRow | null>(null);
+  const [filesModalItems, setFilesModalItems] = useState<GraduadoArchivo[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [filesUploadQueue, setFilesUploadQueue] = useState<File[]>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [isDeleteFileModalOpen, setIsDeleteFileModalOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<GraduadoArchivo | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportStartDate, setExportStartDate] = useState('');
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
+  const MAX_FILES_PER_GRADUATE = 5;
+  const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+  const MAX_UPLOAD_SIZE_LABEL = '10 MB';
+  const PROGRAMAS_GRADUADOS = [
+    'ADMINISTRACIÓN PÚBLICA',
+    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
+    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
+    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
+    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
+    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
+    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
+    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
+    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
+    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
+    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
+  ];
+  const isUnavailableProgram = (value?: string) =>
+    normalizeKey(value) === 'no disponible' || normalizeKey(value) === 'no especificado';
 
   // Estados para formularios
   const [editForm, setEditForm] = useState({
@@ -128,6 +167,9 @@ export function GraduatesManagementModule() {
     program: '',
     location: '',
     territorial: '',
+    numRegistro: '',
+    numFolio: '',
+    numLibro: '',
   });
 
   const [emailForm, setEmailForm] = useState({
@@ -168,6 +210,90 @@ export function GraduatesManagementModule() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+  const sanitizeRegistroInput = (value: string) => {
+    const digits = value.replace(/\D+/g, '').slice(0, 12);
+    return /^0+$/.test(digits) ? '' : digits;
+  };
+  const formatRegistroInput = (value?: string) => {
+    const digits = sanitizeRegistroInput(value || '');
+    if (!digits || /^0+$/.test(digits)) return '';
+    return digits.match(/.{1,4}/g)?.join('-') ?? digits;
+  };
+  const formatRegistroDisplay = (value?: string) => {
+    const digits = sanitizeRegistroInput(value || '');
+    if (!digits || /^0+$/.test(digits)) return 'N/A';
+    return digits.match(/.{1,4}/g)?.join('-') ?? digits;
+  };
+  const formatFileCount = (count: number) => (count === 1 ? '1 archivo' : `${count} archivos`);
+  const formatFileSize = (size?: number | string) => {
+    if (size === undefined || size === null) return 'N/A';
+    const numericSize = typeof size === 'string' ? Number(size) : size;
+    if (!Number.isFinite(numericSize)) return 'N/A';
+    if (numericSize < 1024) return `${numericSize} B`;
+    const kb = numericSize / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    return `${mb.toFixed(1)} MB`;
+  };
+  const getFileTypeLabel = (file: { originalName?: string; mimeType?: string }) => {
+    const name = (file.originalName || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+    const mime = (file.mimeType || '').toLowerCase();
+    if (ext === 'pdf' || mime === 'application/pdf') return 'PDF';
+    if (ext === 'doc' || ext === 'docx' || mime.includes('wordprocessingml')) return 'Word';
+    if (ext === 'xls' || ext === 'xlsx' || mime.includes('spreadsheetml')) return 'Excel';
+    if (ext === 'png' || mime === 'image/png') return 'PNG';
+    if (ext === 'jpg' || ext === 'jpeg' || mime === 'image/jpeg') return 'JPG';
+    if (ext === 'webp' || mime === 'image/webp') return 'WEBP';
+    if (mime.startsWith('image/')) return 'Imagen';
+    if (ext) return ext.toUpperCase();
+    return 'Archivo';
+  };
+  const getFileTypeBadgeClass = (file: { originalName?: string; mimeType?: string }) => {
+    const name = (file.originalName || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+    const mime = (file.mimeType || '').toLowerCase();
+    if (ext === 'pdf' || mime === 'application/pdf') return 'is-pdf';
+    if (ext === 'doc' || ext === 'docx' || mime.includes('wordprocessingml')) return 'is-word';
+    if (ext === 'xls' || ext === 'xlsx' || mime.includes('spreadsheetml')) return 'is-excel';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || mime.startsWith('image/')) {
+      return 'is-image';
+    }
+    return 'is-generic';
+  };
+  const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
+  const allowedFileMimeTypes = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+  ]);
+  const isAllowedFile = (file: File) => {
+    const lowerName = file.name.toLowerCase();
+    const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
+    return allowedFileExtensions.includes(ext) || allowedFileMimeTypes.has(file.type);
+  };
+  const isPayloadTooLargeError = (error: unknown) => {
+    const normalizedError = error as {
+      statusCode?: number;
+      message?: string;
+      response?: {
+        status?: number;
+        data?: { message?: string } | string;
+      };
+    };
+    const responseMessage =
+      typeof normalizedError?.response?.data === 'string'
+        ? normalizedError.response.data
+        : normalizedError?.response?.data?.message;
+    const message = responseMessage || normalizedError?.message || '';
+    const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
+    return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
 
   const splitFullName = (fullName?: string) => {
     const safeName = (fullName || '').trim();
@@ -188,6 +314,238 @@ export function GraduatesManagementModule() {
   };
 
   const normalizeKey = (value?: string) => (value || '').trim().toLowerCase();
+  const normalizeDisplayName = (value?: string) => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return trimmed;
+    const normalized = normalizeKey(trimmed);
+    if (normalized === 'super user' || normalized === 'superuser') {
+      return 'Super Usuario';
+    }
+    return trimmed;
+  };
+  const isIntegrationSource = (normalized: string) =>
+    !normalized ||
+    normalized === 'system' ||
+    normalized === 'sistema' ||
+    normalized === 'registro academico' ||
+    normalized === 'registro académico' ||
+    normalized.includes('integracion') ||
+    normalized.includes('integración') ||
+    normalized.includes('integration');
+  const resolveEnrollmentMethod = (createdBy?: string): GraduateRow['enrollmentMethod'] => {
+    const normalized = normalizeKey(createdBy);
+    if (
+      normalized.includes('manual_review') ||
+      normalized.includes('manual') ||
+      normalized.includes('revision') ||
+      normalized.includes('revisión')
+    ) {
+      return 'manual';
+    }
+    return 'integration';
+  };
+  const formatCreatedBy = (createdBy?: string): string => {
+    const normalized = normalizeKey(createdBy);
+    if (!normalized) {
+      return 'Integración';
+    }
+    if (normalized.startsWith('manual_review:')) {
+      const reviewer = createdBy?.split(':').slice(1).join(':').trim();
+      return normalizeDisplayName(reviewer) || 'Revisión manual';
+    }
+    if (normalized === 'manual_review') {
+      return 'Revisión manual';
+    }
+    if (isIntegrationSource(normalized)) {
+      return 'Integración';
+    }
+    return normalizeDisplayName(createdBy) || 'Integración';
+  };
+
+  const loadGraduateFiles = async (graduateId: string) => {
+    setIsLoadingFiles(true);
+    try {
+      const files = await graduadosService.graduados.listarArchivos(graduateId);
+      setFilesModalItems(files || []);
+      setGraduates((prev) =>
+        prev.map((item) =>
+          item.id === graduateId
+            ? { ...item, documentsCount: files?.length ?? 0 }
+            : item,
+        ),
+      );
+    } catch (error) {
+      console.error('Error cargando archivos del graduado:', error);
+      toast.error('No se pudieron cargar los archivos del graduado');
+      setFilesModalItems([]);
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const handleOpenFilesModal = async (user: GraduateRow) => {
+    setFilesModalUser(user);
+    setIsFilesModalOpen(true);
+    setFilesUploadQueue([]);
+    await loadGraduateFiles(user.id);
+  };
+
+  const handleCloseFilesModal = () => {
+    setIsFilesModalOpen(false);
+    setFilesModalUser(null);
+    setFilesModalItems([]);
+    setIsLoadingFiles(false);
+    setFilesUploadQueue([]);
+    setIsUploadingFiles(false);
+  };
+
+  const handleFilesQueueChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []);
+    if (!selected.length) return;
+    const currentCount = filesModalItems.length + filesUploadQueue.length;
+    const nextCount = currentCount + selected.length;
+    if (nextCount > MAX_FILES_PER_GRADUATE) {
+      toast.error(`Solo puedes tener máximo ${MAX_FILES_PER_GRADUATE} archivos en total`);
+      event.target.value = '';
+      return;
+    }
+    const invalidFile = selected.find((file) => !isAllowedFile(file));
+    if (invalidFile) {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imágenes');
+      event.target.value = '';
+      return;
+    }
+    const oversizedFile = selected.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL}.`,
+      });
+      event.target.value = '';
+      return;
+    }
+    setFilesUploadQueue((prev) => [...prev, ...selected]);
+    event.target.value = '';
+  };
+
+  const handleRemoveQueuedFile = (index: number) => {
+    setFilesUploadQueue((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleUploadFiles = async () => {
+    if (!filesModalUser || filesUploadQueue.length === 0) {
+      return;
+    }
+    const oversizedFile = filesUploadQueue.find((file) => file.size > MAX_UPLOAD_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL}.`,
+      });
+      return;
+    }
+    setIsUploadingFiles(true);
+    const uploader =
+      authService.getCurrentUser()?.fullName || authService.getCurrentUser()?.email || undefined;
+    const failedUploadIndexes = new Set<number>();
+    let uploadedCount = 0;
+    try {
+      for (const [index, file] of filesUploadQueue.entries()) {
+        try {
+          // Subida 1 a 1 para respetar el límite del servidor en requests multipart
+          await graduadosService.graduados.subirArchivos(
+            filesModalUser.id,
+            [file],
+            uploader,
+          );
+          uploadedCount += 1;
+        } catch (error: any) {
+          failedUploadIndexes.add(index);
+          console.error('Error subiendo archivo:', error);
+          if (isPayloadTooLargeError(error)) {
+            toast.error('El archivo es muy pesado', {
+              description: `El archivo "${file.name}" supera el límite de ${MAX_UPLOAD_SIZE_LABEL} por archivo.`,
+            });
+          } else {
+            toast.error(`No se pudo subir "${file.name}"`, {
+              description: error?.response?.data?.message || error?.message,
+            });
+          }
+        }
+      }
+
+      if (uploadedCount > 0) {
+        toast.success(
+          uploadedCount === 1
+            ? 'Archivo subido correctamente'
+            : `${uploadedCount} archivos subidos correctamente`,
+        );
+        await loadGraduateFiles(filesModalUser.id);
+      }
+
+      if (failedUploadIndexes.size === 0) {
+        setFilesUploadQueue([]);
+      } else {
+        setFilesUploadQueue((prev) => prev.filter((_, idx) => failedUploadIndexes.has(idx)));
+      }
+    } finally {
+      setIsUploadingFiles(false);
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!filesModalUser) return;
+    try {
+      await graduadosService.graduados.eliminarArchivo(filesModalUser.id, fileId);
+      toast.success('Archivo eliminado');
+      await loadGraduateFiles(filesModalUser.id);
+    } catch (error: any) {
+      console.error('Error eliminando archivo:', error);
+      toast.error('No se pudo eliminar el archivo', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  const handleRequestDeleteFile = (file: GraduadoArchivo) => {
+    setFileToDelete(file);
+    setIsDeleteFileModalOpen(true);
+  };
+
+  const handleConfirmDeleteFile = async () => {
+    if (!fileToDelete) return;
+    await handleDeleteFile(fileToDelete.id);
+    setIsDeleteFileModalOpen(false);
+    setFileToDelete(null);
+  };
+
+  const handleDownloadFile = async (file: GraduadoArchivo) => {
+    const fileUrl = buildServiceAssetUrl(
+      'registro-academico',
+      file.url || `/uploads/graduate-files/${file.storedName}`,
+    );
+    try {
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('esap_auth_token') || ''}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error('No se pudo descargar el archivo');
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = file.originalName || 'archivo';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Error descargando archivo:', error);
+      toast.error('No se pudo descargar el archivo');
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -240,7 +598,11 @@ export function GraduatesManagementModule() {
         });
 
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
-          const { firstName, lastName } = splitFullName(graduate.fullName);
+          const derivedName = splitFullName(graduate.fullName);
+          const firstName =
+            (graduate.firstName || '').trim() || derivedName.firstName;
+          const lastName =
+            (graduate.lastName || '').trim() || derivedName.lastName;
           const campus = graduate.campus || 'Sin sede';
           const sedeMatch = sedeByName.get(normalizeKey(campus));
           const sedeName = sedeMatch?.nomSede || campus;
@@ -248,6 +610,7 @@ export function GraduatesManagementModule() {
             graduate.seccionalName ||
             sedeMatch?.seccional?.nomSeccional ||
             (sedeMatch?.idSeccional ? seccionalById.get(sedeMatch.idSeccional)?.nomSeccional : undefined);
+          const createdBy = graduate.createdBy;
           return {
             id: graduate.id,
             personId: graduate.personId,
@@ -267,16 +630,18 @@ export function GraduatesManagementModule() {
             territorial: territorialName,
             program: graduate.programName || 'No especificado',
             document: graduate.idNumber,
-            enrollmentMethod: 'manual',
+            enrollmentMethod: resolveEnrollmentMethod(createdBy),
             enrollmentDate: graduate.enrollmentDate || graduate.graduationDate,
             graduationDate: graduate.graduationDate,
-            lastActivity: graduate.graduationDate,
-            documentsCount: 0,
-            createdBy: 'Registro Academico',
+            documentsCount: graduate.filesCount ?? 0,
+            createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
             certificatesCount:
               certificateCounts.get(graduate.idNumber) ??
               (graduate.graduationDate ? 1 : 0),
+            numRegistro: graduate.numRegistro,
+            numFolio: graduate.numFolio,
+            numLibro: graduate.numLibro,
           } as GraduateRow;
         });
 
@@ -306,6 +671,7 @@ export function GraduatesManagementModule() {
   }, []);
 
   const graduatesOnly = useMemo(() => graduates, [graduates]);
+  const totalQueuedFiles = filesModalItems.length + filesUploadQueue.length;
 
   const stats = useMemo(() => {
     const active = graduatesOnly.filter(u => u.status === 'active').length;
@@ -322,6 +688,13 @@ export function GraduatesManagementModule() {
     () => Array.from(new Set(graduatesOnly.filter(u => u.program).map(u => u.program!))),
     [graduatesOnly]
   );
+  const editProgramOptions = useMemo(() => {
+    const current = (editForm.program || '').trim();
+    if (current && !isUnavailableProgram(current) && !PROGRAMAS_GRADUADOS.includes(current)) {
+      return [current, ...PROGRAMAS_GRADUADOS];
+    }
+    return PROGRAMAS_GRADUADOS;
+  }, [editForm.program]);
 
   const territorialOptions = useMemo(() => {
     if (seccionalesCatalog.length > 0) {
@@ -461,7 +834,7 @@ export function GraduatesManagementModule() {
     );
   };
 
-  const getEnrollmentBadge = (method: 'qr' | 'manual' | 'massive') => {
+  const getEnrollmentBadge = (method: GraduateRow['enrollmentMethod']) => {
     const methodConfig: Record<string, { label: string; className: string; icon: any }> = {
       qr: { 
         label: 'QR Code', 
@@ -472,6 +845,11 @@ export function GraduatesManagementModule() {
         label: 'Manual', 
         className: 'bg-[#EFF6FF] text-[#1E40AF] border-[#3B82F6]',
         icon: UserPlus
+      },
+      integration: {
+        label: 'Integración',
+        className: 'bg-[#FDE68A] text-[#92400E] border-[#F59E0B]',
+        icon: Database
       },
       massive: { 
         label: 'Carga Masiva', 
@@ -493,37 +871,25 @@ export function GraduatesManagementModule() {
     );
   };
 
-  const formatLastActivity = (dateString?: string) => {
-    const date = parseDateOnly(dateString);
-    if (!date) return 'Sin actividad';
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Hace un momento';
-    if (diffMins < 60) return `Hace ${diffMins} min`;
-    if (diffHours < 24) return `Hace ${diffHours}h`;
-    if (diffDays === 1) return 'Ayer';
-    if (diffDays < 7) return `Hace ${diffDays} días`;
-    return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
-  };
 
   const handleEdit = (user: GraduateRow) => {
+    const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     setSelectedUser(user);
     setEditForm({
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      phone: user.phone,
+      phone: sanitizedPhone,
       document: user.document,
-      program: user.program || '',
+      program: isUnavailableProgram(user.program) ? '' : user.program || '',
       location: user.location,
       territorial:
         user.territorial ||
         territorialBySede.get(normalizeKey(user.location)) ||
         '',
+      numRegistro: sanitizeRegistroInput(user.numRegistro || ''),
+      numFolio: sanitizeRegistroInput(user.numFolio || ''),
+      numLibro: sanitizeRegistroInput(user.numLibro || ''),
     });
     setIsEditModalOpen(true);
   };
@@ -557,9 +923,11 @@ export function GraduatesManagementModule() {
     });
   };
 
-  const handleVerifyTitle = (user: GraduateRow) => {
-    setSelectedUser(user);
-    window.location.href = '/verificar-certificado-graduado';
+  const handleVerifyTitle = (user?: GraduateRow) => {
+    // setSelectedUser(user);
+    // window.location.href = '/verificar-certificado-graduado';
+    // ✅ NUEVO: Abrir vista completa de validación de certificados de grado
+    setMostrarValidador(true);
   };
 
   const handleGenerateCertificate = (user: GraduateRow) => {
@@ -579,22 +947,76 @@ export function GraduatesManagementModule() {
   // Handlers para confirmar acciones en modales
   const confirmEdit = async () => {
     if (!selectedUser) return;
-    setIsSaving(true);
-    try {
-      const fullName = `${editForm.firstName} ${editForm.lastName}`.trim();
-      const effectiveTerritorial =
+    const trimmedFirstName = editForm.firstName.trim();
+    const trimmedLastName = editForm.lastName.trim();
+    const trimmedDocument = editForm.document.trim();
+    const trimmedEmail = editForm.email.trim();
+    const trimmedProgram = editForm.program.trim();
+    const trimmedLocation = editForm.location.trim();
+    const effectiveTerritorial =
+      (
         editForm.territorial ||
         (editForm.location
           ? territorialBySede.get(normalizeKey(editForm.location))
-          : undefined);
+          : '')
+      ).trim();
+    if (!trimmedFirstName) {
+      toast.error('El nombre es obligatorio');
+      return;
+    }
+    if (trimmedFirstName.length > 30) {
+      toast.error('El nombre no puede superar 30 caracteres');
+      return;
+    }
+    if (!trimmedLastName) {
+      toast.error('El apellido es obligatorio');
+      return;
+    }
+    if (trimmedLastName.length > 30) {
+      toast.error('El apellido no puede superar 30 caracteres');
+      return;
+    }
+    if (!trimmedDocument) {
+      toast.error('El documento es obligatorio');
+      return;
+    }
+    if (!trimmedEmail) {
+      toast.error('El correo electronico es obligatorio');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error('El correo electronico no tiene un formato valido');
+      return;
+    }
+    if (!trimmedProgram) {
+      toast.error('El programa academico es obligatorio');
+      return;
+    }
+    if (!trimmedLocation) {
+      toast.error('La sede es obligatoria');
+      return;
+    }
+    if (!effectiveTerritorial) {
+      toast.error('La seccional es obligatoria');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const fullName = `${trimmedFirstName} ${trimmedLastName}`.trim();
       const payload: Partial<GraduadoData> = {
         fullName,
-        email: editForm.email,
-        phone: editForm.phone,
-        idNumber: editForm.document,
-        programName: editForm.program || selectedUser.program || '',
-        campus: editForm.location || undefined,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        email: trimmedEmail,
+        idNumber: trimmedDocument,
+        programName: trimmedProgram || selectedUser.program || '',
+        campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial || undefined,
+        numRegistro: editForm.numRegistro ? sanitizeRegistroInput(editForm.numRegistro) : undefined,
+        numFolio: editForm.numFolio ? sanitizeRegistroInput(editForm.numFolio) : undefined,
+        numLibro: editForm.numLibro ? sanitizeRegistroInput(editForm.numLibro) : undefined,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -610,13 +1032,15 @@ export function GraduatesManagementModule() {
           graduate.id === selectedUser.id
             ? {
                 ...graduate,
-                firstName: editForm.firstName,
-                lastName: editForm.lastName,
-                email: editForm.email,
-                phone: editForm.phone,
-                document: editForm.document,
-                program: editForm.program || graduate.program,
-                location: editForm.location || graduate.location,
+                firstName: trimmedFirstName,
+                lastName: trimmedLastName,
+                email: trimmedEmail,
+                document: trimmedDocument,
+                numRegistro: editForm.numRegistro,
+                numFolio: editForm.numFolio,
+                numLibro: editForm.numLibro,
+                program: trimmedProgram || graduate.program,
+                location: trimmedLocation || graduate.location,
                 territorial: updatedTerritorial || graduate.territorial,
               }
             : graduate
@@ -624,7 +1048,7 @@ export function GraduatesManagementModule() {
       );
 
       toast.success('Graduado Actualizado', {
-        description: `Los datos de ${editForm.firstName} ${editForm.lastName} han sido actualizados exitosamente.`,
+        description: `Los datos de ${trimmedFirstName} ${trimmedLastName} han sido actualizados exitosamente.`,
       });
       setIsEditModalOpen(false);
     } catch (error: any) {
@@ -652,8 +1076,8 @@ export function GraduatesManagementModule() {
   };
 
   const confirmVerifyTitle = () => {
-    toast.success('Título Verificado', {
-      description: `El título de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
+    toast.success('Certificado Verificado', {
+      description: `El certificado de ${selectedUser?.firstName} ${selectedUser?.lastName} ha sido verificado exitosamente.`
     });
     setIsVerifyTitleModalOpen(false);
   };
@@ -711,36 +1135,40 @@ export function GraduatesManagementModule() {
       'Documento',
       'Nombre completo',
       'Correo',
-      'Telefono',
-      'Programa',
+      'Programa académico',
       'Sede',
-      'Estado',
+      'Territorial',
+      'Número de registro',
+      'Número de folio',
+      'Número de libro',
       'Fecha de grado',
       'Fecha de enrolamiento',
       'Certificados',
     ];
 
     const csvRows = [
-      headers.map(escapeCsvValue).join(','),
+      headers.map(escapeCsvValue).join(';'),
       ...rows.map((user) =>
         [
           user.document,
           `${user.firstName} ${user.lastName}`.trim(),
           user.email,
-          user.phone,
           user.program || '',
           user.location || '',
-          user.status,
+          user.territorial || '',
+          formatRegistroDisplay(user.numRegistro) === 'N/A' ? '' : formatRegistroDisplay(user.numRegistro),
+          formatRegistroDisplay(user.numFolio) === 'N/A' ? '' : formatRegistroDisplay(user.numFolio),
+          formatRegistroDisplay(user.numLibro) === 'N/A' ? '' : formatRegistroDisplay(user.numLibro),
           formatDateISO(user.graduationDate),
           formatDateISO(user.enrollmentDate),
           user.certificatesCount,
         ]
           .map(escapeCsvValue)
-          .join(',')
+          .join(';')
       ),
     ];
 
-    const csvContent = csvRows.join('\n');
+    const csvContent = `\uFEFF${csvRows.join('\n')}`;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -771,108 +1199,33 @@ export function GraduatesManagementModule() {
     : undefined;
 
   return (
-    <div className="space-y-6">
-      {/* Header - Según especificaciones Figma */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div 
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)',
-                boxShadow: '0 4px 12px rgba(0, 61, 165, 0.15)'
-              }}
-            >
-              <GraduationCap className="w-6 h-6 text-white" strokeWidth={2.5} />
-            </div>
-            <h1 
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: '32px',
-                lineHeight: '40px',
-                letterSpacing: '-0.25px',
-                color: '#1F2937'
-              }}
-            >
-              Gestión de Graduados
-            </h1>
-          </div>
-          <p 
-            className="font-normal"
-            style={{
-              fontSize: '14px',
-              lineHeight: '20px',
-              color: '#6B7280'
-            }}
-          >
-            Administra graduados y genera certificados de verificación de títulos
-          </p>
-        </div>
+    <Container4K className="space-y-6">
+      {/* ✅ Modal de Validador de Certificados */}
+      <ValidarCertificadoGrado 
+        isOpen={mostrarValidador} 
+        onClose={() => setMostrarValidador(false)} 
+      />
 
-        {/* Botones de Acción */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: '#FFFFFF',
-              color: '#003DA5',
-              border: '2px solid #003DA5',
-              borderRadius: '8px',
-              padding: '12px 20px',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F0F6FF';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar</span>
-          </button>
-
-          <button
-            onClick={() => {
-              window.location.href = '/verificar-certificado-graduado';
-            }}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: '#003DA5',
-              color: '#FFFFFF',
-              borderRadius: '8px',
-              padding: '12px 24px',
-              fontSize: '14px',
-              fontWeight: 500,
-              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#002D7A';
-              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0, 61, 165, 0.15)';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#003DA5';
-              e.currentTarget.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.05)';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <BadgeCheck className="w-5 h-5" strokeWidth={2} />
-            <span>Verificar Título</span>
-          </button>
-        </div>
-      </motion.div>
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Gestión de Graduados"
+        description="Administra graduados y genera certificados de verificación de títulos"
+        icon={GraduationCap}
+        primaryAction={{
+          label: "Verificar Certificado",
+          icon: BadgeCheck,
+          onClick: () => handleVerifyTitle(),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Exportar",
+            icon: Download,
+            onClick: () => setIsExportModalOpen(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Búsqueda y Filtros */}
       <motion.div
@@ -932,7 +1285,7 @@ export function GraduatesManagementModule() {
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -955,7 +1308,7 @@ export function GraduatesManagementModule() {
               <option value="active">Activos</option>
               <option value="blocked">Bloqueados</option>
               <option value="inactive">Inactivos</option>
-            </select>
+            </select> */}
 
             {/* Filtro Programa */}
             <select
@@ -1057,7 +1410,7 @@ export function GraduatesManagementModule() {
             )}
           </div>
         </div>
-      </motion.div>
+                    </motion.div>
 
       {/* Lista de Graduados */}
       <motion.div
@@ -1110,8 +1463,7 @@ export function GraduatesManagementModule() {
                 <div className="col-span-2">FECHA DE GRADO</div>
                 <div className="col-span-2">CERTIFICADOS</div>
                 <div className="col-span-2">PROGRAMA</div>
-                <div className="col-span-2">ESTADO</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1205,12 +1557,12 @@ export function GraduatesManagementModule() {
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(user.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(user)}
                         className="p-2 rounded-lg transition-all"
@@ -1247,10 +1599,18 @@ export function GraduatesManagementModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
-                            Editar graduado
+                            Editar
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
+                          <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
+                            <BadgeCheck className="w-4 h-4 mr-2" />
+                            Verificar Certificado
+                          </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1267,7 +1627,7 @@ export function GraduatesManagementModule() {
                       transition={{ duration: 0.2 }}
                       className="border-t border-[#E5E7EB] bg-[#F9FAFB] overflow-hidden"
                     >
-                      {/* Grid de 3 columnas con información completa del graduado */}
+                      {/* Grid de 3 columnas con informaci\u00f3n completa del graduado */}
                       <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
@@ -1289,18 +1649,6 @@ export function GraduatesManagementModule() {
                             <Mail className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {user.email || 'Sin correo'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Teléfono
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="w-4 h-4" style={{ color: '#6B7280' }} />
-                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.phone}
                             </p>
                           </div>
                         </div>
@@ -1331,44 +1679,12 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Última actividad
+                            {'Programa acad\u00e9mico'}
                           </p>
                           <div className="flex items-center gap-1.5">
-                            <Clock className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <GraduationCap className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {formatLastActivity(user.lastActivity)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Método de Enrolamiento
-                          </p>
-                          {getEnrollmentBadge(user.enrollmentMethod)}
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Roles en el Sistema
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {user.roles.map((role, idx) => (
-                              <React.Fragment key={idx}>
-                                {getRoleBadge(role.name, role.color)}
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
-                            Documentos en Carpeta
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <FileText className="w-4 h-4" style={{ color: '#6B7280' }} />
-                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.documentsCount} archivos
+                              {user.program || 'No especificado'}
                             </p>
                           </div>
                         </div>
@@ -1387,13 +1703,89 @@ export function GraduatesManagementModule() {
 
                         <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            {'N\u00famero de registro'}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {formatRegistroDisplay(user.numRegistro)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            {'N\u00famero de folio'}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {formatRegistroDisplay(user.numFolio)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            {'N\u00famero de libro'}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Hash className="w-4 h-4" style={{ color: '#6B7280' }} />
+                            <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                              {formatRegistroDisplay(user.numLibro)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            {'M\u00e9todo de Enrolamiento'}
+                          </p>
+                          {getEnrollmentBadge(user.enrollmentMethod)}
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Creado por
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Shield className="w-4 h-4" style={{ color: '#6B7280' }} />
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
-                              {user.createdBy || 'Autoservicio'}
+                              {formatCreatedBy(user.createdBy)}
                             </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Roles en el Sistema
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {user.roles.map((role, idx) => (
+                              <React.Fragment key={idx}>
+                                {getRoleBadge(role.name, role.color)}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-2 lg:col-span-3">
+                          <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
+                            Archivos
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFilesModal(user)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:bg-slate-100"
+                              style={{ borderColor: '#D1D5DB', color: '#1F2937', background: '#F9FAFB' }}
+                            >
+                              <FileText className="w-3.5 h-3.5" style={{ color: '#2563EB' }} />
+                              Archivos
+                            </button>
+                            <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
+                              {formatFileCount(user.documentsCount ?? 0)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1489,6 +1881,239 @@ export function GraduatesManagementModule() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal: Archivos del graduado */}
+      <Dialog
+        open={isFilesModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseFilesModal();
+          }
+        }}
+      >
+        <DialogContent className="graduate-files-dialog overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Archivos del titulo
+            </DialogTitle>
+            <DialogDescription>
+              {filesModalUser
+                ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} · Documento: ${filesModalUser.document}`
+                : 'Selecciona un graduado para ver sus archivos.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="graduate-files-body py-4 space-y-4">
+            <div className="grid gap-3 md:grid-cols-[1fr]">
+              <div className="flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400E' }}>
+                    Límite
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
+                    Máximo {MAX_FILES_PER_GRADUATE} archivos
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
+                    Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold rounded-full px-3 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                  {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border px-4 py-4 space-y-3 shadow-sm" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#6B7280' }}>
+                    Agregar archivos
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                    PDF, Word, Excel o imágenes
+                  </p>
+                </div>
+                <span className="text-xs font-semibold rounded-full px-3 py-1" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+                  Opcional
+                </span>
+              </div>
+
+              <div
+                className="graduate-files-dropzone rounded-lg border-2 border-dashed px-4 py-4 text-sm"
+                style={{ borderColor: '#CBD5F5', background: '#F8FAFF' }}
+              >
+                <input
+                  id="graduate-files-input"
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                  onChange={handleFilesQueueChange}
+                  className="graduate-files-input"
+                  disabled={isLoadingFiles || isUploadingFiles || totalQueuedFiles >= MAX_FILES_PER_GRADUATE}
+                />
+                <div className="graduate-files-picker">
+                  <label htmlFor="graduate-files-input" className="graduate-files-label">
+                    Elegir archivos
+                  </label>
+                </div>
+                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
+                  Puedes seleccionar varios archivos en una sola carga.
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+                  Cada archivo debe pesar máximo {MAX_UPLOAD_SIZE_LABEL}. Se subirán uno por uno.
+                </p>
+              </div>
+
+              {filesUploadQueue.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {filesUploadQueue.map((file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+                    >
+                      <span className="max-w-[200px] truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveQueuedFile(index)}
+                        className="text-gray-400 hover:text-red-500"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleUploadFiles}
+                  disabled={isUploadingFiles || filesUploadQueue.length === 0}
+                  className="graduate-files-upload-btn px-4 py-2 text-xs font-semibold rounded-lg border"
+                  style={{
+                    borderColor: filesUploadQueue.length === 0 ? '#D1D5DB' : '#1D4ED8',
+                    color: filesUploadQueue.length === 0 ? '#6B7280' : '#FFFFFF',
+                    background: filesUploadQueue.length === 0 ? '#F9FAFB' : '#1D4ED8',
+                  }}
+                >
+                  {isUploadingFiles ? 'Subiendo...' : 'Subir archivos'}
+                </button>
+              </div>
+            </div>
+
+            {isLoadingFiles ? (
+              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+                <p className="text-sm font-medium" style={{ color: '#374151' }}>
+                  Cargando archivos...
+                </p>
+              </div>
+            ) : filesModalItems.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
+                <p className="text-sm font-medium" style={{ color: '#374151' }}>
+                  No hay archivos cargados.
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
+                  Aqui se mostraran los archivos del titulo cuando se suban.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filesModalItems.map((file) => {
+                  const fileUrl = buildServiceAssetUrl(
+                    'registro-academico',
+                    file.url || `/uploads/graduate-files/${file.storedName}`,
+                  );
+                  return (
+                    <div
+                      key={file.id}
+                      className="graduate-files-item flex items-center justify-between rounded-lg border px-3 py-2"
+                      style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: '#1F2937' }}>
+                          {file.originalName}
+                        </p>
+                        <p className="text-xs" style={{ color: '#6B7280' }}>
+                          {formatFileSize(file.sizeBytes)} ·{' '}
+                          <span
+                            className={`graduate-files-type-badge ${getFileTypeBadgeClass(file)}`}
+                          >
+                            {getFileTypeLabel(file)}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadFile(file)}
+                          className="graduate-files-action-btn text-xs font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          Descargar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRequestDeleteFile(file)}
+                          className="graduate-files-action-btn is-danger text-xs font-semibold text-red-500 hover:text-red-600"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <button
+              onClick={handleCloseFilesModal}
+              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+            >
+              Cerrar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Confirmar eliminación de archivo */}
+      <Dialog open={isDeleteFileModalOpen} onOpenChange={setIsDeleteFileModalOpen}>
+        <DialogContent className="graduate-files-confirm-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Confirmar eliminación
+            </DialogTitle>
+            <DialogDescription>
+              ¿Seguro que deseas eliminar el archivo{' '}
+              <span className="graduate-files-filename font-semibold text-gray-900">
+                {fileToDelete?.originalName}
+              </span>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              onClick={() => {
+                setIsDeleteFileModalOpen(false);
+                setFileToDelete(null);
+              }}
+              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
+              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirmDeleteFile}
+              className="graduate-files-danger-btn px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
+              style={{ background: '#DC2626', color: '#FFFFFF' }}
+            >
+              Eliminar
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="w-[92vw] max-w-xl">
@@ -1503,104 +2128,314 @@ export function GraduatesManagementModule() {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-4 py-4">
+
             <div className="space-y-2">
-              <Label htmlFor="edit-firstName">Nombre</Label>
+
+              <Label htmlFor="edit-firstName">
+
+                Nombre
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <Input
+
                 id="edit-firstName"
+
                 value={editForm.firstName}
+
                 onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+
                 placeholder="Nombre del graduado"
+
+                maxLength={30}
+
+                required
+
               />
+
             </div>
 
+
             <div className="space-y-2">
-              <Label htmlFor="edit-lastName">Apellido</Label>
+
+              <Label htmlFor="edit-lastName">
+
+                Apellido
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <Input
+
                 id="edit-lastName"
+
                 value={editForm.lastName}
+
                 onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+
                 placeholder="Apellido del graduado"
+
+                maxLength={30}
+
+                required
+
               />
+
             </div>
 
+
             <div className="space-y-2">
-              <Label htmlFor="edit-document">Documento</Label>
+
+              <Label htmlFor="edit-document">
+
+                Documento
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <Input
+
                 id="edit-document"
+
                 value={editForm.document}
+
                 onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
+
                 placeholder="Número de documento"
+
+                required
+
               />
+
             </div>
 
+
             <div className="space-y-2">
-              <Label htmlFor="edit-phone">Teléfono</Label>
-              <Input
-                id="edit-phone"
-                value={editForm.phone}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                placeholder="+57 300 1234567"
-              />
+
+              <Label htmlFor="edit-program">
+
+                {'Programa Acad\u00e9mico'}
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
+              <select
+
+                id="edit-program"
+
+                value={editForm.program}
+
+                onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
+
+                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
+                style={{ borderColor: '#D1D5DB' }}
+
+                required
+
+              >
+
+                <option value="">Seleccionar programa</option>
+
+                {editProgramOptions.map((prog) => (
+
+                  <option key={prog} value={prog}>{prog}</option>
+
+                ))}
+
+              </select>
+
             </div>
+
 
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="edit-email">Correo Electrónico</Label>
+
+              <Label htmlFor="edit-email">
+
+                {'Correo Electr\u00f3nico'}
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <Input
+
                 id="edit-email"
+
                 type="email"
+
                 value={editForm.email}
+
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+
                 placeholder="correo@ejemplo.com"
+
+                required
+
               />
+
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-program">Programa Académico</Label>
-              <select
-                id="edit-program"
-                value={editForm.program}
-                onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
-                className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-                style={{ borderColor: '#D1D5DB' }}
-              >
-                <option value="">Seleccionar programa</option>
-                {uniquePrograms.map(prog => (
-                  <option key={prog} value={prog}>{prog}</option>
-                ))}
-              </select>
-            </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-location">Sede</Label>
+
+              <Label htmlFor="edit-location">
+
+                Sede
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <select
+
                 id="edit-location"
+
                 value={editForm.location}
+
                 onChange={(e) => handleLocationChange(e.target.value)}
+
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
                 style={{ borderColor: '#D1D5DB' }}
+
+                required
+
               >
+
                 <option value="">Seleccionar sede</option>
+
                 {sedesOptions.map((sede) => (
+
                   <option key={sede} value={sede}>{sede}</option>
+
                 ))}
+
               </select>
+
             </div>
 
+
             <div className="space-y-2">
-              <Label htmlFor="edit-territorial">Territorial</Label>
+
+              <Label htmlFor="edit-territorial">
+
+                Territorial
+
+                <span className="text-red-500"> *</span>
+
+              </Label>
+
               <select
+
                 id="edit-territorial"
+
                 value={editForm.territorial || selectedTerritorial || ''}
+
                 onChange={(e) => setEditForm({ ...editForm, territorial: e.target.value })}
+
                 className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+
                 style={{ borderColor: '#D1D5DB' }}
+
+                required
+
               >
+
                 <option value="">Seleccionar seccional</option>
+
                 {territorialOptions.map((territorial) => (
+
                   <option key={territorial} value={territorial}>{territorial}</option>
+
                 ))}
+
               </select>
+
             </div>
+
+
+            <div className="col-span-2">
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="edit-numRegistro">Número de registro</Label>
+
+                  <Input
+
+                    id="edit-numRegistro"
+
+                    value={formatRegistroInput(editForm.numRegistro)}
+
+                    onChange={(e) =>
+
+                      setEditForm({ ...editForm, numRegistro: sanitizeRegistroInput(e.target.value) })
+
+                    }
+
+                    inputMode="numeric"
+
+                  />
+
+                </div>
+
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="edit-numFolio">Número de folio</Label>
+
+                  <Input
+
+                    id="edit-numFolio"
+
+                    value={formatRegistroInput(editForm.numFolio)}
+
+                    onChange={(e) =>
+
+                      setEditForm({ ...editForm, numFolio: sanitizeRegistroInput(e.target.value) })
+
+                    }
+
+                    inputMode="numeric"
+
+                  />
+
+                </div>
+
+
+                <div className="space-y-2">
+
+                  <Label htmlFor="edit-numLibro">Número de libro</Label>
+
+                  <Input
+
+                    id="edit-numLibro"
+
+                    value={formatRegistroInput(editForm.numLibro)}
+
+                    onChange={(e) =>
+
+                      setEditForm({ ...editForm, numLibro: sanitizeRegistroInput(e.target.value) })
+
+                    }
+
+                    inputMode="numeric"
+
+                  />
+
+                </div>
+
+              </div>
+
+            </div>
+
           </div>
 
           <DialogFooter>
@@ -1623,16 +2458,16 @@ export function GraduatesManagementModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Verificar Título */}
+      {/* Modal: Verificar Certificado */}
       <Dialog open={isVerifyTitleModalOpen} onOpenChange={setIsVerifyTitleModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <BadgeCheck className="w-5 h-5" style={{ color: '#10B981' }} />
-              Verificar Título Académico
+              Verificar Certificado de Título
             </DialogTitle>
             <DialogDescription>
-              Confirma la verificación del título de {selectedUser?.firstName} {selectedUser?.lastName}
+              Confirma la verificación del certificado de {selectedUser?.firstName} {selectedUser?.lastName}
             </DialogDescription>
           </DialogHeader>
 
@@ -1642,7 +2477,7 @@ export function GraduatesManagementModule() {
                 <GraduationCap className="w-5 h-5 mt-0.5" style={{ color: '#003DA5' }} />
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-gray-900 mb-1">
-                    Información del Título
+                    Información del Certificado
                   </p>
                   <div className="space-y-1 text-sm text-gray-600">
                     <p><strong>Graduado:</strong> {selectedUser?.firstName} {selectedUser?.lastName}</p>
@@ -1683,7 +2518,7 @@ export function GraduatesManagementModule() {
               style={{ background: '#10B981', color: '#FFFFFF' }}
             >
               <BadgeCheck className="w-4 h-4" />
-              Verificar Título
+              Verificar Certificado
             </button>
           </DialogFooter>
         </DialogContent>
@@ -2030,6 +2865,8 @@ export function GraduatesManagementModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Container4K>
   );
 }
+
+

@@ -40,6 +40,15 @@ export class GraduationCertificateRequest {
   @Column({ name: 'full_name', length: 255 })
   fullName: string;
 
+  @Column({ name: 'graduate_last_name', length: 255, nullable: true })
+  graduateLastName: string;
+
+  @Column({ name: 'graduate_email', length: 255, nullable: true })
+  graduateEmail: string;
+
+  @Column({ name: 'graduate_phone', length: 50, nullable: true })
+  graduatePhone: string;
+
   // Información del programa
   @Column({ name: 'program_name', length: 255 })
   programName: string;
@@ -59,6 +68,12 @@ export class GraduationCertificateRequest {
 
   @Column({ name: 'company_name', length: 255, nullable: true })
   companyName: string;
+
+  @Column({ name: 'company_nit', length: 50, nullable: true })
+  companyNit: string;
+
+  @Column({ name: 'contact_person', length: 255, nullable: true })
+  contactPerson: string;
 
   // Tipo de certificado
   @Column({ name: 'certificate_type', length: 50, default: 'STANDARD' })

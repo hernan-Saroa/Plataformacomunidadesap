@@ -6,14 +6,15 @@
 import { useState } from 'react';
 import { X, Edit, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { ocService } from '../../../../services/api/legal.service';
 
 interface ModalCambiarEtapaProps {
   isOpen: boolean;
   onClose: () => void;
   requerimientoId: string;
-  etapaActual: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO';
-  onCambioEtapa?: (nuevaEtapa: 'RECIBIDO' | 'ANALISIS' | 'RESPUESTA' | 'ENVIADO') => void;
+  etapaActual: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO';
+  onCambioEtapa?: (nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
 }
 
 export function ModalCambiarEtapa({
@@ -24,7 +25,6 @@ export function ModalCambiarEtapa({
   onCambioEtapa
 }: ModalCambiarEtapaProps) {
   const [etapaSeleccionada, setEtapaSeleccionada] = useState(etapaActual);
-  const [observaciones, setObservaciones] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const etapas = [
@@ -37,7 +37,7 @@ export function ModalCambiarEtapa({
       descripcion: 'Requerimiento recibido y registrado en el sistema'
     },
     {
-      value: 'ANALISIS' as const,
+      value: 'EN_ANALISIS' as const,
       label: 'En Análisis',
       icon: '🔍',
       color: '#F59E0B',
@@ -45,7 +45,7 @@ export function ModalCambiarEtapa({
       descripcion: 'Revisión y análisis del requerimiento en curso'
     },
     {
-      value: 'RESPUESTA' as const,
+      value: 'EN_RESPUESTA' as const,
       label: 'Elaborando Respuesta',
       icon: '✍️',
       color: '#2962FF',
@@ -66,17 +66,23 @@ export function ModalCambiarEtapa({
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Simular llamada a API
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Call real API to change stage
+      await ocService.cambiarEstadoRequerimientoOC(requerimientoId, etapaSeleccionada);
 
-    toast.success(`✅ Etapa cambiada exitosamente a "${etapas.find(e => e.value === etapaSeleccionada)?.label}"`);
-    
-    if (onCambioEtapa) {
-      onCambioEtapa(etapaSeleccionada);
+      toast.success(`✅ Etapa cambiada exitosamente a "${etapas.find(e => e.value === etapaSeleccionada)?.label}"`);
+
+      if (onCambioEtapa) {
+        onCambioEtapa(etapaSeleccionada);
+      }
+
+      onClose();
+    } catch (error: any) {
+      console.error('Error cambiando etapa:', error);
+      toast.error(error.message || 'Error al cambiar la etapa');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -96,12 +102,12 @@ export function ModalCambiarEtapa({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 top-[15vh] -translate-x-1/2 w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[70vh] overflow-y-auto"
           >
             {/* Header */}
             <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-gray-100 border-b flex items-center justify-between">
@@ -124,7 +130,7 @@ export function ModalCambiarEtapa({
 
             {/* Contenido */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              
+
               {/* Etapa Actual */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-xs text-blue-600 font-bold mb-1">Etapa Actual</p>
@@ -145,16 +151,15 @@ export function ModalCambiarEtapa({
                       type="button"
                       onClick={() => setEtapaSeleccionada(etapa.value)}
                       disabled={etapa.value === etapaActual}
-                      className={`p-4 rounded-lg border-2 transition-all text-left ${
-                        etapaSeleccionada === etapa.value
-                          ? 'border-blue-600 bg-blue-50'
-                          : etapa.value === etapaActual
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${etapaSeleccionada === etapa.value
+                        ? 'border-blue-600 bg-blue-50'
+                        : etapa.value === etapaActual
                           ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                           : 'border-gray-300 bg-white hover:border-gray-400'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div 
+                        <div
                           className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
                           style={{ backgroundColor: etapa.bg }}
                         >
@@ -178,20 +183,6 @@ export function ModalCambiarEtapa({
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* Observaciones */}
-              <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">
-                  Observaciones (opcional)
-                </label>
-                <textarea
-                  value={observaciones}
-                  onChange={(e) => setObservaciones(e.target.value)}
-                  placeholder="Ingrese las observaciones sobre el cambio de etapa..."
-                  rows={4}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                />
               </div>
 
               {/* Alerta informativa */}
@@ -242,4 +233,3 @@ export function ModalCambiarEtapa({
     </AnimatePresence>
   );
 }
-

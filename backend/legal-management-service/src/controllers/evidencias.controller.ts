@@ -31,7 +31,7 @@ export class EvidenciasController {
 
             res.set({
                 'Content-Type': 'application/zip',
-                'Content-Disposition': `attachment; filename=evidencias_${expedienteId.replace(/[^a-zA-Z0-9]/g, '_')}.zip`,
+                'Content-Disposition': `attachment; filename=Evidencias_${expedienteId.replace(/[^a-zA-Z0-9]/g, '_')}.zip`,
             });
 
             const archive = archiver('zip', { zlib: { level: 9 } });
@@ -116,7 +116,7 @@ export class EvidenciasController {
             aportadoPor: body.aportadoPor,
             tipo: body.tipo,
             prioridad: body.prioridad,
-            estado: 'En Revisión',
+            estado: 'Pendiente',
             archivoNombre: body.nombre || file.originalname,
             tipoArchivo: fileExt
         };

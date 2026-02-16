@@ -38,6 +38,11 @@ interface DashboardStats {
     isExpired: boolean;
   }[];
 }
+// import { estadisticasDefensaJudicial } from '../data/datosExpedientesJudicialesExpandido';
+// import { estadisticasJuzgamiento } from '../data/datosProcesoDisciplinarios';
+// import { estadisticasAsesoriaJuridica } from '../data/datosConsultasJuridicas';
+// import { estadisticasBuzonNotificaciones } from '../data/datosNotificaciones';
+// import { estadisticasTerminosCompleto } from '../data/datosTerminosInformesCompleto';
 
 interface DashboardEjecutivoSIGLProps {
   onNavigateToModule: (moduleId: string) => void;
@@ -117,60 +122,60 @@ export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutiv
       </div>
 
       {/* Contenido */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
         {/* Métricas Principales */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6" data-tour="dashboard-metrics">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-4 lg:mb-6" data-tour="dashboard-metrics">
           {/* Total Expedientes */}
-          <Card className="p-4 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-gray-600">Total Expedientes</p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#003DA5' }}>
+          <Card className="p-3 border-l-4" style={{ borderLeftColor: '#003DA5' }}>
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">Total Expedientes</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold" style={{ color: '#003DA5' }}>
                   {totalExpedientes}
                 </p>
-                <div className="flex items-center gap-1 mt-2">
-                  <TrendingUp size={14} className="text-green-600" />
-                  <span className="text-xs text-green-600">+8% vs mes anterior</span>
+                <div className="flex items-center gap-1 mt-1">
+                  <TrendingUp size={12} className="text-green-600" />
+                  <span className="text-[10px] sm:text-xs text-green-600">+8% vs mes ant.</span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#E0EDFF' }}>
-                <FileText size={24} style={{ color: '#003DA5' }} />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#E0EDFF' }}>
+                <FileText size={20} className="sm:w-6 sm:h-6" style={{ color: '#003DA5' }} />
               </div>
             </div>
           </Card>
 
           {/* Expedientes Urgentes */}
-          <Card className="p-4 border-l-4 border-l-red-600">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-gray-600">Expedientes Urgentes</p>
-                <p className="text-3xl font-bold mt-2 text-red-600">
+          <Card className="p-3 border-l-4 border-l-red-600">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">Expedientes Urgentes</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600">
                   {totalUrgentes}
                 </p>
-                <Badge className="mt-2 bg-red-100 text-red-700 text-xs">
+                <Badge className="mt-1 bg-red-100 text-red-700 text-[10px] sm:text-xs px-1.5 py-0.5">
                   Requieren atención
                 </Badge>
               </div>
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-red-50">
-                <AlertTriangle size={24} className="text-red-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center bg-red-50 flex-shrink-0">
+                <AlertTriangle size={20} className="sm:w-6 sm:h-6 text-red-600" />
               </div>
             </div>
           </Card>
 
           {/* Expedientes Vencidos */}
-          <Card className="p-4 border-l-4 border-l-orange-600">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-gray-600">Expedientes Vencidos</p>
-                <p className="text-3xl font-bold mt-2 text-orange-600">
+          <Card className="p-3 border-l-4 border-l-orange-600">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">Expedientes Vencidos</p>
+                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-orange-600">
                   {totalVencidos}
                 </p>
-                <Badge className="mt-2 bg-orange-100 text-orange-700 text-xs">
+                <Badge className="mt-1 bg-orange-100 text-orange-700 text-[10px] sm:text-xs px-1.5 py-0.5">
                   Acción inmediata
                 </Badge>
               </div>
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-orange-50 animate-pulse">
-                <Clock size={24} className="text-orange-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center bg-orange-50 animate-pulse flex-shrink-0">
+                <Clock size={20} className="sm:w-6 sm:h-6 text-orange-600" />
               </div>
             </div>
           </Card>
@@ -183,13 +188,13 @@ export function DashboardEjecutivoSIGL({ onNavigateToModule }: DashboardEjecutiv
                 <p className="text-3xl font-bold mt-2 text-yellow-600">
                   {terminoPromedio > 0 ? `${terminoPromedio} días` : 'N/A'}
                 </p>
-                <div className="flex items-center gap-1 mt-2">
-                  <CheckCircle size={14} className="text-green-600" />
-                  <span className="text-xs text-green-600">Dentro del plazo</span>
+                <div className="flex items-center gap-1 mt-1">
+                  <CheckCircle size={12} className="text-green-600" />
+                  <span className="text-[10px] sm:text-xs text-green-600">Dentro del plazo</span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-yellow-50">
-                <Calendar size={24} className="text-yellow-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center bg-yellow-50">
+                <Calendar size={20} className="sm:w-6 sm:h-6 text-yellow-600" />
               </div>
             </div>
           </Card>

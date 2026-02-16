@@ -3,14 +3,21 @@
  * Modal para crear nuevos riesgos institucionales en la Matriz de Riesgos
  */
 
-import React, { useState } from 'react';
-import { AlertTriangle, Target, Shield, Activity, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Target, Shield, Activity, TrendingUp, Plus, Trash2, Loader2, Link } from 'lucide-react';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { legalService, ocService } from '../../../../services/api/legal.service';
+
+interface ControlItem {
+  id: string;
+  descripcion: string;
+  efectividad: number;
+}
 
 interface ModalNuevoRiesgoProps {
   open: boolean;
@@ -26,17 +33,25 @@ const initialFormState = {
   tipoRiesgo: 'GESTION',
   causas: '',
   consecuencias: '',
-  controles: '',
   responsable: '',
   probabilidadInherente: '3',
   impactoInherente: '3',
   probabilidadResidual: '2',
   impactoResidual: '2',
-  etapa: 'IDENTIFICADO'
+  etapa: 'IDENTIFICADO',
+  moduloOrigen: '',
+  procesoId: '',
+  procesoRadicado: '',
+  cuantiaEstimada: '0'
 };
 
 export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }: ModalNuevoRiesgoProps) {
   const [formData, setFormData] = useState(initialFormState);
+  const [controlesLista, setControlesLista] = useState<ControlItem[]>([]);
+
+  // Estados para carga dinámica de procesos
+  const [procesosDisponibles, setProcesosDisponibles] = useState<any[]>([]);
+  const [loadingProcesos, setLoadingProcesos] = useState(false);
 
   const isEditing = !!riesgoEditar;
 
@@ -50,20 +65,99 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         tipoRiesgo: riesgoEditar.tipoRiesgo || riesgoEditar.tipo || 'GESTION',
         causas: Array.isArray(riesgoEditar.causas) ? riesgoEditar.causas.join('\n') : '',
         consecuencias: Array.isArray(riesgoEditar.consecuencias) ? riesgoEditar.consecuencias.join('\n') : '',
-        controles: Array.isArray(riesgoEditar.controlesExistentes)
-          ? riesgoEditar.controlesExistentes.map((c: any) => c.descripcion).join('\n')
-          : '',
         responsable: riesgoEditar.responsable || '',
         probabilidadInherente: String(riesgoEditar.probabilidadInherente || 3),
         impactoInherente: String(riesgoEditar.impactoInherente || 3),
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
         impactoResidual: String(riesgoEditar.impactoResidual || 2),
-        etapa: riesgoEditar.etapa || 'IDENTIFICADO'
+        etapa: riesgoEditar.etapa || 'IDENTIFICADO',
+        moduloOrigen: riesgoEditar.moduloOrigen || '',
+        procesoId: riesgoEditar.procesoId || '',
+        procesoRadicado: riesgoEditar.procesoRadicado || '',
+        cuantiaEstimada: String(riesgoEditar.cuantiaEstimada || 0)
       });
+      // Cargar controles existentes
+      if (Array.isArray(riesgoEditar.controlesExistentes)) {
+        setControlesLista(riesgoEditar.controlesExistentes.map((c: any) => ({
+          id: c.id || `ctrl-${Date.now()}-${Math.random()}`,
+          descripcion: c.descripcion || '',
+          efectividad: c.efectividad || 0
+        })));
+      } else {
+        setControlesLista([]);
+      }
     } else {
       setFormData(initialFormState);
+      setControlesLista([]);
     }
   }, [riesgoEditar, open]);
+
+  // Cargar procesos cuando cambia el módulo de origen
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      if (!formData.moduloOrigen) {
+        setProcesosDisponibles([]);
+        return;
+      }
+
+      setLoadingProcesos(true);
+      try {
+        let procesos: any[] = [];
+        switch (formData.moduloOrigen) {
+          case 'DEFENSA_JUDICIAL':
+            procesos = await legalService.getExpedientes();
+            procesos = procesos.map(p => ({
+              id: p.id || p.uuid,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.demandante || 'Sin demandante'}`,
+              cuantia: p.cuantia || 0
+            }));
+            break;
+          case 'JUZGAMIENTO':
+            procesos = await legalService.getJuzgamientoProcesos();
+            procesos = procesos.map(p => ({
+              id: p.id || p.radicado,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.nombreInvestigado || 'Sin investigado'}`
+            }));
+            break;
+          case 'ASESORIA_JURIDICA':
+            procesos = await legalService.getConsultasJuridicas();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.numeroRadicado || p.id,
+              label: `${p.numeroRadicado || p.id} - ${p.asunto || 'Sin asunto'}`
+            }));
+            break;
+          case 'COACTIVOS':
+            procesos = await legalService.getProcesosCoactivos();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.radicado || p.id,
+              label: `${p.radicado} - ${p.deudor || 'Sin deudor'}`
+            }));
+            break;
+          case 'ORGANOS_CONTROL':
+            procesos = await ocService.getRequerimientosOC();
+            procesos = procesos.map(p => ({
+              id: p.id,
+              radicado: p.numeroRequerimiento || p.id,
+              label: `${p.numeroRequerimiento} - ${p.organismoControl || p.organismo || 'Organismo'}`
+            }));
+            break;
+        }
+        setProcesosDisponibles(procesos);
+      } catch (error) {
+        console.error('Error cargando procesos:', error);
+        toast.error('Error al cargar procesos del módulo');
+        setProcesosDisponibles([]);
+      } finally {
+        setLoadingProcesos(false);
+      }
+    };
+
+    cargarProcesos();
+  }, [formData.moduloOrigen]);
 
   // Calcular zona de riesgo
   const calcularZonaRiesgo = (probabilidad: string, impacto: string): string => {
@@ -106,14 +200,14 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       // Convertir strings a números/arrays para el backend
       probabilidadInherente: parseInt(formData.probabilidadInherente),
       impactoInherente: parseInt(formData.impactoInherente),
+      probabilidadResidual: parseInt(formData.probabilidadResidual),
+      impactoResidual: parseInt(formData.impactoResidual),
+      cuantiaEstimada: 0,
+      porcentajeProvision: 0,
+      provisionContable: 0,
       causas: formData.causas ? formData.causas.split('\n').filter(Boolean) : [],
       consecuencias: formData.consecuencias ? formData.consecuencias.split('\n').filter(Boolean) : [],
-      controlesExistentes: formData.controles ?
-        formData.controles.split('\n').filter(Boolean).map(c => ({
-          id: `temp-${Math.random()}`,
-          descripcion: c,
-          efectividad: 0
-        })) : [],
+      controlesExistentes: controlesLista.filter(c => c.descripcion.trim()),
 
       // Campos calculados para frontend optimista (aunque backend los generará)
       zonaInherente,
@@ -129,7 +223,30 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
   };
 
   const handleChange = (field: string, value: any) => {
+    // ✅ Filtro de solo letras y espacios para responsable
+    if (field === 'responsable') {
+      value = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Funciones para manejar controles
+  const agregarControl = () => {
+    setControlesLista(prev => [...prev, {
+      id: `ctrl-${Date.now()}`,
+      descripcion: '',
+      efectividad: 50
+    }]);
+  };
+
+  const eliminarControl = (id: string) => {
+    setControlesLista(prev => prev.filter(c => c.id !== id));
+  };
+
+  const actualizarControl = (id: string, campo: 'descripcion' | 'efectividad', valor: string | number) => {
+    setControlesLista(prev => prev.map(c =>
+      c.id === id ? { ...c, [campo]: valor } : c
+    ));
   };
 
   if (!open) return null;
@@ -201,29 +318,94 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Selector de Módulo de Origen */}
                 <div className="space-y-2">
-                  <Label htmlFor="proceso" className="text-sm font-semibold text-gray-700">
-                    Proceso Asociado <span className="text-red-600">*</span>
+                  <Label htmlFor="moduloOrigen" className="text-sm font-semibold text-gray-700">
+                    Módulo de Origen <span className="text-red-600">*</span>
                   </Label>
                   <select
-                    id="proceso"
-                    value={formData.proceso}
-                    onChange={(e) => handleChange('proceso', e.target.value)}
+                    id="moduloOrigen"
+                    value={formData.moduloOrigen}
+                    onChange={(e) => {
+                      handleChange('moduloOrigen', e.target.value);
+                      handleChange('procesoId', '');
+                      handleChange('procesoRadicado', '');
+                      // También actualizar el campo proceso para compatibilidad
+                      const nombreModulo = {
+                        'DEFENSA_JUDICIAL': 'Defensa Judicial',
+                        'JUZGAMIENTO': 'Juzgamiento Disciplinario',
+                        'ASESORIA_JURIDICA': 'Asesoría Jurídica',
+                        'COACTIVOS': 'Procesos Coactivos',
+                        'ORGANOS_CONTROL': 'Órganos de Control'
+                      }[e.target.value] || '';
+                      handleChange('proceso', nombreModulo);
+                    }}
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
                     required
                   >
-                    <option value="">Seleccione proceso...</option>
-                    <option value="Defensa Judicial">Defensa Judicial</option>
-                    <option value="Órganos de Control">Órganos de Control</option>
-                    <option value="Procesos Coactivos">Procesos Coactivos</option>
-                    <option value="Juzgamiento Disciplinario">Juzgamiento Disciplinario</option>
-                    <option value="Asesoría Jurídica">Asesoría Jurídica</option>
-                    <option value="Gestión Contractual">Gestión Contractual</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Gestión Financiera">Gestión Financiera</option>
+                    <option value="">Seleccione módulo...</option>
+                    <option value="DEFENSA_JUDICIAL">⚖️ Defensa Judicial</option>
+                    <option value="JUZGAMIENTO">👨‍⚖️ Juzgamiento Disciplinario</option>
+                    <option value="ASESORIA_JURIDICA">📝 Asesoría Jurídica</option>
+                    <option value="COACTIVOS">💰 Procesos Coactivos</option>
+                    <option value="ORGANOS_CONTROL">🏛️ Órganos de Control</option>
                   </select>
                 </div>
 
+                {/* Selector de Proceso específico */}
+                <div className="space-y-2">
+                  <Label htmlFor="procesoId" className="text-sm font-semibold text-gray-700">
+                    Proceso/Demanda <span className="text-red-600">*</span>
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id="procesoId"
+                      value={formData.procesoId}
+                      onChange={(e) => {
+                        const selected = procesosDisponibles.find(p => p.id === e.target.value);
+                        handleChange('procesoId', e.target.value);
+                        handleChange('procesoRadicado', selected?.radicado || '');
+
+                        handleChange('procesoId', e.target.value);
+                        handleChange('procesoRadicado', selected?.radicado || '');
+                        if (selected?.cuantia) {
+                          handleChange('cuantiaEstimada', String(selected.cuantia));
+                        }
+                      }}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:outline-none"
+                      disabled={!formData.moduloOrigen || loadingProcesos}
+                      required={!!formData.moduloOrigen}
+                    >
+                      <option value="">
+                        {loadingProcesos
+                          ? 'Cargando procesos...'
+                          : !formData.moduloOrigen
+                            ? 'Primero seleccione módulo'
+                            : procesosDisponibles.length === 0
+                              ? 'No hay procesos disponibles'
+                              : 'Seleccione proceso...'}
+                      </option>
+                      {procesosDisponibles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    {loadingProcesos && (
+                      <Loader2 className="w-4 h-4 absolute right-10 top-1/2 -translate-y-1/2 animate-spin text-blue-500" />
+                    )}
+                  </div>
+                  {formData.procesoRadicado && (
+                    <p className="text-xs text-blue-600 flex items-center gap-1">
+                      <Link className="w-3 h-3" />
+                      Radicado: {formData.procesoRadicado}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Campo oculto para mantener compatibilidad con riesgos antiguos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="tipoRiesgo" className="text-sm font-semibold text-gray-700">
                     Tipo de Riesgo <span className="text-red-600">*</span>
@@ -242,6 +424,30 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                   </select>
                 </div>
               </div>
+
+              {/* Campo de Cuantía (Visible para Riesgo Fiscal o si hay cuantía) */}
+              {(formData.tipoRiesgo === 'FISCAL' || Number(formData.cuantiaEstimada) > 0) && (
+                <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <Label htmlFor="cuantiaEstimada" className="text-sm font-semibold text-gray-700">
+                    Cuantía Estimada del Riesgo
+                  </Label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                    <Input
+                      id="cuantiaEstimada"
+                      type="number"
+                      placeholder="0"
+                      value={formData.cuantiaEstimada}
+                      onChange={(e) => handleChange('cuantiaEstimada', e.target.value)}
+                      className="pl-7 border-2 border-gray-300 focus:border-green-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Para riesgos fiscales, ingrese el valor estimado de la posible pérdida.
+                  </p>
+                </div>
+              )}
+
             </div>
 
             {/* Sección 2: Análisis del Riesgo */}
@@ -423,17 +629,74 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                 <h3 className="font-bold text-gray-900">Controles y Responsabilidades</h3>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="controles" className="text-sm font-semibold text-gray-700">
-                  Controles Existentes
-                </Label>
-                <Textarea
-                  id="controles"
-                  placeholder="Describa los controles preventivos, detectivos o correctivos implementados..."
-                  value={formData.controles}
-                  onChange={(e) => handleChange('controles', e.target.value)}
-                  className="border-2 border-gray-300 focus:border-blue-500 min-h-[80px]"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold text-gray-700">
+                    Controles Existentes
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={agregarControl}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Agregar Control
+                  </Button>
+                </div>
+
+                {controlesLista.length === 0 ? (
+                  <div className="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg text-center">
+                    <Shield className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No hay controles definidos</p>
+                    <p className="text-xs text-gray-400">Haz clic en "Agregar Control" para añadir uno</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {controlesLista.map((control, idx) => (
+                      <div key={control.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start gap-2 mb-2">
+                          <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                          <Input
+                            placeholder="Descripción del control..."
+                            value={control.descripcion}
+                            onChange={(e) => actualizarControl(control.id, 'descripcion', e.target.value)}
+                            className="flex-1 text-sm border-blue-200"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => eliminarControl(control.id)}
+                            className="text-red-500 hover:bg-red-50 p-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-600 w-20">Efectividad:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={control.efectividad}
+                            onChange={(e) => actualizarControl(control.id, 'efectividad', parseInt(e.target.value))}
+                            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          />
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${control.efectividad >= 70 ? 'bg-green-100 text-green-700' :
+                            control.efectividad >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                            {control.efectividad}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -462,9 +725,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                   >
                     <option value="IDENTIFICADO">1️⃣ Identificado</option>
-                    <option value="EVALUADO">2️⃣ Evaluado</option>
-                    <option value="EN_TRATAMIENTO">3️⃣ En Tratamiento</option>
-                    <option value="MONITOREADO">4️⃣ Monitoreado</option>
+                    <option value="ANALIZADO">2️⃣ Analizado</option>
+                    <option value="VALORADO">3️⃣ Valorado</option>
+                    <option value="TRATAMIENTO">4️⃣ En Tratamiento</option>
+                    <option value="MONITOREO">5️⃣ Monitoreado</option>
                   </select>
                 </div>
               </div>
@@ -490,8 +754,8 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
             </div>
           </form>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
 

@@ -32,6 +32,15 @@ interface CertificadoDetalleModalProps {
 
 export function CertificadoDetalleModal({ certificado, isOpen, onClose }: CertificadoDetalleModalProps) {
   if (!isOpen) return null;
+  const normalizarDependencia = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+  const dependenciaPadre = normalizarDependencia(certificado?.empleado?.dependenciaPadre);
+  const dependenciaHijo = normalizarDependencia(certificado?.empleado?.dependencia);
 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
@@ -111,6 +120,32 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
     }
   };
 
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr) return null;
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) {
+      return 'Fecha no disponible';
+    }
+    return fecha.toLocaleDateString('es-CO', opciones || {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -125,22 +160,22 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
             onClick={onClose}
           />
 
-          {/* Modal */}
+          {/* Modal - Mobile optimized */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-y-0 right-0 flex max-w-full pl-10 sm:pl-16"
+            className="fixed inset-y-0 right-0 flex w-full sm:max-w-full sm:pl-10 md:pl-16"
           >
-            <div className="w-screen max-w-2xl">
+            <div className="w-full sm:max-w-2xl">
               <div className="flex h-full flex-col bg-white shadow-2xl">
-                {/* Header - Ahora sticky para siempre visible */}
-                <div className="bg-[#003DA5] px-4 sm:px-6 py-4 sm:py-5 sticky top-0 z-10 shadow-lg">
-                  <div className="flex items-start justify-between gap-4">
+                {/* Header - Sticky and Mobile Optimized */}
+                <div className="bg-[#003DA5] px-3 sm:px-6 py-3 sm:py-5 sticky top-0 z-10 shadow-lg">
+                  <div className="flex items-start justify-between gap-2 sm:gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-                        <h2 className="text-white text-base sm:text-xl font-medium truncate">
+                      <div className="flex items-center gap-2 mb-1.5 sm:mb-2 flex-wrap">
+                        <h2 className="text-white text-sm sm:text-xl font-medium truncate">
                           Certificado {certificado.consecutivo}
                         </h2>
                         {getEstadoBadge(certificado.estado)}
@@ -261,11 +296,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Calendar className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
+                            {formatearFecha(certificado.empleado.fechaVinculacion)}
                           </p>
                         </div>
                         <div>
@@ -282,13 +313,26 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Dependencia
+                            Dependencia Padre
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.dependencia}
+                            {dependenciaPadre || ''}
                           </p>
                         </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Dependencia Hijo
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            {dependenciaHijo || ''}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Fila 5 */}
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                             Salario
@@ -296,6 +340,15 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           <p className="text-gray-900 mt-1.5 font-bold flex items-center gap-1.5">
                             <DollarSign className="w-4 h-4 text-green-600" />
                             ${certificado.empleado.salario.toLocaleString('es-CO')} COP
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Correo Electrónico
+                          </label>
+                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                            {certificado.empleado.email}
                           </p>
                         </div>
                       </div>
@@ -354,7 +407,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Clock className="w-4 h-4 text-gray-400" />
-                            {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
+                            {formatearFecha(certificado.fechaSolicitud, {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric',
@@ -370,7 +423,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                             </label>
                             <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              {new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO', {
+                              {formatearFecha(certificado.fechaGeneracion, {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',

@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { GraduationCertificate } from './graduation-certificate.entity';
 import { GraduationCertificateRequest } from './graduation-certificate-request.entity';
+import { GraduateFile } from './graduate-file.entity';
 
 @Entity({ schema: 'academic_registration', name: 'graduates' })
 export class Graduate {
@@ -21,7 +22,13 @@ export class Graduate {
   @Column({ name: 'full_name', length: 255 })
   fullName: string;
 
-  @Column({ name: 'id_number', length: 50, unique: true })
+  @Column({ name: 'first_name', length: 255, nullable: true })
+  firstName: string;
+
+  @Column({ name: 'last_name', length: 255, nullable: true })
+  lastName: string;
+
+  @Column({ name: 'id_number', length: 50 })
   idNumber: string;
 
   @Column({ name: 'id_issue_date', type: 'date', nullable: true })
@@ -66,6 +73,18 @@ export class Graduate {
   @Column({ name: 'resolution_number', length: 100, nullable: true })
   resolutionNumber: string;
 
+  @Column({ name: 'num_acta', length: 100, nullable: true })
+  numActa: string;
+
+  @Column({ name: 'num_folio', length: 100, nullable: true })
+  numFolio: string;
+
+  @Column({ name: 'num_libro', length: 100, nullable: true })
+  numLibro: string;
+
+  @Column({ name: 'num_registro', length: 100, nullable: true })
+  numRegistro: string;
+
   // Estado y validación
   @Column({ length: 50, default: 'ACTIVE' })
   status: string; // ACTIVE, REVOKED, SUSPENDED
@@ -99,4 +118,9 @@ export class Graduate {
 
   @OneToMany(() => GraduationCertificate, (certificate) => certificate.graduate)
   certificates: GraduationCertificate[];
+
+  @OneToMany(() => GraduateFile, (file) => file.graduate)
+  files: GraduateFile[];
+
+  filesCount?: number;
 }

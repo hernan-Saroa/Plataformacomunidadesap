@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Eye, Download, Filter, AlertCircle, CheckCircle, Info, Clock, User } from 'lucide-react';
+import { Eye, Download, Filter, AlertCircle, CheckCircle, Info, Clock, User, FileDown } from 'lucide-react';
 import { AuditEvent } from './AuditEventDetail';
 
 interface AuditLogTableProps {
   events: AuditEvent[];
   onEventClick: (event: AuditEvent) => void;
   searchQuery?: string;
+  onExportEvent?: (event: AuditEvent, format: 'csv' | 'excel' | 'pdf') => void;
 }
 
-export function AuditLogTable({ events, onEventClick, searchQuery = '' }: AuditLogTableProps) {
+export function AuditLogTable({ events, onEventClick, searchQuery = '', onExportEvent }: AuditLogTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   
@@ -106,7 +107,7 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '' }: AuditL
                 Acción
               </th>
               <th className="px-4 xl:px-6 py-3 xl:py-4 text-left text-xs font-bold text-[--esap-gray-700] uppercase tracking-wider">
-                Módulo
+                Submódulo
               </th>
               <th className="px-4 xl:px-6 py-3 xl:py-4 text-left text-xs font-bold text-[--esap-gray-700] uppercase tracking-wider">
                 Severidad
@@ -199,16 +200,32 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '' }: AuditL
                   </td>
                   
                   <td className="px-4 xl:px-6 py-3 xl:py-4 text-center">
-                    <button
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-[--esap-primary] text-white rounded-lg text-xs font-semibold hover:bg-[--esap-primary-dark] transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEventClick(event);
-                      }}
-                    >
-                      <Eye className="w-3.5 h-3.5" strokeWidth={2} />
-                      Ver
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-[--esap-primary] text-white rounded-lg text-xs font-semibold hover:bg-[--esap-primary-dark] transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(event);
+                        }}
+                      >
+                        <Eye className="w-3.5 h-3.5" strokeWidth={2} />
+                        Ver
+                      </button>
+                      {onExportEvent && (
+                        <div className="relative group">
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onExportEvent(event, 'excel');
+                            }}
+                            title="Exportar esta fila a Excel"
+                          >
+                            <FileDown className="w-3.5 h-3.5" strokeWidth={2} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </motion.tr>
               );
@@ -285,17 +302,31 @@ export function AuditLogTable({ events, onEventClick, searchQuery = '' }: AuditL
                 </div>
               </div>
 
-              {/* Action Button */}
-              <button
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[--esap-primary] text-white rounded-lg text-sm font-semibold hover:bg-[--esap-primary-dark] transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEventClick(event);
-                }}
-              >
-                <Eye className="w-4 h-4" strokeWidth={2} />
-                Ver Detalles
-              </button>
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[--esap-primary] text-white rounded-lg text-sm font-semibold hover:bg-[--esap-primary-dark] transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEventClick(event);
+                  }}
+                >
+                  <Eye className="w-4 h-4" strokeWidth={2} />
+                  Ver Detalles
+                </button>
+                {onExportEvent && (
+                  <button
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExportEvent(event, 'excel');
+                    }}
+                    title="Exportar a Excel"
+                  >
+                    <FileDown className="w-4 h-4" strokeWidth={2} />
+                  </button>
+                )}
+              </div>
             </motion.div>
           );
         })}

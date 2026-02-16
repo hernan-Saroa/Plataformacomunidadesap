@@ -23,7 +23,8 @@ import {
   Eye,
   TrendingUp,
   TrendingDown,
-  Circle
+  Circle,
+  Download
 } from 'lucide-react';
 import type { Riesgo, EtapaRiesgo } from '../core/types';
 import { toast } from 'sonner';
@@ -34,6 +35,10 @@ import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalNuevoRiesgo } from './ModalNuevoRiesgo';
 import { ModalDetalleRiesgo } from './ModalDetalleRiesgo';
 import { riesgosService, RiesgoAPI } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 type VistaModulo = 'matriz' | 'tabla';
 
@@ -62,6 +67,9 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
     tipoRiesgo: api.tipoRiesgo,
     nombre: api.nombre,
     descripcion: api.descripcion,
+    moduloOrigen: api.moduloOrigen,
+    procesoId: api.procesoId,
+    procesoRadicado: api.procesoRadicado,
     causas: api.causas || [],
     consecuencias: api.consecuencias || [],
     probabilidadInherente: api.probabilidadInherente,
@@ -81,11 +89,19 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
     timeline: [],
     fechaCreacion: new Date(api.createdAt),
     fechaActualizacion: new Date(api.updatedAt),
-    estado: api.estado
+    estado: api.estado,
+    // Nuevos campos de provisión
+    cuantiaEstimada: api.cuantiaEstimada,
+    provisionContable: api.provisionContable,
+    porcentajeProvision: api.porcentajeProvision,
+    fechaCalculoProvision: api.fechaCalculoProvision ? new Date(api.fechaCalculoProvision) : undefined
   };
 }
 
 export function Riesgos() {
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+
   const [vistaActual, setVistaActual] = useState<VistaModulo>('matriz');
   const [busqueda, setBusqueda] = useState('');
   const [filtroZona, setFiltroZona] = useState<string>('TODAS');
@@ -95,6 +111,97 @@ export function Riesgos() {
   // Estado para lista de riesgos (solo API, sin mocks)
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
+  // ✅ Estado para items archivados (cargados desde API)
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // ✅ Función para cargar riesgos archivados desde la API
+  const fetchArchivados = async () => {
+    try {
+      const archivados = await riesgosService.getArchived();
+      const items: ItemArchivado[] = archivados.map(r => ({
+        id: r.id,
+        codigo: r.codigo,
+        nombre: `${r.nombre} - ${r.proceso}`,
+        tipo: 'Riesgo',
+        estado: 'ARCHIVADO' as EstadoArchivado,
+        fechaArchivado: new Date(r.updatedAt),
+        usuarioArchivo: r.responsable || 'Sistema',
+        motivoArchivo: r.motivoArchivo || `Riesgo archivado desde el módulo de Gestión de Riesgos`,
+        metadatos: {
+          'Proceso': r.proceso,
+          'Tipo Riesgo': r.tipoRiesgo,
+          'Zona Residual': r.zonaResidual,
+          'Responsable': r.responsable || 'Sin asignar'
+        }
+      }));
+      setItemsArchivados(items);
+    } catch (error) {
+      console.log('Error cargando archivados:', error);
+    }
+  };
+
+  // ✅ Función para archivar un riesgo
+  const handleArchivarRiesgo = async (riesgo: Riesgo & { motivoArchivo?: string }) => {
+    const toastId = toast.loading('Archivando riesgo...');
+    try {
+      await riesgosService.archivar(riesgo.id, riesgo.motivoArchivo);
+
+      // Actualizar estado local: mover de activos a archivados
+      setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
+
+      // Recargar archivados
+      await fetchArchivados();
+
+      toast.success('Riesgo archivado exitosamente', {
+        id: toastId,
+        description: `${riesgo.codigo || riesgo.id} ha sido archivado`
+      });
+    } catch (error) {
+      console.error('Error archivando riesgo:', error);
+      toast.error('Error al archivar el riesgo', { id: toastId });
+    }
+  };
+
+  // ✅ Función para restaurar un riesgo archivado
+  const handleRestaurar = async (itemId: string) => {
+    const toastId = toast.loading('Restaurando riesgo...');
+    try {
+      const restored = await riesgosService.restaurar(itemId);
+
+      // Agregar a la lista de activos
+      const riesgoRestaurado = apiToLocalRiesgo(restored);
+      setRiesgos(prev => [riesgoRestaurado, ...prev]);
+
+      // Remover de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+
+      toast.success('Riesgo restaurado exitosamente', { id: toastId });
+    } catch (error) {
+      console.error('Error restaurando riesgo:', error);
+      toast.error('Error al restaurar el riesgo', { id: toastId });
+    }
+  };
+
+  // ✅ Función para eliminar permanentemente un riesgo
+  const handleEliminarPermanente = async (itemId: string) => {
+    const toastId = toast.loading('Eliminando riesgo permanentemente...');
+    try {
+      await riesgosService.eliminarPermanente(itemId);
+
+      // Remover de archivados
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+
+      toast.success('Riesgo eliminado permanentemente', { id: toastId });
+    } catch (error) {
+      console.error('Error eliminando riesgo:', error);
+      toast.error('Error al eliminar el riesgo', { id: toastId });
+    }
+  };
+
+  // Handlers
+  const handleNuevoRiesgo = () => {
+    setModalNuevoOpen(true);
+  };
 
   // Estado para el modal de nuevo riesgo (también usado para edición)
   const [modalNuevoOpen, setModalNuevoOpen] = useState(false);
@@ -121,6 +228,7 @@ export function Riesgos() {
       }
     };
     fetchRiesgos();
+    fetchArchivados(); // También cargar archivados
   }, []);
 
   const riesgosFiltrados = useMemo(() => {
@@ -198,6 +306,11 @@ export function Riesgos() {
       // Actualizar en la lista local
       setRiesgos(prev => prev.map(r => r.id === riesgoActualizado.id ? riesgoActualizado : r));
 
+      // Actualizar riesgo seleccionado si es el mismo que se está editando
+      if (riesgoSeleccionado && riesgoSeleccionado.id === riesgoActualizado.id) {
+        setRiesgoSeleccionado(riesgoActualizado);
+      }
+
       setModalNuevoOpen(false);
       setRiesgoEditando(null);
       toast.success('Riesgo actualizado exitosamente', { id: toastId });
@@ -207,25 +320,38 @@ export function Riesgos() {
     }
   };
 
-  // Handler para archivar riesgo
-  const handleArchivarRiesgo = async (riesgo: Riesgo) => {
-    const toastId = toast.loading('Archivando riesgo...');
+  // Handler para eliminar riesgo
+  const handleEliminarRiesgo = async (riesgo: Riesgo) => {
+    const toastId = toast.loading('Eliminando riesgo...');
     try {
-      await riesgosService.archivar(riesgo.id);
+      await riesgosService.delete(riesgo.id);
 
-      // Actualizar estado local
-      setRiesgos(prev => prev.map(r =>
-        r.id === riesgo.id ? { ...r, estado: 'ARCHIVADO' as const } : r
-      ));
+      // Actualizar estado local eliminando el item
+      setRiesgos(prev => prev.filter(r => r.id !== riesgo.id));
 
-      toast.success('Riesgo archivado', {
+      toast.success('Riesgo eliminado permanentemente', {
         id: toastId,
-        description: `${riesgo.codigo || riesgo.id} ha sido archivado`
+        description: `${riesgo.codigo || riesgo.id} ha sido eliminado`
       });
+      setModalDetalleOpen(false);
     } catch (error) {
-      console.error('Error archivando riesgo:', error);
-      toast.error('Error al archivar el riesgo', { id: toastId });
+      console.error('Error eliminando riesgo:', error);
+      toast.error('Error al eliminar el riesgo', { id: toastId });
     }
+  };
+
+  const addBtnsPermission = () => {
+    const arrayBtns: any[] = [];
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_CREATE)) {
+      arrayBtns.push({
+        label: 'Nuevo Riesgo',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevoOpen(true),
+        variant: 'primary'
+      })
+    }
+    return arrayBtns
   };
 
   return (
@@ -242,15 +368,7 @@ export function Riesgos() {
             { label: 'Tabla', icon: <List className="w-4 h-4" />, value: 'tabla' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Riesgo',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoOpen(true),
-            variant: 'primary'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Gestión de Riesgos"
@@ -401,7 +519,16 @@ export function Riesgos() {
         onClose={() => setModalDetalleOpen(false)}
         riesgo={riesgoSeleccionado}
         onEdit={handleEditarRiesgo}
+        onDelete={handleEliminarRiesgo}
         onArchive={handleArchivarRiesgo}
+      />
+
+      {/* Vista de Archivados */}
+      <VistaArchivados
+        moduloNombre="Gestión de Riesgos"
+        items={itemsArchivados}
+        onRestaurar={handleRestaurar}
+        onEliminarPermanente={handleEliminarPermanente}
       />
     </div>
   );
@@ -568,7 +695,7 @@ function TablaRiesgos({ riesgos, onVerDetalle }: TablaRiesgosProps) {
           </thead>
           <tbody>
             {riesgos.map((riesgo) => {
-              const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual];
+              const config = ZONA_RIESGO_CONFIG[riesgo.zonaInherente || 'BAJO'] || ZONA_RIESGO_CONFIG.BAJO;
               return (
                 <tr key={riesgo.id} className="border-t border-gray-200 hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm text-gray-900 font-semibold">{riesgo.codigo || riesgo.id}</td>
@@ -618,7 +745,7 @@ interface TarjetaRiesgoCompactaProps {
 }
 
 function TarjetaRiesgoCompacta({ riesgo, onVerDetalle }: TarjetaRiesgoCompactaProps) {
-  const config = ZONA_RIESGO_CONFIG[riesgo.zonaResidual] || ZONA_RIESGO_CONFIG.MODERADO;
+  const config = ZONA_RIESGO_CONFIG[riesgo.zonaInherente || 'BAJO'] || ZONA_RIESGO_CONFIG.BAJO;
   const tipoLabel = TIPO_RIESGO_MAP[riesgo.tipoRiesgo || riesgo.tipo || 'GESTION'] || 'Gestión';
 
   return (

@@ -21,6 +21,7 @@ interface EditorDocumentosProps {
   onGuardar: (contenido: string, version: number) => void;
   onEnviarRevision: (contenido: string, observaciones: string, version: number) => void;
   borradorExistente?: any;
+  hideSendButton?: boolean;
 }
 
 export function EditorDocumentos({
@@ -29,7 +30,8 @@ export function EditorDocumentos({
   onClose,
   onGuardar,
   onEnviarRevision,
-  borradorExistente
+  borradorExistente,
+  hideSendButton = false
 }: EditorDocumentosProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const [contenido, setContenido] = useState('');
@@ -49,6 +51,17 @@ export function EditorDocumentos({
     }
   }, [plantilla, proceso, borradorExistente]);
 
+  // Efecto para inicializar el contenido del editor SOLO UNA VEZ o cuando cambie completamente
+  useEffect(() => {
+    if (editorRef.current) {
+      // Solo actualizar si el contenido del editor está vacío (inicialización) 
+      // o si es significativamente diferente (cambio de documento)
+      if (editorRef.current.innerHTML === '') {
+        editorRef.current.innerHTML = contenido;
+      }
+    }
+  }, [contenido]);
+
   useEffect(() => {
     // Detectar campos paramétricos en el contenido
     const regex = /\{\{([^}]+)\}\}/g;
@@ -58,7 +71,7 @@ export function EditorDocumentos({
 
   const preLlenarPlantilla = (template: string, proc: any): string => {
     let resultado = template;
-    
+
     const mapeo: Record<string, string> = {
       'numeroProceso': proc.numeroProceso,
       'noticiaOrigen': proc.noticiaOrigen,
@@ -150,13 +163,13 @@ export function EditorDocumentos({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[300]"
+        className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[170]"
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
           initial={{ scale: 0.95, y: 20 }}
           animate={{ scale: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl h-full max-h-[95vh] overflow-hidden flex flex-col mx-4 md:mx-auto"
         >
           {/* Header */}
           <div className="p-6 border-b border-gray-200 bg-gray-50">
@@ -352,7 +365,8 @@ export function EditorDocumentos({
                   lineHeight: '1.5',
                   whiteSpace: 'pre-wrap'
                 }}
-                dangerouslySetInnerHTML={{ __html: contenido }}
+              // NO usar dangerouslySetInnerHTML aquí para evitar re-renderizados que pierden el foco
+              // Se inicializa en el useEffect
               />
             )}
           </div>
@@ -374,6 +388,7 @@ export function EditorDocumentos({
                 Cancelar
               </Button>
 
+              {/* Botón Guardar siempre visible */}
               <Button
                 onClick={handleGuardar}
                 variant="outline"
@@ -383,13 +398,15 @@ export function EditorDocumentos({
                 Guardar Borrador
               </Button>
 
-              <Button
-                onClick={() => setShowEnviarModal(true)}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Send className="w-4 h-4 mr-2" />
-                Enviar para Revisión
-              </Button>
+              {!hideSendButton && (
+                <Button
+                  onClick={() => setShowEnviarModal(true)}
+                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Enviar para Revisión
+                </Button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -426,7 +443,7 @@ function ModalEnviarRevision({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[350]"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[180]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
@@ -464,7 +481,7 @@ function ModalEnviarRevision({
                   Notificación Automática
                 </p>
                 <p className="text-sm text-blue-700">
-                  El Jefe de OCID recibirá una notificación por correo electrónico 
+                  El Jefe de OCID recibirá una notificación por correo electrónico
                   para revisar este borrador.
                 </p>
               </div>

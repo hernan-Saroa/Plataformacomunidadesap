@@ -26,7 +26,7 @@
 
 
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 
 
@@ -138,6 +138,8 @@ import {
 } from 'lucide-react';
 
 
+
+import { QRCodeCanvas } from 'qrcode.react';
 
 import { toast } from 'sonner';
 
@@ -480,7 +482,10 @@ interface LogCambio {
 
 
 
+const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
+
 const fuentesDisponibles = [
+  { value: DEFAULT_CERTIFICATE_FONT, label: 'Arial Narrow (Predeterminada)' },
 
 
 
@@ -508,23 +513,25 @@ const fuentesDisponibles = [
 
 
 
-  { value: 'Montserrat', label: 'Montserrat' },
-
-
-
-  { value: 'Open Sans', label: 'Open Sans' },
-
-
-
-  { value: 'Lato', label: 'Lato' },
-
-
-
-  { value: 'Poppins', label: 'Poppins' },
-
-
-
 ];
+
+const normalizarFuenteTipografica = (value?: string | null): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_CERTIFICATE_FONT;
+  const normalized = raw
+    .replace(/["']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const found = fuentesDisponibles.find((fuente) =>
+    fuente.value
+      .replace(/["']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase() === normalized,
+  );
+  return found?.value || DEFAULT_CERTIFICATE_FONT;
+};
 
 
 
@@ -576,51 +583,26 @@ const coloresDisponibles = [
 
 
 
-const variablesDisponibles = [
-
-
-
-  { codigo: '[NOMBRE_EMPLEADO]', descripcion: 'Nombre completo del empleado' },
-
-
-
-  { codigo: '[DOCUMENTO]', descripcion: 'NAomero de documento' },
-
-
-
-  { codigo: '[CARGO]', descripcion: 'Cargo del empleado' },
-
-
-
-  { codigo: '[DEPENDENCIA]', descripcion: 'Dependencia donde trabaja' },
-
-
-
-  { codigo: '[DATO6]', descripcion: 'Ubicacion o dato adicional' },
-
-
-
-  { codigo: '[FECHA_INICIO]', descripcion: 'Fecha de inicio del contrato' },
-
-
-
-  { codigo: '[FECHA_FIN]', descripcion: 'Fecha de finalizacion' },
-
-
-
-  { codigo: '[SALARIO]', descripcion: 'Salario mensual (nAomero)' },
-
-
-
-  { codigo: '[SALARIO_LETRAS]', descripcion: 'Salario en letras' },
-
-
-
-  { codigo: '[FECHA_EXPEDICION_COMPLETA]', descripcion: 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)' },
-
-
-
-];
+const descripcionVariables: Record<string, string> = {
+  '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
+  '[DOCUMENTO]': 'Numero de documento',
+  '[CARGO]': 'Cargo calculado (categoria + codigo + grado)',
+  '[TIPO_DATO]': 'Tipo de vinculación',
+  '[DEPENDENCIA]': 'Dependencia donde trabaja',
+  '[DATO1]': 'Dato 1 (nombre empleado)',
+  '[DATO2]': 'Dato 2 (documento)',
+  '[DATO4]': 'Dato 4 (fecha de inicio)',
+  '[DATO5]': 'Cargo del empleado',
+  '[DATO6]': 'Dato 6 (dato adicional)',
+  '[UBICACIÓN]': 'Ubicacion',
+  '[DATO8]': 'Dato 8 (salario en letras)',
+  '[FECHA_INICIO]': 'Fecha de inicio del contrato',
+  '[FECHA_FIN]': 'Fecha de finalizacion',
+  '[SALARIO]': 'Salario mensual (numero)',
+  '[SALARIO_LETRAS]': 'Salario en letras',
+  '[FECHA_EXPEDICION_COMPLETA]': 'Fecha completa de expedicion (ej: 11 de diciembre de 2025)',
+  '[CIUDAD_EXPEDICION]': 'Ciudad de expedicion',
+};
 
 
 
@@ -628,7 +610,7 @@ const variablesDisponibles = [
 
 
 
-const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [CARGO] desde el [FECHA_INICIO], en la categor\u00EDa [DEPENDENCIA] ubicado en [DATO6].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [UBICACIÓN].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
 
 
 
@@ -715,6 +697,23 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const [editorContent, setEditorContent] = useState<string>('');
 
+  const variablesDisponibles = useMemo(() => {
+    const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
+    const tokens = contenidoBase.match(/\[[A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*\]/g) || [];
+    const vistos = new Set<string>();
+    const ordenados: string[] = [];
+    for (const token of tokens) {
+      if (!vistos.has(token)) {
+        vistos.add(token);
+        ordenados.push(token);
+      }
+    }
+    return ordenados.map((codigo) => ({
+      codigo,
+      descripcion: descripcionVariables[codigo] || 'Variable usada en la plantilla'
+    }));
+  }, [editorContent, borrador?.contenidoCertificado.texto]);
+
 
 
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -756,7 +755,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   useEffect(() => {
     if (borrador?.contenidoCertificado.texto) {
       // Normalizar las variables para que todas tengan el formato compacto
-      const contenidoNormalizado = normalizarVariables(borrador.contenidoCertificado.texto);
+      const contenidoNormalizado = normalizarVariables(
+        normalizarEspaciadoVisualEditor(borrador.contenidoCertificado.texto),
+      );
       setEditorContent(contenidoNormalizado);
     }
   }, [borrador?.contenidoCertificado.texto]);
@@ -779,7 +780,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       // Actualizar el contenido del editor, normalizando las variables
       let currentContent = editorContent || borrador?.contenidoCertificado.texto || '';
-      currentContent = normalizarVariables(currentContent);
+      currentContent = normalizarVariables(normalizarEspaciadoVisualEditor(currentContent));
       console.log('Restaurando contenido del editor:', currentContent.substring(0, 50) + '...');
 
       if (editor.innerHTML !== currentContent && currentContent) {
@@ -817,11 +818,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [DATO6], etc.
+    // Patron para encontrar variables como [NOMBRE_EMPLEADO], [DOCUMENTO], [CARGO], etc.
 
 
 
-    const patron = /\[([A-Z0-9_AAAAAA]+)\]/g;
+    const patron = /\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\]/g;
 
 
 
@@ -862,13 +863,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
     // Paso 2: Normalizar todos los spans con clase variable-token
     resultado = resultado.replace(
-      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z_]+)\][^<]*)<\/span>/g,
+      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\][^<]*)<\/span>/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$2]</span>'
     );
 
     // Paso 3: Envolver variables sueltas que no tienen span
     resultado = resultado.replace(
-      /(-<!<span[^>]*>)\[([A-Z_]+)\](-![^<]*<\/span>)/g,
+      /(-<!<span[^>]*>)\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\](-![^<]*<\/span>)/g,
       '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
     );
 
@@ -876,6 +877,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
 
     return resultado;
+  };
+
+  /**
+   * Ajusta solo el espaciado visual del editor para que plantillas con HTML
+   * equivalente (p/div + br) se muestren de forma consistente.
+   * No altera palabras ni tokens.
+   */
+  const normalizarEspaciadoVisualEditor = (html: string): string => {
+    if (!html) return html;
+
+    return html
+      .replace(/>\s*\r?\n\s*</g, '><')
+      .replace(/(<br\s*\/?>\s*){2,}(?=<\/?(div|p)\b)/gi, '')
+      .replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
   };
 
 
@@ -1222,7 +1237,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        fuente: 'Arial Narrow, Arial, sans-serif', // Misma fuente que los PDFs generados
+        fuente: normalizarFuenteTipografica(
+          config?.typography?.font || config?.typographyFont || DEFAULT_CERTIFICATE_FONT,
+        ),
 
 
 
@@ -1721,9 +1738,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       metadata: cambio.metadata,
     }));
 
-  const cargarHistorial = async (page: number) => {
+  const fallbackImageData =
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80'><rect width='100%' height='100%' fill='%23f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='12'>No disponible</text></svg>";
+
+  const handleHistorialImageError = (
+    event: React.SyntheticEvent<HTMLImageElement>
+  ) => {
+    event.currentTarget.src = fallbackImageData;
+    event.currentTarget.alt = 'Imagen no disponible';
+  };
+
+  const cargarHistorial = async (page: number, force = false) => {
     try {
-      if (activeTab !== 'historial') return;
+      if (!force && activeTab !== 'historial') return;
       setIsLoadingHistorial(true);
       const safePage = Math.max(1, page);
       const offset = (safePage - 1) * HISTORIAL_POR_PAGINA;
@@ -1792,7 +1819,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      'tipografia': 'Cambio de TipografAa',
+      'tipografia': 'Cambio de Tipografía',
 
 
 
@@ -2834,7 +2861,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const recargarHistorial = async (force = false) => {
     try {
       if (!force && activeTab !== 'historial') return;
-      await cargarHistorial(historialPage);
+      await cargarHistorial(historialPage, force);
       setHistorialDirty(false);
     } catch (error) {
       console.error('Error al recargar historial:', error);
@@ -3001,7 +3028,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Guardar tipografAa, tAtulo del cargo y contenido HTML si cambiaron
+      // Guardar tipografía, título del cargo y contenido HTML si cambiaron
 
 
 
@@ -3025,7 +3052,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        cambiosGuardados.push('tipografAa');
+        cambiosGuardados.push('tipografía');
 
 
 
@@ -3228,7 +3255,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setIsPreviewOpen(true);
+    // setIsPreviewOpen(true);
 
 
 
@@ -3549,7 +3576,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setSelectedFile(null);
+    // setSelectedFile(null);
 
 
 
@@ -3601,11 +3628,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    setVersionARestaurar(log);
+    // setVersionARestaurar(log);
 
 
 
-    setIsRestaurarOpen(true);
+    // setIsRestaurarOpen(true);
 
 
 
@@ -3681,7 +3708,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          `TipografAa: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
+          `Tipografía: ${versionARestaurar.plantillaSnapshot.tipografia.fuente} ${versionARestaurar.plantillaSnapshot.tipografia.tamano}pt`
 
 
 
@@ -3785,11 +3812,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      setIsRestaurarOpen(false);
+      // setIsRestaurarOpen(false);
 
 
 
-      setVersionARestaurar(null);
+      // setVersionARestaurar(null);
 
 
 
@@ -3918,32 +3945,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
   return (
-
-
-
-    <div className="space-y-6">
-
-
-
-      <style>{`
-        .variable-token {
-          font-weight: inherit !important;
-          display: inline !important;
-          font-size: inherit !important;
-          line-height: inherit !important;
-          padding: 0px 2px !important;
-          margin: 0 !important;
-          border-radius: 2px !important;
-          vertical-align: baseline !important;
-        }
-        .variable-token * {
-          padding: 0 !important;
-          margin: 0 !important;
-        }
-      `}</style>
-
-
-
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
 
 
@@ -3965,29 +3967,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       >
-
-
-
-        <div className="flex items-center justify-between">
-
-
-
-          <div>
-
-
-
-            <div className="flex items-center gap-3 mb-2">
-
-
-
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2">
               <div 
-
-
-
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-
-
-
+                className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
 
 
@@ -4005,61 +3989,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               >
-
-
-
-                <FileText className="w-6 h-6 text-white" strokeWidth={2.5} />
-
-
-
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.5} />
               </div>
-
-
-
-              <div>
-
-
-
-                <h1 
-
-
-
-                  className="font-bold tracking-tight"
-
-
-
-                  style={{
-
-
-
-                    fontSize: '32px',
-
-
-
-                    lineHeight: '40px',
-
-
-
-                    letterSpacing: '-0.25px',
-
-
-
-                    color: '#1F2937'
-
-
-
-                  }}
-
-
-
-                >
-
-
-
-                  Configuracion de Plantilla
-
-
-
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-gray-900 truncate">
+                  Configuración de Plantilla
                 </h1>
 
 
@@ -4069,73 +4003,18 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
             </div>
-
-
-
-            <p
-
-
-
-              className="font-normal"
-
-
-
-              style={{
-
-
-
-                fontSize: '14px',
-
-
-
-                lineHeight: '20px',
-
-
-
-                color: '#6B7280'
-
-
-
-              }}
-
-
-
-            >
-
-
-
-              Configura los elementos visuales de los certificados laborales: firma del responsable y logo institucional.
-
-
-
+            <p className="text-xs sm:text-sm text-gray-600">
+              Gestiona la plantilla base de certificados laborales. Los cambios se aplican a todos los certificados futuros.
             </p>
 
 
 
           </div>
 
-
-
-
-
-
-
-          <div className="flex items-center gap-3">
-
-
-
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             {getEstadoBadge(plantilla.estado)}
-
-
-
-            <Badge variant="outline" className="px-3 py-1 text-sm">
-
-
-
-              Version {plantilla.version}
-
-
-
+            <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
+              Versión {plantilla.version}
             </Badge>
 
 
@@ -4173,49 +4052,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
           animate={{ opacity: 1, y: 0 }}
-
-
-
-          className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-4"
-
-
-
+          className="bg-yellow-50 border-2 border-yellow-300 rounded-lg sm:rounded-xl p-3 sm:p-4"
         >
-
-
-
-          <div className="flex items-start gap-3">
-
-
-
-            <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-
-
-
-            <div className="flex-1">
-
-
-
-              <h3 className="font-semibold text-yellow-900 mb-1">
-
-
-
+          <div className="flex items-start gap-2 sm:gap-3">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-yellow-900 mb-1 text-sm sm:text-base">
                 Cambios sin guardar
 
 
 
               </h3>
-
-
-
-              <p className="text-sm text-yellow-800">
-
-
-
-                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorizacion antes de cerrar.
-
-
-
+              <p className="text-xs sm:text-sm text-yellow-800">
+                Has realizado cambios en la plantilla. Recuerda guardarlos y solicitar autorización antes de cerrar.
               </p>
 
 
@@ -4237,13 +4086,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
               onClick={handleDescartarCambios}
-
-
-
-              className="text-yellow-700 hover:text-yellow-900"
-
-
-
+              className="text-yellow-700 hover:text-yellow-900 min-h-[44px] sm:min-h-[36px]"
             >
 
 
@@ -4266,12 +4109,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
       )}
 
-
-
-
-
-
-
       {/* Tabs de Navegacion */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <p className="text-sm text-gray-600">Tipo de plantilla:</p>
@@ -4293,9 +4130,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
         </div>
       </div>
 
-
-
-      <Tabs
+      {/* Tabs */}
+      <Tabs 
         value={activeTab}
         onValueChange={(newTab: string) => {
           // Guardar el contenido del editor antes de cambiar de pestana
@@ -4309,69 +4145,21 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
         }}
         className="mt-6"
       >
-
-
-
         <TabsList className={`grid w-full ${canEdit ? 'grid-cols-3' : 'grid-cols-1'}`}>
-
-
-
           {canEdit && (
-
-
-
             <TabsTrigger value="Modificacion" className="flex items-center gap-2">
-
-
-
-              <Edit3 className="w-4 h-4" /> Modificacion
-
-
-
+              <Edit3 className="w-4 h-4" /> Modificación
             </TabsTrigger>
-
-
-
           )}
-
-
-
           {canEdit && (
-
-
-
             <TabsTrigger value="Visualizacion" className="flex items-center gap-2">
-
-
-
-              <Eye className="w-4 h-4" /> Visualizacion
-
-
-
+              <Eye className="w-4 h-4" /> Visualización
             </TabsTrigger>
-
-
-
           )}
-
-
-
           <TabsTrigger value="historial" className="flex items-center gap-2">
-
-
-
             <History className="w-4 h-4" />
-
-
-
             Historial
-
-
-
           </TabsTrigger>
-
-
-
         </TabsList>
 
 
@@ -5231,7 +5019,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-          {/* TipografAa y Contenido del Certificado */}
+          {/* Tipografía y Contenido del Certificado */}
 
 
 
@@ -5255,7 +5043,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  TipografAa y Contenido del Certificado
+                  Tipografía y Contenido del Certificado
 
 
 
@@ -5267,7 +5055,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Configura la tipografAa general y el contenido del certificado con formato enriquecido
+                  Configura la tipografía general y el contenido del certificado con formato enriquecido
 
 
 
@@ -5283,7 +5071,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              {/* TipografAa General - Solo Fuente */}
+              {/* Tipografía General - Solo Fuente */}
 
 
 
@@ -5295,7 +5083,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Fuente TipogrAfica
+                  Fuente Tipográfica
 
 
 
@@ -5323,7 +5111,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      tipografia: { ...borrador.tipografia, fuente: value }
+                      tipografia: { ...borrador.tipografia, fuente: normalizarFuenteTipografica(value) }
 
 
 
@@ -5862,7 +5650,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      <strong>Variables disponibles:</strong> Usa el menAo desplegable "Insertar Variable" para agregar campos dinAmicos como
+                      <strong>Variables disponibles:</strong> Usa el menú desplegable "Insertar Variable" para agregar campos dinámicos como
 
 
 
@@ -5878,7 +5666,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      Las variables se mostrarAn resaltadas en amarillo y serAn reemplazadas automAticamente al generar cada certificado.
+                      Las variables se mostrarán resaltadas en amarillo y serán reemplazadas automáticamente al generar cada certificado.
 
 
 
@@ -5907,11 +5695,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
           </Card>
-
-
-
-
-
 
 
           {!canEdit && (
@@ -6106,17 +5889,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+
         </TabsContent>
 
-
-
         )}
-
-
-
-
-
-
 
         {/* TAB 2: Visualizacion */}
 
@@ -6618,14 +6394,17 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  <div className="text-right flex items-end justify-end">
-
-
-
+                  <div className="text-right flex flex-col items-end justify-end gap-1">
+                    <div className="bg-white border border-gray-300 rounded p-1 shadow-sm">
+                      <QRCodeCanvas
+                        value="https://esap.edu.co/verificar-certificado/QR-DEMO"
+                        size={64}
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                        includeMargin={false}
+                      />
+                    </div>
                     <p className="text-[#003DA5] font-semibold text-[10px]">www.esap.edu.co</p>
-
-
-
                   </div>
 
 
@@ -6666,11 +6445,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Esta es una vista previa de como se vera el certificado. Los datos del funcionario
+                  Esta es una vista previa de cómo se verá el certificado. Los datos del funcionario
 
 
 
-                  se reemplazarAn automAticamente al generar cada certificado individual.
+                  se reemplazarán automáticamente al generar cada certificado individual.
 
 
 
@@ -7365,6 +7144,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                           alt="Logo anterior"
 
+                                          onError={handleHistorialImageError}
+
 
 
                                           className="w-full h-full object-contain"
@@ -7445,6 +7226,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                                         alt="Logo nuevo"
 
+                                        onError={handleHistorialImageError}
+
 
 
                                         className="w-full h-full object-contain"
@@ -7508,6 +7291,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                           alt="Firma anterior"
+
+                                          onError={handleHistorialImageError}
 
 
 
@@ -7588,6 +7373,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                                         alt="Firma nueva"
+
+                                        onError={handleHistorialImageError}
 
 
 
@@ -8268,54 +8055,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
         </TabsContent>
-
-
-
+        
       </Tabs>
 
-
-
-
-
-
-
     </div>
-
-
-
   );
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

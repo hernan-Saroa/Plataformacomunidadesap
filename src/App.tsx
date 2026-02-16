@@ -14,14 +14,16 @@ import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
 import { BackofficeApp } from './components/esap/BackofficeApp';
 import { GestionProfesoralApp } from './components/gestion-profesoral/GestionProfesoralApp';
-// import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
-// import { DemoEdicionFotoPerfil } from './components/esap/control-interno/DemoEdicionFotoPerfil';
+// import { DemoPasswordStrength } from './components/esap/admin/DemoPasswordStrength';
+import { DemoProcesosCoactivos } from './components/esap/gestion-legal/DemoProcesosCoactivos';
+// import { DemoReprogramacionAudiencia } from './components/esap/gestion-legal/modulos/DemoReprogramacionAudiencia';
 import { Toaster } from './components/ui/sonner';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { authService } from './services/api/authService';
 import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
+import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -50,11 +52,14 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * 3. Portal Transaccional (usuarios externos)
  * 4. Backoffice Administrativo (usuarios internos)
  * 
- * DEMO ESPECIAL:
+ * MÓDULOS ESPECIALES:
  * - Vista 'pta-demo': Visualizador de PTA con Ajustes Solicitados
  * - Vista 'password-demo': Demo de Validación de Contraseñas
  * - Vista 'procesos-coactivos-demo': Demo de Procesos Coactivos
- * - Vista 'edicion-foto-perfil-demo': Demo de Edición de Foto de Perfil
+ * 
+ * MÓDULO PRINCIPAL OCIG:
+ * El Plan Operativo OCIG es el módulo único para gestión de auditorías,
+ * accesible desde Control Interno Gestión en el Backoffice.
  * 
  * Features:
  * - Persistencia de sesión en localStorage
@@ -73,11 +78,14 @@ type AppView =
   | 'verificacion'
   | 'solicitar-certificados-laborales'
   | 'verificar-certificado'
+  | 'verificar-certificado'
+  | 'solicitar-certificados-graduados'
   | 'convocatorias-docentes';
 
-type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | null;
+type UserType = 'estudiante' | 'graduado' | 'docente' | 'administrativo' | 'portal' | null;
 
-type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'password-demo' | 'procesos-coactivos-demo';
+type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'solicitar-certificados-laborales' | 'solicitar-certificados-graduados' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
+// type Vista = 'landing' | 'login' | 'portal' | 'backoffice' | 'pta-demo' | 'password-demo' | 'procesos-coactivos-demo' | 'edicion-foto-perfil-demo';
 
 interface Usuario {
   id: string;
@@ -91,9 +99,14 @@ interface User {
   id: string;
   person: UserPerson;
   roles: UserRoles[];
-  username: string;
-  accessToken: string;
-  rememberMe: boolean;
+  modules: string[];
+  username?: string;
+  email?: string;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  accessToken?: string;
+  rememberMe?: boolean;
 }
 
 interface UserPerson {
@@ -124,6 +137,18 @@ interface UserRoles {
   updated_by: string;
   created_at: string;
   updated_at: string;
+  permissions: UserPermission[]
+}
+
+interface UserPermission {
+  code: string;
+  created_at: string;
+  description: string;
+  id_module: string;
+  id_permission: string;
+  is_active: boolean;
+  name: string;
+  updated_at: string;
 }
 
 interface SesionGuardada {
@@ -138,8 +163,21 @@ interface UserData {
   personId: string;
   hasBothSystemsAccess?: boolean;
   module?: string;
+  modules?: string[];
+  roles?: string[];
+  permissions?: string[];
   datos_por_rol?: any;
 }
+
+const extractPermissionCodes = (user: any): string[] => {
+  if (!user?.roles || !Array.isArray(user.roles)) return [];
+  const codes = user.roles.flatMap((role: any) =>
+    Array.isArray(role?.permissions)
+      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
+      : []
+  );
+  return Array.from(new Set(codes));
+};
 
 // Configuración de timeout (15 minutos en milisegundos)
 const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
@@ -167,12 +205,17 @@ export default function App() {
 
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '' });
+  const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
   const [userRoles, setUserRoles] = useState<string[]>([]);
-  const [userType, setUserType] = useState<'portal' | 'administrativo'>('portal');
+  const [userType, setUserType] = useState<UserType>('portal');
   const [activeRole, setActiveRole] = useState<string>('Estudiante');
 
-  const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // const [vistaActual, setVistaActual] = useState<Vista>('landing');
+  // Leer parámetro de vista desde URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const viewParam = urlParams.get('view') as Vista | null;
+
+  const [vistaActual, setVistaActual] = useState<Vista>(viewParam || 'landing');
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
 
@@ -194,11 +237,10 @@ export default function App() {
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
         : [];
-      const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                            roles.includes('CONTROL_DISCIPLINARIO') ||
-                            roles.includes('JEFE_CONTROL_INTERNO') ||
-                            roles.includes('AUDITOR_LIDER');
+      const permissions = extractPermissionCodes(user);
+      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
+      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
       const emailLower = userEmail.toLowerCase();
 
       let nextView: Vista = 'portal';
@@ -216,17 +258,28 @@ export default function App() {
         nextView = 'backoffice';
         nextCurrentView = 'backoffice';
         nextUserType = 'administrativo';
-        
-        // Determinar módulo específico según el rol
-        if (roles.includes('COORDINADOR_CERT_LABORAL')) {
-          module = 'certificados-laborales';
-        } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
-          module = 'control-disciplinario';
-        } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
-          module = 'control-interno';
-        }
-        
-        portalRoles.push('Administrativo');
+        // Verificar si tiene acceso a Control Interno (múltiples roles)
+        const hasControlInterno = roles.some((role: string) =>
+          ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+            'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+        );
+
+        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
+          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+            : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+              : hasControlInterno ? 'control-interno'
+                : 'users-persons';
+        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+            : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                          : 'Control Interno';
+        portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           portalRoles.push('Docente');
@@ -246,7 +299,9 @@ export default function App() {
         name: userName,
         email: userEmail,
         personId: user?.person?.id || user?.id,
+        modules: user?.modules || [],
         roles,
+        permissions,
         module
       });
       setUsuarioActual({
@@ -259,6 +314,7 @@ export default function App() {
 
     const authToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
     const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    let sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (authToken && storedAuthUser) {
       try {
         applySessionFromUser(JSON.parse(storedAuthUser));
@@ -266,9 +322,17 @@ export default function App() {
       } catch (error) {
         console.error('Error al restaurar sesión de auth:', error);
       }
+    } else {
+      if (sesionGuardada) {
+        toast.error('Sesión ha expirado', {
+          description: 'Por seguridad la sesión se ha cerrado',
+          duration: 5000,
+        });
+        localStorage.clear();
+        sesionGuardada = null;
+      }
     }
 
-    const sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (sesionGuardada) {
       try {
         const sesionParsed = JSON.parse(sesionGuardada);
@@ -342,10 +406,10 @@ export default function App() {
     // Timer para mostrar alerta (14 minutos)
     timerAlertaRef.current = setTimeout(() => {
       setMostrarAlertaInactividad(true);
-      toast.warning('⚠️ Inactividad detectada', {
-        description: 'Tu sesión se cerrará en 1 minuto por seguridad',
-        duration: 10000,
-      });
+      // toast.warning('⚠️ Inactividad detectada', {
+      //   description: 'Tu sesión se cerrará en 1 minuto por seguridad',
+      //   duration: 10000,
+      // });
     }, TIMEOUT_INACTIVIDAD - TIEMPO_ALERTA);
 
     // Timer para cerrar sesión automáticamente (15 minutos)
@@ -382,6 +446,7 @@ export default function App() {
   }, [usuarioActual, resetearTimerInactividad]);
 
   const handleLogoutPorInactividad = () => {
+    setMostrarAlertaInactividad(false);
     toast.error('Sesión cerrada por inactividad', {
       description: 'Has estado inactivo durante 15 minutos',
       duration: 5000,
@@ -389,9 +454,7 @@ export default function App() {
 
     setUsuarioActual(null);
     setVistaActual('landing');
-    handleLogout();
-    setMostrarAlertaInactividad(false);
-
+    handleLogout(false);
     console.log('⏰ Sesión cerrada por inactividad');
   };
 
@@ -418,9 +481,10 @@ export default function App() {
   // Handler para login con integración del backend
   const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
     try {
-      console.log('🔐 Login handler called with user:', user);
-      console.log('🔐 Login handler called with accessToken:', accessToken);
-      console.log('🔐 Login handler called with rememberMe:', rememberMe);
+      // console.log('🔐 Login handler called with user:', user);
+      // console.log('🔐 Login handler called with roles:', user.roles);
+      // console.log('🔐 Login handler called with accessToken:', accessToken);
+      // console.log('🔐 Login handler called with rememberMe:', rememberMe);
       user.accessToken = accessToken;
       user.rememberMe = rememberMe || false;
 
@@ -437,11 +501,10 @@ export default function App() {
 
       // Determinar tipo de usuario basado en roles del backend
       const roles = user?.roles?.map((role: any) => role.code) || [];
-      const hasAdminRole = roles.includes('ADMIN');
-      const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || 
-                            roles.includes('CONTROL_DISCIPLINARIO') ||
-                            roles.includes('JEFE_CONTROL_INTERNO') ||
-                            roles.includes('AUDITOR_LIDER');
+      const permissions = extractPermissionCodes(user);
+      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
+      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -454,7 +517,9 @@ export default function App() {
           name: userName,
           email: userEmail,
           personId: user?.person?.id || user?.id,
-          roles
+          modules: user?.modules || [],
+          roles,
+          permissions
         });
         setUsuarioActual({
           id: user?.id || user?.person?.id || 'unknown',
@@ -482,25 +547,42 @@ export default function App() {
           userType = 'administrativo';
           currentView = 'backoffice'
           vistaActualCurrent = 'backoffice';
-          
-          // Determinar módulo específico según el rol
-          let module = 'certificados-laborales'; // Por defecto
-          if (roles.includes('COORDINADOR_CERT_LABORAL')) {
-            module = 'certificados-laborales';
-          } else if (roles.includes('CONTROL_DISCIPLINARIO')) {
-            module = 'control-disciplinario';
-          } else if (roles.includes('JEFE_CONTROL_INTERNO') || roles.includes('AUDITOR_LIDER')) {
-            module = 'control-interno';
-          }
-          
-          setUserData({ 
-            name: userName, 
-            email: userEmail, 
+          // Verificar si tiene acceso a Control Interno (múltiples roles)
+          const hasControlInterno = roles.some((role: string) =>
+            ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
+              'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
+          );
+          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
+            : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+              : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+                : 'control-interno';
+          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
+            : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+              : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+                : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                  : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                    : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                      : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                            : 'Control Interno';
+          const userDataToSave = {
+            name: userName,
+            email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             roles,
+            permissions,
             module: module // Módulo específico de acceso
-          });
-          portalRoles.push('Administrativo');
+          };
+          setUserData(userDataToSave);
+          // También guardar en esap_user_data para que otros componentes puedan acceder
+          localStorage.setItem('esap_user_data', JSON.stringify({
+            ...user,
+            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
+            permissions
+          }));
+          portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
           portalRoles.push('Docente');
@@ -510,6 +592,7 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
+            modules: user?.modules || [],
             datos_por_rol: {
               Docente: {
                 tipo_vinculacion: emailLower.includes('planta') ? 'Carrera' : emailLower.includes('catedra') ? 'Cátedra' : 'Ocasional',
@@ -522,7 +605,8 @@ export default function App() {
                 anos_experiencia: 10,
               }
             },
-            roles
+            roles,
+            permissions
           };
           setUserData(userDataWithDetails);
         } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
@@ -532,7 +616,9 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
-            roles
+            modules: user?.modules || [],
+            roles,
+            permissions
           });
         } else {
           userType = 'estudiante';
@@ -541,7 +627,9 @@ export default function App() {
             name: userName,
             email: userEmail,
             personId: user?.person?.id || user?.id,
-            roles
+            modules: user?.modules || [],
+            roles,
+            permissions
           });
         }
 
@@ -598,19 +686,19 @@ export default function App() {
   };
 
   // Handler para logout (desde cualquier ambiente)
-  const handleLogout = () => {
-    toast.success('Sesión cerrada exitosamente', {
-      description: 'Has cerrado sesión de forma segura',
-    });
+  const handleLogout = (viewToast = true) => {
+    localStorage.clear();
+    if (viewToast) {
+      toast.success('Sesión cerrada exitosamente', {
+        description: 'Has cerrado sesión de forma segura',
+      });
+    }
     setIsAuthenticated(false);
     setUserType('portal');
     setUserRoles([]);
     setUserData(null);
     setCurrentView('landing');
     setVistaActual('landing');
-    localStorage.removeItem('esap-sesion-activa');
-    localStorage.removeItem('esap-remember-session');
-    localStorage.clear();
     // Limpiar timers
     if (timerInactividadRef.current) {
       clearTimeout(timerInactividadRef.current);
@@ -714,6 +802,13 @@ export default function App() {
       return;
     }
 
+    if (section === 'solicitar-certificados-graduados') {
+      setCurrentView('solicitar-certificados-graduados');
+      setVistaActual('solicitar-certificados-graduados');
+      navigate('/solicitar-certificado-graduado');
+      return;
+    }
+
     if (section === 'convocatorias-docentes') {
       setCurrentView('convocatorias-docentes');
       return;
@@ -750,7 +845,7 @@ export default function App() {
         return renderViewLanding();
 
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />;
 
       case 'login':
         return (
@@ -820,7 +915,7 @@ export default function App() {
 
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
-        // const userData1 = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
+        // const userData = usuarioActual?.email === 'OCIG@esap.edu.co' || usuarioActual?.email === 'ocig@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'ci-001', restrictedAccess: true, module: 'control-interno' }
         //   : usuarioActual?.email === 'c.disciplinario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'cd-001', restrictedAccess: true, module: 'control-disciplinario' }
@@ -836,6 +931,8 @@ export default function App() {
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'gp-001', restrictedAccess: true, module: 'gestion-profesoral' }
         //   : usuarioActual?.email === 'funcionario@esap.edu.co'
         //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'func-001', restrictedAccess: true, module: 'procesos' }
+        //   : usuarioActual?.email === 'superuser@esap.edu.co'
+        //   ? { name: usuarioActual.nombre, email: usuarioActual.email, personId: 'super-001', hasBothSystemsAccess: true } // ✅ Acceso dual Backoffice + Portal
         //   : undefined;
 
         return (
@@ -843,7 +940,12 @@ export default function App() {
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
-            onSystemChange={handleSystemChange}
+            onSystemChange={(system) => {
+              if (system === 'portal') {
+                setVistaActual('portal');
+                toast.success('Cambiado al Portal Transaccional');
+              }
+            }}
             userData={userData}
             userRoles={userRoles}
           />
@@ -852,29 +954,29 @@ export default function App() {
       case 'pta-demo':
         return (
           <GestionProfesoralApp
-            usuario={usuarioActual!}
+            usuario={usuarioActual as any}
             onLogout={handleLogout}
           />
         );
-      
+
       // case 'password-demo':
       //   return <DemoPasswordStrength />;
-      
-      // case 'procesos-coactivos-demo':
-      //   return <DemoProcesosCoactivos />;
-      
-      // case 'edicion-foto-perfil-demo':
-      //   return <DemoEdicionFotoPerfil />;
-      
+
+      case 'procesos-coactivos-demo':
+        // return <DemoReprogramacionAudiencia />;
+        return <DemoProcesosCoactivos />;
+
       default:
         return <LandingPage onLoginClick={handleLoginClick} onNavigate={handleNavigate} />;
     }
   };
 
-  const renderViewLanding = () => { 
+  const renderViewLanding = () => {
     switch (currentView) {
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />
+      case 'solicitar-certificados-graduados':
+        return <ValidarCertificadoGraduado onVolver={handleBackToHome} />
       case 'enrollment-qr':
         return (
           <EnrollmentQRLandingUnified
@@ -883,11 +985,10 @@ export default function App() {
               console.log('Iniciando proceso de enrolamiento');
             }}
             onBackToHome={handleBackToHome}
-            onLoginClick={handleLoginClick}
           />
         );
       case 'vinculaciones':
-        return <VinculacionForm onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+        return <VinculacionForm onBack={handleBackToHome} />;
       case 'verificacion':
         return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
 
@@ -904,7 +1005,7 @@ export default function App() {
           position: fixed !important; 
           top: 20px !important; 
           right: 20px !important; 
-          z-index: 9999 !important; 
+          z-index: 100010 !important; 
         }
         [data-sonner-toast] { 
           background: white !important; 
@@ -940,6 +1041,14 @@ export default function App() {
           <Route
             path="/verificar-certificado/:codigo"
             element={<VerificarCertificadoPublico />}
+          />
+          <Route
+            path="/validar/:codigo"
+            element={<VerificarCertificadoPublico />}
+          />
+          <Route
+            path="/editor-plantillas"
+            element={<EditorPlantillasPage />}
           />
           <Route path="*" element={renderVista()} />
         </Routes>
@@ -979,7 +1088,7 @@ export default function App() {
               {/* Botones */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleLogout}
+                  onClick={() => handleLogout()}
                   className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
                 >
                   Cerrar Sesión
@@ -997,7 +1106,7 @@ export default function App() {
 
         <Toaster position="top-right" richColors expand={true} />
       </ErrorBoundary>
-    </NotificacionesProvider>
+    </NotificacionesProvider >
   );
 
 }

@@ -11,6 +11,7 @@ import { Firmante } from './firmante.entity';
 export class TemplateConfigService {
   private readonly defaultLogoUrl = '/uploads/logos/logo-esap-default.png';
   private readonly defaultLogoFilename = 'logo-esap-default.png';
+  private readonly defaultTypographyFont = 'Arial Narrow, Arial, sans-serif';
   private readonly defaultLogoPath = join(
     __dirname,
     '..',
@@ -35,15 +36,29 @@ export class TemplateConfigService {
     return content.replace(/<(b|strong)>\s*(\[[^\]]+\])\s*<\/\1>/gi, '$2');
   }
 
+  private normalizeTypographyFont(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return this.defaultTypographyFont;
+    const sanitized = raw
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[{}<>;`$]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!sanitized || /url\(|@import|expression|javascript:/i.test(sanitized)) {
+      return this.defaultTypographyFont;
+    }
+    return sanitized;
+  }
+
   private getDefaultCargoTitle(_templateType: string): string {
     return 'LA DIRECTORA T\u00C9CNICA DE TALENTO HUMANO DE LA\nESCUELA SUPERIOR DE ADMINISTRACI\u00D3N P\u00DABLICA - ESAP';
   }
 
   private getDefaultContent(templateType: string): string {
     if (templateType === 'administrador') {
-      return 'Que [NOMBRE_EMPLEADO] identificado con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administraci\u00F3n P\u00FAblica - ESAP mediante nombramiento [CARGO] desde el [FECHA_INICIO], desempe\u00F1ando el cargo de [DEPENDENCIA] [DATO6] ubicado en [DATO7].<br><br><div>Que el se\u00F1or [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br></div><div>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</div>';
+      return 'Que [NOMBRE_EMPLEADO] identificado con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado con la Escuela Superior de Administraci\u00F3n P\u00FAblica - ESAP mediante nombramiento [TIPO_DATO] desde el [FECHA_INICIO], desempe\u00F1ando el cargo de [CARGO] ubicado en [UBICACIÓN].<br><br><div>Que el se\u00F1or [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.<br><br></div><div>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los [FECHA_EXPEDICION_COMPLETA].</div>';
     }
-    return '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [CARGO] desde el [FECHA_INICIO], en la categor\u00EDa [DEPENDENCIA] ubicado en [DATO6].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+    return '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [UBICACIÓN].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
   }
 
   private async getOrCreateConfig(templateType: string): Promise<TemplateConfig> {
@@ -91,7 +106,7 @@ export class TemplateConfigService {
         : null,
       logo: await this.ensureLogoInfo(config),
       typography: {
-        font: config.typographyFont || 'Times New Roman',
+        font: this.normalizeTypographyFont(config.typographyFont),
       },
       cargoTitle: config.cargoTitle || this.getDefaultCargoTitle(templateType),
       certificateContentHtml: this.stripVariableBold(
@@ -512,8 +527,8 @@ export class TemplateConfigService {
     }
 
     if (fieldName === 'typography_font') {
-      const currentFont = config.typographyFont || 'Times New Roman';
-      const nextFont = oldValue || 'Times New Roman';
+      const currentFont = this.normalizeTypographyFont(config.typographyFont);
+      const nextFont = this.normalizeTypographyFont(oldValue);
       config.typographyFont = nextFont;
       config.updatedBy = updatedBy;
       await this.templateConfigRepository.save(config);
@@ -594,14 +609,18 @@ export class TemplateConfigService {
     }> = [];
 
     // Actualizar tipografía si cambió
-    if (data.typographyFont && data.typographyFont !== config.typographyFont) {
+    if (data.typographyFont) {
+      const currentFont = this.normalizeTypographyFont(config.typographyFont);
+      const incomingFont = this.normalizeTypographyFont(data.typographyFont);
+      if (incomingFont !== currentFont) {
       changes.push({
         changeType: 'tipografia',
         fieldName: 'typography_font',
-        oldValue: config.typographyFont || 'Times New Roman',
-        newValue: data.typographyFont,
+        oldValue: currentFont,
+        newValue: incomingFont,
       });
-      config.typographyFont = data.typographyFont;
+      config.typographyFont = incomingFont;
+      }
     }
 
     // Actualizar título del cargo si cambió
@@ -714,6 +733,7 @@ export class TemplateConfigService {
       templateType,
       certificateContentHtml: this.getDefaultContent(templateType),
       cargoTitle: this.getDefaultCargoTitle(templateType),
+      typographyFont: this.defaultTypographyFont,
     });
 
     return await this.templateConfigRepository.save(config);

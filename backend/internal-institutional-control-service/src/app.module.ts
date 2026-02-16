@@ -13,6 +13,11 @@ import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/activida
 import { HistorialPlanAnual } from './esap/plan-anual-5-roles/entities/historial-plan-anual.entity';
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
+import { DatosAutomaticosInforme } from './esap/informes-ley/entities/datos-automaticos-informe.entity';
+import { HistorialGeneracionInforme } from './esap/informes-ley/entities/historial-generacion-informe.entity';
+import { PlantillaInformeLey } from './esap/informes-ley/entities/plantilla-informe-ley.entity';
+import { WorkflowAprobacionInforme } from './esap/informes-ley/entities/workflow-aprobacion-informe.entity';
+import { PasoWorkflowInforme } from './esap/informes-ley/entities/paso-workflow-informe.entity';
 import { Auditoria } from './esap/auditorias/entities/auditoria.entity';
 import { ObjetivoAuditoria } from './esap/auditorias/entities/objetivo-auditoria.entity';
 import { EquipoAuditor } from './esap/auditorias/entities/equipo-auditor.entity';
@@ -37,6 +42,11 @@ import { PlanIndividual } from './esap/plan-individual/entities/plan-individual.
 import { Notificacion } from './esap/notificaciones/entities/notificacion.entity';
 import { PreferenciaNotificacion } from './esap/notificaciones/entities/preferencia-notificacion.entity';
 import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documento.entity';
+import { TipoAuditoria } from './esap/tipos-auditoria/entities/tipo-auditoria.entity';
+import { ListaChequeo } from './esap/listas-chequeo/entities/lista-chequeo.entity';
+import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-chequeo.entity';
+import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.entity';
+import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
 
 @Module({
   imports: [
@@ -79,6 +89,11 @@ import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documen
             HistorialPlanAnual,
             InformeLey,
             EntregaInformeLey,
+            DatosAutomaticosInforme,
+            HistorialGeneracionInforme,
+            PlantillaInformeLey,
+            WorkflowAprobacionInforme,
+            PasoWorkflowInforme,
             Auditoria,
             ObjetivoAuditoria,
             EquipoAuditor,
@@ -103,6 +118,11 @@ import { EvidenciaDocumento } from './esap/evidencias/entities/evidencia-documen
             Notificacion,
             PreferenciaNotificacion,
             EvidenciaDocumento,
+            TipoAuditoria,
+            ListaChequeo,
+            ItemListaChequeo,
+            TableroKanban,
+            EtapaKanban,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

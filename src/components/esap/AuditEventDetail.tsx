@@ -18,6 +18,11 @@ export interface AuditEvent {
   location: string;
   duration: string;
   details: string;
+  // Campos de tracking de cambios
+  entityName?: string;
+  entityId?: string;
+  previousData?: any;
+  newData?: any;
   changes?: {
     field: string;
     before: string;
@@ -278,9 +283,14 @@ export function AuditEventDetail({ event, isOpen, onClose }: AuditEventDetailPro
 
                 {/* Changes */}
                 {event.changes && event.changes.length > 0 && (
-                  <div className="bg-amber-50 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 border border-amber-200">
+                  <div className="bg-amber-50 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 border border-amber-200 mb-4 sm:mb-6">
                     <h3 className="text-xs sm:text-sm font-bold text-amber-900 uppercase tracking-wide mb-3 sm:mb-4">
                       Cambios Realizados
+                      {event.entityName && (
+                        <span className="ml-2 font-normal text-amber-700">
+                          en {event.entityName} {event.entityId && `(ID: ${event.entityId})`}
+                        </span>
+                      )}
                     </h3>
                     
                     <div className="space-y-2 sm:space-y-3">
@@ -292,20 +302,67 @@ export function AuditEventDetail({ event, isOpen, onClose }: AuditEventDetailPro
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                             <div>
                               <p className="text-xs text-[--esap-gray-600] mb-1">Antes:</p>
-                              <p className="text-sm text-[--esap-gray-900] font-mono bg-red-50 px-2 py-1 rounded">
-                                {change.before}
+                              <p className="text-sm text-[--esap-gray-900] font-mono bg-red-50 px-2 py-1 rounded break-all">
+                                {change.before !== 'N/A' && change.before !== 'undefined' ? change.before : <span className="text-gray-400 italic">Sin valor</span>}
                               </p>
                             </div>
                             <div>
                               <p className="text-xs text-[--esap-gray-600] mb-1">Después:</p>
-                              <p className="text-sm text-[--esap-gray-900] font-mono bg-green-50 px-2 py-1 rounded">
-                                {change.after}
+                              <p className="text-sm text-[--esap-gray-900] font-mono bg-green-50 px-2 py-1 rounded break-all">
+                                {change.after !== 'N/A' && change.after !== 'undefined' ? change.after : <span className="text-gray-400 italic">Sin valor</span>}
                               </p>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Datos Completos (sin cambios específicos) */}
+                {!event.changes?.length && (event.previousData || event.newData) && (
+                  <div className="bg-blue-50 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 border border-blue-200 mb-4 sm:mb-6">
+                    <h3 className="text-xs sm:text-sm font-bold text-blue-900 uppercase tracking-wide mb-3 sm:mb-4">
+                      Datos del Registro
+                      {event.entityName && (
+                        <span className="ml-2 font-normal text-blue-700">
+                          - {event.entityName} {event.entityId && `(ID: ${event.entityId})`}
+                        </span>
+                      )}
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {event.previousData && (
+                        <div>
+                          <p className="text-xs font-semibold text-red-700 uppercase mb-2">Datos Anteriores</p>
+                          <pre className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs overflow-auto max-h-48 text-gray-800">
+                            {JSON.stringify(event.previousData, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {event.newData && (
+                        <div>
+                          <p className="text-xs font-semibold text-green-700 uppercase mb-2">Datos Nuevos</p>
+                          <pre className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs overflow-auto max-h-48 text-gray-800">
+                            {JSON.stringify(event.newData, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {!event.previousData && event.newData && (
+                        <div className="lg:col-span-2">
+                          <p className="text-xs text-blue-600 italic">Este es un registro nuevo (sin datos anteriores)</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mensaje cuando no hay datos de cambios */}
+                {!event.changes?.length && !event.previousData && !event.newData && (
+                  <div className="bg-gray-50 rounded-lg sm:rounded-xl p-4 border border-gray-200 mb-4 sm:mb-6">
+                    <p className="text-sm text-gray-500 italic text-center">
+                      No se registraron datos de cambios para esta acción
+                    </p>
                   </div>
                 )}
               </div>

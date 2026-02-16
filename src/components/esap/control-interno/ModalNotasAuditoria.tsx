@@ -29,6 +29,8 @@ import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
 import { ConfirmationDialog } from '../../ui/confirmation-dialog';
 import { auditoriasApi } from './services/api';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ============ TIPOS ============
 
@@ -450,6 +452,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                   </Button>
 
                   {/* Botón nueva nota */}
+                  {authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIA_NOTAS_CREATE) && (
                   <Button
                     onClick={() => {
                       setModoEdicion(true);
@@ -463,6 +466,7 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                     <Plus className="w-4 h-4" />
                     {modoEdicion ? 'Agregando nota...' : 'Nueva Nota'}
                   </Button>
+                  )}
                 </div>
 
                 {/* Contador de resultados */}
@@ -474,24 +478,28 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
               </div>
 
               {/* FORMULARIO NUEVA NOTA */}
-              {modoEdicion && (
-                <div className="border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: '#003DA5' }}>
-                        <Plus className="w-5 h-5" />
+              <AnimatePresence>
+                {modoEdicion && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden border-b border-gray-200"
+                  >
+                    <div className="p-4 bg-blue-50 max-h-[50vh] overflow-y-auto">
+                      <h3 className="font-bold text-sm mb-3 sticky top-0 bg-blue-50 pb-2" style={{ color: '#003DA5' }}>
                         Nueva Nota
                       </h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleCancelarEdicion}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancelarEdicion}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+
                     <div className="space-y-4 bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
                       {/* Categoría */}
                       <div>
@@ -530,11 +538,27 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                           <p className="text-xs text-gray-500">
                             {nuevaNota.length} caracteres
                           </p>
-                          {nuevaNota.trim().length < 10 && (
-                            <p className="text-xs text-amber-600">
-                              Mínimo 10 caracteres
-                            </p>
-                          )}
+                        </div>
+
+                        {/* Botones - Sticky en mobile */}
+                        <div className="flex gap-2 justify-end pt-2 pb-1 sticky bottom-0 bg-blue-50">
+                          <Button
+                            variant="outline"
+                            onClick={handleCancelarEdicion}
+                            className="min-w-[90px]"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            onClick={handleAgregarNota}
+                            style={{ backgroundColor: '#003DA5' }}
+                            className="text-white gap-2 min-w-[120px]"
+                            disabled={!nuevaNota.trim()}
+                          >
+                            <Save className="w-4 h-4" />
+                            <span className="hidden sm:inline">Guardar Nota</span>
+                            <span className="sm:hidden">Guardar</span>
+                          </Button>
                         </div>
                       </div>
 
@@ -569,9 +593,9 @@ export function ModalNotasAuditoria({ auditoria, open, onClose }: ModalNotasProp
                         </Button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* LISTADO DE NOTAS */}
               <div className="flex-1 overflow-y-auto p-6">

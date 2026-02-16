@@ -34,8 +34,10 @@ export class JuzgamientoController {
                 abogadoAsignado: exp.abogadoSustanciador,
                 diasRestantes: diasRestantes,
                 diasDescargos: 15,
-                documentos: exp.actuaciones || [],
+                // Merge actuaciones and evidencias for documents list
+                documentos: [...(exp.actuaciones || []), ...(exp.evidencias || [])],
                 actuaciones: exp.actuaciones || [],
+                evidencias: exp.evidencias || [],
                 hechos: exp.hechos || '',
                 // Semáforo logic is usually frontend, but we pass necessary data
             };
@@ -90,17 +92,21 @@ export class JuzgamientoController {
             throw new BadRequestException('Expediente no encontrado');
         }
 
-        const contexto = body.tipo === 'EVIDENCIA' ? 'Pruebas' : body.tipo === 'DOCUMENTO' ? 'Documentos' : 'General';
+        const tipoUpper = (body.tipo || 'DOCUMENTO').toUpperCase();
+        // Mapear tipo a tipoActuacion y descripción
+        const esEvidencia = tipoUpper.includes('EVIDENCIA') || tipoUpper === 'PRUEBAS';
+        const contexto = esEvidencia ? 'Pruebas' : tipoUpper === 'OTROS' ? 'Otros Documentos' : 'Documentos';
         const descripcionBase = body.descripcion || file.originalname;
         const descripcionCompleta = `${descripcionBase} (Cargado desde ${contexto})`;
 
         // Create Actuacion as Evidence/Document
+        // tipoActuacion guarda el tipo original para mapeo en frontend
         return this.expedienteService.agregarActuacion(expediente.id, {
-            tipoActuacion: body.tipo || 'DOCUMENTO', // 'EVIDENCIA' or 'DOCUMENTO'
+            tipoActuacion: tipoUpper, // Guardar tipo original: 'OTROS', 'PRUEBAS', 'EVIDENCIA', etc.
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
-            documentoUrl: `http://localhost:3008/legal/files/${file.filename}`, // Ensure absolute URL for frontend
+            documentoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
             usuarioResponsable: 'Usuario Actual' // Mock user for now
         });
     }
@@ -111,6 +117,42 @@ export class JuzgamientoController {
         if (!expediente) throw new BadRequestException('Expediente no encontrado');
         // Return sorted actuations
         return expediente.actuaciones || [];
+    }
+
+    @Post(':radicado/actuaciones')
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array.from(Array(32)).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+                return cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        })
+    }))
+    async createActuacion(
+        @Param('radicado') radicado: string,
+        @Body() body: { tipoActuacion: string; descripcion: string; fechaActuacion?: string },
+        @UploadedFile() file?: any
+    ) {
+        const expediente = await this.expedienteService.findOneByRadicado(radicado);
+        if (!expediente) {
+            throw new BadRequestException('Expediente no encontrado');
+        }
+
+        const actuacionData: any = {
+            tipoActuacion: body.tipoActuacion || 'ACTUACION',
+            descripcion: body.descripcion,
+            fechaActuacion: body.fechaActuacion ? new Date(body.fechaActuacion) : new Date(),
+            usuarioResponsable: 'Usuario Actual' // TODO: obtener del JWT
+        };
+
+        // Si hay archivo, agregar info del documento
+        if (file) {
+            actuacionData.documentoNombre = file.originalname;
+            actuacionData.documentoUrl = `files/${file.filename}`;
+        }
+
+        return this.expedienteService.agregarActuacion(expediente.id, actuacionData);
     }
 
     @Get(':radicado/decisiones')

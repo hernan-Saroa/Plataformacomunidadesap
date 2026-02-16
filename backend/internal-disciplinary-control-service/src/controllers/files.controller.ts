@@ -41,8 +41,14 @@ export class FilesController {
             fileFilter: (req, file, cb) => {
                 const allowedMimes = [
                     'application/pdf',
+                    'image/jpeg',
+                    'image/png',
+                    'image/jpg',
+                    // Word document types
+                    'application/msword',  // .doc
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  // .docx
                 ];
-                const allowedExts = /\.(pdf)$/i;
+                const allowedExts = /\.(pdf|jpg|jpeg|png|doc|docx)$/i;
                 if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname)) {
                     cb(null, true);
                     return;
@@ -71,7 +77,50 @@ export class FilesController {
 
     @Get(':filename')
     serveFile(@Param('filename') filename: string, @Res() res: Response) {
-        const filePath = join(process.cwd(), 'uploads', filename);
+        // First try in ./uploads (for files uploaded via /files/upload endpoint)
+        let filePath = join(process.cwd(), 'uploads', filename);
+        if (existsSync(filePath)) {
+            res.sendFile(filePath);
+            return;
+        }
+
+        // Then try in ./uploads/expedientes/{radicado}/filename (for news attachments)
+        // The filename might come as "ND-2026-001/archivo.pdf" or just "archivo.pdf"
+        if (filename.includes('/')) {
+            filePath = join(process.cwd(), 'uploads', 'expedientes', filename);
+        } else {
+            // Try to find file in any expediente folder
+            const expedientesDir = join(process.cwd(), 'uploads', 'expedientes');
+            if (existsSync(expedientesDir)) {
+                const folders = require('fs').readdirSync(expedientesDir);
+                for (const folder of folders) {
+                    const potentialPath = join(expedientesDir, folder, filename);
+                    if (existsSync(potentialPath)) {
+                        res.sendFile(potentialPath);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (existsSync(filePath)) {
+            res.sendFile(filePath);
+            return;
+        }
+
+        throw new HttpException('File not found', HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Serve files from expedientes with full path: /files/expediente/:radicado/:filename
+     */
+    @Get('expediente/:radicado/:filename')
+    serveExpedienteFile(
+        @Param('radicado') radicado: string,
+        @Param('filename') filename: string,
+        @Res() res: Response
+    ) {
+        const filePath = join(process.cwd(), 'uploads', 'expedientes', radicado, filename);
         if (!existsSync(filePath)) {
             throw new HttpException('File not found', HttpStatus.NOT_FOUND);
         }

@@ -35,6 +35,16 @@ export class LandingCertificateRequestDto {
   companyName?: string;
 
   /**
+   * NIT de la empresa, si aplica
+   */
+  companyNit?: string;
+
+  /**
+   * Persona de contacto en la empresa
+   */
+  contactPerson?: string;
+
+  /**
    * Nombre del programa académico (puede venir del formulario o de los datos del graduado)
    */
   programName?: string;
@@ -43,4 +53,10 @@ export class LandingCertificateRequestDto {
    * Fecha de graduación en caso de que el solicitante la conozca
    */
   graduationDate?: string;
+  /**
+   * Apellido(s) del graduado para validaci??n adicional
+   */
+  lastName?: string;
+
 }
+

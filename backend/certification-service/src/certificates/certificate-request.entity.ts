@@ -39,6 +39,12 @@ export class CertificateRequest {
   @Column({ length: 255, nullable: true })
   department: string;
 
+  @Column({ length: 255, nullable: true })
+  cod_cargo: string;
+
+  @Column({ length: 255, nullable: true })
+  cod_grade: string;
+
   @Column({ length: 100, nullable: true })
   campus: string;
 

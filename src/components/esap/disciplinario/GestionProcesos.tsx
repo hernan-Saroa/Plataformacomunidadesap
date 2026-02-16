@@ -37,7 +37,7 @@ interface Proceso {
   telefono: string;
 }
 
-// Mock data expandido
+// Mock data expandido - REDUCIDO
 const PROCESOS_DATA: Proceso[] = [
   {
     id: '1',
@@ -59,48 +59,6 @@ const PROCESOS_DATA: Proceso[] = [
     hechos: 'Presunto incumplimiento de funciones en proceso de contratación',
     email: 'ana.lopez@esap.edu.co',
     telefono: '3001234567'
-  },
-  {
-    id: '2',
-    consecutivo: 'PD-2025-0018',
-    noticia: 'ND-2025-0089',
-    disciplinable: 'Roberto Sánchez Cruz',
-    cedula: '77385960',
-    cargo: 'Coordinador Académico',
-    dependencia: 'Territorial Antioquia',
-    etapaActual: 'Indagación',
-    semaforo: 'verde',
-    diasRestantes: 45,
-    porcentajeTiempo: 35,
-    profesionalAsignado: 'María Torres',
-    fechaCreacion: '2024-12-15',
-    ultimaActuacion: 'Auto de indagación previa notificado',
-    documentos: 12,
-    fechaVencimiento: '2025-03-15',
-    hechos: 'Irregularidades en manejo de calificaciones de estudiantes',
-    email: 'roberto.sanchez@esap.edu.co',
-    telefono: '3109876543'
-  },
-  {
-    id: '3',
-    consecutivo: 'PD-2024-0156',
-    noticia: 'ND-2024-0891',
-    disciplinable: 'Patricia Herrera Gómez',
-    cedula: '33445556',
-    cargo: 'Jefe de Talento Humano',
-    dependencia: 'Dirección Nacional',
-    etapaActual: 'Investigación',
-    semaforo: 'rojo',
-    diasRestantes: -12,
-    porcentajeTiempo: 115,
-    profesionalAsignado: 'Carlos Mendoza',
-    fechaCreacion: '2024-09-20',
-    ultimaActuacion: 'Investigación disciplinaria en curso',
-    documentos: 28,
-    fechaVencimiento: '2025-01-18',
-    hechos: 'Presunto favorecimiento en procesos de selección',
-    email: 'patricia.herrera@esap.edu.co',
-    telefono: '3205551234'
   }
 ];
 
@@ -111,7 +69,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-2 sm:p-4"
       style={{ zIndex: 999 }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -376,7 +334,7 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4"
+      className="fixed inset-0 bg-black/50 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

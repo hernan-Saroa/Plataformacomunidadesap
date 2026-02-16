@@ -6,7 +6,7 @@
  * URL: /auth/api/v1/roles -> auth-service:3001/roles
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -14,6 +14,7 @@ const SERVICE_PREFIX = '/auth/api/v1';
 
 export interface SystemRole {
   id: string;
+  code?: string;
   name: string;
   description?: string;
   icon: string;
@@ -38,6 +39,7 @@ export interface RoleStats {
 
 export interface CreateRoleRequest {
   name: string;
+  code?: string;
   description?: string;
   icon?: string;
   color?: string;

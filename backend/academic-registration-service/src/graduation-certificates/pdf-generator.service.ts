@@ -40,17 +40,15 @@ export class PdfGeneratorService {
     const headerImg = this.loadImageDataUrl('img_primera.png');
     const footerImg = this.loadImageDataUrl('img_segunda.png');
 
-    // Generar código QR
-    const qrCodeDataUrl = await this.generateQRCode(
-      certificate.verificationCode,
-    );
-
     // URL de validación pública
     const baseUrl = frontendBaseUrl || process.env.FRONTEND_URL || 'https://certificados.esap.edu.co';
     const validationUrl = `${baseUrl}/verificar-certificado/${certificate.verificationCode}`;
 
+    // Generar código QR con la URL completa
+    const qrCodeDataUrl = await this.generateQRCode(validationUrl);
+
     // Formatear fecha de expedición
-    const fechaExpedicion = this.formatDate(new Date());
+    const fechaExpedicion = this.formatDate(certificate.issueDate || new Date());
 
     // Formatear lugar y fecha de expedición del título
     const lugarFechaExpedicion = `${certificate.campus || 'Bogotá'} (${certificate.campus?.toUpperCase() || 'BOYACÁ'}) ${this.formatDateLong(certificate.graduationDate)}`;
@@ -70,13 +68,17 @@ export class PdfGeneratorService {
       .replace(/{{FOOTER_IMG}}/g, footerImg);
 
     // Generar PDF con Puppeteer
+    const executablePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH;
     const browser = await puppeteer.launch({
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      ...(executablePath ? { executablePath } : {}),
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+    // Usar 'load' o 'domcontentloaded' es mas rapido y evita timeouts si hay recursos externos lentos
+    await page.setContent(htmlContent, { waitUntil: 'load', timeout: 60000 });
 
     const pdfOutput = await page.pdf({
       format: 'Letter',
@@ -151,7 +153,7 @@ export class PdfGeneratorService {
    * Ejemplo: "24 de Diciembre de 2025"
    */
   private formatDate(date: Date | string): string {
-    const d = new Date(date);
+    const d = this.toSafeDate(date);
     return new Intl.DateTimeFormat('es-CO', {
       day: 'numeric',
       month: 'long',
@@ -165,12 +167,30 @@ export class PdfGeneratorService {
    * Ejemplo: "30 DE SEPTIEMBRE DE 2022"
    */
   private formatDateLong(date: Date | string): string {
-    const d = new Date(date);
+    const d = this.toSafeDate(date);
     return new Intl.DateTimeFormat('es-CO', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
       timeZone: 'America/Bogota',
     }).format(d).toUpperCase();
+  }
+
+  private toSafeDate(value: Date | string): Date {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [year, month, day] = value.split('-').map((part) => Number(part));
+      return new Date(year, month - 1, day, 12, 0, 0);
+    }
+
+    const d = new Date(value);
+    if (
+      d.getHours() === 0 &&
+      d.getMinutes() === 0 &&
+      d.getSeconds() === 0 &&
+      d.getMilliseconds() === 0
+    ) {
+      d.setHours(12, 0, 0, 0);
+    }
+    return d;
   }
 }

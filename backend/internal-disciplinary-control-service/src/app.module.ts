@@ -20,6 +20,7 @@ import { AlertaEnviada } from './entities/alerta-enviada.entity';
 import { NewsController } from './controllers/news.controller';
 import { ProcessController } from './controllers/process.controller';
 import { AutoController } from './controllers/auto.controller';
+import { AutoTemplatesController } from './controllers/auto-templates.controller';
 import { ProfessionalController } from './controllers/professional.controller';
 import { TerminosProcesalesController } from './controllers/terminos-procesales.controller';
 import { DiasFestivosController } from './controllers/dias-festivos.controller';
@@ -41,6 +42,8 @@ import { AlertasService } from './services/alertas.service';
 import { AlertasAutomaticasService } from './services/alertas-automaticas.service';
 import { SchedulerService } from './services/scheduler.service';
 import { SeedService } from './seed.service';
+import { OnlyOfficeService } from './services/onlyoffice.service';
+import { PdfModifierService } from './services/pdf-modifier.service';
 import { databaseConfig } from './database.config';
 
 import { AppController } from './app.controller';
@@ -48,7 +51,11 @@ import { AppService } from './app.service';
 
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
+import { PlantillaAuto } from './entities/plantilla-auto.entity';
+import { AutoConfiguration } from './entities/auto-configuration.entity';
 import { ConfigurationController } from './controllers/configuration.controller';
+import { AutosConfigurationController } from './controllers/autos-configuration.controller';
+import { AutosConfigurationService } from './services/autos-configuration.service';
 
 import { FilesController } from './controllers/files.controller';
 
@@ -67,12 +74,14 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
       DisciplinaryProfessional,
       StageConfiguration,
       SystemConfiguration,
+      PlantillaAuto,
       Evidence,
       AutoVersion,
       TerminoProcesal,
       DiaFestivo,
       ReglaAlerta,
       AlertaEnviada,
+      AutoConfiguration,
     ]),
   ],
   controllers: [
@@ -80,6 +89,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     NewsController,
     ProcessController,
     AutoController,
+    AutoTemplatesController,
     ProfessionalController,
     ConfigurationController,
     FilesController,
@@ -89,6 +99,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     AlertasController,
     JobsController,
     DisciplinaryExportController,
+    AutosConfigurationController,
   ],
   providers: [
     AppService,
@@ -106,6 +117,9 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     SchedulerService,
     SeedService,
     DisciplinaryExportService,
+    OnlyOfficeService,
+    PdfModifierService,
+    AutosConfigurationService,
   ],
 })
 export class AppModule { }

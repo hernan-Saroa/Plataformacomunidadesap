@@ -104,21 +104,7 @@ class APIClient {
         if (serviceUrl) {
           let cleanPath = (restPath || '/').replace(/^\/api\/v\d+/, '');
 
-          if (serviceName === 'registro-academico') {
-            if (/^\/graduates(\/|$)/.test(cleanPath)) {
-              cleanPath = `/academic-registration/api/v1${cleanPath}`;
-            }
-          }
           fullUrl = `${serviceUrl}${cleanPath}`;
-
-          console.log('🔗 API Client [DIRECT MODE - versioned]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            originalPath: restPath,
-            cleanPath,
-            finalURL: fullUrl,
-          });
         } else {
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
@@ -131,13 +117,6 @@ class APIClient {
         if (serviceUrl) {
           // Para rutas como /legal/riesgos, el backend espera /legal/riesgos (con prefijo)
           fullUrl = `${serviceUrl}${endpoint}`;
-
-          console.log('🔗 API Client [DIRECT MODE - simple]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            finalURL: fullUrl,
-          });
         } else {
           fullUrl = `${this.baseURL}${endpoint}`;
         }
@@ -148,11 +127,6 @@ class APIClient {
     } else {
       // Modo gateway: comportamiento normal
       fullUrl = `${this.baseURL}${endpoint}`;
-      console.log('🔗 API Client [GATEWAY MODE]:', {
-        endpoint,
-        baseURL: this.baseURL,
-        finalURL: fullUrl,
-      });
     }
 
     // Agregar parámetros de query
@@ -325,6 +299,34 @@ class APIClient {
         // Respuesta vacía (ej: 204 No Content)
         // Para DELETE, muchas veces esperamos éxito sin contenido body
         return {} as T;
+      }
+
+      // Si response.ok es false (4xx, 5xx) y no es 401 (ya manejado), lanzar error
+      if (!response.ok) {
+        // Verificar si es el formato del backend (success/data) o el formato esperado (exito/datos)
+        if (data.success !== undefined && !data.success) {
+          throw new APIClientError(
+            response.status,
+            'BACKEND_ERROR',
+            data.message || 'Error del servidor',
+            data.details
+          );
+        }
+
+        if (data.exito !== undefined && !data.exito) {
+          const errorData = data as APIError;
+          throw new APIClientError(
+            response.status,
+            errorData.error.codigo || 'API_ERROR',
+            errorData.error.mensaje || 'Error en la petición',
+            errorData.error.detalles
+          );
+        }
+
+        // NestJS default error format or generic
+        const errorMessage = data.message || (typeof data === 'string' ? data : 'Error en la petición');
+        const errorCode = data.error || 'API_ERROR';
+        throw new APIClientError(response.status, errorCode, errorMessage, data);
       }
 
       // Verificar si es el formato del backend (success/data) o el formato esperado (exito/datos)

@@ -16,27 +16,31 @@ import { LandingCertificateRequestDto } from './dto/landing-certificate-request.
 import type { ApproveRequestDto } from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
+import { Public } from '../auth/public.decorator';
 
 const getClientIp = (req: Request): string | undefined => {
   const forwarded = req.headers['x-forwarded-for'];
-  let ip: string | undefined;
+  const clientIpHeader = req.headers['x-client-ip'];
+  const cfConnectingIp = req.headers['cf-connecting-ip'];
+  const realIpHeader = req.headers['x-real-ip'];
 
-  if (Array.isArray(forwarded)) {
-    ip = forwarded[0]?.trim();
-  } else if (typeof forwarded === 'string') {
-    ip = forwarded.split(',')[0]?.trim();
-  }
+  const forwardedIp = Array.isArray(forwarded)
+    ? forwarded[0]
+    : typeof forwarded === 'string'
+      ? forwarded.split(',')[0]
+      : '';
+  const clientIp = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
+  const cfIp = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
+  const realIp = Array.isArray(realIpHeader) ? realIpHeader[0] : realIpHeader;
 
-  if (!ip) {
-    const realIp = req.headers['x-real-ip'];
-    if (typeof realIp === 'string') {
-      ip = realIp.trim();
-    }
-  }
-
-  if (!ip) {
-    ip = req.ip || req.socket.remoteAddress || undefined;
-  }
+  let ip: string | undefined =
+    forwardedIp?.trim() ||
+    (typeof clientIp === 'string' ? clientIp.trim() : '') ||
+    (typeof cfIp === 'string' ? cfIp.trim() : '') ||
+    (typeof realIp === 'string' ? realIp.trim() : '') ||
+    (typeof req.ip === 'string' ? req.ip : '') ||
+    req.socket?.remoteAddress ||
+    undefined;
 
   if (ip && ip.startsWith('::ffff:')) {
     ip = ip.slice(7);
@@ -66,11 +70,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/verificar-graduado')
   @HttpCode(HttpStatus.OK)
   async verificarGraduado(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.verificarGraduado(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
@@ -79,9 +91,24 @@ export class GraduationCertificatesController {
    * Enviar solicitud desde landing; valida al graduado y envía el certificado si existe
    */
   @Post('autoservicio/solicitar-certificado')
+  @Public()
   @HttpCode(HttpStatus.OK)
-  async solicitarCertificado(@Body() body: LandingCertificateRequestDto) {
-    return await this.service.solicitarCertificadoLanding(body);
+  async solicitarCertificado(
+    @Body() body: LandingCertificateRequestDto,
+    @Req() req: Request,
+  ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.solicitarCertificadoLanding(body, frontendBaseUrl);
   }
 
   /**
@@ -91,11 +118,19 @@ export class GraduationCertificatesController {
   @Post('autoservicio/generar-codigo')
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(
-    @Body() body: { idNumber: string; idIssueDate?: string },
+    @Body()
+    body: {
+      idNumber: string;
+      idIssueDate?: string;
+      graduationDate?: string;
+      lastName?: string;
+    },
   ) {
     return await this.service.generarCodigoValidacion(
       body.idNumber,
       body.idIssueDate,
+      body.graduationDate,
+      body.lastName,
     );
   }
 
@@ -116,6 +151,17 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/autoservicio/empresa
+   * Consultar empresa por NIT (datos.gov.co)
+   */
+  @Public()
+  @Get('autoservicio/empresa')
+  @HttpCode(HttpStatus.OK)
+  async buscarEmpresaPorNit(@Query('nit') nit: string) {
+    return await this.service.buscarEmpresaPorNit(nit);
+  }
+
+  /**
    * ====================================
    * ENDPOINTS DE VALIDACIÓN PÚBLICA
    * ====================================
@@ -126,6 +172,7 @@ export class GraduationCertificatesController {
    * Validar un certificado por su código QR
    */
   @Post('validacion/qr')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async validarPorQR(
     @Body() body: { verificationCode: string },
@@ -273,8 +320,20 @@ export class GraduationCertificatesController {
   async aprobarSolicitud(
     @Param('id') id: string,
     @Body() body: ApproveRequestDto,
+    @Req() req: Request,
   ) {
-    return await this.service.aprobarSolicitud(id, body);
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.aprobarSolicitud(id, body, frontendBaseUrl);
   }
 
   /**
@@ -286,12 +345,25 @@ export class GraduationCertificatesController {
   async rechazarSolicitud(
     @Param('id') id: string,
     @Body() body: { reason: string; reviewerName?: string; reviewerId?: string },
+    @Req() req: Request,
   ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
     return await this.service.rechazarSolicitud(
       id,
       body.reason,
       body.reviewerName,
       body.reviewerId,
+      frontendBaseUrl,
     );
   }
 
@@ -374,4 +446,29 @@ export class GraduationCertificatesController {
     // TODO: Implementar revocación
     return { message: 'Endpoint en desarrollo' };
   }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/:id/reenviar
+   * Reenviar certificado por email al solicitante
+   */
+  @Post(':id/reenviar')
+  @HttpCode(HttpStatus.OK)
+  async reenviarCertificado(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ) {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+    let frontendBaseUrl = origin;
+    if (!frontendBaseUrl && referer) {
+      try {
+        frontendBaseUrl = new URL(referer).origin;
+      } catch (_) {
+        frontendBaseUrl = undefined;
+      }
+    }
+
+    return await this.service.reenviarCertificado(id, frontendBaseUrl);
+  }
+
 }

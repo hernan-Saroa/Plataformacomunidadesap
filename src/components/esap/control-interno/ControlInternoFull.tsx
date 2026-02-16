@@ -7,10 +7,14 @@ import {
   FolderOpen,
   Settings,
   FileText,
+  Layers
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
 import { IntegracionAuditoriasPlanesProvider, useIntegracionAuditoriaPlanes } from "./IntegracionAuditoriasPlanesContext";
+import { ListasChequeoProvider } from "./listas-chequeo/ListasChequeoContext";
+import { HallazgosProvider } from "./HallazgosContext";
+import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
@@ -18,18 +22,18 @@ import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
 // ELIMINADO: ProcesoAuditoriaModuleRediseno - Integrado en Expediente del Kanban (RF005-009)
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
-import { InformesLeyModulePremium } from "./InformesLeyModulePremium";  // RF012 - MÓDULO INDEPENDIENTE
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-import { RolesYPermisosModulePremium } from "./RolesYPermisosModulePremium";  // RF015 - MÓDULO INDEPENDIENTE
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
+import { ListasChequeoModule } from "./listas-chequeo/ListasChequeoModuleComplete";  // RF007 - LISTAS DE CHEQUEO DIGITALES - VERSIÓN COMPLETA
+import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Universo Auditable + Programa Anual
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
-  | "planificacion"                  // RF001-004 (4 tabs)
+  | "universo-auditable"             // ✨ NUEVO: Universo Auditable + Programa Anual
+  | "plan-operativo"                 // ✨ NUEVO: Plan Anual (independiente)
+  | "listas-chequeo"                 // RF007 - LISTAS DE CHEQUEO DIGITALES
   | "planes-mejoramiento"            // RF010-011 (2 tabs)
-  | "informes-ley"                   // RF012 - MÓDULO INDEPENDIENTE
   | "expedientes"                    // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
-  | "roles-permisos"                 // RF015 - MÓDULO INDEPENDIENTE
   | "config-auditorias";             // RF019-B - Config Auditorías (Tipos + Listas)
 
 export function ControlInternoFull() {
@@ -40,12 +44,18 @@ export function ControlInternoFull() {
   return (
     <ControlInternoProvider>
       <IntegracionAuditoriasPlanesProvider>
-        <ControlInternoContent
-          seccionActiva={seccionActiva}
-          setSeccionActiva={setSeccionActiva}
-          navegacionManual={navegacionManual}
-          setNavegacionManual={setNavegacionManual}
-        />
+        <ListasChequeoProvider>
+          <HallazgosProvider>
+            <TareasProvider>
+              <ControlInternoContent
+                seccionActiva={seccionActiva}
+                setSeccionActiva={setSeccionActiva}
+                navegacionManual={navegacionManual}
+                setNavegacionManual={setNavegacionManual}
+              />
+            </TareasProvider>
+          </HallazgosProvider>
+        </ListasChequeoProvider>
       </IntegracionAuditoriasPlanesProvider>
     </ControlInternoProvider>
   );
@@ -70,7 +80,25 @@ function ControlInternoContent({
 
   // Calcular menuItems dinámicamente con badge
   const menuItems: MenuItem[] = [
-    // ━━━━━━━━━━━ 1. CENTRO DE COMANDO ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 1. PLAN ANUAL ━━━━━━━━━━━
+    {
+      id: "plan-operativo",
+      label: "Plan Anual",
+      subtitle: "QUÉ auditar • Plan de trabajo anual",
+      icon: <ClipboardList className="w-5 h-5" />,
+      color: "#2962FF", // Azul corporativo
+    },
+    
+    // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
+    {
+      id: "universo-auditable",
+      label: "Universo Auditable",
+      subtitle: "DÓNDE auditar • Programa Anual",
+      icon: <Layers className="w-5 h-5" />,
+      color: "#003DA5", // Azul ESAP
+    },
+    
+    // ━━━━━━━━━━━ 3. AUDITORÍAS OCIG ━━━━━━━━━━━
     {
       id: "dashboard",
       label: "Auditorías OCIG",
@@ -79,16 +107,16 @@ function ControlInternoContent({
       color: "#10B981", // Verde - Principal
     },
     
-    // ━━━━━━━━━━━ 2. PLANIFICACIÓN (RF001-004) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 4. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
     {
-      id: "planificacion",
-      label: "Planeación OCIG",
-      subtitle: "Plan Anual • Universo • Programa",
-      icon: <ClipboardList className="w-5 h-5" />,
-      color: "#003DA5", // Azul ESAP
+      id: "listas-chequeo",
+      label: "Listas de Chequeo",
+      subtitle: "Digitales • Requisitos • Cumplimiento",
+      icon: <FileText className="w-5 h-5" />,
+      color: "#6366F1", // Azul claro - Requisitos
     },
     
-    // ━━━━━━━━━━━ 3. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 5. PLANES DE MEJORAMIENTO (RF010-011) ━━━━━━━━━━━
     {
       id: "planes-mejoramiento",
       label: "Planes de Mejoramiento",
@@ -98,31 +126,13 @@ function ControlInternoContent({
       badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
     },
     
-    // ━━━━━━━━━━━ 4. INFORMES DE LEY (RF012) ━━━━━━━━━━━
-    {
-      id: "informes-ley",
-      label: "Informes de Ley",
-      subtitle: "Ejecutivo Anual • Pormenorizado • Formatos",
-      icon: <FileText className="w-5 h-5" />,
-      color: "#8B5CF6", // Púrpura - Informes
-    },
-    
-    // ━━━━━━━━━━━ 5. EXPEDIENTES (RF013) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 6. EXPEDIENTES (RF013) ━━━━━━━━━━━
     {
       id: "expedientes",
       label: "Expedientes",
       subtitle: "Archivo • Búsqueda • Expedientes",
       icon: <FolderOpen className="w-5 h-5" />,
       color: "#0891B2", // Cyan - Documental
-    },
-    
-    // ━━━━━━━━━━━ 6. ROLES Y PERMISOS (RF015) ━━━━━━━━━━━
-    {
-      id: "roles-permisos",
-      label: "Roles y Permisos",
-      subtitle: "RBAC • Seguridad • Accesos",
-      icon: <Shield className="w-5 h-5" />,
-      color: "#DC2626", // Rojo - Seguridad
     },
     
     // ━━━━━━━━━━━ 7. CONFIGURACIONES ━━━━━━━━━━━
@@ -140,20 +150,20 @@ function ControlInternoContent({
       case "dashboard":
         return <GestionAuditoriasKanbanSimple />;
       
-      case "planificacion":
-        return <PlanificacionModuleRediseno />;
+      case "universo-auditable":
+        return <UniversoAuditableUnificado vigencia={new Date().getFullYear()} />;
+      
+      case "plan-operativo":
+        return <PlanificacionModuleRediseno vista="plan-operativo" />;
+      
+      case "listas-chequeo":
+        return <ListasChequeoModule />;
       
       case "planes-mejoramiento":
         return <PlanesMejoramientoModuleRediseno />;
       
-      case "informes-ley":
-        return <InformesLeyModulePremium />;
-      
       case "expedientes":
         return <ExpedientesModulePremium />;
-      
-      case "roles-permisos":
-        return <RolesYPermisosModulePremium />;
       
       case "config-auditorias":
         return <ConfiguracionesModulePremium />;

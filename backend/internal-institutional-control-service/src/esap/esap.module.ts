@@ -11,6 +11,9 @@ import { ProgramaAnualModule } from './programa-anual/programa-anual.module';
 import { PlanIndividualModule } from './plan-individual/plan-individual.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { EvidenciasModule } from './evidencias/evidencias.module';
+import { TiposAuditoriaModule } from './tipos-auditoria/tipos-auditoria.module';
+import { ListasChequeoModule } from './listas-chequeo/listas-chequeo.module';
+import { TablerosKanbanModule } from './tableros-kanban/tableros-kanban.module';
 
 /**
  * Módulo principal ESAP - Control Interno
@@ -32,6 +35,9 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
     PlanIndividualModule,
     NotificacionesModule,
     EvidenciasModule,
+    TiposAuditoriaModule,
+    ListasChequeoModule,
+    TablerosKanbanModule,
   ],
   exports: [
     PlanAnual5RolesModule,
@@ -46,6 +52,9 @@ import { EvidenciasModule } from './evidencias/evidencias.module';
     PlanIndividualModule,
     NotificacionesModule,
     EvidenciasModule,
+    TiposAuditoriaModule,
+    ListasChequeoModule,
+    TablerosKanbanModule,
   ],
 })
 export class EsapModule {}

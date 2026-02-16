@@ -63,6 +63,7 @@ interface ExpedienteForm {
   // Plazo
   plazoEspecial: string;
   justificacionPlazo: string;
+  tipoConteoTermino: 'HABILES' | 'CALENDARIO';
 }
 
 const MEDIOS_CONTROL_POR_JURISDICCION: Record<Jurisdiccion, MedioControl[]> = {
@@ -119,6 +120,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
     abogadoId: '',
     plazoEspecial: '',
     justificacionPlazo: '',
+    tipoConteoTermino: 'HABILES',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -324,6 +326,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
       // RN-009: Plazo (Taxativo o Especial)
       const diasTermino = plazoCalculado ? plazoCalculado : (formData.plazoEspecial ? formData.plazoEspecial : '30');
       formDataToSend.append('terminoProcesalDias', String(diasTermino));
+      formDataToSend.append('tipoConteoTermino', formData.tipoConteoTermino || 'HABILES');
 
       // Enviar datos del usuario actual para asignación automática (Backend Logic)
       formDataToSend.append('userId', CURRENT_USER_MOCK.id);
@@ -555,6 +558,31 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
                     {errors.justificacionPlazo && (
                       <p className="text-xs text-red-600 mt-1">{errors.justificacionPlazo}</p>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Configuración de Tipo de Conteo */}
+            {formData.medioControl && (
+              <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Clock className="w-5 h-5 text-gray-500 mt-0.5" />
+                  <div className="flex-1">
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Tipo de Conteo de Plazo
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Define cómo se calculará la fecha de vencimiento y los días restantes.
+                    </p>
+                    <select
+                      value={formData.tipoConteoTermino || 'HABILES'}
+                      onChange={(e) => handleInputChange('tipoConteoTermino', e.target.value as any)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      <option value="HABILES">Días Hábiles (Lunes a Viernes)</option>
+                      <option value="CALENDARIO">Días Calendario (Todos los días)</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -890,7 +918,7 @@ export function FormularioExpedienteJudicial({ isOpen, onClose, onExpedienteCrea
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

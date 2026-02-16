@@ -7,21 +7,20 @@
  * - Diseño limpio y uniforme
  */
 
-import { motion } from 'motion/react';
-import { ArrowLeft, CreditCard, Mail, Lock, CheckCircle } from 'lucide-react';
-import { Button } from '../ui/button';
 import { useState } from 'react';
+import { motion } from 'motion/react';
+import { ArrowLeft, CheckCircle, CreditCard, Mail, Lock } from 'lucide-react';
+import { Button } from '../ui/button';
 import { EnrollmentActivationModal } from './EnrollmentActivationModal';
 import { PublicNavbar } from './PublicNavbar';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface EnrollmentQRLandingUnifiedProps {
   onBeginActivation: () => void;
   onBackToHome?: () => void;
-  onLoginClick?: () => void;
 }
 
-export function EnrollmentQRLandingUnified({ onBeginActivation, onBackToHome, onLoginClick }: EnrollmentQRLandingUnifiedProps) {
+export function EnrollmentQRLandingUnified({ onBeginActivation, onBackToHome }: EnrollmentQRLandingUnifiedProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleSuccess = (userData: any) => {
@@ -29,22 +28,26 @@ export function EnrollmentQRLandingUnified({ onBeginActivation, onBackToHome, on
     onBeginActivation();
   };
 
+  const handleBack = () => {
+    if (onBackToHome) {
+      onBackToHome();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Public Navbar */}
-      {onBackToHome && onLoginClick && (
-        <PublicNavbar 
-          onLoginClick={onLoginClick}
-          onNavigateToHome={onBackToHome}
-        />
-      )}
+      <PublicNavbar 
+        onLoginClick={() => {}} 
+        onNavigateToHome={onBackToHome}
+      />
 
       {/* Main Content - con padding-top para el navbar flotante */}
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 pt-24 sm:pt-28">
         {/* Botón Volver - Diseño Premium */}
         {onBackToHome && (
           <motion.button
-            onClick={onBackToHome}
+            onClick={handleBack}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             whileHover={{ scale: 1.02, x: -4 }}

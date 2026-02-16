@@ -23,12 +23,13 @@
  * ÚLTIMA ACTUALIZACIÓN: 20 Diciembre 2025
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, CheckCircle, AlertCircle, ChevronRight, ChevronLeft,
   Plus, Trash2, User, Clock, Target, Shield, Eye, Edit, Save,
-  Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet
+  Download, Send, X, Check, Info, HelpCircle, FileText, Users, FileSpreadsheet,
+  BarChart3, Activity
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
@@ -40,6 +41,12 @@ import { planAnual5RolesApi } from './services/api';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
+
+// Notificaciones
+import { useCrearNotificacion } from './hooks/useCrearNotificacion';
+import { useAuth } from '../../../hooks/useAuth';
 
 // Declaración de tipos para jspdf-autotable
 declare module 'jspdf' {
@@ -51,6 +58,28 @@ declare module 'jspdf' {
   }
 }
 import { useEffect } from 'react';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
+// ✅ NUEVO: Importar validaciones Decreto 648/2017
+import {
+  validarDecreto648,
+  validarAntesDeAprobar,
+  validacionRapida,
+  generarMensajeToast,
+  obtenerEstadisticasPlan,
+  type ResultadoValidacion
+} from './utils/validacionesDecreto648';
+
+// ✅ NUEVO: Importar badge de cumplimiento Decreto 648
+import { BadgeDecreto648Completo, BadgeDecreto648Simple } from './components/BadgeDecreto648';
+
+// ✅ NUEVO: Importar servicio de generación de PDF
+import { generarPDFPlanAnual, validarDatosParaPDF } from './services/pdfPlanAnual';
+
+// ✅ NUEVO: Importar helper de configuración
+import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 
 // ============ TIPOS ============
 
@@ -253,14 +282,58 @@ const PLANES_MOCK: PlanAnual[] = [
 
 interface PlanAnualModuleProps {
   onPlanChange?: () => void; // Callback para notificar cambios en los planes
+  filtros?: {
+    año: number;
+    estado: string;
+    area: string;
+    busqueda: string;
+  };
 }
 
-export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
+export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps = {} as PlanAnualModuleProps) {
+  // Hooks para notificaciones
+  const { notificarPlanAnualCreado } = useCrearNotificacion();
+  const { user } = useAuth();
+
   const [vistaActiva, setVistaActiva] = useState<'lista' | 'crear' | 'detalle' | 'editar'>('lista');
   const [planes, setPlanes] = useState<PlanAnual[]>([]);
   const [loading, setLoading] = useState(true);
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
   const [mostrarModalAprobacion, setMostrarModalAprobacion] = useState(false);
+
+  // Filtrar planes según filtros externos
+  const planesFiltrados = useMemo(() => {
+    return planes.filter(plan => {
+      // Filtrar por año
+      const matchAño = !filtros?.año || plan.año === filtros.año;
+      
+      // Filtrar por estado
+      let matchEstado = true;
+      if (filtros?.estado && filtros.estado !== 'TODOS') {
+        // Mapear estados del filtro padre a estados del plan
+        if (filtros.estado === 'BORRADOR') {
+          matchEstado = plan.estado === 'Borrador';
+        } else if (filtros.estado === 'EN_REVISION') {
+          matchEstado = plan.estado === 'En Revisión';
+        } else if (filtros.estado === 'APROBADO') {
+          matchEstado = plan.estado === 'Aprobado';
+        } else if (filtros.estado === 'PUBLICADO') {
+          matchEstado = plan.estado === 'Vigente' || plan.estado === 'Cerrado';
+        }
+      }
+      
+      // Filtrar por búsqueda
+      let matchBusqueda = true;
+      if (filtros?.busqueda) {
+        const busquedaLower = filtros.busqueda.toLowerCase();
+        matchBusqueda = plan.año.toString().includes(busquedaLower) ||
+                       plan.jefeOCI.nombre.toLowerCase().includes(busquedaLower) ||
+                       plan.estado.toLowerCase().includes(busquedaLower);
+      }
+      
+      return matchAño && matchEstado && matchBusqueda;
+    });
+  }, [planes, filtros]);
 
   // Función para mapear PlanAnual5Roles (backend) a PlanAnual (frontend)
   const mapearPlanAnualDesdeBD = (planBD: any): PlanAnual => {
@@ -431,13 +504,24 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
         estado: mapearEstado(plan.estado)
       };
 
+      // Determinar si es creación o actualización
+      // Si el plan tiene un ID que NO empieza con 'plan-' (es UUID de BD), es actualización
+      // Si NO tiene ID o tiene ID temporal que empieza con 'plan-', es creación
+      const esPlanNuevo = !plan.id || (plan.id && plan.id.startsWith('plan-'));
+      
       let response;
-      if (plan.id && plan.id.startsWith('plan-')) {
+      let fueCreado = false;
+      
+      if (esPlanNuevo) {
         // Es un plan nuevo, crear
+        console.log('[PlanAnual] Creando nuevo plan anual para el año:', plan.año);
         response = await planAnual5RolesApi.create(planData);
+        fueCreado = true;
       } else {
         // Es un plan existente, actualizar
+        console.log('[PlanAnual] Actualizando plan anual existente:', plan.id);
         response = await planAnual5RolesApi.update(plan.id, planData);
+        fueCreado = false;
       }
 
       if (response.success && response.data) {
@@ -517,6 +601,21 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
         if (reloadResponse.success && reloadResponse.data) {
           const planesMapeados = reloadResponse.data.map(mapearPlanAnualDesdeBD);
           setPlanes(planesMapeados);
+        }
+
+        // ============ NOTIFICACIONES: Plan Anual Creado ============
+        // Solo notificar si fue creado (no actualizado) y la respuesta fue exitosa
+        if (fueCreado && response.success && response.data?.id && user?.id) {
+          try {
+            await notificarPlanAnualCreado(
+              response.data.id,
+              plan.año,
+              user.id
+            );
+          } catch (notifError) {
+            // No fallar la creación si las notificaciones fallan
+            console.error('Error al enviar notificaciones:', notifError);
+          }
         }
 
         toast.success('Plan Anual guardado exitosamente', {
@@ -650,6 +749,39 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
   };
 
   const handleAprobar = (plan: PlanAnual) => {
+    // ✅ NUEVO: Validar antes de mostrar modal de aprobación
+    const validacion = validarAntesDeAprobar(plan);
+    
+    if (!validacion.valido) {
+      // Mostrar errores en toast
+      const mensaje = generarMensajeToast(validacion);
+      
+      toast.error(mensaje.titulo, {
+        description: mensaje.descripcion,
+        duration: 8000,
+      });
+      
+      // Mostrar detalles en consola para debugging
+      console.error('❌ Validación Decreto 648/2017 falló:', validacion);
+      
+      // Mostrar errores específicos
+      if (validacion.errores.length > 0) {
+        setTimeout(() => {
+          validacion.errores.forEach((error, idx) => {
+            setTimeout(() => {
+              toast.error(`Error ${idx + 1}`, {
+                description: error,
+                duration: 6000
+              });
+            }, idx * 500);
+          });
+        }, 1000);
+      }
+      
+      return; // Bloquear aprobación
+    }
+    
+    // Si pasa validación, mostrar modal
     setPlanActual(plan);
     setMostrarModalAprobacion(true);
   };
@@ -1031,72 +1163,22 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
 
   const handleExportarExcel = async (plan: PlanAnual) => {
     try {
-      toast.success('Generando Excel...', {
-        description: 'Cargando plantilla y aplicando datos...'
+      const toastId = toast.loading('Generando Excel...', {
+        description: 'Por favor espera un momento'
       });
 
-      // Cargar la plantilla Excel existente
-      const response = await fetch('/plantilla_plan_auditoria.xlsx');
-      if (!response.ok) {
-        throw new Error(`No se pudo cargar la plantilla Excel. Status: ${response.status} ${response.statusText}`);
-      }
-      
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Verificar que el archivo no sea HTML (puede pasar si el servidor devuelve un error)
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const firstBytes = Array.from(uint8Array.slice(0, 8));
-      const isHTML = String.fromCharCode(...firstBytes.slice(0, 4)).toLowerCase() === '<htm';
-      
-      if (isHTML) {
-        throw new Error('El archivo recibido es HTML, no un archivo Excel válido. Verifica que la plantilla esté en la carpeta public.');
-      }
-      
-      // Leer la plantilla con XLSX
-      // Nota: XLSX puede leer .xls y .xlsx
-      let workbook;
-      try {
-        workbook = XLSX.read(arrayBuffer, { 
-          type: 'array',
-          cellStyles: true,
-          cellDates: true,
-          dense: false
-        });
-      } catch (error) {
-        // Si falla, intentar sin opciones de estilos
-        console.warn('Error al leer con estilos, intentando sin estilos:', error);
-        workbook = XLSX.read(arrayBuffer, { 
-          type: 'array'
-        });
-      }
-      
-      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-        throw new Error('El archivo Excel no contiene hojas válidas');
-      }
-      
-      // Obtener la primera hoja
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      
-      if (!worksheet) {
-        throw new Error('No se encontró la hoja en la plantilla');
+      // Validar que el plan tenga datos
+      if (!plan || !plan.roles || !Array.isArray(plan.roles)) {
+        throw new Error('El plan no tiene datos válidos');
       }
 
-      // Función auxiliar para escribir en una celda preservando el formato existente
-      const escribirCelda = (cellRef: string, valor: string | number) => {
-        if (!worksheet[cellRef]) {
-          // Si la celda no existe, crearla
-          worksheet[cellRef] = { v: valor, t: typeof valor === 'number' ? 'n' : 's' };
-        } else {
-          // Preservar todos los atributos existentes y solo actualizar el valor
-          const celdaExistente = worksheet[cellRef];
-          worksheet[cellRef] = {
-            ...celdaExistente,
-            v: valor,
-            t: typeof valor === 'number' ? 'n' : 's'
-          };
-        }
-      };
+      // Crear workbook desde cero (sin usar plantillas)
+      const wb = XLSX.utils.book_new();
+      
+      // Validar que el workbook se haya creado correctamente
+      if (!wb || !wb.SheetNames) {
+        throw new Error('No se pudo crear el archivo Excel');
+      }
 
       // Preparar datos
       const equipoAuditores = plan.roles
@@ -1104,139 +1186,207 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
         .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
         .join(', ') || 'Por definir';
 
-      // ============ DATOS GENERALES ============
-      // D5: Fecha del plan
-      escribirCelda('D5', new Date().toLocaleDateString('es-CO'));
-      
-      // D6: PROCESO/DEPENDENCIA A AUDITAR
-      escribirCelda('D6', 'Control Interno - Plan Anual');
-      
-      // D7: RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR
-      escribirCelda('D7', plan.jefeOCI.nombre);
-      
-      // D8: AUDITOR LIDER
-      escribirCelda('D8', plan.jefeOCI.nombre);
-      
-      // D9: EQUIPO AUDITOR
-      escribirCelda('D9', equipoAuditores);
+      // ============ HOJA 1: INFORMACIÓN GENERAL ============
+      const infoGeneralData = [
+        ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP'],
+        ['OFICINA DE CONTROL INTERNO DE GESTIÓN'],
+        ['PLAN ANUAL DE AUDITORÍAS'],
+        [''],
+        ['INFORMACIÓN GENERAL'],
+        ['Fecha del Plan:', new Date().toLocaleDateString('es-CO')],
+        ['Año:', plan.año],
+        ['Estado:', plan.estado],
+        ['Proceso/Dependencia a Auditar:', 'Control Interno - Plan Anual'],
+        ['Responsable Proceso/Dependencia:', plan.jefeOCI.nombre],
+        ['Auditor Líder:', plan.jefeOCI.nombre],
+        ['Equipo Auditor:', equipoAuditores],
+        [''],
+        ['OBJETIVO DE LA AUDITORÍA'],
+        ['Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017'],
+        [''],
+        ['ALCANCE'],
+        [`Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`],
+        [''],
+        ['CRITERIOS DE AUDITORÍA'],
+        ['Decreto 648 de 2017 - Sistema de Control Interno'],
+        [''],
+        ['MÉTODO DE AUDITORÍA'],
+        ['Revisión documental y verificación de actividades'],
+        [''],
+        ['ASPECTOS A TENER EN CUENTA'],
+        ['Riesgos identificados en el Plan Anual de Control Interno'],
+        ['Procesos críticos del Decreto 648/2017'],
+        ['Resultados de auditorías anteriores del sistema de control interno'],
+        ['Cambios recientes en procesos o normativa aplicable'],
+        [''],
+        ['RECURSOS'],
+        ['Financieros:', 'Recursos asignados en el presupuesto anual'],
+        ['Logísticos:', 'Espacios físicos y equipos necesarios para la auditoría'],
+        ['Tecnológicos:', 'Sistemas de información y herramientas de auditoría'],
+        ['Otros:', 'No aplica']
+      ];
 
-      // ============ DATOS GENERALES DE LA AUDITORÍA ============
-      // C4: Objetivo de la auditoría (celda combinada - escribir en celda superior izquierda)
-      escribirCelda('C4', 'Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017');
-      
-      // C6: Alcance de la auditoría
-      escribirCelda('C6', `Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`);
-      
-      // C8: Criterios de auditoría
-      escribirCelda('C8', 'Decreto 648 de 2017 - Sistema de Control Interno');
-      
-      // C10: Método de auditoría
-      escribirCelda('C10', 'Revisión documental y verificación de actividades');
+      const wsInfo = XLSX.utils.aoa_to_sheet(infoGeneralData);
+      wsInfo['!cols'] = [
+        { wch: 25 },
+        { wch: 60 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsInfo, 'Información General');
 
-      // ============ ASPECTOS A TENER EN CUENTA ============
-      // C13: Aspectos a tener en cuenta
-      const aspectos = [
-        'Riesgos identificados en el Plan Anual de Control Interno',
-        'Procesos críticos del Decreto 648/2017',
-        'Resultados de auditorías anteriores del sistema de control interno',
-        'Cambios recientes en procesos o normativa aplicable'
-      ].join(' • ');
-      escribirCelda('C13', aspectos);
+      // ============ HOJA 2: ROLES Y ACTIVIDADES ============
+      const rolesHeaders = [
+        'Rol',
+        'Actividad',
+        'Descripción',
+        'Responsable',
+        'Fecha Inicio',
+        'Fecha Fin',
+        'Porcentaje',
+        'Estado'
+      ];
 
-      // ============ RECURSOS ============
-      // C16: Financieros
-      escribirCelda('C16', 'Recursos asignados en el presupuesto anual');
-      
-      // E16: Logísticos
-      escribirCelda('E16', 'Espacios físicos y equipos necesarios para la auditoría');
-      
-      // G16: Tecnológicos
-      escribirCelda('G16', 'Sistemas de información y herramientas de auditoría');
-      
-      // I16: Otros
-      escribirCelda('I16', 'No aplica');
+      const rolesRows: any[] = [];
+      plan.roles.forEach(rol => {
+        if (rol.actividades.length === 0) {
+          rolesRows.push([
+            rol.nombre,
+            'Sin actividades',
+            '',
+            '',
+            '',
+            '',
+            0,
+            'Pendiente'
+          ]);
+        } else {
+          rol.actividades.forEach((actividad, index) => {
+            rolesRows.push([
+              index === 0 ? rol.nombre : '', // Solo mostrar el nombre del rol en la primera fila
+              actividad.nombre,
+              actividad.descripcion || '',
+              actividad.responsableNombre || 'Por asignar',
+              actividad.fechaInicio || 'Por definir',
+              actividad.fechaFin || 'Por definir',
+              actividad.porcentaje || 0,
+              actividad.estado || 'Pendiente'
+            ]);
+          });
+        }
+      });
 
-      // ============ CRONOGRAMA Y EQUIPO AUDITOR ============
-      // Filas 19-30: Actividades
-      // Columnas: B (actividad), D (auditores), F (procesos), H (fecha), I (hora), J (lugar)
-      let filaActual = 19;
-      
+      const wsRoles = XLSX.utils.aoa_to_sheet([rolesHeaders, ...rolesRows]);
+      wsRoles['!cols'] = [
+        { wch: 30 }, // Rol
+        { wch: 40 }, // Actividad
+        { wch: 50 }, // Descripción
+        { wch: 30 }, // Responsable
+        { wch: 15 }, // Fecha Inicio
+        { wch: 15 }, // Fecha Fin
+        { wch: 12 }, // Porcentaje
+        { wch: 15 }  // Estado
+      ];
+      XLSX.utils.book_append_sheet(wb, wsRoles, 'Roles y Actividades');
+
+      // ============ HOJA 3: CRONOGRAMA ============
+      const cronogramaHeaders = [
+        'Actividad',
+        'Auditor(es)',
+        'Proceso(s) Auditado(s)',
+        'Fecha',
+        'Hora',
+        'Lugar'
+      ];
+
+      const cronogramaRows: any[] = [];
       plan.roles.forEach(rol => {
         rol.actividades.forEach(actividad => {
-          if (filaActual <= 30) {
-            // B: Actividad a desarrollar
-            escribirCelda(`B${filaActual}`, `${rol.nombre}: ${actividad.nombre}`);
-            
-            // D: Auditor(es)
-            escribirCelda(`D${filaActual}`, actividad.responsableNombre || 'Por asignar');
-            
-            // F: Proceso(s) auditado(s)
-            escribirCelda(`F${filaActual}`, actividad.responsableNombre || 'Por asignar');
-            
-            // H: Fecha
-            escribirCelda(`H${filaActual}`, actividad.fechaInicio || 'Por definir');
-            
-            // I: Hora
-            escribirCelda(`I${filaActual}`, 'Por definir');
-            
-            // J: Lugar
-            escribirCelda(`J${filaActual}`, 'Por definir');
-            
-            filaActual++;
-          }
+          cronogramaRows.push([
+            `${rol.nombre}: ${actividad.nombre}`,
+            actividad.responsableNombre || 'Por asignar',
+            actividad.responsableNombre || 'Por asignar',
+            actividad.fechaInicio || 'Por definir',
+            'Por definir',
+            'Por definir'
+          ]);
         });
       });
 
-      // Si no hay actividades, agregar mensaje
-      if (plan.roles.every(rol => rol.actividades.length === 0) && filaActual <= 30) {
-        escribirCelda(`B${filaActual}`, 'No hay actividades registradas');
+      if (cronogramaRows.length === 0) {
+        cronogramaRows.push(['No hay actividades registradas', '', '', '', '', '']);
       }
 
-      // ============ FIRMAS ============
-      // B33: Nombre Auditor Líder
-      escribirCelda('B33', plan.jefeOCI.nombre);
-      
-      // B34: Cargo Auditor Líder
-      escribirCelda('B34', 'Jefe Oficina de Control Interno');
-      
-      // G33: Nombre Auditado
-      escribirCelda('G33', plan.jefeOCI.nombre);
-      
-      // G34: Cargo Auditado
-      escribirCelda('G34', 'Responsable del Proceso');
+      const wsCronograma = XLSX.utils.aoa_to_sheet([cronogramaHeaders, ...cronogramaRows]);
+      wsCronograma['!cols'] = [
+        { wch: 50 }, // Actividad
+        { wch: 30 }, // Auditor(es)
+        { wch: 30 }, // Proceso(s)
+        { wch: 15 }, // Fecha
+        { wch: 15 }, // Hora
+        { wch: 20 }  // Lugar
+      ];
+      XLSX.utils.book_append_sheet(wb, wsCronograma, 'Cronograma');
 
-      // Generar archivo en formato .xlsx (mejor preservación de estilos que .xls)
-      const fileName = `Plan_Anual_${plan.año}_${new Date().getTime()}.xlsx`;
-      
-      // Escribir el workbook manteniendo estilos
-      const wbout = XLSX.write(workbook, { 
-        bookType: 'xlsx', 
-        type: 'array',
-        cellStyles: true
-      });
-      
-      // Crear blob y descargar
-      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      // ============ HOJA 4: FIRMAS ============
+      const firmasData = [
+        ['FIRMAS'],
+        [''],
+        ['AUDITOR LÍDER'],
+        ['Nombre:', plan.jefeOCI.nombre],
+        ['Cargo:', 'Jefe Oficina de Control Interno'],
+        [''],
+        ['AUDITADO'],
+        ['Nombre:', plan.jefeOCI.nombre],
+        ['Cargo:', 'Responsable del Proceso'],
+        [''],
+        ['Fecha de Generación:', new Date().toLocaleDateString('es-CO')]
+      ];
 
+      const wsFirmas = XLSX.utils.aoa_to_sheet(firmasData);
+      wsFirmas['!cols'] = [
+        { wch: 20 },
+        { wch: 40 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsFirmas, 'Firmas');
+
+      // Validar que el workbook tenga al menos una hoja
+      if (!wb.SheetNames || wb.SheetNames.length === 0) {
+        throw new Error('El archivo Excel no contiene hojas válidas');
+      }
+
+      // Generar archivo
+      const fileName = `Plan_Anual_${plan.año}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      // Escribir el archivo usando writeFile (método más seguro)
+      try {
+        XLSX.writeFile(wb, fileName);
+      } catch (writeError: any) {
+        console.error('Error al escribir archivo:', writeError);
+        throw new Error(`Error al guardar el archivo: ${writeError.message || 'Error desconocido'}`);
+      }
+
+      toast.dismiss(toastId);
       toast.success('Excel generado correctamente', {
         description: fileName
       });
     } catch (error: any) {
       console.error('Error al generar Excel:', error);
-      toast.error('Error al generar Excel', {
-        description: error.message || 'No se pudo generar el documento'
-      });
+      const errorMessage = error?.message || 'No se pudo generar el documento';
+      
+      // Si el error menciona HTML o plantilla, dar un mensaje más específico
+      if (errorMessage.includes('HTML') || errorMessage.includes('plantilla') || errorMessage.includes('table')) {
+        toast.error('Error al generar Excel', {
+          description: 'Por favor, recarga la página y vuelve a intentar. Si el problema persiste, contacta al administrador.'
+        });
+      } else {
+        toast.error('Error al generar Excel', {
+          description: errorMessage
+        });
+      }
     }
   };
 
   return (
-    <div className="space-y-4 pb-8">
+    <Container4K>
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -1255,7 +1405,7 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
             transition={{ duration: 0.2 }}
           >
             <ListaPlanesAnuales
-              planes={planes}
+              planes={planesFiltrados}
               onCrearNuevo={handleCrearNuevo}
               onVerDetalle={handleVerDetalle}
               onEditar={handleEditar}
@@ -1325,7 +1475,7 @@ export function PlanAnualModule({ onPlanChange }: PlanAnualModuleProps = {} as P
           onAprobar={handleConfirmarAprobacion}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -1344,6 +1494,7 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
   return (
     <div className="space-y-4 md:space-y-6">
       {/* ACCIÓN PRINCIPAL */}
+      {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_PLAN_CREATE) && (
       <div className="flex justify-end">
         <Button
           onClick={onCrearNuevo}
@@ -1355,6 +1506,7 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
           Crear Plan Anual
         </Button>
       </div>
+      )}
 
       {/* INFORMACIÓN DEL DECRETO */}
       <Card className="p-4 sm:p-5 md:p-6 border-l-4 border-l-blue-500 bg-blue-50/50">
@@ -1466,6 +1618,11 @@ function ListaPlanesAnuales({ planes, onCrearNuevo, onVerDetalle, onEditar, onAp
                   <span className="text-gray-700">
                     {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades
                   </span>
+                </div>
+
+                {/* ✅ NUEVO: Badge de cumplimiento Decreto 648 */}
+                <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                  <BadgeDecreto648Simple plan={plan} />
                 </div>
               </div>
 
@@ -2545,6 +2702,11 @@ interface DetallePlanAnualProps {
 }
 
 function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, onExportarExcel }: DetallePlanAnualProps) {
+  // Estado para las pestañas
+  const [tabActiva, setTabActiva] = useState<'detalle' | 'indicadores'>('detalle');
+  const [indicadores, setIndicadores] = useState<any>(null);
+  const [loadingIndicadores, setLoadingIndicadores] = useState(false);
+  
   // Obtener datos del usuario actual
   const userData = localStorage.getItem('esap_user_data');
   const currentUser = userData ? JSON.parse(userData) : null;
@@ -2562,6 +2724,30 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
     );
   }) || false;
 
+  // Cargar indicadores cuando se activa la tab
+  useEffect(() => {
+    if (tabActiva === 'indicadores' && !indicadores) {
+      cargarIndicadores();
+    }
+  }, [tabActiva]);
+
+  const cargarIndicadores = async () => {
+    setLoadingIndicadores(true);
+    try {
+      const response = await planAnual5RolesApi.getIndicadores(plan.id);
+      if (response.success && response.data) {
+        setIndicadores(response.data);
+      } else {
+        toast.error('Error al cargar indicadores');
+      }
+    } catch (error) {
+      console.error('Error cargando indicadores:', error);
+      toast.error('Error al cargar indicadores');
+    } finally {
+      setLoadingIndicadores(false);
+    }
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* ACCIONES */}
@@ -2578,10 +2764,12 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
           <FileSpreadsheet className="w-4 h-4" />
           Excel
         </Button>
+        {authService.hasPermission(Permissions.CONTROL_INTERNO_PLANEACION_PLAN_EDIT) && (
         <Button variant="outline" onClick={onEditar} className="gap-2" size="sm">
           <Edit className="w-4 h-4" />
           Editar
         </Button>
+        )}
         {puedeAprobar && (
         <Button
           variant="outline"
@@ -2596,9 +2784,12 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
         )}
       </div>
 
+      {/* ✅ NUEVO: BADGE CUMPLIMIENTO DECRETO 648/2017 */}
+      <BadgeDecreto648Completo plan={plan} />
+
       {/* ESTADO Y JEFE OCI */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="p-6">
+        <div className="p-6">
           <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
           <Badge
             className={`text-sm px-3 py-1 ${
@@ -2609,34 +2800,71 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
                 : 'bg-gray-100 text-gray-800'
             }`}
           >
-            {plan.estado}
-          </Badge>
-        </Card>
-
-        <Card className="p-6">
-          <h3 className="font-bold text-sm text-gray-900 mb-4">Jefe OCI Responsable</h3>
-          <div className="flex items-center gap-3">
-            <Avatar>
-              <AvatarFallback style={{ background: '#003DA5', color: 'white' }}>
-                {plan.jefeOCI.nombre.split(' ').map(n => n[0]).join('')}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-bold text-sm text-gray-900">{plan.jefeOCI.nombre}</p>
-              <p className="text-xs text-gray-600">{plan.jefeOCI.cargo}</p>
+            <div className="flex items-center justify-center gap-2">
+              <FileText className="w-4 h-4" />
+              <span>Detalle</span>
             </div>
-          </div>
-        </Card>
+          </Badge>
+          <button
+            onClick={() => setTabActiva('indicadores')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              tabActiva === 'indicadores'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              <span>Indicadores</span>
+            </div>
+          </button>
+        </div>
       </div>
 
-      {/* ROLES Y ACTIVIDADES */}
-      <Card className="p-6">
-        <h3 className="font-bold text-lg text-gray-900 mb-6">
-          Roles del Decreto 648/2017
-        </h3>
+      {/* CONTENIDO DE LAS TABS */}
+      {tabActiva === 'detalle' && (
+        <div className="space-y-4 md:space-y-6">
+          {/* ESTADO Y JEFE OCI */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <h3 className="font-bold text-sm text-gray-900 mb-4">Estado del Plan</h3>
+              <Badge
+                className={`text-sm px-3 py-1 ${
+                  plan.estado === 'Aprobado'
+                    ? 'bg-green-100 text-green-800'
+                    : plan.estado === 'En Revisión'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}
+              >
+                {plan.estado}
+              </Badge>
+            </Card>
 
-        <div className="space-y-6">
-          {plan.roles.map((rol) => (
+            <Card className="p-6">
+              <h3 className="font-bold text-sm text-gray-900 mb-4">Jefe OCI Responsable</h3>
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarFallback style={{ background: '#003DA5', color: 'white' }}>
+                    {plan.jefeOCI.nombre.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-bold text-sm text-gray-900">{plan.jefeOCI.nombre}</p>
+                  <p className="text-xs text-gray-600">{plan.jefeOCI.cargo}</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* ROLES Y ACTIVIDADES */}
+          <Card className="p-6">
+            <h3 className="font-bold text-lg text-gray-900 mb-6">
+              Roles del Decreto 648/2017
+            </h3>
+
+            <div className="space-y-6">
+              {plan.roles.map((rol) => (
             <div key={rol.id} className="border-l-4 pl-4" style={{ borderLeftColor: rol.color }}>
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-3xl">{rol.icono}</span>
@@ -2647,34 +2875,380 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
               </div>
 
               <div className="space-y-2">
-                {rol.actividades.map((act) => (
-                  <Card key={act.id} className="p-4 bg-gray-50">
-                    <h5 className="font-bold text-sm text-gray-900 mb-2">{act.nombre}</h5>
-                    {act.descripcion && (
-                      <p className="text-xs text-gray-600 mb-3">{act.descripcion}</p>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>👤 {act.responsableNombre}</span>
-                      <span>📅 {act.fechaInicio} - {act.fechaFin}</span>
-                      <Badge
-                        className={`ml-auto ${
-                          act.estado === 'Completada'
-                            ? 'bg-green-100 text-green-800'
-                            : act.estado === 'En Ejecución'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {act.estado}
-                      </Badge>
-                    </div>
-                  </Card>
-                ))}
+                {rol.actividades.map((act) => {
+                  // Detectar si es un informe vinculado
+                  const esInformeVinculado = act.nombre?.includes('Informe de Ley:');
+                  let informeData: {
+                    nombre?: string;
+                    codigo?: string;
+                    aprobadoPor?: string;
+                    fechaAprobacion?: string;
+                    archivoUrl?: string;
+                    observaciones?: string;
+                  } | null = null;
+
+                  if (esInformeVinculado && act.descripcion) {
+                    // Extraer información del informe desde la descripción
+                    const descripcion = act.descripcion;
+                    const codigoMatch = descripcion.match(/Código:\s*(.+)/);
+                    const aprobadoPorMatch = descripcion.match(/Aprobado por:\s*(.+)/);
+                    const fechaAprobacionMatch = descripcion.match(/Fecha de aprobación:\s*(.+)/);
+                    const archivoMatch = descripcion.match(/Archivo:\s*(.+)/);
+                    const observacionesMatch = descripcion.match(/Observaciones:\s*(.+)/);
+
+                    informeData = {
+                      nombre: act.nombre.replace('Informe de Ley: ', ''),
+                      codigo: codigoMatch?.[1]?.trim(),
+                      aprobadoPor: aprobadoPorMatch?.[1]?.trim(),
+                      fechaAprobacion: fechaAprobacionMatch?.[1]?.trim(),
+                      archivoUrl: archivoMatch?.[1]?.trim(),
+                      observaciones: observacionesMatch?.[1]?.trim(),
+                    };
+                  }
+
+                  const handleDescargarArchivo = async () => {
+                    if (!informeData?.archivoUrl) return;
+
+                    try {
+                      // Extraer el nombre del archivo de la URL
+                      const nombreArchivo = informeData.archivoUrl.split('/').pop() || informeData.archivoUrl;
+                      
+                      // Construir la URL del endpoint de descarga
+                      let apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+                      if (apiBaseUrl.includes('/control-institucional')) {
+                        apiBaseUrl = `${apiBaseUrl}/api/v1`;
+                      } else if (!apiBaseUrl.includes('/api/v1') && !apiBaseUrl.includes('localhost')) {
+                        apiBaseUrl = `${apiBaseUrl}/control-institucional/api/v1`;
+                      }
+                      const urlDescarga = `${apiBaseUrl}/informes-ley/archivos/${encodeURIComponent(nombreArchivo)}`;
+
+                      // Descargar el archivo
+                      const response = await fetch(urlDescarga, {
+                        method: 'GET',
+                        headers: {
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        },
+                      });
+
+                      if (!response.ok) {
+                        throw new Error('Error al descargar el archivo');
+                      }
+
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = nombreArchivo;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+
+                      toast.success('Archivo descargado exitosamente');
+                    } catch (error) {
+                      console.error('Error descargando archivo:', error);
+                      toast.error('Error al descargar el archivo', {
+                        description: error instanceof Error ? error.message : 'Ocurrió un error inesperado',
+                      });
+                    }
+                  };
+
+                  return (
+                    <Card key={act.id} className="p-4 bg-gray-50">
+                      <h5 className="font-bold text-sm text-gray-900 mb-2">{act.nombre}</h5>
+                      
+                      {esInformeVinculado && informeData ? (
+                        <div className="space-y-3 mb-3">
+                          <div className="bg-white rounded-lg border border-gray-200 p-3">
+                            <div className="space-y-2 text-xs">
+                              {informeData.codigo && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Código:</span> {informeData.codigo}
+                                </p>
+                              )}
+                              {informeData.aprobadoPor && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Aprobado por:</span> {informeData.aprobadoPor}
+                                </p>
+                              )}
+                              {informeData.fechaAprobacion && (
+                                <p className="text-gray-700">
+                                  <span className="font-semibold">Fecha de aprobación:</span> {informeData.fechaAprobacion}
+                                </p>
+                              )}
+                              {informeData.archivoUrl && (
+                                <div className="flex items-center gap-2 pt-2">
+                                  <span className="font-semibold text-gray-700">Archivo:</span>
+                                  <Button
+                                    onClick={handleDescargarArchivo}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs gap-1"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    Descargar PDF
+                                  </Button>
+                                </div>
+                              )}
+                              {informeData.observaciones && (
+                                <p className="text-gray-700 pt-2 border-t border-gray-200">
+                                  <span className="font-semibold">Observaciones:</span> {informeData.observaciones}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : act.descripcion ? (
+                        <p className="text-xs text-gray-600 mb-3">{act.descripcion}</p>
+                      ) : null}
+                      
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>👤 {act.responsableNombre}</span>
+                        <span>📅 {act.fechaInicio} - {act.fechaFin}</span>
+                        <Badge
+                          className={`ml-auto ${
+                            act.estado === 'Completada'
+                              ? 'bg-green-100 text-green-800'
+                              : act.estado === 'En Ejecución'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {act.estado}
+                        </Badge>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       </Card>
+        </div>
+      )}
+
+      {/* TAB DE INDICADORES (US-003) */}
+      {tabActiva === 'indicadores' && plan.id && (
+        <div className="space-y-4 md:space-y-6">
+          {loadingIndicadores ? (
+            <Card className="p-6">
+              <div className="text-center py-8">
+                <div className="w-16 h-16 mx-auto border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-600">Cargando indicadores...</p>
+              </div>
+            </Card>
+          ) : indicadores ? (
+            <>
+              {/* INDICADORES GENERALES */}
+              <Card className="p-6">
+                <h3 className="font-bold text-lg text-gray-900 mb-6 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                  Indicadores Generales del Plan Anual {plan.año}
+                </h3>
+                
+                {/* Actividades del Plan */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">📋 Actividades del Plan</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.actividades.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.actividades.completadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Completadas</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.actividades.enProgreso}
+                      </div>
+                      <div className="text-xs text-gray-600">En Progreso</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.actividades.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-red-600 mb-1">
+                        {indicadores.actividades.retrasadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Retrasadas</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auditorías */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">🔍 Auditorías</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.auditorias.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.auditorias.completadas}
+                      </div>
+                      <div className="text-xs text-gray-600">Completadas</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.auditorias.enEjecucion}
+                      </div>
+                      <div className="text-xs text-gray-600">En Ejecución</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.auditorias.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informes */}
+                <div className="mb-6">
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">📄 Informes de Ley</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.informes.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.informes.aprobados}
+                      </div>
+                      <div className="text-xs text-gray-600">Aprobados</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.informes.enProceso}
+                      </div>
+                      <div className="text-xs text-gray-600">En Proceso</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-gray-600 mb-1">
+                        {indicadores.informes.pendientes}
+                      </div>
+                      <div className="text-xs text-gray-600">Pendientes</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hallazgos */}
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-3">⚠️ Hallazgos</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-blue-600 mb-1">
+                        {indicadores.hallazgos.total}
+                      </div>
+                      <div className="text-xs text-gray-600">Total</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-yellow-600 mb-1">
+                        {indicadores.hallazgos.abiertos}
+                      </div>
+                      <div className="text-xs text-gray-600">Abiertos</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-green-600 mb-1">
+                        {indicadores.hallazgos.cerrados}
+                      </div>
+                      <div className="text-xs text-gray-600">Cerrados</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* INDICADORES POR ROL */}
+              <Card className="p-6">
+                <h3 className="font-bold text-lg text-gray-900 mb-6 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  Indicadores por Rol del Decreto 648
+                </h3>
+                <div className="space-y-4">
+                  {indicadores.indicadoresPorRol.map((rolIndicador: any) => {
+                    const rolTemplate = ROLES_DECRETO_648.find(r => r.id === rolIndicador.rolNumero);
+                    return (
+                      <Card key={rolIndicador.rolId} className="p-4 bg-gray-50">
+                        <div className="flex items-center gap-3 mb-4">
+                          <span className="text-2xl">{rolTemplate?.icono}</span>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-sm text-gray-900">{rolIndicador.rolNombre}</h4>
+                            <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-blue-600"></div>
+                                <span className="text-gray-600">Total: <span className="font-bold">{rolIndicador.totalActividades}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                                <span className="text-gray-600">Completadas: <span className="font-bold">{rolIndicador.actividadesCompletadas}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
+                                <span className="text-gray-600">En Progreso: <span className="font-bold">{rolIndicador.actividadesEnProgreso}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-gray-600"></div>
+                                <span className="text-gray-600">Pendientes: <span className="font-bold">{rolIndicador.actividadesPendientes}</span></span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 rounded-full bg-red-600"></div>
+                                <span className="text-gray-600">Retrasadas: <span className="font-bold">{rolIndicador.actividadesRetrasadas}</span></span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              {/* INFORMACIÓN ADICIONAL */}
+              <Card className="p-4 bg-blue-50 border-l-4 border-l-blue-600">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-700">
+                    <p className="font-semibold mb-1">US-003: Cálculo Automático de Indicadores</p>
+                    <p>Los indicadores se calculan automáticamente basándose en el estado de las actividades del Plan Anual. Los datos se actualizan en tiempo real.</p>
+                    <p className="mt-2 text-gray-500">Última actualización: {new Date(indicadores.fechaConsulta).toLocaleString('es-CO')}</p>
+                  </div>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <Card className="p-6">
+              <div className="text-center py-8">
+                <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  No se pudieron cargar los indicadores
+                </h3>
+                <Button
+                  onClick={cargarIndicadores}
+                  className="gap-2 mt-4"
+                  style={{ background: '#003DA5' }}
+                >
+                  <Activity className="w-4 h-4" />
+                  Reintentar
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }

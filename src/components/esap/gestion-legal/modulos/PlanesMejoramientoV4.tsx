@@ -17,7 +17,7 @@ import {
   FileText, AlertTriangle, Target, Calendar, Eye, Plus, Search, Filter,
   Download, MoreVertical, Edit, Trash2, CheckCircle, AlertCircle, Clock,
   TrendingUp, BarChart3, FileCheck, Building2, User, ChevronDown, ChevronRight,
-  List, LayoutGrid, Activity, Flag, Circle, XCircle
+  List, LayoutGrid, Activity, Flag, Circle, XCircle, Upload, File, X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -29,6 +29,11 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Textarea } from '../../../ui/textarea';
 import { legalService } from '../../../../services/api/legal.service';
+import { ModalDetallePlanV4 } from './ModalDetallePlanV4';
+import jsPDF from 'jspdf';
+import JSZip from 'jszip';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 import {
   DropdownMenu,
@@ -37,6 +42,10 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from '../../../ui/dropdown-menu';
+import { add } from '@dnd-kit/utilities';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ==================== TIPOS ====================
 type EstadoPlan = 'FORMULACION' | 'EN_EJECUCION' | 'COMPLETADO' | 'SUSPENDIDO';
@@ -85,7 +94,7 @@ interface PlanMejoramiento {
   ultimaActualizacion: Date;
 }
 
-type VistaModulo = 'dashboard' | 'lista' | 'timeline';
+type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'archivados';
 
 // ==================== HELPERS ====================
 const getEnteConfig = (ente: EnteControl) => {
@@ -214,6 +223,10 @@ const formatearFecha = (fecha: Date | string): string => {
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function ModuloPlanesMejoramientoV4() {
+  // const { entesControl } = useConfiguracionesSIGL();
+  // ✅ Obtener permisos del usuario actual
+  const { usuario } = usePermisos();
+  
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEnte, setFiltroEnte] = useState<string>('TODOS');
@@ -221,13 +234,15 @@ export function ModuloPlanesMejoramientoV4() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set());
   const [modalNuevoPlanAbierto, setModalNuevoPlanAbierto] = useState(false);
+  const [modalDetalleAbierto, setModalDetalleAbierto] = useState(false);
+  const [planSeleccionadoId, setPlanSeleccionadoId] = useState<string | null>(null);
 
   // State for real data
   const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     codigo: '',
     nombre: '',
     enteControl: '',
@@ -240,7 +255,9 @@ export function ModuloPlanesMejoramientoV4() {
     fechaFin: '',
     estado: 'FORMULACION',
     descripcion: ''
-  });
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
 
   // Fetch from API
   const fetchPlanes = async () => {
@@ -292,7 +309,7 @@ export function ModuloPlanesMejoramientoV4() {
         origen: formData.enteControl,
         documentoOrigen: formData.documentoOrigen,
         areaResponsable: formData.areaResponsable,
-        responsableId: null, // Pending logic for user selection
+        responsableNombre: formData.responsablePlan, // Save text name directly
         fechaInicio: formData.fechaInicio,
         fechaFinEstimada: formData.fechaFin,
         fechaRecepcion: formData.fechaRecepcion,
@@ -304,11 +321,160 @@ export function ModuloPlanesMejoramientoV4() {
       await legalService.createPlanMejoramiento(payload);
       toast.success('Plan de Mejoramiento creado exitosamente');
       setModalNuevoPlanAbierto(false);
+      setFormData({ ...initialFormData });
       fetchPlanes();
     } catch (error) {
       console.error("Error creating plan", error);
       toast.error("Error al crear plan");
     }
+  };
+  const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+
+  // ✅ Estado para items archivados/eliminados
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
+    {
+      id: 'PM-CGR-2023-999',
+      codigo: 'PM-CGR-2023-999',
+      nombre: 'Plan de Mejoramiento Auditoría Presupuestal Vigencia 2023 - Contraloría General',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-11-30T16:45:00'),
+      usuarioArchivo: 'Dra. Ana María Rodríguez',
+      motivoArchivo: 'Plan completado exitosamente. Todas las acciones ejecutadas y evidencias aprobadas por la Contraloría mediante Oficio CGR-OF-2024-9876. Cierre formal del proceso',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Documento Origen': 'Informe de Auditoría CGR No. 045-2023',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '5',
+        'Total Acciones': '12',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '28/11/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2023-888',
+      codigo: 'PM-PGN-2023-888',
+      nombre: 'Plan de Mejoramiento Función de Advertencia Procesos Disciplinarios 2023 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-10-15T14:20:00'),
+      usuarioArchivo: 'Dr. Jorge Silva',
+      motivoArchivo: 'Proceso de vigilancia cerrado por la Procuraduría. Auto de cierre PGN-IUS-2024-5432. Implementación exitosa del sistema de alertas de términos',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2023-0987',
+        'Área Responsable': 'Secretaría General - Oficina Jurídica',
+        'Total Hallazgos': '3',
+        'Total Acciones': '8',
+        'Cumplimiento': '100%',
+        'Resultado': 'Cierre con verificación favorable'
+      }
+    },
+    {
+      id: 'PM-OCI-2023-777',
+      codigo: 'PM-OCI-2023-777',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Gestión Contractual 2022-2023 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-09-20T11:30:00'),
+      usuarioArchivo: 'Dra. Carolina Pérez',
+      motivoArchivo: 'Auditoría de seguimiento realizada por OCI. Informe OCI-SEG-2024-012 confirma subsanación total de hallazgos. Plan cerrado formalmente',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2023-05',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '7',
+        'Total Acciones': '15',
+        'Cumplimiento': '100%',
+        'Fecha Seguimiento': '15/09/2024'
+      }
+    },
+    {
+      id: 'PM-CGR-2022-666',
+      codigo: 'PM-CGR-2022-666',
+      nombre: 'Plan de Mejoramiento Auditoría Tecnologías de la Información 2022 - Contraloría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ELIMINADO',
+      fechaArchivado: new Date('2024-08-10T09:15:00'),
+      usuarioArchivo: 'Admin Sistema',
+      motivoArchivo: 'Plan registrado duplicado. El plan real está bajo código PM-CGR-2022-667. Error en migración de datos del sistema anterior',
+      metadatos: {
+        'Ente de Control': 'Contraloría General de la República',
+        'Motivo Eliminación': 'Registro duplicado - Plan activo bajo otro código',
+        'Plan Correcto': 'PM-CGR-2022-667'
+      }
+    },
+    {
+      id: 'PM-AE-2023-555',
+      codigo: 'PM-AE-2023-555',
+      nombre: 'Plan de Mejoramiento Auditoría Externa Estados Financieros 2022 - Revisoría Fiscal',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-07-25T15:50:00'),
+      usuarioArchivo: 'Dr. Roberto Vargas',
+      motivoArchivo: 'Hallazgos subsanados. Dictamen sin salvedades emitido por la Revisoría Fiscal para vigencia 2023. Cierre del plan de mejoramiento',
+      metadatos: {
+        'Ente de Control': 'Auditoría Externa - Revisoría Fiscal',
+        'Documento Origen': 'Informe de Revisoría Fiscal RF-2023-001',
+        'Área Responsable': 'Dirección Administrativa y Financiera',
+        'Total Hallazgos': '4',
+        'Total Acciones': '9',
+        'Cumplimiento': '100%',
+        'Dictamen': 'Sin salvedades'
+      }
+    },
+    {
+      id: 'PM-OCI-2022-444',
+      codigo: 'PM-OCI-2022-444',
+      nombre: 'Plan de Mejoramiento Auditoría Interna Talento Humano 2022 - OCI',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-06-18T13:40:00'),
+      usuarioArchivo: 'Dra. Patricia Ruiz',
+      motivoArchivo: 'Implementación exitosa de políticas de gestión del talento humano. Informe de verificación OCI-VER-2024-008 aprueba cierre del plan',
+      metadatos: {
+        'Ente de Control': 'Oficina de Control Interno',
+        'Documento Origen': 'Informe Auditoría OCI-2022-11',
+        'Área Responsable': 'Dirección de Talento Humano',
+        'Total Hallazgos': '6',
+        'Total Acciones': '13',
+        'Cumplimiento': '100%',
+        'Fecha Cierre': '15/06/2024'
+      }
+    },
+    {
+      id: 'PM-PGN-2022-333',
+      codigo: 'PM-PGN-2022-333',
+      nombre: 'Plan de Mejoramiento Control Preventivo Contratación 2022 - Procuraduría',
+      tipo: 'Plan de Mejoramiento',
+      estado: 'ARCHIVADO',
+      fechaArchivado: new Date('2024-05-10T10:25:00'),
+      usuarioArchivo: 'Dr. Luis Gómez',
+      motivoArchivo: 'Visita de verificación de la Procuraduría realizada. Acta de visita PGN-VIS-2024-0345 sin observaciones. Proceso cerrado satisfactoriamente',
+      metadatos: {
+        'Ente de Control': 'Procuraduría General de la Nación',
+        'Documento Origen': 'Auto PGN-IUS-2022-1234',
+        'Área Responsable': 'Dirección Administrativa - Grupo Contractual',
+        'Total Hallazgos': '4',
+        'Total Acciones': '10',
+        'Cumplimiento': '100%',
+        'Resultado': 'Verificación favorable'
+      }
+    }
+  ]);
+
+  // ✅ Función para restaurar un plan archivado
+  const handleRestaurar = async (itemId: string) => {
+    console.log('Restaurando plan de mejoramiento:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan restaurado exitosamente');
+  };
+
+  // ✅ Función para eliminar permanentemente un plan
+  const handleEliminarPermanente = async (itemId: string) => {
+    console.log('Eliminando permanentemente plan:', itemId);
+    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    toast.success('Plan eliminado permanentemente');
   };
 
   // Filtrar planes
@@ -358,6 +524,115 @@ export function ModuloPlanesMejoramientoV4() {
     setExpandedPlans(newExpanded);
   };
 
+  // Open detail modal
+  const handleVerDetalle = (planId: string) => {
+    setPlanSeleccionadoId(planId);
+    setModalDetalleAbierto(true);
+  };
+
+  // Export all plans to PDF ZIP
+  const handleExportarPlanes = async () => {
+    if (planes.length === 0) {
+      toast.error('No hay planes para exportar');
+      return;
+    }
+
+    toast.loading('Generando PDFs...', { id: 'export-zip' });
+
+    try {
+      const zip = new JSZip();
+
+      for (const plan of planes) {
+        const doc = new jsPDF();
+
+        // Header
+        doc.setFontSize(18);
+        doc.setTextColor(0, 61, 165);
+        doc.text('PLAN DE MEJORAMIENTO', 105, 20, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.setTextColor(100);
+        doc.text('ESAP - Gestión Legal', 105, 28, { align: 'center' });
+
+        // Line separator
+        doc.setDrawColor(0, 61, 165);
+        doc.setLineWidth(0.5);
+        doc.line(20, 35, 190, 35);
+
+        // Plan details
+        let y = 50;
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+
+        const addField = (label: string, value: string) => {
+          doc.setFont('helvetica', 'bold');
+          doc.text(label + ':', 20, y);
+          doc.setFont('helvetica', 'normal');
+          doc.text(value || 'N/A', 70, y);
+          y += 8;
+        };
+
+        addField('Código', plan.codigo);
+        addField('Nombre', plan.nombre);
+        addField('Origen', getEnteConfig(plan.enteControl).nombre);
+        addField('Área', plan.area);
+        addField('Responsable', plan.responsablePlan);
+        addField('Estado', getEstadoConfig(plan.estado).nombre);
+        addField('Avance', `${plan.avanceGeneral}%`);
+        addField('Fecha Inicio', formatearFecha(plan.fechaInicio));
+        addField('Fecha Fin', formatearFecha(plan.fechaFin));
+        addField('Días Restantes', `${plan.diasRestantes} días`);
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 105, 280, { align: 'center' });
+
+        // Add to ZIP
+        const pdfBlob = doc.output('blob');
+        zip.file(`${plan.codigo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`, pdfBlob);
+      }
+
+      // Generate and download ZIP
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `planes_mejoramiento_${new Date().toISOString().split('T')[0]}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast.success('Exportación completada', {
+        id: 'export-zip',
+        description: `${planes.length} planes exportados a ZIP`
+      });
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar planes', { id: 'export-zip' });
+    }
+  };
+
+  const addBtnsPermission = () => {
+    const arrayBtns: any[] = [];
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE)) {
+      arrayBtns.push({
+        label: 'Nuevo Plan',
+        labelMobile: 'Nuevo',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => setModalNuevoPlanAbierto(true),
+        variant: 'primary'
+      })
+    }
+    arrayBtns.push({
+      label: 'Exportar',
+      labelMobile: 'Exportar',
+      icon: <Download className="w-4 h-4" />,
+      onClick: () => handleExportarPlanes(),
+      variant: 'outline'
+    })
+    return arrayBtns
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -370,25 +645,11 @@ export function ModuloPlanesMejoramientoV4() {
           options: [
             { label: 'Dashboard', icon: '📊', value: 'dashboard' },
             { label: 'Lista', icon: '📋', value: 'lista' },
-            { label: 'Timeline', icon: '📅', value: 'timeline' }
+            { label: 'Timeline', icon: '📅', value: 'timeline' },
+            { label: 'Archivados', icon: '📦', value: 'archivados' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Plan',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoPlanAbierto(true),
-            variant: 'primary'
-          },
-          {
-            label: 'Exportar',
-            labelMobile: 'Exportar',
-            icon: <Download className="w-4 h-4" />,
-            onClick: () => toast.info('Exportar Planes de Mejoramiento'),
-            variant: 'outline'
-          }
-        ]}
+        buttons={addBtnsPermission()}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Planes de Mejoramiento"
@@ -512,25 +773,34 @@ export function ModuloPlanesMejoramientoV4() {
         ) : (
           <>
             {tipoVista === 'dashboard' && (
-              <VistaDashboard planes={planesFiltrados} />
+              <VistaDashboard planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
             {tipoVista === 'lista' && (
               <VistaLista
                 planes={planesFiltrados}
                 expandedPlans={expandedPlans}
                 onTogglePlan={togglePlan}
+                onVerDetalle={handleVerDetalle}
               />
             )}
             {tipoVista === 'timeline' && (
-              <VistaTimeline planes={planesFiltrados} />
+              <VistaTimeline planes={planesFiltrados} onVerDetalle={handleVerDetalle} />
             )}
           </>
+        )}
+        {tipoVista === 'archivados' && (
+          <VistaArchivados
+            items={itemsArchivados}
+            moduloNombre="Planes de Mejoramiento"
+            onRestaurar={handleRestaurar}
+            onEliminarPermanente={handleEliminarPermanente}
+          />
         )}
       </motion.div>
 
       {/* Modal Nuevo Plan */}
       <Dialog open={modalNuevoPlanAbierto} onOpenChange={setModalNuevoPlanAbierto}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent hideCloseButton className="!max-w-[600px] !max-h-[90vh] overflow-y-auto flex flex-col p-0 gap-0">
           {/* Componentes de accesibilidad requeridos */}
           <DialogTitle className="sr-only">Crear Nuevo Plan de Mejoramiento</DialogTitle>
           <DialogDescription className="sr-only">
@@ -538,14 +808,14 @@ export function ModuloPlanesMejoramientoV4() {
           </DialogDescription>
 
           <ModalHeaderClean
-            titulo="Crear Nuevo Plan de Mejoramiento"
-            subtitulo="Registra un nuevo plan de mejoramiento derivado de auditoría o hallazgo de órgano de control"
+            titulo="Nuevo Plan de Mejoramiento"
+            subtitulo="Registrar plan derivado de auditoría"
             icono={FileCheck}
             colorIcono="blue"
             onClose={() => setModalNuevoPlanAbierto(false)}
           />
 
-          <div className="px-6 pb-6">
+          <div className="px-6 pb-6 overflow-y-auto flex-1">
             <form
               onSubmit={handleCreatePlan}
               className="space-y-5"
@@ -578,7 +848,7 @@ export function ModuloPlanesMejoramientoV4() {
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Seleccionar ente" />
                       </SelectTrigger>
-                      <SelectContent className="z-[9999]" align="start">
+                      <SelectContent>
                         <SelectItem value="CONTRALORIA">🏛️ Contraloría General</SelectItem>
                         <SelectItem value="PROCURADURIA">⚖️ Procuraduría General</SelectItem>
                         <SelectItem value="OCI">🔍 Oficina Control Interno</SelectItem>
@@ -729,7 +999,83 @@ export function ModuloPlanesMejoramientoV4() {
                 </div>
               </div>
 
-              {/* Sección 5: Observaciones */}
+              {/* Sección 5: Documentos de Soporte */}
+              <div className="border-t pt-5">
+                <h3 className="text-sm font-black text-gray-900 mb-3 flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  Documentos de Soporte
+                </h3>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Adjuntar Archivos (Opcional)
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                    <input
+                      type="file"
+                      id="file-upload"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          const newFiles = Array.from(e.target.files);
+                          setArchivosAdjuntos(prev => [...prev, ...newFiles]);
+                          toast.success(`${newFiles.length} archivo(s) agregado(s)`);
+                        }
+                      }}
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="flex flex-col items-center justify-center cursor-pointer"
+                    >
+                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                      <span className="text-sm font-medium text-gray-700">
+                        Haz clic para seleccionar archivos
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        PDF, Word, Excel, Imágenes (máx. 10MB por archivo)
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Lista de archivos seleccionados */}
+                  {archivosAdjuntos.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-semibold text-gray-700">
+                        Archivos seleccionados ({archivosAdjuntos.length}):
+                      </p>
+                      {archivosAdjuntos.map((archivo, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded"
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <File className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 truncate">
+                              {archivo.name}
+                            </span>
+                            <span className="text-xs text-gray-500 flex-shrink-0">
+                              ({(archivo.size / 1024).toFixed(1)} KB)
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setArchivosAdjuntos(prev => prev.filter((_, i) => i !== index));
+                              toast.info('Archivo eliminado');
+                            }}
+                            className="ml-2 p-1 hover:bg-red-100 rounded transition-colors flex-shrink-0"
+                          >
+                            <X className="w-4 h-4 text-red-600" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sección 6: Observaciones */}
               <div className="border-t pt-5">
                 <h3 className="text-sm font-black text-gray-900 mb-3 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-blue-600" />
@@ -774,28 +1120,35 @@ export function ModuloPlanesMejoramientoV4() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Detalle Plan */}
+      {planSeleccionadoId && (
+        <ModalDetallePlanV4
+          isOpen={modalDetalleAbierto}
+          onClose={() => {
+            setModalDetalleAbierto(false);
+            setPlanSeleccionadoId(null);
+          }}
+          planId={planSeleccionadoId}
+          onPlanUpdated={fetchPlanes}
+        />
+      )}
     </div>
   );
 }
 
 // ==================== VISTA: DASHBOARD ====================
-function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
+function VistaDashboard({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
+  // const { entesControl } = useConfiguracionesSIGL();
+
   // Agrupar por ente de control
   const planesPorEnte = useMemo(() => {
     const grupos = {
-      // Inicializar
-      CONTRALORIA: [],
-      PROCURADURIA: [],
-      OCI: [],
-      AUDITORIA_EXTERNA: []
-    } as any;
-
-    planes.forEach(p => {
-      const key = p.enteControl;
-      if (!grupos[key]) grupos[key] = [];
-      grupos[key].push(p);
-    });
-
+      CONTRALORIA: planes.filter(p => p.enteControl === 'CONTRALORIA'),
+      PROCURADURIA: planes.filter(p => p.enteControl === 'PROCURADURIA'),
+      OCI: planes.filter(p => p.enteControl === 'OCI'),
+      AUDITORIA_EXTERNA: planes.filter(p => p.enteControl === 'AUDITORIA_EXTERNA')
+    };
     return grupos;
   }, [planes]);
 
@@ -829,13 +1182,10 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
       <Card className="p-6">
         <h3 className="font-black text-gray-900 mb-4">Planes por Ente de Control</h3>
         <div className="space-y-3">
-          {Object.entries(planesPorEnte).map(([ente, planesEnte]: any) => {
-            // Only show those with config
-            if (!['CONTRALORIA', 'PROCURADURIA', 'OCI', 'AUDITORIA_EXTERNA'].includes(ente) && planesEnte.length === 0) return null;
-
+          {Object.entries(planesPorEnte).map(([ente, planesEnte]) => {
             const config = getEnteConfig(ente as EnteControl);
             const avancePromedio = planesEnte.length > 0
-              ? Math.round(planesEnte.reduce((sum: number, p: any) => sum + p.avanceGeneral, 0) / planesEnte.length)
+              ? Math.round(planesEnte.reduce((sum, p) => sum + p.avanceGeneral, 0) / planesEnte.length)
               : 0;
 
             return (
@@ -854,15 +1204,6 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
               </div>
             );
           })}
-          {/* Show 'Otros' if exist */}
-          {planesPorEnte['OTRO'] && planesPorEnte['OTRO'].length > 0 && (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-gray-700">Otros / Riesgos</span>
-                <Badge className="bg-gray-200 text-gray-700">{planesPorEnte['OTRO'].length}</Badge>
-              </div>
-            </div>
-          )}
         </div>
       </Card>
 
@@ -929,7 +1270,7 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
                       <p className="text-2xl font-black text-amber-600">{plan.diasRestantes}</p>
                       <p className="text-xs text-gray-500">días</p>
                     </div>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => onVerDetalle?.(plan.id)}>
                       <Eye className="w-3 h-3" />
                     </Button>
                   </div>
@@ -949,11 +1290,13 @@ function VistaDashboard({ planes }: { planes: PlanMejoramiento[] }) {
 function VistaLista({
   planes,
   expandedPlans,
-  onTogglePlan
+  onTogglePlan,
+  onVerDetalle
 }: {
   planes: PlanMejoramiento[];
   expandedPlans: Set<string>;
   onTogglePlan: (id: string) => void;
+  onVerDetalle?: (id: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1024,7 +1367,7 @@ function VistaLista({
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
                       <Eye className="w-3 h-3" />
                     </Button>
                     {isExpanded ? (
@@ -1068,7 +1411,7 @@ function VistaLista({
 }
 
 // ==================== VISTA: TIMELINE ====================
-function VistaTimeline({ planes }: { planes: PlanMejoramiento[] }) {
+function VistaTimeline({ planes, onVerDetalle }: { planes: PlanMejoramiento[]; onVerDetalle?: (id: string) => void }) {
   // Ordenar planes por fecha de vencimiento
   const planesOrdenados = useMemo(() => {
     return [...planes].sort((a, b) => a.fechaFin.getTime() - b.fechaFin.getTime());
@@ -1139,7 +1482,7 @@ function VistaTimeline({ planes }: { planes: PlanMejoramiento[] }) {
                   </div>
 
                   {/* Acciones */}
-                  <Button variant="outline" size="sm" className="flex-shrink-0">
+                  <Button variant="outline" size="sm" className="flex-shrink-0" onClick={() => onVerDetalle?.(plan.id)}>
                     <Eye className="w-3 h-3" />
                   </Button>
                 </div>

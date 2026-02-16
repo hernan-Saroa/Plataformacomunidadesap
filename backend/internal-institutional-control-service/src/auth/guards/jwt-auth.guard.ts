@@ -7,11 +7,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
     
-    console.log('🔒 [JwtAuthGuard] Request to:', request.url);
-    console.log('🔒 [JwtAuthGuard] Authorization header:', authHeader ? authHeader.substring(0, 20) + '...' : 'NOT PRESENT');
-    
     if (!authHeader) {
-      console.log('❌ [JwtAuthGuard] No authorization header found');
       throw new UnauthorizedException('No authorization header');
     }
     
@@ -19,17 +15,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest(err: any, user: any, info: any) {
-    console.log('🔒 [JwtAuthGuard] handleRequest called');
-    console.log('🔒 [JwtAuthGuard] Error:', err);
-    console.log('🔒 [JwtAuthGuard] User:', user);
-    console.log('🔒 [JwtAuthGuard] Info:', info);
-    
     if (err || !user) {
-      console.log('❌ [JwtAuthGuard] Authentication failed:', info?.message || err?.message || 'Unknown error');
       throw err || new UnauthorizedException(info?.message || 'Unauthorized');
     }
     
-    console.log('✅ [JwtAuthGuard] Authentication successful');
     return user;
   }
 }

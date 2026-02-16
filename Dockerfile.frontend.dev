@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Dockerfile para Frontend en DEV Server
 # Multi-stage build: Build con Node.js, Serve con Nginx
 
@@ -9,25 +10,28 @@ WORKDIR /app
 # Copiar archivos de dependencias primero (para aprovechar cache de Docker)
 COPY package.json package-lock.json* ./
 
-# Instalar dependencias
-RUN npm install --legacy-peer-deps
+
+# Instalar dependencias (cachea npm para rebuilds más rápidos)
+# Usamos npm install en vez de npm ci para evitar fallar por desalineación de lockfile en entorno dev server.
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
 
-# Argumento para la URL del API (se pasa en build time)
-ARG VITE_API_URL=http://4.156.71.181:3000
+# Argumentos para las URLs (se pasan en build time)
+ARG VITE_API_URL=http://4.156.71.181/services
+ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:9000
 
-# Exportar como variable de entorno Y crear .env.production
-# Vite necesita ambas cosas para inyectar la variable correctamente
+# Exportar como variables de entorno Y crear .env.production
+# Vite necesita ambas cosas para inyectar las variables correctamente
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)
-RUN npm run build && \
-    echo "Verificando build..." && \
-    grep -r "4.156.71.181" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+RUN npm run build
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production

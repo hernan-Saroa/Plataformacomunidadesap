@@ -29,6 +29,11 @@ import { toast } from 'sonner@2.0.3';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
 import { PROGRAMAS_ESAP, SEDES_ESAP } from '../../data/oferta-academica-esap';
+import { useAuth } from '../../hooks';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 type NivelFormacion = 'Pregrado' | 'Especialización' | 'Maestría' | 'Doctorado';
 type Modalidad = 'Presencial' | 'Virtual' | 'Distancia' | 'Dual';
@@ -426,6 +431,8 @@ export function ProgramasAcademicosModule() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const itemsPerPage = 10;
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // Stats
   const stats = {
@@ -522,31 +529,19 @@ export function ProgramasAcademicosModule() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <h1 className="text-2xl lg:text-xl xl:text-2xl font-extrabold text-[--esap-gray-900] tracking-tight">
-            Programas Académicos
-          </h1>
-          <p className="text-xs lg:text-[11px] xl:text-xs text-[--esap-gray-600]">
-            Gestiona los programas académicos de todas las sedes ESAP
-          </p>
-        </div>
-
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#0052cc] text-white rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          <span className="text-sm">Crear Programa</span>
-        </button>
-      </motion.div>
+    <Container4K className="space-y-6">
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Programas Académicos"
+        description="Gestiona los programas académicos de todas las sedes ESAP"
+        icon={GraduationCap}
+        primaryAction={{
+          label: "Crear Programa",
+          icon: Plus,
+          onClick: () => setShowCreateModal(true),
+          variant: "primary"
+        }}
+      />
 
       {/* Búsqueda y Filtros */}
       <motion.div
@@ -727,8 +722,9 @@ export function ProgramasAcademicosModule() {
               <tbody className="divide-y divide-gray-200 bg-white">
                 <AnimatePresence mode="popLayout">
                   {paginatedProgramas.map((programa, index) => (
-                    <React.Fragment key={programa.id}>
+                    <React.Fragment key={`programa-fragment-${programa.id}`}>
                       <motion.tr
+                        key={`programa-${programa.id}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -811,6 +807,7 @@ export function ProgramasAcademicosModule() {
 
                       {expandedProgramaId === programa.id && (
                         <motion.tr
+                          key={`programa-expanded-${programa.id}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -954,6 +951,6 @@ export function ProgramasAcademicosModule() {
           programaToEdit={programaToEdit}
         />
       )}
-    </div>
+    </Container4K>
   );
 }

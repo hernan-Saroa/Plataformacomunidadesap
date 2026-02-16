@@ -4,6 +4,8 @@
    IMPORTAR SISTEMA DE TEMAS ESAP
    ============================================ */
 @import './esap-theme.css';
+@import './modo-compacto.css';  /* ✅ MODO COMPACTO GLOBAL */
+@import './responsive.css';      /* ✅ SISTEMA RESPONSIVE GLOBAL */
 
 /* Utility classes */
 .scrollbar-hide {
@@ -13,6 +15,116 @@
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* ===================== CROSS-BROWSER VIEWPORT HEIGHTS (SAFARI FIX) ===================== */
+/* 
+ * Safari mobile tiene problemas con vh cuando la barra de navegación aparece/desaparece
+ * Usamos dvh (dynamic viewport height) que ajusta dinámicamente
+ * + fallback para navegadores antiguos
+ */
+
+/* Height utilities con soporte Safari */
+.h-screen-safe {
+  height: 100vh; /* Fallback para navegadores antiguos */
+  height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.min-h-screen-safe {
+  min-height: 100vh; /* Fallback */
+  min-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-screen-safe {
+  max-height: 100vh; /* Fallback */
+  max-height: 100dvh; /* Safari iOS 15.4+ */
+}
+
+/* Height utilities para modales (90vh, 95vh) */
+.h-modal-90 {
+  height: 90vh; /* Fallback */
+  height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-90 {
+  max-height: 90vh; /* Fallback */
+  max-height: 90dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-95 {
+  height: 95vh; /* Fallback */
+  height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-95 {
+  max-height: 95vh; /* Fallback */
+  max-height: 95dvh; /* Safari iOS 15.4+ */
+}
+
+.h-modal-80 {
+  height: 80vh; /* Fallback */
+  height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+.max-h-modal-80 {
+  max-height: 80vh; /* Fallback */
+  max-height: 80dvh; /* Safari iOS 15.4+ */
+}
+
+/* Flexbox gap support (Safari < 14.1) */
+@supports not (gap: 1rem) {
+  .flex.gap-2 > * + * {
+    margin-left: 0.5rem;
+  }
+  
+  .flex.gap-3 > * + * {
+    margin-left: 0.75rem;
+  }
+  
+  .flex.gap-4 > * + * {
+    margin-left: 1rem;
+  }
+}
+
+/* Backdrop-filter support (Safari prefixes) */
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.backdrop-blur {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.backdrop-blur-md {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.backdrop-blur-lg {
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+.backdrop-blur-xl {
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+/* Sticky position fallback for older browsers */
+@supports not (position: sticky) {
+  .sticky {
+    position: -webkit-sticky;
+    position: fixed;
+  }
+}
+
+/* Transform 3D acceleration for smooth animations (all browsers) */
+.transform-gpu {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
 }
 
 /* Custom scrollbar para Kanban */
@@ -41,12 +153,13 @@
 }
 
 :root {
-  --font-size: 16px;
+  --font-size: 13px; /* ✅ REDUCIDO DE 16px → 13px (18.75% más pequeño) para pantallas normales */
   --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+  --foreground: #252525;
   
   /* Responsive viewport height (para mobile Safari) */
   --vh: 1vh;
+  --vh-offset: 0px;
   
   /* Sidebar widths - Optimizado para laptops 13-14" */
   --sidebar-width: 280px;
@@ -63,12 +176,12 @@
   --backoffice-topbar-min-height: 56px;
   --backoffice-topbar-max-height: 72px;
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --card-foreground: #252525;
+  --popover: #ffffff;
+  --popover-foreground: #252525;
   --primary: #1e5da8;
   --primary-foreground: #ffffff;
-  --secondary: oklch(0.95 0.0058 264.53);
+  --secondary: #f2f2f7;
   --secondary-foreground: #030213;
   --muted: #ececf0;
   --muted-foreground: #717182;
@@ -83,57 +196,57 @@
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --ring: #1e5da8;
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --chart-1: #f97316;
+  --chart-2: #3b82f6;
+  --chart-3: #1e3a8a;
+  --chart-4: #84cc16;
+  --chart-5: #eab308;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar: #fcfcfc;
+  --sidebar-foreground: #252525;
   --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-primary-foreground: #fcfcfc;
+  --sidebar-accent: #f5f5f5;
+  --sidebar-accent-foreground: #404040;
+  --sidebar-border: #ebebeb;
+  --sidebar-ring: #b3b3b3;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: #252525;
+  --foreground: #fcfcfc;
+  --card: #252525;
+  --card-foreground: #fcfcfc;
+  --popover: #252525;
+  --popover-foreground: #fcfcfc;
+  --primary: #fcfcfc;
+  --primary-foreground: #404040;
+  --secondary: #525252;
+  --secondary-foreground: #fcfcfc;
+  --muted: #525252;
+  --muted-foreground: #b3b3b3;
+  --accent: #525252;
+  --accent-foreground: #fcfcfc;
+  --destructive: #b91c1c;
+  --destructive-foreground: #f87171;
+  --border: #525252;
+  --input: #525252;
+  --ring: #858585;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --chart-1: #6366f1;
+  --chart-2: #22c55e;
+  --chart-3: #eab308;
+  --chart-4: #a855f7;
+  --chart-5: #f43f5e;
+  --sidebar: #404040;
+  --sidebar-foreground: #fcfcfc;
+  --sidebar-primary: #6366f1;
+  --sidebar-primary-foreground: #fcfcfc;
+  --sidebar-accent: #525252;
+  --sidebar-accent-foreground: #fcfcfc;
+  --sidebar-border: #525252;
+  --sidebar-ring: #858585;
 }
 
 @theme inline {
@@ -187,11 +300,124 @@
     @apply bg-background text-foreground;
     overflow-x: hidden;
     max-width: 100vw;
+    width: 100%;
   }
   
   body {
     position: relative;
     width: 100%;
+  }
+  
+  /* ===== OPTIMIZACIÓN ESPECÍFICA PARA 4K (3840px) ===== */
+  /* DESHABILITADO - Prioridad a pantallas normales 1366px-1920px */
+  /*
+  @media (min-width: 3840px) {
+    body {
+      font-size: 18px;
+    }
+    
+    .container, .max-w-7xl {
+      max-width: 100% !important;
+    }
+    
+    .grid-cols-3 {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    .grid-cols-4 {
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+    
+    .stats-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    }
+    
+    .gap-6 {
+      gap: 2rem !important;
+    }
+    
+    .gap-8 {
+      gap: 2.5rem !important;
+    }
+    
+    .p-6 {
+      padding: 2rem !important;
+    }
+    
+    .p-8 {
+      padding: 2.5rem !important;
+    }
+    
+    :root {
+      --sidebar-width: 320px;
+    }
+  }
+  */
+  
+  /* ===== OPTIMIZACIÓN PARA PANTALLAS NORMALES (1366px - 1920px) ===== */
+  /* Este es el rango más común en laptops y monitores de escritorio */
+  @media (min-width: 1024px) and (max-width: 1920px) {
+    :root {
+      --sidebar-width: 240px; /* Reducido de 280px/320px */
+      --topbar-height: 56px;  /* Más compacto */
+    }
+    
+    body {
+      font-size: 14px; /* Reducido de 16px para aprovechar espacio */
+    }
+    
+    /* Reducir padding en cards y contenedores */
+    .p-6 {
+      padding: 1rem !important;
+    }
+    
+    .p-8 {
+      padding: 1.5rem !important;
+    }
+    
+    .gap-6 {
+      gap: 1rem !important;
+    }
+    
+    .gap-8 {
+      gap: 1.25rem !important;
+    }
+  }
+  
+  /* ===== OPTIMIZACIÓN PARA PANTALLAS PEQUEÑAS (1024px - 1365px) ===== */
+  /* Laptops de 13" a 14" */
+  @media (min-width: 1024px) and (max-width: 1365px) {
+    :root {
+      --sidebar-width: 220px; /* Aún más reducido */
+      --topbar-height: 52px;
+    }
+    
+    body {
+      font-size: 13px; /* Más pequeño para pantallas 13-14" */
+    }
+    
+    .p-4 {
+      padding: 0.625rem !important;
+    }
+    
+    .p-6 {
+      padding: 0.875rem !important;
+    }
+    
+    .gap-4 {
+      gap: 0.625rem !important;
+    }
+  }
+  
+  /* ===== OPTIMIZACIÓN PARA 4K (solo para monitores grandes) ===== */
+  @media (min-width: 2560px) {
+    :root {
+      --sidebar-width: 300px;
+    }
+    
+    body {
+      font-size: 16px;
+    }
   }
   
   /* Prevenir scroll horizontal en modales */
@@ -211,6 +437,23 @@
     -webkit-backface-visibility: hidden;
     perspective: 1000px;
     -webkit-perspective: 1000px;
+  }
+  
+  /* Optimización adicional para pantallas de alta resolución (4K, 5K, 8K) */
+  @media (min-width: 1920px) {
+    * {
+      transform: translateZ(0);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* Mejorar rendimiento de gradientes en alta resolución */
+    [class*="bg-gradient"],
+    [style*="background: linear-gradient"],
+    [style*="background-image: linear-gradient"] {
+      will-change: transform;
+      transform: translateZ(0);
+    }
   }
 
   /* 2. Optimizar transiciones y animaciones */
@@ -239,6 +482,8 @@
   *,
   *::before,
   *::after {
+    /* ❌ REMOVIDO: No animar colores - causa error 'oklab(0 0 0 / 0)' en Motion */
+    /* Solo animamos transform y opacity para compatibilidad con Motion */
     transition-property: transform, opacity;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -761,8 +1006,10 @@ select:focus-visible {
 }
 
 /* ===================== SMOOTH TRANSITIONS ===================== */
+/* ⚠️ ACTUALIZADO: Removemos animación de colores para compatibilidad con Motion */
+/* Motion no puede animar colores en formato oklab() - Solo animamos propiedades seguras */
 * {
-  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-property: opacity, box-shadow, transform;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }

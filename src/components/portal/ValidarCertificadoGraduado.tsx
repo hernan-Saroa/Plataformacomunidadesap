@@ -175,26 +175,26 @@ export default function ValidarCertificadoGraduado({
     switch (resultado) {
       case 'VALID':
         return (
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="w-12 h-12 text-green-600" />
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <CheckCircle className="w-10 h-10 sm:w-12 sm:h-12 text-green-600" />
           </div>
         );
       case 'REVOKED':
         return (
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <XCircle className="w-12 h-12 text-red-600" />
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-100 rounded-full flex items-center justify-center mb-4">
+            <XCircle className="w-10 h-10 sm:w-12 sm:h-12 text-red-600" />
           </div>
         );
       case 'EXPIRED':
         return (
-          <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-            <Clock className="w-12 h-12 text-orange-600" />
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+            <Clock className="w-10 h-10 sm:w-12 sm:h-12 text-orange-600" />
           </div>
         );
       default:
         return (
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-            <AlertTriangle className="w-12 h-12 text-gray-600" />
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-gray-600" />
           </div>
         );
     }
@@ -219,118 +219,118 @@ export default function ValidarCertificadoGraduado({
         <div className="text-center">
           {renderIconoEstado(resultado.resultado)}
 
-          <h3 className="text-2xl font-bold text-gray-900 mb-2">
+          <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
             {resultado.resultado === 'VALID' && '✓ Certificado Válido'}
             {resultado.resultado === 'REVOKED' && '✗ Certificado Revocado'}
             {resultado.resultado === 'EXPIRED' && '⏱ Certificado Expirado'}
             {resultado.resultado === 'NOT_FOUND' && '⚠ Certificado No Encontrado'}
           </h3>
 
-          <p className="text-gray-600">
+          <p className="text-sm sm:text-base text-gray-600">
             {resultado.mensaje}
           </p>
         </div>
 
         {/* Información del certificado */}
         {certificado && resultado.valido && (
-          <div className="bg-white border-2 border-gray-200 rounded-lg p-6 space-y-6">
+          <div className="bg-white border-2 border-gray-200 rounded-lg p-4 sm:p-6 space-y-6">
             {/* Información del graduado */}
             <div>
-              <h4 className="font-bold text-lg text-gray-900 mb-4 flex items-center gap-2">
+              <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-4 flex items-center gap-2">
                 <User className="w-5 h-5 text-blue-600" />
                 Información del Graduado
               </h4>
 
               <div className="space-y-3">
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Nombre completo:</span>
-                  <span className="font-semibold text-gray-900">{certificado.fullName}</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Nombre completo:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.fullName}</span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Identificación:</span>
-                  <span className="font-semibold text-gray-900">{certificado.idNumber}</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Identificación:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.idNumber}</span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Programa:</span>
-                  <span className="font-semibold text-gray-900">{certificado.programName}</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Programa:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.programName}</span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Tipo:</span>
-                  <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Tipo:</span>
+                  <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold self-start">
                     <GraduationCap className="w-4 h-4" />
                     {certificado.programType}
                   </span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Título obtenido:</span>
-                  <span className="font-semibold text-gray-900">{certificado.degreeTitle}</span>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Título obtenido:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.degreeTitle}</span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Fecha de grado:</span>
-                  <span className="font-semibold text-gray-900">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Fecha de grado:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">
                     {formatearFecha(certificado.graduationDate)}
                   </span>
                 </div>
 
                 {certificado.campus && (
-                  <div className="flex items-start">
-                    <span className="text-gray-600 w-44 flex-shrink-0">Sede:</span>
-                    <span className="font-semibold text-gray-900">{certificado.campus}</span>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Sede:</span>
+                    <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.campus}</span>
                   </div>
                 )}
               </div>
             </div>
 
             <div className="border-t pt-6">
-              <h4 className="font-bold text-lg text-gray-900 mb-4 flex items-center gap-2">
+              <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-4 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-blue-600" />
                 Información del Certificado
               </h4>
 
               <div className="space-y-3">
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Número de certificado:</span>
-                  <span className="font-mono font-semibold text-blue-600">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Número de certificado:</span>
+                  <span className="font-mono font-semibold text-blue-600 text-xs sm:text-sm break-all min-w-0 sm:flex-1">
                     {certificado.certificateNumber}
                   </span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Código de verificación:</span>
-                  <span className="font-mono text-sm text-gray-700">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Código de verificación:</span>
+                  <span className="font-mono text-xs sm:text-sm text-gray-700 break-all min-w-0 sm:flex-1">
                     {certificado.verificationCode}
                   </span>
                 </div>
 
                 {certificado.diplomaNumber && (
-                  <div className="flex items-start">
-                    <span className="text-gray-600 w-44 flex-shrink-0">Diploma No:</span>
-                    <span className="font-semibold text-gray-900">{certificado.diplomaNumber}</span>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Diploma No:</span>
+                    <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.diplomaNumber}</span>
                   </div>
                 )}
 
                 {certificado.actaNumber && (
-                  <div className="flex items-start">
-                    <span className="text-gray-600 w-44 flex-shrink-0">Acta No:</span>
-                    <span className="font-semibold text-gray-900">{certificado.actaNumber}</span>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                    <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Acta No:</span>
+                    <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">{certificado.actaNumber}</span>
                   </div>
                 )}
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Fecha de emisión:</span>
-                  <span className="font-semibold text-gray-900">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Fecha de emisión:</span>
+                  <span className="font-semibold text-gray-900 break-words min-w-0 sm:flex-1">
                     {formatearFecha(certificado.issueDate)}
                   </span>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Estado:</span>
-                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold ${
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start">
+                  <span className="text-gray-600 sm:w-44 sm:flex-shrink-0">Estado:</span>
+                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold self-start ${
                     certificado.status === 'VALID'
                       ? 'bg-green-100 text-green-700'
                       : certificado.status === 'REVOKED'
@@ -346,32 +346,13 @@ export default function ValidarCertificadoGraduado({
               </div>
             </div>
 
-            {/* Firmante */}
-            <div className="border-t pt-6">
-              <h4 className="font-bold text-lg text-gray-900 mb-4 flex items-center gap-2">
-                <Award className="w-5 h-5 text-blue-600" />
-                Firmante
-              </h4>
-
-              <div className="space-y-3">
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Nombre:</span>
-                  <span className="font-semibold text-gray-900">{certificado.signerName}</span>
-                </div>
-
-                <div className="flex items-start">
-                  <span className="text-gray-600 w-44 flex-shrink-0">Cargo:</span>
-                  <span className="font-semibold text-gray-900">{certificado.signerPosition}</span>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
         {/* Certificado revocado */}
         {certificado && resultado.resultado === 'REVOKED' && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
-            <div className="flex items-start gap-3">
+          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start gap-3">
               <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
               <div>
                 <h4 className="font-bold text-red-900 mb-2">Certificado Revocado</h4>
@@ -395,11 +376,11 @@ export default function ValidarCertificadoGraduado({
         )}
 
         {/* Botón nueva validación */}
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <Button
             onClick={handleNuevaValidacion}
             variant="outline"
-            className="flex-1"
+            className="w-full sm:flex-1"
           >
             Nueva Validación
           </Button>
@@ -413,23 +394,23 @@ export default function ValidarCertificadoGraduado({
   // ========================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 py-8 sm:py-12 px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-            <ShieldCheck className="w-8 h-8 text-green-600" />
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-green-100 rounded-full mb-4">
+            <ShieldCheck className="w-7 h-7 sm:w-8 sm:h-8 text-green-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
             Validación de Certificados de Graduados
           </h1>
-          <p className="text-gray-600">
+          <p className="text-sm sm:text-base text-gray-600">
             Verifica la autenticidad de un certificado de graduado de la ESAP
           </p>
         </div>
 
         {/* Formulario de validación */}
-        <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
+        <div className="bg-white rounded-xl shadow-lg p-5 sm:p-8 mb-6">
           <AnimatePresence mode="wait">
             {!mostrarResultado ? (
               <motion.div
@@ -442,7 +423,7 @@ export default function ValidarCertificadoGraduado({
                 {/* Selector de modo */}
                 <div>
                   <Label className="mb-3 block">Selecciona el método de validación</Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       onClick={() => setModoValidacion('codigo')}
                       className={`p-4 border-2 rounded-lg transition-all ${
@@ -505,11 +486,11 @@ export default function ValidarCertificadoGraduado({
                 )}
 
                 {/* Botones */}
-                <div className="flex gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <Button
                     variant="outline"
                     onClick={onVolver}
-                    className="flex-1"
+                    className="w-full sm:flex-1"
                   >
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
@@ -526,7 +507,7 @@ export default function ValidarCertificadoGraduado({
                       (modoValidacion === 'codigo' && !codigoVerificacion) ||
                       (modoValidacion === 'numero' && !numeroCertificado)
                     }
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    className="w-full sm:flex-1 bg-green-600 hover:bg-green-700"
                   >
                     {cargando ? (
                       <>
@@ -550,7 +531,7 @@ export default function ValidarCertificadoGraduado({
 
         {/* Información adicional */}
         {!mostrarResultado && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
             <h3 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5" />
               ¿Qué puedes validar?

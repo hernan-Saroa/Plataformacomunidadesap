@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Dockerfile para Frontend en QA
 # Multi-stage build: Build con Node.js, Serve con Nginx
 
@@ -9,19 +10,22 @@ WORKDIR /app
 # Copiar archivos de dependencias primero (para aprovechar cache de Docker)
 COPY package.json package-lock.json* ./
 
-# Instalar dependencias
-RUN npm install --legacy-peer-deps
+# Instalar dependencias (cachea npm para rebuilds más rápidos)
+RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY . .
 
-# Argumento para la URL del API (se pasa en build time)
-ARG VITE_API_URL=http://135.237.81.133:3000
+# Argumentos para las URLs (se pasan en build time)
+ARG VITE_API_URL=http://135.237.81.133/services
+ARG VITE_ONLYOFFICE_URL=http://135.237.81.133:9000
 
-# Exportar como variable de entorno Y crear .env.production
-# Vite necesita ambas cosas para inyectar la variable correctamente
+# Exportar como variables de entorno Y crear .env.production
+# Vite necesita ambas cosas para inyectar las variables correctamente
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)

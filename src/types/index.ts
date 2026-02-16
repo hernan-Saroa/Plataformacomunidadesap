@@ -86,10 +86,28 @@ export interface AuthUser {
   lastName: string;
   fullName: string;
   avatar?: string;
-  roles: string[];
+  roles: Role[];
   permissions: string[];
   isActive: boolean;
   lastLogin?: string;
+}
+
+export interface Role {
+  category: string;
+  code: string;
+  color: string;
+  created_at: string;
+  created_by: string;
+  description: string;
+  icon: string;
+  id: string;
+  is_active: boolean;
+  name: string;
+  permissions: string[];
+  requires_2fa: boolean;
+  type: string;
+  updated_at: string;
+  updated_by: string;
 }
 
 // ============================================================================
@@ -661,12 +679,19 @@ export interface ReviewRequest {
   // Datos del graduado buscado
   graduateDocumentNumber: string;
   graduateDocumentIssueDate: string;
+  graduationDate?: string;
+  graduateLastName?: string;
+  graduateEmail?: string;
+  graduatePhone?: string;
   
   // Datos del solicitante
   requester: {
     name: string;
     email: string;
     type: 'empresa' | 'graduado';
+    companyName?: string;
+    contactPerson?: string;
+    companyNit?: string;
   };
   
   // Estado de la solicitud

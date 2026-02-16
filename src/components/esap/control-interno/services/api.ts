@@ -12,7 +12,6 @@ import {
   Hallazgo,
   PlanMejoramiento,
   AccionMejoramiento,
-  EventoTimeline,
   PlanAnual5Roles,
   Actividad,
   ListaChequeo,
@@ -26,127 +25,39 @@ import {
 
 // ==================== CONFIGURACIÓN ====================
 
-// Usar import.meta.env para Vite (no process.env que es de Node.js)
-// El backend NO tiene prefijo /esap, las rutas son directas: /auditorias, /documentos, etc.
-// Ruta del gateway: /control-institucional/api/v1/auditorias
-// Ruta directa: http://localhost:3007/auditorias
-const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) {
-    const base = import.meta.env.VITE_API_URL;
-    // Si ya incluye /auditorias o /esap, usarla tal cual
-    if (base.includes('/auditorias') || base.includes('/esap')) {
-      return base.replace(/\/esap.*$/, ''); // Remover /esap si existe
-    }
-    // Si incluye /control-institucional, agregar /api/v1
-    if (base.includes('/control-institucional')) {
-      return `${base}/api/v1`;
-    }
-    // Si es solo el gateway base, agregar el prefijo completo
-    return `${base}/control-institucional/api/v1`;
-  }
-  // Fallback: intentar directo al microservicio (sin prefijo)
-  return 'http://localhost:3007';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/control-interno';
 
 // Helper para requests
 async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  // Get JWT token from localStorage
-  const token = localStorage.getItem('esap_auth_token');
-  
-  // Build headers with authentication
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options?.headers,
-  };
-  
-  // Add Authorization header if token exists
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
-  
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
       ...options,
-      headers,
     });
 
-    // Leer el texto de la respuesta una sola vez
-    const responseText = await response.text();
-    
-    // Verificar si la respuesta tiene contenido JSON
-    const contentType = response.headers.get('content-type');
-    const isJson = contentType && contentType.includes('application/json');
-    
-    let data: any = null;
-    
-    if (response.status === 204) {
-      // No Content sin body
-      data = null;
-    } else if (isJson || (response.status === 201 && responseText && responseText.trim())) {
-      // Intentar parsear JSON (incluyendo 201 Created que puede tener body)
-      if (responseText && responseText.trim()) {
-        try {
-          data = JSON.parse(responseText);
-        } catch (parseError) {
-          return {
-            success: false,
-            error: 'Error al parsear respuesta del servidor (la respuesta no es JSON válido)' + parseError,
-          };
-        }
-      } else {
-        data = null;
-      }
-    } else if (responseText) {
-      // Respuesta no es JSON (probablemente HTML de error)
-      // Si es HTML, probablemente es un error de routing
-      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-        return {
-          success: false,
-          error: `Error de routing: La URL ${url} no existe o está mal configurada. El servidor devolvió HTML en lugar de JSON.`,
-        };
-      }
-      
-      return {
-        success: false,
-        error: responseText || `Error HTTP ${response.status}`,
-      };
-    }
+    const data = await response.json();
 
     if (!response.ok) {
-      // NestJS devuelve errores en formato: { statusCode, message, error }
-      // Extraer el mensaje descriptivo si existe
-      console.log('❌ Error en respuesta:', { 
-        status: response.status, 
-        data,
-        message: data?.message,
-        error: data?.error 
-      });
-      
-      const errorMessage = data?.message || data?.error || `Error HTTP ${response.status}`;
-      
       return {
         success: false,
-        error: typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage),
-        statusCode: response.status
+        error: data.error || 'Error en la petición',
       };
     }
 
-    const result = {
+    return {
       success: true,
-      data: data?.data || data,
+      data: data,
     };
-    return result;
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido' + error,
+      error: error instanceof Error ? error.message : 'Error desconocido',
     };
   }
 }
@@ -213,7 +124,7 @@ export const auditoriasApi = {
    */
   update: async (id: string, data: Partial<Auditoria>): Promise<ApiResponse<Auditoria>> => {
     return apiRequest<Auditoria>(`/auditorias/${id}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   },
@@ -246,206 +157,11 @@ export const auditoriasApi = {
       body: JSON.stringify({ progreso }),
     });
   },
-
-  // ============ NOTAS DE AUDITORÍA ============
-
-  /**
-   * Obtener todas las notas de una auditoría
-   */
-  getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/auditorias/${auditoriaId}/notas`);
-  },
-
-  /**
-   * Crear una nueva nota
-   */
-  createNota: async (auditoriaId: string, data: {
-    contenido: string;
-    categoria: string;
-    importante?: boolean;
-  }): Promise<ApiResponse<any>> => {
-    return apiRequest<any>(`/auditorias/${auditoriaId}/notas`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Actualizar una nota existente
-   */
-  updateNota: async (auditoriaId: string, notaId: string, data: {
-    contenido?: string;
-    categoria?: string;
-    importante?: boolean;
-  }): Promise<ApiResponse<any>> => {
-    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Eliminar una nota
-   */
-  deleteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
-      method: 'DELETE',
-    });
-  },
-
-  /**
-   * Marcar o desmarcar una nota como importante
-   */
-  toggleImportanteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<any>> => {
-    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`, {
-      method: 'PATCH',
-    });
-  },
-
-  // ============ APROBACIÓN DE AUDITORÍA ============
-
-  /**
-   * Aprobar una auditoría
-   */
-  aprobar: async (auditoriaId: string, comentarios?: string): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/aprobar`, {
-      method: 'POST',
-      body: JSON.stringify({ comentarios }),
-    });
-  },
-
-  /**
-   * Rechazar una auditoría
-   */
-  rechazar: async (auditoriaId: string, justificacion: string): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/rechazar`, {
-      method: 'POST',
-      body: JSON.stringify({ justificacion }),
-    });
-  },
-
-  /**
-   * Solicitar modificación de una auditoría
-   */
-  solicitarModificacion: async (auditoriaId: string, observaciones: string): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${auditoriaId}/modificacion`, {
-      method: 'POST',
-      body: JSON.stringify({ observaciones }),
-    });
-  },
-
-  /**
-   * Obtener todas las auditorías para el Kanban
-   */
-  getAllKanban: async (): Promise<ApiResponse<Auditoria[]>> => {
-    return apiRequest<Auditoria[]>('/auditorias/kanban/all');
-  },
-
-  /**
-   * Obtener todas las auditorías archivadas para el Kanban
-   */
-  getAllKanbanArchivadas: async (): Promise<ApiResponse<Auditoria[]>> => {
-    return apiRequest<Auditoria[]>('/auditorias/kanban/archivadas');
-  },
-
-  /**
-   * Archivar una auditoría
-   */
-  archivar: async (id: string, comentario?: string): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        archivada: true,
-        activa: false,
-        observacionesAdicionales: comentario ? `Archivada: ${comentario}` : 'Archivada por el usuario'
-      }),
-    });
-  },
-
-  /**
-   * ==================== AMPLIACIÓN DE PLAZO ====================
-   */
-
-  /**
-   * Solicitar ampliación de plazo de una auditoría en curso
-   */
-  solicitarAmpliacionPlazo: async (
-    id: string,
-    data: { nuevaFechaFin: string; justificacion: string }
-  ): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/solicitar`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Aprueba una solicitud de ampliación de plazo (solo Jefe OCI)
-   */
-  aprobarAmpliacionPlazo: async (
-    id: string,
-    data: { comentarios?: string }
-  ): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/aprobar`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Rechaza una solicitud de ampliación de plazo (solo Jefe OCI)
-   */
-  rechazarAmpliacionPlazo: async (
-    id: string,
-    data: { justificacion: string }
-  ): Promise<ApiResponse<Auditoria>> => {
-    return apiRequest<Auditoria>(`/auditorias/${id}/ampliar-plazo/rechazar`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Obtiene todas las solicitudes de ampliación de plazo pendientes
-   */
-  getSolicitudesAmpliacionPendientes: async (): Promise<ApiResponse<Array<{
-    id: string;
-    auditoriaId: string;
-    auditoriaCodigo: string;
-    auditoriaNombre: string;
-    fechaSolicitud: string;
-    justificacion: string;
-    fechaFinAnterior: string;
-    fechaFinNueva: string;
-    solicitanteId: number;
-  }>>> => {
-    return apiRequest(`/auditorias/ampliar-plazo/pendientes`);
-  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================
 
 export const universoAuditoriasApi = {
-  /**
-   * Obtener todos los procesos auditables
-   */
-  getAllProcesos: async (filters?: {
-    tipo?: string;
-    macroproceso?: string;
-    nivelRiesgo?: string;
-    territorial?: string;
-    search?: string;
-  }): Promise<ApiResponse<any[]>> => {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value) queryParams.append(key, String(value));
-      });
-    }
-    const query = queryParams.toString();
-    return apiRequest<any[]>(`/universo-auditorias/procesos${query ? `?${query}` : ''}`);
-  },
-
   /**
    * Obtener universo de auditorías del año
    */
@@ -474,16 +190,6 @@ export const universoAuditoriasApi = {
   },
 
   /**
-   * Crear proceso auditable (sin necesidad de universoId)
-   */
-  createProceso: async (proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
-    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos`, {
-      method: 'POST',
-      body: JSON.stringify(proceso),
-    });
-  },
-
-  /**
    * Agregar proceso auditable
    */
   addProceso: async (universoId: string, proceso: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
@@ -497,7 +203,7 @@ export const universoAuditoriasApi = {
    * Actualizar proceso auditable
    */
   updateProceso: async (procesoId: string, data: Partial<ProcesoAuditable>): Promise<ApiResponse<ProcesoAuditable>> => {
-    return apiRequest<ProcesoAuditable>(`/universo-auditorias/procesos/${procesoId}`, {
+    return apiRequest<ProcesoAuditable>(`/procesos-auditables/${procesoId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -507,7 +213,7 @@ export const universoAuditoriasApi = {
    * Eliminar proceso auditable
    */
   deleteProceso: async (procesoId: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>(`/universo-auditorias/procesos/${procesoId}`, {
+    return apiRequest<void>(`/procesos-auditables/${procesoId}`, {
       method: 'DELETE',
     });
   },
@@ -722,8 +428,8 @@ export const planesMejoramientoApi = {
   /**
    * Actualizar acción de mejoramiento
    */
-  updateAccion: async (planId: string, accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
-    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}`, {
+  updateAccion: async (accionId: string, data: Partial<AccionMejoramiento>): Promise<ApiResponse<AccionMejoramiento>> => {
+    return apiRequest<AccionMejoramiento>(`/acciones-mejoramiento/${accionId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -738,69 +444,23 @@ export const planesMejoramientoApi = {
       body: JSON.stringify({ porcentajeAvance: porcentaje }),
     });
   },
-
-  /**
-   * Cargar evidencia en una acción
-   */
-  addEvidencia: async (planId: string, accionId: string, evidencia: {
-    nombre: string;
-    tipo: string;
-    url: string;
-    fecha?: string;
-  }): Promise<ApiResponse<AccionMejoramiento>> => {
-    return apiRequest<AccionMejoramiento>(`/planes-mejoramiento/${planId}/acciones/${accionId}/evidencias`, {
-      method: 'POST',
-      body: JSON.stringify(evidencia),
-    });
-  },
-
-  /**
-   * Obtener eventos del timeline de un plan
-   */
-  getEventosTimeline: async (planId: string): Promise<ApiResponse<EventoTimeline[]>> => {
-    return apiRequest<EventoTimeline[]>(`/planes-mejoramiento/${planId}/eventos`);
-  },
-
-  /**
-   * Crear un evento en el timeline
-   */
-  createEventoTimeline: async (planId: string, evento: {
-    tipo: string;
-    descripcion: string;
-    usuarioId?: string;
-    usuarioNombre?: string;
-    metadata?: any;
-  }): Promise<ApiResponse<EventoTimeline>> => {
-    return apiRequest<EventoTimeline>(`/planes-mejoramiento/${planId}/eventos`, {
-      method: 'POST',
-      body: JSON.stringify(evento),
-    });
-  },
 };
 
 // ==================== PLAN ANUAL (5 ROLES) ====================
 
 export const planAnual5RolesApi = {
   /**
-   * Obtener todos los planes anuales
-   */
-  findAll: async (year?: number): Promise<ApiResponse<PlanAnual5Roles[]>> => {
-    const query = year ? `?year=${year}` : '';
-    return apiRequest<PlanAnual5Roles[]>(`/plan-anual-5-roles${query}`);
-  },
-
-  /**
    * Obtener plan anual del año
    */
   getByYear: async (year: number): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/year/${year}`);
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${year}`);
   },
 
   /**
    * Crear plan anual
    */
   create: async (data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>('/plan-anual-5-roles', {
+    return apiRequest<PlanAnual5Roles>('/plan-anual-5roles', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -810,7 +470,7 @@ export const planAnual5RolesApi = {
    * Actualizar plan anual
    */
   update: async (id: string, data: Partial<PlanAnual5Roles>): Promise<ApiResponse<PlanAnual5Roles>> => {
-    return apiRequest<PlanAnual5Roles>(`/plan-anual-5-roles/${id}`, {
+    return apiRequest<PlanAnual5Roles>(`/plan-anual-5roles/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -819,8 +479,8 @@ export const planAnual5RolesApi = {
   /**
    * Agregar actividad
    */
-  addActividad: async (rolId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/plan-anual-5-roles/${rolId}/actividades`, {
+  addActividad: async (planId: string, actividad: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
+    return apiRequest<Actividad>(`/plan-anual-5roles/${planId}/actividades`, {
       method: 'POST',
       body: JSON.stringify(actividad),
     });
@@ -830,7 +490,7 @@ export const planAnual5RolesApi = {
    * Actualizar actividad
    */
   updateActividad: async (actividadId: string, data: Partial<Actividad>): Promise<ApiResponse<Actividad>> => {
-    return apiRequest<Actividad>(`/plan-anual-5-roles/actividades/${actividadId}`, {
+    return apiRequest<Actividad>(`/actividades/${actividadId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -923,268 +583,6 @@ export const informesLeyApi = {
   },
 };
 
-// ==================== NOTIFICACIONES ====================
-
-export const notificacionesApi = {
-  /**
-   * Obtener todas las notificaciones de un usuario
-   */
-  obtenerPorUsuario: (usuarioId: number | string, filtros?: {
-    estado?: string;
-    tipo?: string;
-    leida?: boolean;
-    prioridad?: string;
-  }) => {
-    const params = new URLSearchParams();
-    if (filtros?.estado) params.append('estado', filtros.estado);
-    if (filtros?.tipo) params.append('tipo', filtros.tipo);
-    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
-    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
-    
-    const queryString = params.toString();
-    return apiRequest<any[]>(
-      `/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`
-    );
-  },
-
-  /**
-   * Obtener notificaciones no leídas
-   */
-  obtenerNoLeidas: (usuarioId: number | string) => {
-    return apiRequest<any[]>(`/notificaciones/usuario/${usuarioId}/no-leidas`);
-  },
-
-  /**
-   * Obtener conteo de notificaciones no leídas
-   */
-  obtenerConteoNoLeidas: (usuarioId: number | string) => {
-    return apiRequest<{ count: number }>(`/notificaciones/usuario/${usuarioId}/conteo`);
-  },
-
-  /**
-   * Marcar notificación como leída
-   */
-  marcarLeida: (id: string, usuarioId: number | string) => {
-    return apiRequest<any>(`/notificaciones/${id}/leida`, {
-      method: 'PUT',
-      body: JSON.stringify({ usuarioId: String(usuarioId) }),
-    });
-  },
-
-  /**
-   * Marcar todas las notificaciones como leídas
-   */
-  marcarTodasLeidas: (usuarioId: number | string) => {
-    return apiRequest<any>(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {
-      method: 'PUT',
-    });
-  },
-
-  /**
-   * Archivar notificación
-   */
-  archivar: (id: string, usuarioId: number | string) => {
-    return apiRequest<any>(`/notificaciones/${id}/archivar`, {
-      method: 'PUT',
-      body: JSON.stringify({ usuarioId: String(usuarioId) }),
-    });
-  },
-
-  /**
-   * Eliminar notificación
-   */
-  eliminar: (id: string) => {
-    return apiRequest<void>(`/notificaciones/${id}`, {
-      method: 'DELETE',
-    });
-  },
-};
-
-// ==================== EVIDENCIAS/DOCUMENTOS ====================
-
-// Helper para upload de archivos con progreso
-async function uploadFile<T>(
-  endpoint: string,
-  formData: FormData,
-  onProgress?: (progress: number) => void
-): Promise<ApiResponse<T>> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('esap_auth_token');
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-
-    // Manejar progreso
-    if (onProgress) {
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 100;
-          onProgress(percentComplete);
-        }
-      });
-    }
-
-    // Manejar respuesta
-    xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const response = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-          resolve({
-            success: true,
-            data: response,
-          });
-        } catch (error) {
-          resolve({
-            success: true,
-            data: null,
-          });
-        }
-      } else {
-        try {
-          const error = JSON.parse(xhr.responseText);
-          resolve({
-            success: false,
-            error: error.message || `HTTP ${xhr.status}`,
-          });
-        } catch {
-          resolve({
-            success: false,
-            error: `HTTP ${xhr.status}: ${xhr.statusText}`,
-          });
-        }
-      }
-    });
-
-    xhr.addEventListener('error', () => {
-      resolve({
-        success: false,
-        error: 'Error de red al subir el archivo',
-      });
-    });
-
-    xhr.open('POST', url);
-    if (token) {
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    }
-    xhr.send(formData);
-  });
-}
-
-export const evidenciasApi = {
-  /**
-   * Crear una evidencia/documento (sube archivo)
-   */
-  create: async (
-    file: File,
-    metadata: {
-      nombre: string;
-      descripcion?: string;
-      tipoDocumento: 'evidencia_hallazgo' | 'evidencia_accion' | 'evidencia_plan' | 'documento_plan' | 'certificado' | 'acta' | 'informe' | 'otro';
-      hallazgoId?: string;
-      accionCorrectivaId?: string;
-      planMejoramientoId?: string;
-      auditoriaId?: string;
-      subidoPor?: string;
-    },
-    onProgress?: (progress: number) => void
-  ): Promise<ApiResponse<any>> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('nombre', metadata.nombre);
-    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
-    formData.append('tipoDocumento', metadata.tipoDocumento);
-    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
-    if (metadata.accionCorrectivaId) formData.append('accionCorrectivaId', metadata.accionCorrectivaId);
-    if (metadata.planMejoramientoId) formData.append('planMejoramientoId', metadata.planMejoramientoId);
-    if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
-    if (metadata.subidoPor) formData.append('subidoPor', metadata.subidoPor);
-
-    return uploadFile<any>('/evidencias', formData, onProgress);
-  },
-
-  /**
-   * Obtener evidencias por acción correctiva
-   */
-  getByAccion: async (accionId: string): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/evidencias/accion/${accionId}`);
-  },
-
-  /**
-   * Obtener evidencias por hallazgo
-   */
-  getByHallazgo: async (hallazgoId: string): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/evidencias/hallazgo/${hallazgoId}`);
-  },
-
-  /**
-   * Obtener evidencias por plan de mejoramiento
-   */
-  getByPlan: async (planId: string): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/evidencias/plan/${planId}`);
-  },
-
-  /**
-   * Obtener evidencias por auditoría
-   */
-  getByAuditoria: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
-    return apiRequest<any[]>(`/evidencias/auditoria/${auditoriaId}`);
-  },
-
-  /**
-   * Obtener una evidencia por ID
-   */
-  getById: async (id: string): Promise<ApiResponse<any>> => {
-    return apiRequest<any>(`/evidencias/${id}`);
-  },
-
-  /**
-   * Descargar una evidencia
-   */
-  download: async (id: string): Promise<Blob> => {
-    const url = `${API_BASE_URL}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_auth_token');
-    
-    const headers: HeadersInit = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-      throw new Error(`Error al descargar: ${response.statusText}`);
-    }
-
-    return response.blob();
-  },
-
-  /**
-   * Validar una evidencia (US-032)
-   */
-  validar: async (
-    id: string,
-    estadoValidacion: 'pendiente' | 'aceptado' | 'rechazado' | 'con_observaciones',
-    observaciones?: string
-  ): Promise<ApiResponse<any>> => {
-    return apiRequest<any>(`/evidencias/${id}/validar`, {
-      method: 'POST',
-      body: JSON.stringify({
-        estadoValidacion,
-        observacionesValidacion: observaciones,
-      }),
-    });
-  },
-
-  /**
-   * Eliminar una evidencia
-   */
-  delete: async (id: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>(`/evidencias/${id}`, {
-      method: 'DELETE',
-    });
-  },
-};
-
 // Exportar todo
 export const controlInternoApi = {
   auditorias: auditoriasApi,
@@ -1195,6 +593,4 @@ export const controlInternoApi = {
   planAnual5Roles: planAnual5RolesApi,
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
-  notificaciones: notificacionesApi,
-  evidencias: evidenciasApi,
 };

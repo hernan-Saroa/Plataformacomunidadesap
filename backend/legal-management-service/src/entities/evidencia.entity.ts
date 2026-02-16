@@ -37,7 +37,7 @@ export class Evidencia {
     @Column({ nullable: true })
     prioridad: string;
 
-    @Column({ default: 'En Revisión' })
+    @Column({ default: 'Pendiente' })
     estado: string;
 
     @Column({ name: 'tipo_archivo', nullable: true })

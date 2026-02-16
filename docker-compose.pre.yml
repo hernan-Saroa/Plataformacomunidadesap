@@ -13,12 +13,31 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://172.16.202.222:3000"
+        VITE_API_URL: "http://172.16.202.222/services"
+        VITE_ONLYOFFICE_URL: "http://172.16.202.222:9000"
     container_name: superapp-frontend-pre
     ports:
       - "80:80"
     depends_on:
       - api-gateway
+      - onlyoffice
+    networks:
+      - superapp-net-pre
+    restart: unless-stopped
+    volumes:
+      - ./backend/certification-service/uploads:/usr/share/nginx/uploads:ro
+
+    # ============ ONLYOFFICE DOCUMENT SERVER ============
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-server-pre
+    ports:
+      - "9000:80"
+    environment:
+      - JWT_ENABLED=false
+    volumes:
+      - onlyoffice-data-pre:/var/www/onlyoffice/Data
+      - onlyoffice-logs-pre:/var/log/onlyoffice
     networks:
       - superapp-net-pre
     restart: unless-stopped
@@ -32,6 +51,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+
+      # JWT - debe coincidir con auth-service (pre)
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       # CORS - Permitir acceso desde el frontend
       CORS_ORIGIN: "http://172.16.202.222"
@@ -47,6 +69,7 @@ services:
       LEGAL_MANAGEMENT_SERVICE_URL: http://legal-management-service-pre:3008
       NOTIFICATIONS_SERVICE_URL: http://notifications-service-pre:3009
       TRAVEL_EXPENSES_SERVICE_URL: http://travel-expenses-service-pre:3010
+      AUDIT_SERVICE_URL: http://audit-service-pre:3011
     ports:
       - "3000:3000"
     depends_on:
@@ -60,6 +83,7 @@ services:
       - legal-management-service
       - notifications-service
       - travel-expenses-service
+      - audit-service
     networks:
       - superapp-net-pre
     restart: unless-stopped
@@ -125,8 +149,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: academic_registration
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
     ports:
       - "3002:3002"
     depends_on:
@@ -154,6 +182,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: academic_work_plan
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -185,16 +216,15 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: certification
 
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM}
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
       - "3004:3004"
+    volumes:
+      - ./backend/certification-service/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -221,8 +251,12 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: internal_disciplinary_control
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
     ports:
       - "3005:3005"
     depends_on:
@@ -250,6 +284,9 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: interoperability
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -281,10 +318,17 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: internal_institutional_control
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
+      TEMPLATES_PATH: /app/uploads/templates
     ports:
       - "3007:3007"
+    volumes:
+      - ./backend/internal-institutional-control-service/uploads:/app/uploads
+      - ./backend/internal-institutional-control-service/templates:/app/uploads/templates
     depends_on:
       db:
         condition: service_healthy
@@ -310,6 +354,15 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: legal_management
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
+      
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
@@ -341,6 +394,15 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: notifications
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -371,6 +433,9 @@ services:
       DB_NAME: esap_db
       DB_SCHEMA: travel_expenses
 
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-pre:3000
     ports:
@@ -384,6 +449,33 @@ services:
       - superapp-net-pre
     restart: unless-stopped
 
+ # ============ AUDIT SERVICE ============
+  audit-service:
+    build:
+      context: ./backend/audit-service
+      dockerfile: Dockerfile
+    container_name: audit-service
+    environment:
+      NODE_ENV: production
+      PORT: 3011
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+
+      # JWT - debe coincidir con gateway y auth-service
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
+    ports:
+      - "3011:3011"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net-pre
+    restart: unless-stopped
+    
   # ============ POSTGRES ============
   db:
     image: postgres:16
@@ -428,3 +520,7 @@ volumes:
     name: esap-pgdata-pre
   redisdata-pre:
     name: esap-redisdata-pre
+  onlyoffice-data-pre:
+    name: esap-onlyoffice-data-pre
+  onlyoffice-logs-pre:
+    name: esap-onlyoffice-logs-pre

@@ -32,8 +32,8 @@ export class CorreosJuridicosController {
      */
     @Post('sync')
     @HttpCode(HttpStatus.OK)
-    async sync(): Promise<{ synced: number; errors: number }> {
-        return this.correosService.syncInbox();
+    async sync(@Body() body: { nextLink?: string }): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return this.correosService.syncInbox(body.nextLink);
     }
 
     /**
@@ -119,13 +119,14 @@ export class CorreosJuridicosController {
     ) {
         const attachment = await this.correosService.downloadAttachment(adjuntoId);
 
+        // Convert base64 to buffer
+        const buffer = Buffer.from(attachment.contentBytes, 'base64');
+
         // Set headers for file download
         res.setHeader('Content-Type', attachment.contentType);
         res.setHeader('Content-Disposition', `attachment; filename="${attachment.name}"`);
-        res.setHeader('Content-Length', attachment.size);
+        res.setHeader('Content-Length', buffer.length); // Use actual buffer length
 
-        // Convert base64 to buffer and send
-        const buffer = Buffer.from(attachment.contentBytes, 'base64');
         res.send(buffer);
     }
 
@@ -140,6 +141,36 @@ export class CorreosJuridicosController {
             'Content-Disposition': `attachment; filename="correo_${id}.zip"`,
         });
         archive.pipe(res);
+    }
+    /**
+     * Update classification manually (Feedback Loop)
+     */
+    @Patch(':id/classify')
+    async updateClassification(
+        @Param('id') id: string,
+        @Body() body: { category: string }
+    ): Promise<CorreoJuridico> {
+        return this.correosService.updateClassification(id, body.category);
+    }
+
+    /**
+     * Link email to legal process
+     */
+    @Patch(':id/link-process')
+    async linkProcess(
+        @Param('id') id: string,
+        @Body() body: { expedienteId: string; targetModule?: string }
+    ): Promise<CorreoJuridico> {
+        return this.correosService.linkToProcess(id, body.expedienteId, body.targetModule);
+    }
+
+    /**
+     * Trigger Batch Backfill for unclassified emails
+     */
+    @Post('batch-classify')
+    @HttpCode(HttpStatus.OK)
+    async batchClassify(@Body() body: { limit?: number }): Promise<{ processed: number; updated: number }> {
+        return this.correosService.batchClassifyBackfill(body.limit || 50);
     }
 }
 

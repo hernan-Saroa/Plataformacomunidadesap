@@ -2,6 +2,7 @@
  * GestionLegalFull - Sistema Integrado de Gestión Legal (SIGL v5.0)
  * Layout unificado con ModuleLayout compartido
  * DISEÑO 100% COHERENTE CON CONTROL INTERNO Y CONTROL DISCIPLINARIO
+ * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS VÍA CONTEXT API
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -15,15 +16,19 @@ import {
   Briefcase,
   Building2,
   DollarSign,
-  Mail,
   Target,
   AlertTriangle,
-  ClipboardCheck
+  ClipboardCheck,
+  Settings,
+  FolderOpen
 } from 'lucide-react';
 import { ModuleLayout, MenuItem } from '../../shared/ModuleLayout';
 
+// ✅ Context API para Configuraciones Centralizadas
+import { ConfiguracionesSIGLProvider } from '../config/ConfiguracionesSIGLContext';
+import { PermisosProvider } from '../config/PermisosContext';
+
 // Componentes de módulos V3 - DISEÑO UNIFICADO
-import { DashboardEjecutivoSIGL } from './DashboardEjecutivoSIGL';
 import { ModuloDefensaJudicialV3 } from '../modulos/ModuloDefensaJudicialV3';
 import { ModuloJuzgamientoDisciplinarioV3 } from '../modulos/ModuloJuzgamientoDisciplinarioV3';
 import { ModuloAsesoriaJuridicaV3 } from '../modulos/ModuloAsesoriaJuridicaV3';
@@ -36,6 +41,8 @@ import { ModuloProcesosCoactivosV3 } from '../modulos/ProcesosCoactivosV3';
 import { ModuloPlanAccionV4 } from '../modulos/PlanAccionV4';
 import { Riesgos } from '../modulos/Riesgos';
 import { ModuloPlanesMejoramientoV4 } from '../modulos/PlanesMejoramientoV4';
+import { ConfiguracionesSIGL } from '../modulos/ConfiguracionesSIGL';
+import { ExpedientesModuloSIGL } from '../modulos/ExpedientesModuloSIGL';
 
 // ✅ Tour Guiado Multi-Módulo
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
@@ -44,9 +51,10 @@ import { siglFullTourSteps } from '../design-system/tourStepsMultiModulo';
 // Sistema de Notificaciones para Términos (usa el contexto del Backoffice)
 import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 type VistaDisponible =
-  | 'dashboard'
   | 'defensa-judicial'
   | 'juzgamiento'
   | 'asesoria'
@@ -54,12 +62,14 @@ type VistaDisponible =
   | 'terminos'
   | 'organos-control'
   | 'procesos-coactivos'
+  | 'expedientes'
   | 'plan-accion'
   | 'riesgos'
-  | 'planes-mejoramiento';
+  | 'planes-mejoramiento'
+  | 'configuraciones';
 
 export function GestionLegalFull() {
-  const [vistaActual, setVistaActual] = useState<VistaDisponible>('dashboard');
+  const [vistaActual, setVistaActual] = useState<VistaDisponible>('defensa-judicial');
 
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -142,123 +152,114 @@ export function GestionLegalFull() {
     }
   };
 
-  // Definir menu items igual que Control Interno
+  // Definir menu items sin Dashboard ni Tour
   const menuItems: MenuItem[] = [
-    // 📊 DASHBOARD - Vista general siempre primero
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      subtitle: 'Vista general',
-      icon: <LayoutDashboard className="w-5 h-5" />,
-      color: '#003DA5',
-    },
-
-    // ═══════════════════════════════════════════════════════════
     // 📋 MÓDULOS KANBAN - PRIORIZADOS POR FLUJO E IMPORTANCIA
-    // ═══════════════════════════════════════════════════════════
-
-    // 🥇 PRIORIDAD CRÍTICA: Defensa Judicial
-    // Defensa de ESAP ante demandas externas (máxima prioridad)
     {
       id: 'defensa-judicial',
       label: 'Defensa Judicial',
-      subtitle: '15 expedientes • KANBAN',
+      subtitle: 'Defensa de ESAP ante demandas externas',
       icon: <Scale className="w-5 h-5" />,
       color: '#10B981',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_MANAGE),
     },
-
-    // 🥈 PRIORIDAD ALTA: Juzgamiento Disciplinario
-    // Control disciplinario interno de funcionarios
     {
       id: 'juzgamiento',
-      label: 'Juzgamiento',
-      subtitle: '12 procesos • KANBAN',
+      label: 'Juzgamiento Disciplinario',
+      subtitle: 'Control disciplinario de funcionarios',
       icon: <Gavel className="w-5 h-5" />,
       color: '#DC2626',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_MANAGE),
     },
-
-    // 🥉 PRIORIDAD MEDIA: Asesoría Jurídica
-    // Consultas jurídicas internas de las dependencias
     {
       id: 'asesoria',
       label: 'Asesoría Jurídica',
-      subtitle: '12 consultas • KANBAN',
+      subtitle: 'Consultas jurídicas de dependencias',
       icon: <FileQuestion className="w-5 h-5" />,
       color: '#8B5CF6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_MANAGE),
     },
 
-    // ═══════════════════════════════════════════════════════════
-    // 📦 MÓDULOS DE SOPORTE - Ordenados por relación con Kanban
-    // ═══════════════════════════════════════════════════════════
-
-    // Comunicaciones - Alimenta los módulos Kanban
+    // MÓDULOS DE SOPORTE
     {
       id: 'centro-comunicaciones',
-      label: 'Centro Comunicaciones Jurídicas',
-      subtitle: '13 notificaciones',
+      label: 'Centro de Comunicaciones Jurídicas',
+      subtitle: 'Radicación y notificaciones jurídicas',
       icon: <Inbox className="w-5 h-5" />,
       color: '#3B82F6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_MANAGE),
     },
-
-    // Términos - Crítico para gestión de vencimientos Kanban
     {
       id: 'terminos',
-      label: 'Términos',
-      subtitle: '13 términos',
+      label: 'Términos e Informes',
+      subtitle: 'Gestión de vencimientos y reportes',
       icon: <CalendarClock className="w-5 h-5" />,
       color: '#6366F1',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_TERMINOS_MANAGE),
     },
-
-    // Órganos Control - Requerimientos externos
     {
       id: 'organos-control',
-      label: 'Órganos Control',
-      subtitle: '6 requerimientos',
+      label: 'Órganos de Control',
+      subtitle: 'Requerimientos externos de control',
       icon: <Building2 className="w-5 h-5" />,
       color: '#2563EB',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_MANAGE),
     },
-
-    // Procesos Coactivos - Cobro judicial
     {
       id: 'procesos-coactivos',
       label: 'Procesos Coactivos',
-      subtitle: '6 procesos',
+      subtitle: 'Cobro judicial y administrativo',
       icon: <DollarSign className="w-5 h-5" />,
       color: '#F59E0B',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_MANAGE),
+    },
+    {
+      id: 'expedientes',
+      label: 'Expedientes Electrónicos',
+      subtitle: 'Gestión documental de procesos',
+      icon: <FolderOpen className="w-5 h-5" />,
+      color: '#0891B2',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_EXPEDIENTES_ELECTRONICOS_MANAGE),
     },
 
-    // ═══════════════════════════════════════════════════════════
-    // 📈 MÓDULOS DE GESTIÓN ESTRATÉGICA
-    // ═══════════════════════════════════════════════════════════
-
+    // MÓDULOS DE GESTIÓN ESTRATÉGICA
     {
       id: 'plan-accion',
       label: 'Plan de Acción',
-      subtitle: '5 indicadores',
+      subtitle: 'Indicadores y metas institucionales',
       icon: <Target className="w-5 h-5" />,
       color: '#7C3AED',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_MANAGE),
     },
     {
       id: 'riesgos',
-      label: 'Riesgos',
-      subtitle: '5 riesgos',
+      label: 'Gestión de Riesgos',
+      subtitle: 'Matriz de riesgos y controles',
       icon: <AlertTriangle className="w-5 h-5" />,
       color: '#DC2626',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_MANAGE),
     },
     {
       id: 'planes-mejoramiento',
-      label: 'Planes Mejoramiento',
-      subtitle: '5 planes',
+      label: 'Planes de Mejoramiento',
+      subtitle: 'Acciones de mejora institucional',
       icon: <ClipboardCheck className="w-5 h-5" />,
       color: '#14B8A6',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE),
+    },
+    {
+      id: 'configuraciones',
+      label: 'Configuraciones del Sistema',
+      subtitle: 'Ajustes y parámetros del SIGL',
+      icon: <Settings className="w-5 h-5" />,
+      color: '#94A3B8',
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_MANAGE),
     },
   ];
 
   // Renderizar vista activa
   const renderVistaActual = () => {
     switch (vistaActual) {
-      case 'dashboard':
-        return <DashboardEjecutivoSIGL onNavigateToModule={(moduleId) => setVistaActual(moduleId as VistaDisponible)} />;
       case 'defensa-judicial':
         return <ModuloDefensaJudicialV3 />;
       case 'juzgamiento':
@@ -273,51 +274,37 @@ export function GestionLegalFull() {
         return <OrganosControl />;
       case 'procesos-coactivos':
         return <ModuloProcesosCoactivosV3 />;
+      case 'expedientes':
+        return <ExpedientesModuloSIGL />;
       case 'plan-accion':
         return <ModuloPlanAccionV4 />;
       case 'riesgos':
         return <Riesgos />;
       case 'planes-mejoramiento':
         return <ModuloPlanesMejoramientoV4 />;
+      case 'configuraciones':
+        return <ConfiguracionesSIGL />;
       default:
-        return <DashboardEjecutivoSIGL onNavigateToModule={(moduleId) => setVistaActual(moduleId as VistaDisponible)} />;
+        return <ModuloDefensaJudicialV3 />;
     }
   };
 
   return (
-    <ModuleLayout
-      moduleName="GESTIÓN LEGAL"
-      moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
-      moduleIcon={<Briefcase className="w-6 h-6" />}
-      moduleColor="#003DA5"
-      menuItems={menuItems}
-      activeSection={vistaActual}
-      onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
-      initialSidebarCollapsed={false}
-    >
-      {renderVistaActual()}
-
-      {/* Tour Guiado Multi-Módulo */}
-      <GuidedTour
-        steps={siglFullTourSteps}
-        isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
-        onComplete={() => {
-          console.log('✅ Tour completo de 11 módulos completado!');
-          setIsTourOpen(false);
-        }}
-        tourId="sigl-full-tour"
-        onStepChange={handleTourStepChange}
-      />
-
-      {/* Botón Flotante del Tour */}
-      <TourButton
-        onClick={() => {
-          setIsTourOpen(true);
-        }}
-        variant="floating"
-        label="Tour Completo"
-      />
-    </ModuleLayout>
+    <ConfiguracionesSIGLProvider>
+      <PermisosProvider>
+        <ModuleLayout
+          moduleName="GESTIÓN LEGAL"
+          moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
+          moduleIcon={<Briefcase className="w-6 h-6" />}
+          moduleColor="#003DA5"
+          menuItems={menuItems}
+          activeSection={vistaActual}
+          onSectionChange={(section) => setVistaActual(section as VistaDisponible)}
+          initialSidebarCollapsed={false} // Logo ESAP compacto cuando se colapsa
+        >
+          {renderVistaActual()}
+        </ModuleLayout>
+      </PermisosProvider>
+    </ConfiguracionesSIGLProvider>
   );
 }

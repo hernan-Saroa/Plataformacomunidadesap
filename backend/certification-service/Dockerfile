@@ -1,7 +1,11 @@
+# syntax=docker/dockerfile:1.4
 # Multi-stage build for NestJS application
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Prevent Puppeteer from downloading Chromium during build.
+ENV PUPPETEER_SKIP_DOWNLOAD=1
 
 # Copy package files
 COPY package*.json ./
@@ -20,11 +24,19 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Install Chromium for Puppeteer.
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont \
+  && if [ ! -e /usr/bin/chromium-browser ] && [ -e /usr/bin/chromium ]; then ln -s /usr/bin/chromium /usr/bin/chromium-browser; fi
+
+# Prevent Puppeteer from downloading Chromium during install.
+ENV PUPPETEER_SKIP_DOWNLOAD=1
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Copy package files
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm install --only=production && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist

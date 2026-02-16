@@ -13,18 +13,18 @@ import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, Edit, Send, X, Check, Ban, Forward,
   Upload, Download, CheckCircle, Scale, Archive, Activity,
-  MessageSquare, Trash2, ArrowLeft, Filter, Search, Bell,
+  MessageSquare, Trash2, Filter, Search, Bell,
   ChevronDown, Users, FileCheck, XCircle, PlusCircle, Settings,
   Maximize2, Minimize2, TrendingUp, AlertCircle, Phone, Mail,
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
-  ChevronsDown, ChevronsUp, ChevronUp
+  ChevronsDown, ChevronsUp, ChevronUp, Shuffle, ArrowLeft
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { EditorDocumentos } from './EditorDocumentos';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
@@ -38,8 +38,11 @@ import {
 } from './ModalesGestionDocumental';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
 import { SistemaComentarios } from './SistemaComentarios';
+import { ModalCambiarEtapaProcesoDisciplinario } from './ModalCambiarEtapaProcesoDisciplinario';
 import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 import { useConfiguration } from '../../../hooks/useConfiguration';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 
 // ==================== TIPOS ====================
 interface Persona {
@@ -88,7 +91,7 @@ interface Proceso {
   denunciante: Persona;
   denunciado: Persona;
   cedula: string; // Mantener por compatibilidad
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
+  etapaActual: 'RECEPCION' | 'VALORACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'EVALUACION' | 'JUZGAMIENTO' | 'INDAGACION' | 'FALLO' | 'SEGUNDA_INSTANCIA';
   estadoActual: string;
   profesionalAsignado: Persona;
   profesionalAsignadoId?: string; // ID del profesional para filtrado
@@ -158,6 +161,8 @@ const DEFAULT_STAGES = [
   { nombre: 'INVESTIGACION', dias: 60 },
   { nombre: 'EVALUACION', dias: 10 },
   { nombre: 'JUZGAMIENTO', dias: 50 },
+  { nombre: 'INDAGACION', dias: 30 },
+  { nombre: 'FALLO', dias: 10 },
   { nombre: 'SEGUNDA INSTANCIA', dias: 10 }
 ];
 
@@ -207,6 +212,7 @@ const mergeStages = (stages: { nombre: string; dias: number }[]) => {
 };
 
 // ==================== MOCK DATA ====================
+// ⚠️ Datos mock reducidos - 1 ejemplo por tipo para reducir tamaño del proyecto
 const NOTICIAS_MOCK: Noticia[] = [
   {
     id: 'n1',
@@ -292,7 +298,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '52123456'
     },
     cedula: '52123456',
-    etapaActual: 'Valoración',
+    etapaActual: 'VALORACION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Juan Carlos Pérez Rodríguez',
@@ -325,7 +331,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '77385960'
     },
     cedula: '77385960',
-    etapaActual: 'Indagación Previa',
+    etapaActual: 'INDAGACION_PREVIA',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -358,7 +364,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '88776655'
     },
     cedula: '88776655',
-    etapaActual: 'Recepción',
+    etapaActual: 'RECEPCION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -391,7 +397,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79556677'
     },
     cedula: '79556677',
-    etapaActual: 'Investigación',
+    etapaActual: 'INVESTIGACION',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'María García Londoño',
@@ -424,7 +430,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '52778899'
     },
     cedula: '52778899',
-    etapaActual: 'Juzgamiento',
+    etapaActual: 'JUZGAMIENTO',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Juan Carlos Pérez Rodríguez',
@@ -457,7 +463,7 @@ const PROCESOS_MOCK: Proceso[] = [
       numeroIdentificacion: '79223344'
     },
     cedula: '79223344',
-    etapaActual: 'Segunda Instancia',
+    etapaActual: 'FALLO',
     estadoActual: 'En Gestión',
     profesionalAsignado: {
       nombre: 'Carlos Mendoza Ramírez',
@@ -603,7 +609,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Acciones */}
           <div className="space-y-1.5 mt-auto pt-2">
-            {noticia.estado === 'pendiente' && (
+            {noticia.estado === 'pendiente' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR) && (
               <Button
                 onClick={() => onConvertir(noticia)}
                 size="sm"
@@ -615,6 +621,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               </Button>
             )}
             <div className={`grid grid-cols-3 gap-1`}>
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER) && (
               <Button
                 onClick={() => onDevolver(noticia)}
                 size="sm"
@@ -625,6 +632,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <ArrowLeft className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Devolver</span>}
               </Button>
+              )}
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_REDIMIR) && (
               <Button
                 onClick={() => onDevolverCompetencia(noticia)}
                 size="sm"
@@ -635,6 +644,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <Send className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Compet.</span>}
               </Button>
+              )}
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
               <Button
                 onClick={() => onArchivar(noticia)}
                 size="sm"
@@ -645,6 +656,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} ${isMobile ? '' : 'mr-0.5'} flex-shrink-0`} />
                 {!isMobile && <span className="truncate">Archivar</span>}
               </Button>
+              )}
             </div>
           </div>
         </div>
@@ -684,7 +696,7 @@ function TarjetaProceso({
   onGestionOficios,
   onGestionActas,
   onComentarios,
-  vistaCompacta, 
+  vistaCompacta,
   isMobile,
   colapsada,
   onToggleColapso
@@ -867,6 +879,7 @@ function TarjetaProceso({
           {/* Acciones Principales - Siempre Visibles */}
           <div className="space-y-1 pt-2 border-t border-gray-200 mt-auto flex-shrink-0">
             {/* Acción Principal: Ver Expediente */}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EXPIDIENTE) && (
             <Button
               onClick={(e) => {
                 e.stopPropagation();
@@ -879,7 +892,7 @@ function TarjetaProceso({
               <Archive className={`${isMobile ? 'w-2.5 h-2.5' : 'w-3 h-3'} mr-1 flex-shrink-0`} />
               <span className="truncate">Expediente</span>
             </Button>
-
+            )}
             {/* Gestión Documental - Grid compacto - SIEMPRE VISIBLE */}
             <div className="space-y-1">
               {/* Primera fila: Autos y Evidencias */}
@@ -988,6 +1001,7 @@ function TarjetaProceso({
               </Button>
             </div>
 
+
             {/* Aprobación si está pendiente */}
             {proceso.pendienteAprobacion && (
               <Button
@@ -1024,6 +1038,7 @@ interface VistaListaProps {
   onArchivarNoticia: (noticia: Noticia) => void;
   onVerDetallesNoticia?: (noticia: Noticia) => void;
   onDevolverNoticia?: (noticia: Noticia) => void;
+  onCambiarEtapa?: (proceso: Proceso) => void;
   isMobile?: boolean;
 }
 
@@ -1041,6 +1056,7 @@ function VistaLista({
   onArchivarNoticia,
   onVerDetallesNoticia,
   onDevolverNoticia,
+  onCambiarEtapa,
   isMobile
 }: VistaListaProps) {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
@@ -1561,6 +1577,17 @@ function VistaLista({
                                 </button>
                               )}
 
+                              {/* Acción: Cambiar Etapa */}
+                              {onCambiarEtapa && (
+                                <button
+                                  onClick={() => onCambiarEtapa(proceso!)}
+                                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Cambiar etapa del proceso"
+                                >
+                                  <Shuffle className="w-4 h-4 text-blue-600" />
+                                </button>
+                              )}
+
                               {/* Acción: Aprobar Borrador (condicional) */}
                               {proceso!.pendienteAprobacion && (
                                 <button
@@ -1712,8 +1739,8 @@ function ColumnaKanban({
     const procesosVerdes = procesos.filter(p => p.semaforo === 'verde').length;
 
     return (
-      <motion.div 
-        ref={drop} 
+      <motion.div
+        ref={drop}
         className={`flex-shrink-0 h-full`}
         initial={{ width: 64 }}
         animate={{ width: 64 }}
@@ -1949,7 +1976,7 @@ function ColumnaKanban({
 
 // ==================== COMPONENTE PRINCIPAL ====================
 interface DashboardKanbanProps {
-  onNavigateToExpediente?: () => void;
+  onNavigateToExpediente?: (procesoId: string) => void;
   filtroProfesionalId?: string | null;
   filtroProfesionalNombre?: string | null;
   onLimpiarFiltro?: () => void;
@@ -1964,6 +1991,7 @@ export function DashboardKanbanOperativo({
   const [items, setItems] = useState<Item[]>([]);
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
   const [itemSeleccionado, setItemSeleccionado] = useState<any>(null);
+  const [modalCambiarEtapa, setModalCambiarEtapa] = useState<{ abierto: boolean; proceso?: Proceso }>({ abierto: false });
   const [tipoVista, setTipoVista] = useState<'kanban' | 'lista'>('kanban');
   const [isMobile, setIsMobile] = useState(false);
   const [isTablet, setIsTablet] = useState(false);
@@ -2104,48 +2132,23 @@ export function DashboardKanbanOperativo({
   useEffect(() => {
     const cargarProfesionales = async () => {
       try {
-        // const profesionales = await disciplinaryService.getProfesionales();
-        // console.log('👥 Profesionales cargados desde el backend:', profesionales);
+        // Cargar SOLO los profesionales del equipo disciplinario (submódulo Profesionales)
+        const profesionales = await disciplinaryService.getProfesionales();
+        const equipoDisciplinario = Array.isArray(profesionales)
+          ? profesionales
+            .filter((p: any) => p.estado === 'ACTIVO')
+            .map((p: any) => ({
+              id: p.id,
+              nombre: p.nombreCompleto || p.nombre || 'Profesional',
+              cargo: p.cargo,
+              email: p.email
+            }))
+          : [];
 
-        // const mapped = Array.isArray(profesionales)
-        //   ? profesionales.map((p: any) => ({
-        //       id: p.id,
-        //       nombre: p.nombreCompleto,
-        //       cargo: p.cargo,
-        //       email: p.email
-        //     }))
-        //   : [];
-
-        // console.log('👥 Profesionales mapeados para el dropdown:', mapped);
-        const candidatos = await disciplinaryService.getCandidates();
-        const filtered = Array.isArray(candidatos) ? candidatos.filter((c: any) => {
-          // 1. Check Active Status (defensive)
-          const isActive = !c.estado || c.estado === 'ACTIVO';
-
-          // 2. Check Role
-          const cargo = (c.cargo || '').toLowerCase().trim();
-
-          // Precise Filtering based on user request: "menos sin cargo, admin o estudiante"
-          // - Estudiante: includes (covers 'Estudiante Tesista', etc.)
-          // - Sin Cargo: exact or includes? 'Sin Cargo' is usually distinct. Using includes to be safe.
-          // - Admin: MUST be strict or careful to not exclude 'Auxiliar Administrativo'
-
-          if (cargo.includes('estudiante')) return false;
-          if (cargo.includes('sin cargo')) return false;
-          if (cargo === 'admin') return false;
-          if (cargo === 'administrador') return false;
-          if (cargo.includes('super administrador')) return false;
-
-          return isActive;
-        }) : [];
-
-        const mapped = filtered.map((c: any, index: number) => ({
-          id: c.id || c.uuid || c.userId || String(index + 1),
-          nombre: c.nombreCompleto || c.nombre || c.name || c.email || `Profesional ${index + 1}`
-        }));
-        setProfesionalesDisponibles(mapped);
+        console.log('👥 Profesionales del equipo disciplinario:', equipoDisciplinario.length);
+        setProfesionalesDisponibles(equipoDisciplinario);
       } catch (error) {
-        console.error('❌ Error cargando profesionales', error);
+        console.error('❌ Error cargando profesionales del equipo:', error);
         setProfesionalesDisponibles([]);
       }
     };
@@ -2681,9 +2684,9 @@ export function DashboardKanbanOperativo({
     [normalizeEtapa('Evaluacion')]: 'EVALUACION',
     [normalizeEtapa('Valoracion')]: 'EVALUACION',
     [normalizeEtapa('Valoraci?n')]: 'EVALUACION',
-    [normalizeEtapa('INDAGACION')]: 'INDAGACION_PREVIA',
-    [normalizeEtapa('Indagacion')]: 'INDAGACION_PREVIA',
-    [normalizeEtapa('Indagaci?n')]: 'INDAGACION_PREVIA',
+    [normalizeEtapa('INDAGACION')]: 'INDAGACION',
+    [normalizeEtapa('Indagacion')]: 'INDAGACION',
+    [normalizeEtapa('Indagaci?n')]: 'INDAGACION',
     [normalizeEtapa('INDAGACION_PREVIA')]: 'INDAGACION_PREVIA',
     [normalizeEtapa('Indagacion_Previa')]: 'INDAGACION_PREVIA',
     [normalizeEtapa('Indagacion Previa')]: 'INDAGACION_PREVIA',
@@ -2694,7 +2697,10 @@ export function DashboardKanbanOperativo({
     [normalizeEtapa('JUZGAMIENTO')]: 'JUZGAMIENTO',
     [normalizeEtapa('Juzgamiento')]: 'JUZGAMIENTO',
     [normalizeEtapa('FALLO')]: 'FALLO',
-    [normalizeEtapa('Fallo')]: 'FALLO'
+    [normalizeEtapa('Fallo')]: 'FALLO',
+    [normalizeEtapa('SEGUNDA_INSTANCIA')]: 'SEGUNDA_INSTANCIA',
+    [normalizeEtapa('Segunda Instancia')]: 'SEGUNDA_INSTANCIA',
+    [normalizeEtapa('segundainstancia')]: 'SEGUNDA_INSTANCIA',  // Sin espacios ni acentos
   };
 
   const getStageIndex = (name?: string) => {
@@ -2753,7 +2759,7 @@ export function DashboardKanbanOperativo({
       // if (item.etapaActual !== nuevaEtapa) {
       //   const etapaAnterior = item.etapaActual;
       //   const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
-        
+
       //   setItems(prev => prev.map(i => 
       //     i.id === item.id && i.tipo === 'proceso'
       //       ? { 
@@ -2763,7 +2769,7 @@ export function DashboardKanbanOperativo({
       //         }
       //       : i
       //   ));
-        
+
       //   // Registrar en trazabilidad/historial
       //   const eventoTrazabilidad = {
       //     id: `evt-${Date.now()}`,
@@ -2776,10 +2782,10 @@ export function DashboardKanbanOperativo({
       //     etapaAnterior: etapaAnterior,
       //     etapaNueva: nuevaEtapa
       //   };
-        
+
       //   // En producción, esto se guardaría en el backend
       //   console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
-        
+
       //   toast.success('Proceso Movido', {
       //     description: `${item.numeroProceso} → ${nuevaEtapa} (registrado en trazabilidad)`
       //   });
@@ -3372,7 +3378,7 @@ export function DashboardKanbanOperativo({
 
   const handleVerExpediente = (proceso: Proceso) => {
     if (onNavigateToExpediente) {
-      onNavigateToExpediente();
+      onNavigateToExpediente(proceso.id);
       toast.success('Navegando a Expediente Electrónico', {
         description: `Abriendo expediente del proceso ${proceso.numeroProceso}`
       });
@@ -3440,7 +3446,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ==================== FUNCIONES PARA COLAPSAR/EXPANDIR TARJETAS ====================
-  
+
   // Toggle colapso de tarjeta individual
   const toggleTarjetaColapsada = (id: string) => {
     setTarjetasColapsadas(prev => {
@@ -3665,7 +3671,7 @@ export function DashboardKanbanOperativo({
                 </button>
               </div>
             )}
-
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
             <Button
               onClick={() => setModalActivo('crear-noticia')}
               size="sm"
@@ -3674,6 +3680,7 @@ export function DashboardKanbanOperativo({
               <Plus className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'} mr-1.5`} />
               {isMobile ? 'Nueva' : 'Nueva Noticia'}
             </Button>
+            )}
           </div>
         </div>
 
@@ -3840,6 +3847,7 @@ export function DashboardKanbanOperativo({
               setModalActivo('ver-detalles');
             }}
             onDevolverNoticia={handleDevolverNoticia}
+            onCambiarEtapa={(proceso) => setModalCambiarEtapa({ abierto: true, proceso })}
             isMobile={isMobile}
           />
         )}
@@ -4633,7 +4641,7 @@ export function DashboardKanbanOperativo({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/50 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
               onClick={() => {
                 setModalActivo(null);
                 setProcesoEditando(null);
@@ -4857,7 +4865,7 @@ export function DashboardKanbanOperativo({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+              className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 z-[150] p-4"
               onClick={() => setModalActivo(null)}
             >
               <motion.div
@@ -4938,8 +4946,28 @@ export function DashboardKanbanOperativo({
             />
           )}
         </AnimatePresence>
+
+        {/* Modal Cambiar Etapa */}
+        <AnimatePresence>
+          {modalCambiarEtapa.abierto && modalCambiarEtapa.proceso && (
+            <ModalCambiarEtapaProcesoDisciplinario
+              isOpen={modalCambiarEtapa.abierto}
+              proceso={modalCambiarEtapa.proceso}
+              onClose={() => setModalCambiarEtapa({ abierto: false })}
+              onConfirmarCambio={async (nuevaEtapa: string) => {
+                try {
+                  // Usar la lógica existente de handleDropItem
+                  await handleDropItem(modalCambiarEtapa.proceso!, nuevaEtapa);
+                  setModalCambiarEtapa({ abierto: false });
+                } catch (error) {
+                  console.error('Error cambiando etapa:', error);
+                  toast.error('Error al cambiar etapa');
+                }
+              }}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </DndProvider>
   );
 }
-

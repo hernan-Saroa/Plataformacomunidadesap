@@ -55,7 +55,7 @@ export class LegalAuto {
   })
   tipo: AutoType;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 150, nullable: true })
   numero: string;
 
   @Column({ type: 'text' })

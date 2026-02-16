@@ -143,10 +143,19 @@ export function SolicitarCertificado() {
   // Convertir certificado del backend al formato del visor
   // ============================================
   const convertirCertificadoParaVisor = (cert: any) => {
+    const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
+    const templateType =
+      cert?.template_type ||
+      cert?.templateType ||
+      templateSnapshot?.templateType ||
+      templateSnapshot?.template_type ||
+      undefined;
     return {
       consecutivo: cert.certificate_number || cert.consecutivo || 'N/A',
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
+      templateSnapshot,
+      templateType,
       empleado: {
         nombre: cert.full_name,
         documento: cert.id_number,

@@ -1,18 +1,190 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
 import { Signer } from './signer.entity';
 import { CertificateTemplate } from './certificate-template.entity';
 import { CertificateValidation } from './certificate-validation.entity';
 import { CertificateGeneratorService } from './certificate-generator.service';
-import * as nodemailer from 'nodemailer';
+import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
+import { TemplateConfigService } from './template-config.service';
+
+type TemplateType = 'docente' | 'administrador';
+
+type SendLaborCertificateOptions = {
+  includeSalary?: boolean;
+  includeTechnicalBonus?: boolean;
+  templateType?: 'docente' | 'administrador';
+  publicBaseUrl?: string;
+  to?: string;
+};
 
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
-  private mailTransporter: nodemailer.Transporter | null = null;
+
+  private resolveNotificationsBaseUrl() {
+    const direct =
+      process.env.NOTIFICATIONS_SERVICE_URL || process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) {
+      return direct.replace(/\/$/, '');
+    }
+    // Acceso directo dentro de la red Docker; si corres local sin Docker puedes
+    // sobreescribir con NOTIFICATION(S)_SERVICE_URL
+    return 'http://notifications-service:3009';
+  }
+
+  private normalizeTemplateText(value: string): string {
+    const base = String(value || '').toLowerCase();
+    const normalized = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+    return normalized
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private resolveTemplateTypeFromText(value: string): TemplateType {
+    const text = this.normalizeTemplateText(value);
+    if (!text) {
+      return 'administrador';
+    }
+    return /\bdocen\w*\b|\bdoc\b/.test(text) ? 'docente' : 'administrador';
+  }
+
+  private resolveTemplateTypeFromRequest(request: CertificateRequest): TemplateType {
+    const raw = `${request?.position_category || ''} ${request?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private resolveTemplateTypeFromCertificate(certificate: Certificate): TemplateType {
+    const raw = `${certificate?.position_category || ''} ${certificate?.career_category || ''}`;
+    return this.resolveTemplateTypeFromText(raw);
+  }
+
+  private normalizeDateOnly(value?: Date | string | null): Date | null {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) return null;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  private resolveEmploymentStatusByDates(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const start = this.normalizeDateOnly(hiringDate);
+    const end = this.normalizeDateOnly(endDate);
+    const today = this.normalizeDateOnly(new Date());
+
+    if (!start || !today) return 'INACTIVO';
+    if (today < start) return 'INACTIVO';
+    if (!end) return 'ACTIVO';
+    return today <= end ? 'ACTIVO' : 'INACTIVO';
+  }
+
+  private normalizeEmploymentStatus(statusRaw?: string | null): 'ACTIVO' | 'INACTIVO' | null {
+    const status = String(statusRaw || '').trim().toUpperCase();
+    if (!status) return null;
+    if (status === 'A' || status === 'ACTIVO' || status === 'ACTIVE') return 'ACTIVO';
+    if (status === 'I' || status === 'INACTIVO' || status === 'INACTIVE') return 'INACTIVO';
+    return null;
+  }
+
+  private resolveEmploymentStatus(
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+    statusRaw?: string | null,
+  ): 'ACTIVO' | 'INACTIVO' {
+    const statusByDate = this.resolveEmploymentStatusByDates(hiringDate, endDate);
+    const statusByCode = this.normalizeEmploymentStatus(statusRaw);
+
+    // Regla de negocio: status (A/I) es la fuente principal y la fecha valida como respaldo.
+    if (statusByCode) {
+      return statusByCode;
+    }
+
+    return statusByDate;
+  }
+
+  private resolveStatusForPersistence(
+    statusRaw?: string | null,
+    hiringDate?: Date | string | null,
+    endDate?: Date | string | null,
+  ): string {
+    const explicitStatus = String(statusRaw || '').trim();
+    if (explicitStatus) {
+      return explicitStatus.toUpperCase();
+    }
+    return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO' ? 'A' : 'I';
+  }
+
+  private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
+    const cert = certificate as Certificate & {
+      template_snapshot?: any;
+      template_type?: string;
+      template_version?: string;
+    };
+
+    if (cert.template_snapshot) {
+      return certificate;
+    }
+
+    const templateType = (cert.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(certificate);
+    const config = await this.templateConfigService.getActiveConfig(templateType);
+    if (!config) {
+      return certificate;
+    }
+
+    const patch = {
+      template_snapshot: config,
+      template_type: templateType,
+      template_version: config.version || null,
+    };
+
+    await this.certificateRepo.update(certificate.id, patch);
+    Object.assign(certificate, patch);
+    return certificate;
+  }
+
+  private async ensureTemplateSnapshots(certificates: Certificate[]): Promise<void> {
+    const missing = certificates.filter((cert) => !(cert as any)?.template_snapshot);
+    if (!missing.length) {
+      return;
+    }
+
+    const typesNeeded = new Set<TemplateType>();
+    for (const cert of missing) {
+      const templateType =
+        ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+      typesNeeded.add(templateType);
+    }
+
+    const configByType = new Map<TemplateType, any>();
+    for (const type of typesNeeded) {
+      const config = await this.templateConfigService.getActiveConfig(type);
+      if (config) {
+        configByType.set(type, config);
+      }
+    }
+
+    await Promise.all(
+      missing.map(async (cert) => {
+        const templateType =
+          ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+        const config = configByType.get(templateType);
+        if (!config) return;
+        const patch = {
+          template_snapshot: config,
+          template_type: templateType,
+          template_version: config.version || null,
+        };
+        await this.certificateRepo.update(cert.id, patch);
+        Object.assign(cert, patch);
+      }),
+    );
+  }
 
   constructor(
     @InjectRepository(CertificateRequest)
@@ -26,6 +198,8 @@ export class CertificatesService {
     @InjectRepository(CertificateValidation)
     private validationRepo: Repository<CertificateValidation>,
     private certificateGenerator: CertificateGeneratorService,
+    private laborPdfService: LaborCertificatePdfService,
+    private templateConfigService: TemplateConfigService,
   ) {}
 
   // ============================================
@@ -39,74 +213,134 @@ export class CertificatesService {
   }
 
   /**
-   * Enviar código por email si hay configuración SMTP.
+   * Solicita al notifications-service que envíe el código por email.
    */
   private async enviarCodigoPorEmail(destinatario: string, codigo: string) {
-    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
-    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
-      this.logger.warn('SMTP no configurado, no se envía email. Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM');
+    if (!destinatario) {
+      this.logger.warn('No se pudo enviar el código: destinatario vacío');
       return;
     }
 
-    if (!this.mailTransporter) {
-      this.mailTransporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: Number(SMTP_PORT),
-        secure: Number(SMTP_PORT) === 465,
-        auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
-        },
-      });
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/validation-code`;
+    this.logger.debug(`Llamando al servicio: ${url}`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: destinatario, code: codigo }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
     }
 
-    const mailOptions = {
-      from: SMTP_FROM,
+    this.logger.log(`Solicitud de envío de código enviada a notifications-service para ${destinatario}`);
+  }
+
+  private buildLaborEmailHtml(certificate: Certificate, recipientName?: string): string {
+    const nombre = recipientName || certificate.full_name || 'usuario';
+    const consecutivo = certificate.certificate_number || 'ESAP';
+    return `
+      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
+              Certificados ESAP
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
+              Certificado laboral
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
+              Hola ${nombre}, adjuntamos tu certificado laboral solicitado.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
+              Certificado: <strong>${consecutivo}</strong>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+              ESAP - Escuela Superior de Administracion Publica
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  private async enviarCertificadoLaboralPorEmail(
+    certificate: Certificate,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ to: string }> {
+    const destinatario = (options.to || certificate.request?.email || '').trim();
+    if (!destinatario) {
+      throw new BadRequestException('No hay un email registrado para enviar el certificado');
+    }
+
+    const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
+      includeSalary: options.includeSalary,
+      includeTechnicalBonus: options.includeTechnicalBonus,
+      templateType: options.templateType,
+      publicBaseUrl: options.publicBaseUrl,
+    });
+
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
+    const subject = `Certificado Laboral ESAP - ${certificate.certificate_number}`;
+    const text = `Adjuntamos tu certificado laboral ${certificate.certificate_number}.`;
+
+    const payload = {
       to: destinatario,
-      subject: 'Código de validación - Certificado Laboral ESAP',
-      text: `Tu código de validación es: ${codigo}\n\nEste código es válido por un tiempo limitado.`,
-      html: `
-        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                Certificados ESAP
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Código de validación
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Usa este código para validar tu solicitud de certificado. Es válido por tiempo limitado.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; text-align: center;">
-                <div style="display: inline-block; background: #f0f7ff; color: #0b68d1; font-weight: 800; font-size: 24px; letter-spacing: 2px; padding: 12px 40px; border-radius: 10px; border: 2px solid #d7e9ff;">
-                  ${codigo}
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-                Si no solicitaste este código, puedes ignorar este mensaje.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                ESAP - Escuela Superior de Administración Pública
-              </td>
-            </tr>
-          </table>
-        </div>
-      `,
+      subject,
+      text,
+      html: this.buildLaborEmailHtml(certificate, certificate.full_name),
+      attachmentName: attachment.filename,
+      attachmentBase64: attachment.buffer.toString('base64'),
+      attachmentContentType: 'application/pdf',
     };
 
-    await this.mailTransporter.sendMail(mailOptions);
-    this.logger.log(`Código de validación enviado a ${destinatario}`);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
+    }
+
+    this.logger.log(`Certificado laboral enviado a ${destinatario}`);
+    return { to: destinatario };
+  }
+
+  async reenviarCertificadoLaboral(
+    id: string,
+    options: SendLaborCertificateOptions = {},
+  ): Promise<{ mensaje: string; email: string }> {
+    const certificate = await this.certificateRepo.findOne({
+      where: { id },
+      relations: ['request'],
+    });
+
+    if (!certificate) {
+      throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
+    }
+
+    await this.ensureTemplateSnapshotForCertificate(certificate);
+
+    const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
+
+    return {
+      mensaje: `Certificado reenviado a ${result.to}`,
+      email: result.to,
+    };
   }
 
   async findSolicitudById(id: string) {
@@ -127,12 +361,58 @@ export class CertificatesService {
   }
 
   async createSolicitud(data: Partial<CertificateRequest>) {
-    const request = this.requestRepo.create(data);
+    const rawIdNumber = (data.id_number || '').trim();
+    if (rawIdNumber) {
+      const normalizedIdNumber = rawIdNumber.replace(/\D+/g, '');
+      const existing = await this.requestRepo.findOne({
+        where: normalizedIdNumber
+          ? {
+              id_number: Raw(
+                (alias) =>
+                  `REPLACE(REPLACE(REPLACE(${alias}, '.', ''), '-', ''), ' ', '') = :idNumber`,
+                { idNumber: normalizedIdNumber },
+              ),
+            }
+          : { id_number: rawIdNumber },
+        order: { request_date: 'DESC' },
+      });
+
+      if (existing) {
+        const incomingName = this.normalizeTemplateText(data.full_name || '');
+        const existingName = this.normalizeTemplateText(existing.full_name || '');
+        if (incomingName && existingName && incomingName !== existingName) {
+          throw new BadRequestException(
+            `El documento ${rawIdNumber} ya está registrado a nombre de ${existing.full_name}. Verifica el número de documento.`,
+          );
+        }
+      }
+    }
+
+    const status = this.resolveStatusForPersistence(data.status, data.hiring_date, data.request_date);
+    const request = this.requestRepo.create({
+      ...data,
+      status,
+    });
     return await this.requestRepo.save(request);
   }
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
-    await this.requestRepo.update(id, data);
+    const patch: Partial<CertificateRequest> = { ...data };
+    if ('status' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+      const requestDate = data.request_date ?? existing?.request_date ?? null;
+      patch.status = this.resolveStatusForPersistence(data.status, hiringDate, requestDate);
+    } else if ('hiring_date' in data || 'request_date' in data) {
+      const existing = await this.requestRepo.findOne({ where: { id } });
+      const currentStatus = String(existing?.status || '').trim();
+      if (!currentStatus) {
+        const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
+        const requestDate = data.request_date ?? existing?.request_date ?? null;
+        patch.status = this.resolveStatusForPersistence(undefined, hiringDate, requestDate);
+      }
+    }
+    await this.requestRepo.update(id, patch);
     return await this.findSolicitudById(id);
   }
 
@@ -142,18 +422,28 @@ export class CertificatesService {
 
   async findAllCertificados() {
     const certificates = await this.certificateRepo.find({
+      relations: ['request'],
       order: { issue_date: 'DESC' },
     });
+
+    await this.ensureTemplateSnapshots(certificates);
 
     // Agregar el conteo de validaciones para cada certificado
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+          cert.request?.status,
+        );
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
         return {
           ...cert,
+          email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -174,6 +464,7 @@ export class CertificatesService {
     const skip = (safePage - 1) * safeLimit;
 
     const qb = this.certificateRepo.createQueryBuilder('cert');
+    qb.leftJoinAndSelect('cert.request', 'request');
 
     if (params.search) {
       const term = `%${params.search.toLowerCase()}%`;
@@ -211,14 +502,23 @@ export class CertificatesService {
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
 
+    await this.ensureTemplateSnapshots(certificates);
+
     const certificatesWithCount = await Promise.all(
       certificates.map(async (cert) => {
+        const employmentStatus = this.resolveEmploymentStatus(
+          cert.request?.hiring_date || cert.hiring_date,
+          cert.request?.request_date,
+          cert.request?.status,
+        );
         const validationCount = await this.validationRepo.count({
           where: { certificate_id: cert.id },
         });
         return {
           ...cert,
+          email: cert.request?.email,
           validation_count: validationCount,
+          employment_status: employmentStatus,
         };
       }),
     );
@@ -253,6 +553,7 @@ export class CertificatesService {
     if (!certificate) {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
     }
+    await this.ensureTemplateSnapshotForCertificate(certificate);
     return certificate;
   }
 
@@ -292,6 +593,19 @@ export class CertificatesService {
     const count = await this.certificateRepo.count();
     const certificate_number = `12_620_700_20_CD ${String(count + 1).padStart(3, '0')}`;
 
+    const templateType = this.resolveTemplateTypeFromRequest(request);
+    let templateSnapshot: any = null;
+    let templateVersion: string | null = null;
+    try {
+      const config = await this.templateConfigService.getActiveConfig(templateType);
+      if (config) {
+        templateSnapshot = config;
+        templateVersion = config.version || null;
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
+    }
+
     const certificate = this.certificateRepo.create({
       verification_code,
       certificate_number,
@@ -303,22 +617,24 @@ export class CertificatesService {
       position_category: request.position_category,
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
+      technical_bonus: Number(request.monthly_salary || 0) * 0.2,
       salary_text: request.salary_text,
       department: request.department,
+      cod_cargo: request.cod_cargo,
+      cod_grade: request.cod_grade || undefined,
       campus: request.campus,
       issue_date: new Date(),
       issuance_timestamp: new Date(),
       signer_name: signer.full_name,
       signer_position: signer.position,
       signer_department: signer.department,
+      template_snapshot: templateSnapshot,
+      template_type: templateType,
+      template_version: templateVersion,
       status: 'VALID',
     });
 
     const saved = await this.certificateRepo.save(certificate);
-
-    // Update request status
-    await this.updateSolicitud(request.id, { status: 'COMPLETED' });
-
     return saved;
   }
 
@@ -581,14 +897,39 @@ export class CertificatesService {
       throw new NotFoundException(`Certificado con ID ${certificadoId} no encontrado`);
     }
 
+    const normalizarFecha = (valor: Date | string) => {
+      if (!valor) return null;
+      if (valor instanceof Date) {
+        return new Date(
+          valor.getUTCFullYear(),
+          valor.getUTCMonth(),
+          valor.getUTCDate(),
+          12,
+          0,
+          0,
+        );
+      }
+      const match = valor.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        return new Date(year, month, day, 12, 0, 0);
+      }
+      const parsed = new Date(valor);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
     // Formatear fecha de vinculacion
+    const fechaVinculacionDate = normalizarFecha(certificado.hiring_date);
     const fechaVinculacion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.hiring_date),
+      fechaVinculacionDate || new Date(),
     );
 
     // Formatear fecha de expedicion
+    const fechaExpedicionDate = normalizarFecha(certificado.issue_date);
     const fechaExpedicion = this.certificateGenerator.formatFechaTexto(
-      new Date(certificado.issue_date),
+      fechaExpedicionDate || new Date(),
     );
 
     // Formatear salario
@@ -624,10 +965,13 @@ export class CertificatesService {
   async verificarDocumentoPorSolicitud(documento: string) {
     // Buscar la solicitud por numero de documento
     const documentoTrim = (documento || '').trim();
-    const solicitud = await this.requestRepo.findOne({
-      where: { id_number: documentoTrim },
-      order: { request_date: 'DESC', created_at: 'DESC' },
-    });
+    const solicitud = await this.requestRepo
+      .createQueryBuilder('request')
+      .where('request.id_number = :documento', { documento: documentoTrim })
+      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC')
+      .getOne();
 
     if (!solicitud) {
       return {
@@ -642,6 +986,7 @@ export class CertificatesService {
     });
 
     if (certificadoExistente) {
+      await this.ensureTemplateSnapshotForCertificate(certificadoExistente);
       return {
         existe: true,
         tieneCertificado: true,
@@ -676,6 +1021,15 @@ export class CertificatesService {
       throw new BadRequestException('Error al recuperar informacion de la solicitud');
     }
 
+    const employmentStatus = this.resolveEmploymentStatus(
+      verificacion.solicitud.hiring_date,
+      verificacion.solicitud.request_date,
+      verificacion.solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+    }
+
     // Generar codigo de 6 digitos
     const codigoValidacion = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
@@ -701,6 +1055,8 @@ export class CertificatesService {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
         email: verificacion.solicitud.email,
+        status: verificacion.solicitud.status,
+        employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,
         hiring_date: verificacion.solicitud.hiring_date,
         position_category: verificacion.solicitud.position_category,
@@ -737,6 +1093,15 @@ export class CertificatesService {
       throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
     }
 
+    const employmentStatus = this.resolveEmploymentStatus(
+      solicitud.hiring_date,
+      solicitud.request_date,
+      solicitud.status,
+    );
+    if (employmentStatus === 'INACTIVO') {
+      throw new BadRequestException('Actualmente no tienes un contrato activo en la ESAP.');
+    }
+
     // Generar el certificado
     const nuevoCertificado = await this.createCertificado(solicitud.id);
 
@@ -752,4 +1117,3 @@ export class CertificatesService {
     };
   }
 }
-

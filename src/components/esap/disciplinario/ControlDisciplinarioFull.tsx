@@ -28,15 +28,13 @@ import { GestionProcesos } from './GestionProcesos';
 import { GestionProfesionales } from './GestionProfesionales';
 // import { ModuloReportes } from './ModuloReportes';
 import { ModuloConfiguracion } from './ModuloConfiguracion';
-import { GestionNoticias } from './GestionNoticias'; // NUEVO: Módulo RF001
-import { GestionProcesosProfesionalesCompleto } from './GestionProcesosProfesionalesCompleto'; // ✅ RF003 100% Funcional
 import { RevisionAprobacionJefe } from './RevisionAprobacionJefe'; // ✅ RF004 100% Funcional
-import { ExpedienteElectronico } from './ExpedienteElectronico'; // ✅ RF005 100% Funcional
+import { ExpedientesElectronicos } from './ExpedientesElectronicos'; // ✅ RF005 100% Funcional
 import { GestionTerminosAlertas } from './GestionTerminosAlertas'; // ✅ RF006 100% Funcional
-import { DashboardEjecutivoIntegrado } from './DashboardEjecutivoIntegrado'; // ✅ Dashboard Hub Operativo
 import { DashboardKanbanOperativo } from './DashboardKanbanOperativo'; // ✅ Kanban Operativo Completo
 import { ModelosSoporteDisciplinario } from './ModelosSoporteDisciplinario'; // ✅ Modelos de Soporte
-
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '../../../enums/permissions';
 import { disciplinaryService, DisciplinaryProcess } from '../../../services/api/disciplinary.service';
 
 // TIPOS GLOBALES
@@ -706,6 +704,7 @@ export function ControlDisciplinarioFull() {
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [filtroProfesionalNombre, setFiltroProfesionalNombre] = useState<string | null>(null);
   const [dashboardView, setDashboardView] = useState<'lista' | 'kanban'>('lista');
+  const [selectedProcesoIdForExpediente, setSelectedProcesoIdForExpediente] = useState<string | null>(null);
   // Estados de Negocio
   const [procesos, setProcesos] = useState<Proceso[]>([]);
   const [stageConfigs, setStageConfigs] = useState<any[]>([]);
@@ -738,13 +737,13 @@ export function ControlDisciplinarioFull() {
   }, [currentSection]);
 
   const menuItems: MenuItem[] = [
-    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'noticias', label: 'Noticias Disciplinarias', icon: <FileText className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981' },
-    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6' },
-    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B' },
-    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5' },
-    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280' }
+    { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE) },
+    // { id: 'noticias', label: 'Noticias Disciplinarias', icon: <FileText className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_MANAGE) },
+    { id: 'aprobacion', label: 'Revisión y Aprobación', icon: <CheckCircle className="w-5 h-5" />, color: '#10B981', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE) },
+    { id: 'expediente', label: 'Expediente Electrónico', icon: <Archive className="w-5 h-5" />, color: '#8B5CF6', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE) },
+    { id: 'terminos', label: 'Términos y Alertas', icon: <Clock className="w-5 h-5" />, color: '#F59E0B', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) },
+    { id: 'profesionales', label: 'Profesionales', icon: <Users className="w-5 h-5" />, color: '#003DA5', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE) },
+    { id: 'config', label: 'Configuración', icon: <Settings className="w-5 h-5" />, color: '#6B7280', visible: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE) }
   ];
 
   const getTitleForSection = () => {
@@ -765,6 +764,10 @@ export function ControlDisciplinarioFull() {
     toast.info('Filtro de profesional eliminado');
   };
 
+  const handleLimpiarFiltroProfesional = () => {
+    setFiltroProfesional(null);
+  };
+
   return (
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
@@ -773,21 +776,31 @@ export function ControlDisciplinarioFull() {
       moduleColor="#003DA5"
       menuItems={menuItems}
       activeSection={currentSection}
-      onSectionChange={(section) => setCurrentSection(section as any)}
+      onSectionChange={(section) => {
+        setCurrentSection(section as any);
+        // Limpiar filtro al cambiar de sección
+        if (section !== 'dashboard') {
+          handleLimpiarFiltroProfesional();
+        }
+      }}
       breadcrumb={['Backoffice', 'Control Interno Disciplinario', getTitleForSection()]}
     >
       {/* Contenido Principal */}
+      
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo
-          onNavigateToExpediente={() => setCurrentSection('expediente')}
+          onNavigateToExpediente={(procesoId: string) => {
+            setSelectedProcesoIdForExpediente(procesoId);
+            setCurrentSection('expediente');
+          }}
           filtroProfesionalId={filtroProfesional}
           filtroProfesionalNombre={filtroProfesionalNombre}
           onLimpiarFiltro={handleLimpiarFiltro}
         />
       )}
-      {currentSection === 'noticias' && <GestionNoticias />}
+      {/* {currentSection === 'noticias' && <GestionNoticias />} */}
       {currentSection === 'aprobacion' && <RevisionAprobacionJefe />}
-      {currentSection === 'expediente' && <ExpedienteElectronico />}
+      {currentSection === 'expediente' && <ExpedientesElectronicos />}
       {currentSection === 'terminos' && <GestionTerminosAlertas />}
       {currentSection === 'profesionales' && <GestionProfesionales onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracion />}

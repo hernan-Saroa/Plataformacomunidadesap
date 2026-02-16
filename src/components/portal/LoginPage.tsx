@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
 
@@ -150,15 +150,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       console.error('❌ Error de autenticación:', error);
 
       // Manejar diferentes tipos de errores
-      if (error.response?.status === 401) {
-        toast.error('Credenciales incorrectas', {
-          description: 'El correo electrónico o contraseña son incorrectos.',
-          duration: 5000,
-        });
-        setErrors({
-          email: 'Verifica tu correo electrónico',
-          password: 'Verifica tu contraseña'
-        });
+      if (error.response?.data.statusCode === 401) {
+        if (error.response?.data.message === 'El usuario no tiene roles asignados') {
+          toast.error('Acceso denegado', {
+            description: 'El usuario no tiene roles asignados. Por favor, solicita que te asignen un rol e intenta nuevamente.',
+            duration: 10000,
+          });
+        } else {
+          toast.error('Credenciales incorrectas', {
+            description: 'El correo electrónico o contraseña son incorrectos.',
+            duration: 5000,
+          });
+          setErrors({
+            email: 'Verifica tu correo electrónico',
+            password: 'Verifica tu contraseña'
+          });
+        }
       } else if (error.response?.status === 400) {
         toast.error('Datos inválidos', {
           description: 'Por favor verifica la información ingresada.',
@@ -199,12 +206,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           >
             {/* Logo - Mobile Only */}
             <div className="lg:hidden flex justify-center mb-6">
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-10 w-auto object-contain"
-                style={{ filter: 'brightness(0) saturate(100%) invert(28%) sepia(91%) saturate(1448%) hue-rotate(197deg) brightness(91%) contrast(101%)' }}
-              />
+              <ESAPLogo variant="color" className="h-10 w-auto" />
             </div>
 
             {/* Back to Home Button */}
@@ -534,11 +536,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
               transition={{ delay: 0.3 }}
               className="flex items-start"
             >
-              <img 
-                src={esapLogoWhite} 
-                alt="ESAP Logo" 
-                className="h-16 w-auto object-contain drop-shadow-2xl"
-              />
+              <ESAPLogo variant="white" className="h-16 w-auto" />
             </motion.div>
 
             {/* Main Content */}

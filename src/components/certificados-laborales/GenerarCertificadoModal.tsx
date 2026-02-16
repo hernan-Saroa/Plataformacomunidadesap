@@ -8,7 +8,9 @@ import {
   AlertCircle,
   Loader2,
   FileText,
-  DollarSign
+  DollarSign,
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -17,6 +19,8 @@ import { Card } from '../ui/card';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
+import { PaginationPremium } from '../shared/PaginationPremium';
+import { certificadosService } from '../../services/api/certificados.service';
 
 interface GenerarCertificadoModalProps {
   isOpen: boolean;
@@ -30,18 +34,27 @@ interface CertificadoLaboralListado {
   consecutivo: string;
   certificateHash?: string;
   qrCode?: string;
+  position_location?: string;
+  department?: string;
+  cod_cargo?: string;
+  cod_grade?: string;
+  campus?: string;
+  templateSnapshot?: any;
+  templateType?: 'docente' | 'administrador';
   empleado: {
     nombre: string;
     documento: string;
     email: string;
     cargo: string;
     dependencia: string;
+    dependenciaPadre?: string;
     tipoVinculacion: string;
     fechaVinculacion: string;
     grado: string;
+    ubicacion?: string;
     salario: number;
   };
-  estado: 'activo' | 'revocado' | 'expirado';
+  estado: 'activo' | 'inactivo' | 'revocado' | 'expirado';
   fechaSolicitud: string;
   fechaGeneracion: string;
   cantidadEscaneos: number;
@@ -53,7 +66,63 @@ interface CertificadoLaboralListado {
   };
 }
 
-export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificados }: GenerarCertificadoModalProps) {
+export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificados: _certificados }: GenerarCertificadoModalProps) {
+  const normalizarTexto = (value?: string | null) => {
+    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
+    if (!cleaned) return '';
+    const lower = cleaned.toLowerCase();
+    if (lower === 'registro padre' || lower === 'registro hijo') return '';
+    return cleaned;
+  };
+
+  const normalizarFechaContrato = (value?: string | number | Date | null) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day);
+    }
+    const dmyMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(year, month, day);
+    }
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  };
+
+  const resolverEstadoLaboral = (
+    hiringDate?: string | number | Date | null,
+    endDate?: string | number | Date | null,
+    statusRaw?: string | null,
+  ): 'activo' | 'inactivo' => {
+    const statusUpper = String(statusRaw || '').trim().toUpperCase();
+    if (statusUpper === 'I' || statusUpper === 'INACTIVO' || statusUpper === 'INACTIVE') return 'inactivo';
+    if (statusUpper === 'A' || statusUpper === 'ACTIVO' || statusUpper === 'ACTIVE') return 'activo';
+
+    const start = normalizarFechaContrato(hiringDate);
+    const end = normalizarFechaContrato(endDate);
+    const today = normalizarFechaContrato(new Date());
+
+    if (start || end) {
+      if (!start || !today) return 'inactivo';
+      if (today < start) return 'inactivo';
+      if (!end) return 'activo';
+      return today <= end ? 'activo' : 'inactivo';
+    }
+    return 'activo';
+  };
+
   const [step, setStep] = useState<'buscar' | 'validar'>('buscar');
   const [searchTerm, setSearchTerm] = useState('');
   const [certificadoSeleccionado, setCertificadoSeleccionado] = useState<CertificadoLaboralListado | null>(null);
@@ -63,6 +132,55 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   });
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
+  const [modalPage, setModalPage] = useState(1);
+  const [modalItems, setModalItems] = useState<CertificadoLaboralListado[]>([]);
+  const [modalTotal, setModalTotal] = useState(0);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const itemsPerPage = 10;
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr) return null;
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const formatearFecha = (fechaStr: string) => {
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) return 'Fecha no disponible';
+    return fecha.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatearFechaHora = (fechaStr?: string) => {
+    if (!fechaStr) {
+      return { fecha: 'Fecha no disponible', hora: '' };
+    }
+    const fecha = parseDateOnly(fechaStr);
+    if (!fecha) {
+      return { fecha: 'Fecha no disponible', hora: '' };
+    }
+    const fechaTexto = fecha.toLocaleDateString('es-CO', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+    const incluyeHora = fechaStr.includes('T');
+    const horaTexto = incluyeHora
+      ? fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+      : '';
+    return { fecha: fechaTexto, hora: horaTexto };
+  };
 
   useEffect(() => {
     if (!isOpen) {
@@ -70,11 +188,137 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     }
   }, [isOpen]);
 
-  const certificadosFiltrados = certificados.filter(cert =>
-    cert.empleado.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cert.empleado.documento.includes(searchTerm) ||
-    cert.consecutivo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const fetchCertificadosModal = async () => {
+    if (!isOpen) return;
+    setModalLoading(true);
+    setModalError(null);
+
+    try {
+      const params: Record<string, any> = {
+        page: modalPage,
+        limit: itemsPerPage
+      };
+      if (searchTerm.trim()) {
+        params.search = searchTerm.trim();
+      }
+
+      const response = await certificadosService.laborales.listar(params);
+      const items = Array.isArray(response) ? response : (response.items || []);
+      const total = Array.isArray(response) ? items.length : (response.total || 0);
+
+      const transformados: CertificadoLaboralListado[] = items.map((cert: any) => {
+        const dependenciaPadreRaw =
+          cert.request?.cod_cargo ||
+          cert.request?.codCargo ||
+          cert.cod_cargo ||
+          cert.codCargo ||
+          '';
+        const ubicacionRaw =
+          cert.department ||
+          cert.request?.department ||
+          cert.request?.departmentName ||
+          cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '';
+        const employmentStatusRaw = String(
+          cert.employment_status ||
+          cert.request?.status ||
+          cert.request_status ||
+          ''
+        ).trim().toUpperCase();
+        const hiringDate =
+          cert.request?.hiring_date ||
+          cert.request?.hiringDate ||
+          cert.hiring_date ||
+          cert.hiringDate ||
+          null;
+        const endDate =
+          cert.request?.request_date ||
+          cert.request?.requestDate ||
+          cert.request_date ||
+          cert.requestDate ||
+          null;
+        const employmentEstado = resolverEstadoLaboral(hiringDate, endDate, employmentStatusRaw);
+        const certificadoEstado =
+          cert.status === 'REVOKED'
+            ? 'revocado'
+            : cert.status === 'EXPIRED'
+              ? 'expirado'
+              : employmentEstado;
+        return {
+          id: cert.id,
+          consecutivo: cert.certificate_number,
+          certificateHash: cert.verification_code,
+          qrCode: cert.verification_code,
+          position_location: ubicacionRaw,
+          department: normalizarTexto(
+            cert.department ||
+            cert.request?.department ||
+            cert.request?.departmentName ||
+            ubicacionRaw ||
+            ''
+          ),
+          cod_cargo: dependenciaPadreRaw,
+          cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+          campus: cert.campus,
+          templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
+          templateType:
+            cert.template_type ||
+            cert.templateType ||
+            cert.template_snapshot?.templateType ||
+            cert.template_snapshot?.template_type ||
+            undefined,
+          empleado: {
+            nombre: cert.full_name,
+            documento: cert.id_number,
+            cargo: cert.career_category,
+            dependencia: normalizarTexto(ubicacionRaw),
+            dependenciaPadre: normalizarTexto(dependenciaPadreRaw),
+            tipoVinculacion: cert.position_category,
+            fechaVinculacion: cert.hiring_date,
+            grado: cert.department || '',
+            ubicacion: normalizarTexto(ubicacionRaw),
+            salario: Number(cert.monthly_salary),
+            email: cert.email || cert.request?.email || 'No disponible'
+          },
+          estado: certificadoEstado,
+          fechaSolicitud: cert.created_at,
+          fechaGeneracion: cert.issuance_timestamp,
+          cantidadEscaneos: cert.validation_count || 0,
+          pdfUrl: cert.pdf_url,
+          firmante: {
+            nombre: cert.signer_name,
+            cargo: cert.signer_position,
+            dependencia: cert.signer_department
+          }
+        };
+      });
+
+      setModalItems(transformados);
+      setModalTotal(total);
+    } catch (error: any) {
+      console.error('Error al cargar certificados para exportar:', error);
+      setModalError(error.message || 'No se pudieron cargar los certificados');
+      setModalItems([]);
+      setModalTotal(0);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchCertificadosModal();
+    }
+  }, [isOpen, modalPage, searchTerm]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setModalPage(1);
+    }
+  }, [searchTerm, isOpen]);
 
   const handleSelectCertificado = (cert: CertificadoLaboralListado) => {
     setCertificadoSeleccionado(cert);
@@ -129,6 +373,10 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     setConfiguracion({
       incluyeSalario: true
     });
+    setModalPage(1);
+    setModalItems([]);
+    setModalTotal(0);
+    setModalError(null);
   };
 
   if (!isOpen) return null;
@@ -141,34 +389,42 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
         onClick={onClose}
       />
 
-      {/* Modal */}
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-          {/* Header */}
-          <div className="bg-[#003DA5] px-6 py-4">
+      {/* Modal - Mobile Optimized */}
+      <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <motion.div 
+          initial={{ y: '100%', opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-3xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
+        >
+          {/* Header - Sticky */}
+          <div className="bg-[#003DA5] px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <FileText className="w-6 h-6 text-white" />
-                <h2 className="text-white text-xl">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" />
+                <h2 className="text-white text-base sm:text-xl font-semibold truncate">
                   Generar Certificado Laboral
                 </h2>
               </div>
-              <button
-                onClick={onClose}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              {step !== 'generar' && (
+                <button
+                  onClick={onClose}
+                  className="text-white/80 hover:text-white transition-colors p-2 -mr-2 flex-shrink-0"
+                >
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          {/* Content - Scrollable */}
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1">
             {/* Step 1: Buscar Empleado */}
             {!isGenerating && step === 'buscar' && (
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-6">
                 <div>
-                  <Label htmlFor="search">Buscar Empleado</Label>
+                  <Label htmlFor="search" className="text-sm sm:text-base mb-2">Buscar Empleado</Label>
                   <div className="relative mt-2">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <Input
@@ -182,9 +438,15 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                   </div>
                 </div>
 
+
+
                 <div className="space-y-3">
-                  {certificadosFiltrados.length > 0 ? (
-                    certificadosFiltrados.map((cert) => (
+                  {modalLoading ? (
+                    <div className="text-center py-8 text-gray-500">Cargando certificados...</div>
+                  ) : modalError ? (
+                    <div className="text-center py-8 text-red-600">{modalError}</div>
+                  ) : modalItems.length > 0 ? (
+                    modalItems.map((cert) => (
                       <Card
                         key={cert.id}
                         className="p-4 hover:shadow-md transition-all cursor-pointer hover:border-[#003DA5]"
@@ -193,30 +455,49 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4">
                             <div className={`p-3 rounded-lg ${
-                              cert.estado === 'activo' ? 'bg-green-100' : 'bg-gray-100'
+                              cert.estado === 'activo'
+                                ? 'bg-green-100'
+                                : cert.estado === 'inactivo'
+                                  ? 'bg-red-100'
+                                  : 'bg-gray-100'
                             }`}>
                               <User className={`w-6 h-6 ${
-                                cert.estado === 'activo' ? 'text-green-600' : 'text-gray-600'
+                                cert.estado === 'activo'
+                                  ? 'text-green-600'
+                                  : cert.estado === 'inactivo'
+                                    ? 'text-red-600'
+                                    : 'text-gray-600'
                               }`} />
                             </div>
                             <div>
                               <h4 className="text-gray-900">{cert.empleado.nombre}</h4>
                               <div className="flex items-center gap-4 mt-1">
                                 <span className="text-sm text-gray-600">CC {cert.empleado.documento}</span>
-                                <span className="text-sm text-gray-500">{cert.empleado.cargo}</span>
                               </div>
-                              <p className="text-sm text-gray-500 mt-1">{cert.empleado.dependencia}</p>
+                              <p className="text-sm text-gray-500 mt-1">
+                                {cert.empleado.ubicacion || ''}
+                              </p>
+                              <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>{formatearFechaHora(cert.fechaGeneracion || cert.fechaSolicitud).fecha}</span>
+                                </div>
+                                {formatearFechaHora(cert.fechaGeneracion || cert.fechaSolicitud).hora && (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>{formatearFechaHora(cert.fechaGeneracion || cert.fechaSolicitud).hora}</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-2">
                             {cert.estado === 'activo' ? (
-                              <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                                Activo
-                              </span>
+                              <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded-full">Activo</span>
+                            ) : cert.estado === 'inactivo' ? (
+                              <span className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded-full">Inactivo</span>
                             ) : (
-                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded-full">
-                                Inactivo
-                              </span>
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-800 rounded-full">Inactivo</span>
                             )}
                             {cert.empleado.salario <= 0 && (
                               <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full flex items-center gap-1">
@@ -234,13 +515,22 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                         <User className="w-8 h-8 text-gray-400" />
                       </div>
                       <p className="text-gray-600">No se encontraron empleados</p>
-                      <p className="text-gray-500 text-sm mt-1">
-                        Intenta con otro termino de busqueda
-                      </p>
+                      <p className="text-gray-500 text-sm mt-1">Intenta con otro termino de busqueda</p>
                     </div>
                   )}
                 </div>
-              </div>
+                {modalTotal > itemsPerPage && (
+                  <div className="pt-4 border-t border-gray-200">
+                    <PaginationPremium
+                      currentPage={modalPage}
+                      totalPages={Math.ceil(modalTotal / itemsPerPage)}
+                      onPageChange={setModalPage}
+                      itemsPerPage={itemsPerPage}
+                      totalItems={modalTotal}
+                    />
+                  </div>
+                )}
+                </div>
             )}
 
             {/* Step 2: Validar y Configurar */}
@@ -272,20 +562,16 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                     <div>
                       <label className="text-sm text-gray-600">Fecha de Vinculacion</label>
                       <p className="text-gray-900">
-                        {new Date(certificadoSeleccionado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
+                        {formatearFecha(certificadoSeleccionado.empleado.fechaVinculacion)}
                       </p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Grado</label>
-                      <p className="text-gray-900">{certificadoSeleccionado.empleado.grado}</p>
+                      <label className="text-sm text-gray-600">Ubicacion</label>
+                      <p className="text-gray-900">{certificadoSeleccionado.empleado.ubicacion || ''}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Dependencia</label>
-                      <p className="text-gray-900">{certificadoSeleccionado.empleado.dependencia}</p>
+                      <label className="text-sm text-gray-600">Correo Electronico</label>
+                      <p className="text-gray-900">{certificadoSeleccionado.empleado.email}</p>
                     </div>
                     <div>
                       <label className="text-sm text-gray-600">Salario</label>
@@ -328,25 +614,25 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                     Configuracion del Certificado
                   </h3>
 
-                  <div className="space-y-4">
-                    <div className="space-y-3 pt-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="salario"
-                          checked={configuracion.incluyeSalario}
-                          onCheckedChange={(checked) =>
-                            setConfiguracion({ ...configuracion, incluyeSalario: checked as boolean })
-                          }
-                        />
-                        <label
-                          htmlFor="salario"
-                          className="text-sm text-gray-700 cursor-pointer"
-                        >
-                          Incluir informacion salarial
-                        </label>
+                    <div className="space-y-4">
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="salario"
+                            checked={configuracion.incluyeSalario}
+                            onCheckedChange={(checked) =>
+                              setConfiguracion({ ...configuracion, incluyeSalario: checked as boolean })
+                            }
+                          />
+                          <label
+                            htmlFor="salario"
+                            className="text-sm text-gray-700 cursor-pointer"
+                          >
+                            Incluir informacion salarial
+                          </label>
+                        </div>
                       </div>
                     </div>
-                  </div>
                 </Card>
               </div>
             )}
@@ -380,7 +666,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+          <div className="border-t border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-gray-50">
             <div className="flex justify-between">
               {step === 'validar' && (
                 <>
@@ -409,7 +695,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {certificadoSeleccionado && (
@@ -421,7 +707,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           onAutoActionComplete={(_action, success) => handleAutoActionComplete(success)}
           certificado={{
             ...certificadoSeleccionado,
-            incluyeSalario: configuracion.incluyeSalario
+            incluyeSalario: configuracion.incluyeSalario,
+            incluyePrimaTecnica: false
           }}
         />
       )}

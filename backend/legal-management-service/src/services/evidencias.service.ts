@@ -4,12 +4,15 @@ import { Repository } from 'typeorm';
 import { Evidencia } from '../entities/evidencia.entity';
 import { ExpedienteService } from './expediente.service';
 
+import { ActuacionService } from './actuacion.service';
+
 @Injectable()
 export class EvidenciasService {
     constructor(
         @InjectRepository(Evidencia)
         private readonly evidenciaRepository: Repository<Evidencia>,
-        private readonly expedienteService: ExpedienteService
+        private readonly expedienteService: ExpedienteService,
+        private readonly actuacionService: ActuacionService
     ) { }
 
     // Helper para validar si es UUID
@@ -46,6 +49,9 @@ export class EvidenciasService {
             throw new NotFoundException('Expediente no encontrado');
         }
 
+        // Verificar que el expediente existe, o crearlo si es un proceso disciplinario
+        const expediente = await this.expedienteService.findOneOrCreateFromDisciplinaryProcess(expedienteId);
+
         const nuevaEvidencia = this.evidenciaRepository.create({
             ...data,
             expedienteId: expedienteId,
@@ -54,7 +60,23 @@ export class EvidenciasService {
             archivoTamano: file.size,
         });
 
-        return this.evidenciaRepository.save(nuevaEvidencia);
+        const saved = await this.evidenciaRepository.save(nuevaEvidencia);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                expedienteId,
+                saved.descripcion || 'Evidencia Cargada',
+                `Nueva Evidencia: "${saved.archivoNombre}". Tipo: ${saved.tipo}. Prioridad: ${saved.prioridad}.`,
+                'EVIDENCIA',
+                saved.id,
+                { archivo: saved.archivoUrl, prioridad: saved.prioridad }
+            );
+        } catch (error) {
+            console.error('Error creando log de actuación automática para Evidencia:', error);
+        }
+
+        return saved;
     }
 
     async updateEstado(id: string, estado: string): Promise<Evidencia> {
@@ -62,7 +84,21 @@ export class EvidenciasService {
         if (!evidencia) throw new NotFoundException('Evidencia no encontrada');
 
         evidencia.estado = estado;
-        return this.evidenciaRepository.save(evidencia);
+        const saved = await this.evidenciaRepository.save(evidencia);
+
+        // LOG CAMBIO ESTADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                evidencia.expedienteId,
+                `Evidencia ${estado}`,
+                `La evidencia "${evidencia.archivoNombre}" ha cambiado de estado a: ${estado}.`,
+                'EVIDENCIA',
+                evidencia.id,
+                { nuevoEstado: estado }
+            );
+        } catch (e) { console.error(e); }
+
+        return saved;
     }
 
     async delete(id: string): Promise<{ success: boolean; message: string }> {

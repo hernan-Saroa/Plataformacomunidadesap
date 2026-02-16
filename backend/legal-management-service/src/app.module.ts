@@ -21,6 +21,7 @@ import { ConsultaJuridica } from './entities/consulta-juridica.entity';
 import { TerminoProcesal } from './entities/termino-procesal.entity';
 import { OrganismoControlOC } from './entities/organismo-control-legal.entity';
 import { RequerimientoOC } from './entities/requerimiento-oc.entity';
+import { RespuestaBorradorOC } from './entities/respuesta-borrador-oc.entity';
 import { SolicitudInsumo } from './entities/solicitud-insumo.entity';
 import { Hallazgo } from './entities/hallazgo.entity';
 import { TareaExpediente } from './entities/tarea-expediente.entity';
@@ -28,11 +29,20 @@ import { NotaExpediente } from './entities/nota-expediente.entity';
 import { ComentarioOC } from './entities/comentario-oc.entity';
 import { DocumentoOC } from './entities/documento-oc.entity';
 import { Riesgo } from './entities/riesgo.entity';
+import { RiesgoHistorial } from './entities/riesgo-historial.entity';
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
 import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity';
 import { CorreoJuridico } from './entities/correo-juridico.entity';
 import { AdjuntoCorreo } from './entities/adjunto-correo.entity';
 import { ExcepcionProcesal } from './entities/excepcion-procesal.entity';
+import { ProcesoCoactivo } from './entities/proceso-coactivo.entity';
+import { ProcesoCoactivoAdjunto } from './entities/proceso-coactivo-adjunto.entity';
+import { PagoCoactivo } from './entities/pago-coactivo.entity';
+import { CoactivoHistorial } from './entities/coactivo-historial.entity';
+import { ConsultaJuridicaHistorial } from './entities/consulta-juridica-historial.entity';
+import { SystemConfiguration } from './entities/system-configuration.entity';
+import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
+import { OficioEnviado } from './entities/oficio-enviado.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -57,6 +67,9 @@ import { PlanesMejoramientoController } from './controllers/planes-mejoramiento.
 import { DashboardController } from './controllers/dashboard.controller';
 import { DocumentosConsultaController } from './controllers/documentos-consulta.controller';
 import { CorreosJuridicosController } from './controllers/correos-juridicos.controller';
+import { ProcesoCoactivoController } from './controllers/proceso-coactivo.controller';
+import { ConfigurationsController } from './controllers/configurations.controller';
+import { OficiosController } from './controllers/oficios.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -83,6 +96,12 @@ import { ComentariosConsultaController } from './controllers/comentarios-consult
 import { MicrosoftGraphService } from './services/microsoft-graph.service';
 import { CorreosJuridicosService } from './services/correos-juridicos.service';
 import { CorreosSyncScheduler } from './services/correos-sync.scheduler';
+import { ProcesoCoactivoService } from './services/proceso-coactivo.service';
+import { ConfigurationsService } from './services/configurations.service';
+import { DiasHabilesService } from './services/dias-habiles.service';
+import { AlertasVencimientoService } from './services/alertas-vencimiento.service';
+import { SmartClassificationService } from './services/smart-classification.service';
+import { OficiosService } from './services/oficios.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -109,8 +128,10 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Órganos de Control
       OrganismoControlOC,
       RequerimientoOC,
+      RespuestaBorradorOC,
       SolicitudInsumo,
       Hallazgo,
+      TipoRequerimientoOC,
       // Tareas y Notas
       TareaExpediente,
       NotaExpediente,
@@ -119,6 +140,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       DocumentoOC,
       // Riesgos
       Riesgo,
+      RiesgoHistorial,
       // Documentos Consultas
       DocumentoConsulta,
       ComentarioConsulta,
@@ -129,6 +151,17 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       AdjuntoCorreo,
       // Excepciones Procesales
       ExcepcionProcesal,
+      // Procesos Coactivos
+      ProcesoCoactivo,
+      ProcesoCoactivoAdjunto,
+      PagoCoactivo,
+      CoactivoHistorial,
+      // Historial Consultas
+      ConsultaJuridicaHistorial,
+      // System Configurations
+      SystemConfiguration,
+      // Oficios Enviados
+      OficioEnviado
     ]),
     PeiModule,
     PlanesMejoramientoModule
@@ -158,7 +191,13 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     DocumentosConsultaController,
     ComentariosConsultaController,
     // Correos Jurídicos
-    CorreosJuridicosController
+    CorreosJuridicosController,
+    // Procesos Coactivos
+    ProcesoCoactivoController,
+    // Configurations
+    ConfigurationsController,
+    // Oficios
+    OficiosController
     // PlanesMejoramientoController is usually inside PlanesMejoramientoModule, 
     // but if it was here in HEAD, I should check. 
     // HEAD didn't have it in controllers array explicitly (it had PlanesMejoramientoModule in imports).
@@ -188,7 +227,17 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Microsoft Graph / Correos
     MicrosoftGraphService,
     CorreosJuridicosService,
-    CorreosSyncScheduler
+    CorreosSyncScheduler,
+    SmartClassificationService,
+    // Procesos Coactivos
+    ProcesoCoactivoService,
+    // Configurations
+    ConfigurationsService,
+    // Días Hábiles y Alertas
+    DiasHabilesService,
+    AlertasVencimientoService,
+    // Oficios
+    OficiosService
   ],
 })
 export class AppModule { }

@@ -270,7 +270,7 @@ Sistema SIGL - Gestión Legal ESAP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[750px] lg:max-w-3xl h-[90vh] flex flex-col p-0">
         <DialogTitle className="sr-only">
           Detalle de Solicitud de Informe {solicitud.id}
         </DialogTitle>
@@ -741,7 +741,7 @@ Sistema SIGL - Gestión Legal ESAP
       {/* Modal de Confirmación de Recordatorio */}
       {mostrarModalRecordatorio && (
         <Dialog open={mostrarModalRecordatorio} onOpenChange={() => setMostrarModalRecordatorio(false)}>
-          <DialogContent className="max-w-md">
+          <DialogContent hideCloseButton className="max-w-md">
             <DialogTitle className="sr-only">Enviar Recordatorio</DialogTitle>
             <DialogDescription className="sr-only">
               Confirmación para enviar recordatorio al responsable

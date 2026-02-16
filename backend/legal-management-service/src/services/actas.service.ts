@@ -3,13 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Acta } from '../entities/acta.entity';
 import { ExpedienteService } from './expediente.service';
+import { ActuacionService } from './actuacion.service';
 
 @Injectable()
 export class ActasService {
     constructor(
         @InjectRepository(Acta)
         private readonly actaRepository: Repository<Acta>,
-        private readonly expedienteService: ExpedienteService
+        private readonly expedienteService: ExpedienteService,
+        private readonly actuacionService: ActuacionService
     ) { }
 
     // Helper para validar si es UUID
@@ -56,7 +58,29 @@ export class ActasService {
             })
         });
 
-        return this.actaRepository.save(nuevaActa);
+        const saved = await this.actaRepository.save(nuevaActa);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        try {
+            const esFirmada = !!saved.archivoNombre;
+            const titulo = esFirmada ? 'Acta Firmada Cargada' : 'Acta Programada';
+            const detalle = esFirmada
+                ? `Se ha cargado el acta firmada: "${saved.archivoNombre}". Tipo: ${saved.tipo}.`
+                : `Se ha programado una nueva acta: "${saved.numeroActa}". Fecha: ${saved.fecha}. Tipo: ${saved.tipo}.`;
+
+            await this.actuacionService.registrarEventoAutomatico(
+                expedienteId,
+                titulo,
+                detalle,
+                'ACTA',
+                saved.id,
+                { archivo: saved.archivoUrl }
+            );
+        } catch (error) {
+            console.error('Error creando log de actuación automática para Acta:', error);
+        }
+
+        return saved;
     }
 
     async updateEstado(id: string, estado: string): Promise<Acta> {
@@ -84,6 +108,20 @@ export class ActasService {
         acta.archivoTamano = file.size;
         acta.estado = 'Firmada';
 
-        return this.actaRepository.save(acta);
+        const saved = await this.actaRepository.save(acta);
+
+        // LOG UPLOAD/FIRMA
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                acta.expedienteId,
+                'Acta Firmada Subida',
+                `Se ha subido el documento firmado para el acta ${acta.numeroActa}. Archivo: ${acta.archivoNombre}`,
+                'ACTA',
+                acta.id,
+                { archivo: acta.archivoUrl }
+            );
+        } catch (e) { console.error(e); }
+
+        return saved;
     }
 }

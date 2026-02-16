@@ -234,11 +234,12 @@ export function ModalFormularioAuditoria({
       console.log('[ModalFormularioAuditoria] Iniciando carga de auditores...');
       setCargandoAuditores(true);
       try {
-        const response = await fetch('http://localhost:3007/auditorias/personas/disponibles');
-        console.log('[ModalFormularioAuditoria] Response status:', response.status);
+        const { auditoriasApi } = await import('./services/api');
+        const response = await auditoriasApi.getPersonasDisponibles();
+        console.log('[ModalFormularioAuditoria] Response status:', response.success);
         
-        if (response.ok) {
-          const personas = await response.json();
+        if (response.success && response.data) {
+          const personas = response.data;
           console.log('[ModalFormularioAuditoria] Personas recibidas:', personas.length, personas);
           console.log('[ModalFormularioAuditoria] Primera persona:', personas[0]);
           
@@ -304,7 +305,10 @@ export function ModalFormularioAuditoria({
             }
           }
         } else {
-          console.warn('[ModalFormularioAuditoria] Response no OK:', response.status);
+          console.warn('[ModalFormularioAuditoria] Error al cargar auditores:', response.error);
+          toast.error('Error al cargar auditores disponibles', {
+            description: response.error || 'No se pudieron cargar los auditores'
+          });
           setAuditoresDisponibles([]);
         }
       } catch (error) {

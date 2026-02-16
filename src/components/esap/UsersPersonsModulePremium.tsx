@@ -37,7 +37,6 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  QrCode, // ✅ AGREGADO para gestión de QR
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
@@ -71,6 +70,14 @@ import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA R
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect } from 'react';
+import { useAuth } from '../../hooks';
+
+import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPasswordTracking"; // ✅ GESTIÓN DE CONTRASEÑAS
+import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+// ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -108,6 +115,8 @@ export function UsersPersonsModulePremium() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
   const itemsPerPage = 10;
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -688,7 +697,7 @@ export function UsersPersonsModulePremium() {
         last_name: userData.lastName,
         identification_number: userData.documentNumber || userData.document || userData.identification_number,
         identification_type: userData.documentType || userData.identificationType || 'CC',
-        email: userData.email,
+        email: userData.email.toLowerCase(),
         phone: userData.phone || '',
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
@@ -742,6 +751,61 @@ export function UsersPersonsModulePremium() {
     setRoleFilter("all");
     setLocationFilter("all");
   };
+
+  // const hasActiveFilters =
+  //   searchQuery ||
+  //   statusFilter !== "all" ||
+  //   roleFilter !== "all" ||
+  //   locationFilter !== "all";
+
+  // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
+  const quickFiltersData = [
+    {
+      role: 'Docente',
+      code: 'DOCENTE',
+      icon: Users,
+      color: '#2962FF',
+      bgColor: '#EFF6FF',
+      borderColor: '#3B82F6',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Docente')).length
+    },
+    {
+      role: 'Estudiante',
+      code: 'ESTUDIANTE',
+      icon: UserCheck,
+      color: '#10B981',
+      bgColor: '#D1FAE5',
+      borderColor: '#10B981',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Estudiante')).length
+    },
+    {
+      role: 'Coordinador Académico',
+      code: 'COORD_ACAD',
+      icon: Shield,
+      color: '#8B5CF6',
+      bgColor: '#EDE9FE',
+      borderColor: '#8B5CF6',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Coordinador Académico')).length
+    },
+    {
+      role: 'Director Territorial',
+      code: 'DIR_TERRITORIAL',
+      icon: Building2,
+      color: '#F59E0B',
+      bgColor: '#FEF3C7',
+      borderColor: '#F59E0B',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Director Territorial')).length
+    },
+    {
+      role: 'Directivo',
+      code: 'DIRECTIVO',
+      icon: Shield,
+      color: '#EF4444',
+      bgColor: '#FEE2E2',
+      borderColor: '#EF4444',
+      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Directivo')).length
+    },
+  ];
 
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
@@ -799,401 +863,27 @@ export function UsersPersonsModulePremium() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header - Según especificaciones Figma */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{
-                background:
-                  "linear-gradient(135deg, #003DA5 0%, #0052CC 100%)",
-                boxShadow: "0 4px 12px rgba(0, 61, 165, 0.15)",
-              }}
-            >
-              <Users
-                className="w-6 h-6 text-white"
-                strokeWidth={2.5}
-              />
-            </div>
-            {/* H1: 32px Bold, line-height 40px, letter-spacing -0.25px */}
-            <h1
-              className="font-bold tracking-tight"
-              style={{
-                fontSize: "32px",
-                lineHeight: "40px",
-                letterSpacing: "-0.25px",
-                color: "#1F2937",
-              }}
-            >
-              Administración
-            </h1>
-          </div>
-          {/* Body: 14px Regular, line-height 20px */}
-          <p
-            className="font-normal"
-            style={{
-              fontSize: "14px",
-              lineHeight: "20px",
-              color: "#6B7280",
-            }}
-          >
-            Gestión integral de personas con asignación de roles
-            múltiples simultáneos
-          </p>
-        </div>
-
-        {/* Botones de Acción */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* ✅ Botón Exportar por Sede */}
-          <button
-            onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#10B981",
-              border: "2px solid #10B981",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#ECFDF5";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar por Sede</span>
-          </button>
-
-          {/* ✅ Botón Configurar Enrolamiento QR */}
-          <button
-            onClick={() => setShowEnrollmentConfig(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#FFFFFF",
-              color: "#003DA5",
-              border: "2px solid #003DA5",
-              borderRadius: "8px",
-              padding: "12px 20px",
-              fontSize: "14px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#F0F6FF";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#FFFFFF";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <QrCode className="w-5 h-5" strokeWidth={2} />
-            <span>Configurar Enrolamiento</span>
-          </button>
-
-          {/* Botón Primario - Crear Usuario */}
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all"
-            style={{
-              background: "#003DA5",
-              color: "#FFFFFF",
-              borderRadius: "8px",
-              padding: "12px 24px",
-              fontSize: "14px",
-              fontWeight: 500,
-              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#002D7A";
-              e.currentTarget.style.boxShadow =
-                "0 4px 8px rgba(0, 61, 165, 0.15)";
-              e.currentTarget.style.transform =
-                "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#003DA5";
-              e.currentTarget.style.boxShadow =
-                "0 1px 2px rgba(0, 0, 0, 0.05)";
-              e.currentTarget.style.transform = "translateY(0)";
-            }}
-          >
-            <UserPlus className="w-5 h-5" strokeWidth={2} />
-            <span>Crear Usuario</span>
-          </button>
-        </div>
-      </motion.div>
-
-      {/* Stats Cards - Card Stats según especificaciones */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-600">
-              <Shield className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900">
-                Roles y Permisos
-              </h3>
-              <p className="text-sm text-gray-600">
-                Administra roles, permisos granulares y control
-                de acceso con SSO
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewMode("roles-permisos")}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium"
-          >
-            <Shield className="w-5 h-5" />
-            <span>Ir a roles y permisos</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-          {/* Card Total */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#F0F6FF',
-                border: '1px solid #DBEAFE'
-              }}
-            >
-              <Users 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#003DA5' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.total}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Total Usuarios
-            </p>
-          </motion.div>
-
-          {/* Card Activos */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#ECFDF5',
-                border: '1px solid #D1FAE5'
-              }}
-            >
-              <UserCheck 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#10B981' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.active}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Usuarios Activos
-            </p>
-          </motion.div>
-
-          {/* Card Bloqueados */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#FEF2F2',
-                border: '1px solid #FEE2E2'
-              }}
-            >
-              <UserX 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#EF4444' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              {stats.blocked}
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Bloqueados
-            </p>
-          </motion.div>
-
-          {/* Card Crecimiento */}
-          <motion.div
-            className="bg-white rounded-xl p-6 border border-[#E5E7EB]"
-            style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-            whileHover={{ 
-              y: -2, 
-              boxShadow: '0 4px 12px rgba(0, 61, 165, 0.08)',
-              transition: { duration: 0.2 }
-            }}
-          >
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{
-                background: '#FEF3C7',
-                border: '1px solid #FDE68A'
-              }}
-            >
-              <TrendingUp 
-                className="w-6 h-6" 
-                strokeWidth={2.5}
-                style={{ color: '#F59E0B' }}
-              />
-            </div>
-            <p 
-              className="font-extrabold mb-1"
-              style={{
-                fontSize: '48px',
-                lineHeight: '56px',
-                letterSpacing: '-0.5px',
-                color: '#1F2937'
-              }}
-            >
-              +{stats.growth}%
-            </p>
-            <p 
-              className="font-normal"
-              style={{
-                fontSize: '14px',
-                lineHeight: '20px',
-                color: '#6B7280'
-              }}
-            >
-              Crecimiento
-            </p>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* ✅ Carpeta Digital Global - Todos los Usuarios */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.12 }}
-      >
-        <button
-          onClick={() => setShowSedesMetrics(!showSedesMetrics)}
-          className="w-full bg-white rounded-xl border border-[#E5E7EB] p-4 mb-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
-          style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
-        >
-          <div className="flex items-center gap-2">
-            <FolderOpen className="w-5 h-5 text-[--esap-primary]" />
-            <span className="font-semibold text-gray-900">
-              Carpeta Digital
-            </span>
-            <Badge variant="outline" className="ml-2">
-              {filteredUsers.length} usuarios
-            </Badge>
-          </div>
-          <ChevronDown 
-            className={`w-5 h-5 text-gray-500 transition-transform ${showSedesMetrics ? 'rotate-180' : ''}`}
-          />
-        </button>
-
-        {showSedesMetrics && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-4"
-          >
-            <CarpetaDigitalGlobal usuarios={filteredUsers} />
-          </motion.div>
-        )}
-      </motion.div>
+    <Container4K className="space-y-6">
+      {/* Header - DÍA 5: ResponsiveHeader */}
+      <ResponsiveHeader
+        title="Gestión Personas"
+        description="Gestión integral de personas con asignación de roles múltiples simultáneos"
+        icon={Users}
+        primaryAction={{
+          label: "Crear Usuario",
+          icon: UserPlus,
+          onClick: () => setShowCreateModal(true),
+          variant: "primary"
+        }}
+        secondaryActions={[
+          {
+            label: "Exportar por Sede",
+            icon: Download,
+            onClick: () => setShowExportModal(true),
+            variant: "secondary"
+          }
+        ]}
+      />
 
       {/* Búsqueda y Filtros - Input estándar según especificaciones */}
       <motion.div
@@ -1371,6 +1061,116 @@ export function UsersPersonsModulePremium() {
             </button>
           </div>
         )}
+      </motion.div>
+
+      {/* ✅ TARJETAS DE FILTROS RÁPIDOS POR ROL */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.18 }}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+      >
+        {quickFiltersData.map((filter) => {
+          const Icon = filter.icon;
+          const isActive = roleFilter === filter.role;
+          
+          return (
+            <motion.button
+              key={filter.code}
+              onClick={() => {
+                if (isActive) {
+                  setRoleFilter("all");
+                  toast.info("Filtro Eliminado", {
+                    description: `Se eliminó el filtro de ${filter.role}`,
+                  });
+                } else {
+                  setRoleFilter(filter.role);
+                  toast.success("Filtro Aplicado", {
+                    description: `Mostrando usuarios con rol ${filter.role}`,
+                  });
+                }
+              }}
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              className="relative overflow-hidden rounded-xl border-2 p-4 text-left transition-all"
+              style={{
+                backgroundColor: isActive ? filter.bgColor : '#FFFFFF',
+                borderColor: isActive ? filter.borderColor : '#E5E7EB',
+                boxShadow: isActive 
+                  ? `0 4px 12px ${filter.color}20` 
+                  : '0 1px 3px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              {/* Badge de filtro activo */}
+              {isActive && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-2 right-2"
+                >
+                  <div 
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: filter.color }}
+                  />
+                </motion.div>
+              )}
+
+              {/* Icono */}
+              <div 
+                className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
+                style={{ 
+                  backgroundColor: filter.bgColor,
+                  border: `2px solid ${filter.borderColor}20`
+                }}
+              >
+                <Icon 
+                  className="w-5 h-5" 
+                  style={{ color: filter.color }}
+                  strokeWidth={2.5}
+                />
+              </div>
+
+              {/* Contenido */}
+              <div>
+                <p 
+                  className="font-semibold mb-1"
+                  style={{ 
+                    fontSize: '14px',
+                    color: isActive ? filter.color : '#1F2937'
+                  }}
+                >
+                  {filter.role}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="font-bold"
+                    style={{ 
+                      fontSize: '24px',
+                      color: filter.color
+                    }}
+                  >
+                    {filter.count}
+                  </span>
+                  <span 
+                    className="text-xs"
+                    style={{ color: '#6B7280' }}
+                  >
+                    usuarios
+                  </span>
+                </div>
+              </div>
+
+              {/* Indicador hover */}
+              <div 
+                className="absolute bottom-0 left-0 right-0 h-1 transition-all"
+                style={{ 
+                  backgroundColor: filter.color,
+                  opacity: isActive ? 1 : 0
+                }}
+              />
+            </motion.button>
+          );
+        })}
       </motion.div>
 
       {/* Tabla Premium - Según especificaciones de Table */}
@@ -1719,7 +1519,7 @@ export function UsersPersonsModulePremium() {
                             verticalAlign: "middle",
                           }}
                         >
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-2" style={{display: hasSuperAdminRole(user) ? 'none' : 'block'}}>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1823,6 +1623,7 @@ export function UsersPersonsModulePremium() {
                                   style={{
                                     border: "1px solid #E5E7EB",
                                     background: "#FFFFFF",
+                                    display: hasSuperAdminRole(user) ? 'none' : 'block'
                                   }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.background =
@@ -1963,7 +1764,6 @@ export function UsersPersonsModulePremium() {
                           </div>
                         </td>
                       </motion.tr>
-
                       {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
                       {expandedUserId === user.id && (
                         <motion.tr
@@ -2365,14 +2165,6 @@ export function UsersPersonsModulePremium() {
         usuarios={filteredUsers}
       />
 
-      {/* Modal Configuración de Enrolamiento */}
-      {showEnrollmentConfig && (
-        <EnrollmentConfigModal
-          onClose={() => setShowEnrollmentConfig(false)}
-          enrollmentStats={enrollmentStats}
-        />
-      )}
-
       {/* ✅ Modal Cambiar Contraseña */}
       {showChangePasswordModal && selectedUser && (
         <ModalCambiarContrasena
@@ -2385,6 +2177,6 @@ export function UsersPersonsModulePremium() {
           mode="admin-reset"
         />
       )}
-    </div>
+    </Container4K>
   );
 }

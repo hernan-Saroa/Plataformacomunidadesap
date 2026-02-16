@@ -6,7 +6,7 @@
  * Cada sección usa el prefijo del servicio correspondiente
  */
 
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import type {
   Programa,
   Sede,

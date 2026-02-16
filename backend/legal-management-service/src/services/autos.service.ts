@@ -2,17 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { Auto } from '../entities/auto.entity';
+import { ActuacionService } from './actuacion.service';
 import { ExpedienteService } from './expediente.service';
-// import * as archiver from 'archiver';
-import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class AutosService {
     constructor(
         @InjectRepository(Auto)
         private readonly autoRepository: Repository<Auto>,
-        private readonly expedienteService: ExpedienteService
+        private readonly expedienteService: ExpedienteService,
+        private readonly actuacionService: ActuacionService
     ) { }
 
     async findAllByExpediente(radicado: string): Promise<Auto[]> {
@@ -41,7 +40,24 @@ export class AutosService {
             updatedAt: new Date()
         });
 
-        return this.autoRepository.save(nuevoAuto);
+        const saved = await this.autoRepository.save(nuevoAuto);
+
+        // REGISTRO AUTOMÁTICO EN HISTORIAL UNIFICADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                expediente.id,
+                saved.resumen || 'Auto Procesal',
+                `Nuevo Auto cargado: ${saved.archivoNombre}. Tipo: ${saved.tipo || 'General'}`,
+                'AUTO',
+                saved.id,
+                { tipoAuto: saved.tipo, archivo: saved.archivoUrl }
+            );
+        } catch (error) {
+            console.error('Error creando log de actuación automática para Auto:', error);
+            // No bloqueamos la creación del auto si falla el log
+        }
+
+        return saved;
     }
 
     async updateEstado(id: string, estado: string): Promise<Auto> {
@@ -57,7 +73,23 @@ export class AutosService {
             auto.fechaNotificacion = new Date();
         }
 
-        return this.autoRepository.save(auto);
+        const saved = await this.autoRepository.save(auto);
+
+        // LOG AUTOMÁTICO DE CAMBIO DE ESTADO
+        try {
+            await this.actuacionService.registrarEventoAutomatico(
+                auto.expedienteId,
+                `Auto ${estado}`,
+                `El auto ${auto.numero} (${auto.tipo}) ha cambiado de estado a: ${estado}. ${estado === 'Notificado' ? 'Notificado el: ' + new Date().toLocaleDateString() : ''}`,
+                'AUTO',
+                auto.id,
+                { nuevoEstado: estado }
+            );
+        } catch (error) {
+            console.error('Error log auto update:', error);
+        }
+
+        return saved;
     }
 
     async delete(id: string): Promise<{ success: boolean; message: string }> {

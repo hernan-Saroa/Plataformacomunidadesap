@@ -8,7 +8,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
+import { useAuth } from '../../../../hooks/useAuth';
 import {
   FileQuestion, Scale, User, Calendar, Clock, AlertTriangle,
   Download, Eye, ExternalLink, Paperclip, CheckCircle,
@@ -20,6 +21,8 @@ import {
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../ui/dialog';
+import { useConfirmation } from '../../../ui/confirmation-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { Badge } from '../../../ui/badge';
 import { Button } from '../../../ui/button';
 import { Card } from '../../../ui/card';
@@ -32,6 +35,9 @@ import type { ConsultaJuridica } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalCompartir } from './ModalCompartir';
 import { ModalAgregarNota } from './ModalAgregarNota';
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalExpedienteConsultaProps {
   isOpen: boolean;
@@ -41,6 +47,14 @@ interface ModalExpedienteConsultaProps {
 }
 
 export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }: ModalExpedienteConsultaProps) {
+  const { user } = useAuth();
+  // ✅ Obtener etapas activas desde configuración
+  const { estadosActivos } = useConfiguracionModulo('asesoria-juridica');
+  console.log('📋 estadosActivos en modal:', estadosActivos);
+
+  // Hook de confirmación personalizado
+  const { confirm, ConfirmationComponent } = useConfirmation();
+
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
@@ -48,6 +62,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   // Estados para modales
   const [modalCompartirAbierto, setModalCompartirAbierto] = useState(false);
   const [modalAgregarNotaAbierto, setModalAgregarNotaAbierto] = useState(false);
+  const [showArchivarModal, setShowArchivarModal] = useState(false);
+  const [motivoArchivo, setMotivoArchivo] = useState('');
+
 
   // Estados para documentos
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -91,6 +108,10 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false);
       toast.dismiss();
       toast.success('Borrador guardado correctamente');
+      // Recargar datos para reflejar el borrador guardado
+      if (onUpdate) {
+        onUpdate();
+      }
     } catch (error) {
       console.error('Error guardando borrador:', error);
       toast.dismiss();
@@ -101,158 +122,128 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const handleEnviarRespuesta = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
-    if (!confirm('¿Está seguro de enviar esta respuesta? La consulta quedará marcada como respondida.')) {
+    // Validar que tenga email del solicitante
+    if (!consulta.emailSolicitante) {
+      toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
       return;
     }
 
+    // Reemplazo de confirmación nativa por personalizada
+    const confirmado = await confirm({
+      title: 'Plataforma ESAP',
+      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      variant: 'info',
+      confirmText: 'Aceptar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
     try {
-      toast.loading('Enviando respuesta...');
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true);
-      toast.dismiss();
-      toast.success('Respuesta enviada correctamente');
-      onClose(); // Cerrar modal o recargar datos
-      // Podríamos disparar un evento de recarga si lo recibimos por props
+      toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
+
+      // 1. Enviar correo al solicitante
+      const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
+      await correosJuridicosService.sendEmail({
+        to: consulta.emailSolicitante,
+        subject: asunto,
+        body: respuestaTexto
+      });
+
+      // 2. Guardar respuesta en BD y marcar como respondida
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true, usuarioNombre);
+
+      toast.success('✅ Respuesta enviada correctamente', {
+        id: 'send-response',
+        description: `Correo enviado a ${consulta.emailSolicitante}`
+      });
+
+      if (onUpdate) onUpdate();
+      onClose();
     } catch (error) {
       console.error('Error enviando respuesta:', error);
-      toast.dismiss();
-      toast.error('Error al enviar respuesta');
+      toast.error('Error al enviar la respuesta', { id: 'send-response' });
     }
   };
 
 
 
-  const timeline = [
-    {
-      id: 'TL-001',
-      tipo: 'CREACIÓN',
-      descripcion: 'Consulta radicada en el sistema',
-      detalle: 'La consulta fue radicada automáticamente por el solicitante a través del portal web SIGL',
-      fecha: new Date('2025-01-15T08:30:00'),
-      usuario: 'Sistema SIGL',
-      icono: 'FileQuestion',
-      color: '#2962FF'
-    },
-    {
-      id: 'TL-002',
-      tipo: 'ASIGNACIÓN',
-      descripcion: 'Asignada a Dra. Ana López García',
-      detalle: 'Asignación automática basada en carga de trabajo y especialidad en Protección de Datos',
-      fecha: new Date('2025-01-15T09:15:00'),
-      usuario: 'Coordinador Jurídico',
-      icono: 'User',
-      color: '#10B981'
-    },
-    {
-      id: 'TL-003',
-      tipo: 'NOTIFICACIÓN',
-      descripcion: 'Notificación enviada al profesional asignado',
-      detalle: 'Email y notificación push enviados a ana.lopez@esap.edu.co',
-      fecha: new Date('2025-01-15T09:16:00'),
-      usuario: 'Sistema SIGL',
-      icono: 'Bell',
-      color: '#3B82F6'
-    },
-    {
-      id: 'TL-004',
-      tipo: 'CAMBIO_ETAPA',
-      descripcion: 'Cambio de etapa: RADICADA → ANÁLISIS',
-      detalle: 'La abogada inició el análisis jurídico de la consulta',
-      fecha: new Date('2025-01-16T10:00:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Activity',
-      color: '#F59E0B'
-    },
-    {
-      id: 'TL-005',
-      tipo: 'CARGA_DOCUMENTO',
-      descripcion: 'Documento cargado: Normativa_Decreto_019_2012.pdf',
-      detalle: 'Marco normativo aplicable adjuntado como soporte (2.24 MB)',
-      fecha: new Date('2025-01-16T14:30:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Paperclip',
-      color: '#6366F1'
-    },
-    {
-      id: 'TL-006',
-      tipo: 'COMENTARIO',
-      descripcion: 'Comentario agregado por el profesional',
-      detalle: 'Se requiere revisar jurisprudencia reciente sobre términos de respuesta',
-      fecha: new Date('2025-01-17T11:00:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'MessageSquare',
-      color: '#8B5CF6'
-    },
-    {
-      id: 'TL-007',
-      tipo: 'CARGA_DOCUMENTO',
-      descripcion: 'Documento cargado: Jurisprudencia_Consejo_Estado.pdf',
-      detalle: 'Sentencia relevante del Consejo de Estado adjuntada (3.30 MB)',
-      fecha: new Date('2025-01-17T14:15:00'),
-      usuario: 'Dr. Pedro Gómez Sánchez',
-      icono: 'Paperclip',
-      color: '#6366F1'
-    },
-    {
-      id: 'TL-008',
-      tipo: 'CARGA_DOCUMENTO',
-      descripcion: 'Documento cargado: Anexo_Cuadro_Comparativo.xlsx',
-      detalle: 'Cuadro comparativo de normativa y términos legales (0.44 MB)',
-      fecha: new Date('2025-01-17T15:45:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Paperclip',
-      color: '#6366F1'
-    },
-    {
-      id: 'TL-009',
-      tipo: 'REVISIÓN',
-      descripcion: 'Revisión del Coordinador Jurídico',
-      detalle: 'Comentario de revisión agregado - Incluir Concepto DAFP',
-      fecha: new Date('2025-01-17T15:30:00'),
-      usuario: 'Dr. Pedro Gómez Sánchez',
-      icono: 'CheckCircle',
-      color: '#10B981'
-    },
-    {
-      id: 'TL-010',
-      tipo: 'CAMBIO_ETAPA',
-      descripcion: 'Cambio de etapa: ANÁLISIS → REDACCIÓN',
-      detalle: 'Inicio de redacción del concepto jurídico',
-      fecha: new Date('2025-01-18T09:00:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Activity',
-      color: '#F59E0B'
-    },
-    {
-      id: 'TL-011',
-      tipo: 'CARGA_DOCUMENTO',
-      descripcion: 'Documento cargado: Concepto_Emitido_Final.docx',
-      detalle: 'Concepto jurídico final elaborado y cargado al sistema (0.54 MB)',
-      fecha: new Date('2025-01-18T16:30:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Paperclip',
-      color: '#6366F1'
-    },
-    {
-      id: 'TL-012',
-      tipo: 'CAMBIO_ETAPA',
-      descripcion: 'Cambio de etapa: REDACCIÓN → ENVIADA',
-      detalle: 'Concepto jurídico enviado al solicitante',
-      fecha: new Date('2025-01-18T17:00:00'),
-      usuario: 'Dra. Ana López García',
-      icono: 'Activity',
-      color: '#F59E0B'
-    },
-    {
-      id: 'TL-013',
-      tipo: 'NOTIFICACIÓN',
-      descripcion: 'Notificación enviada al solicitante',
-      detalle: 'Email enviado a Registro Académico con el concepto jurídico adjunto',
-      fecha: new Date('2025-01-18T17:01:00'),
-      usuario: 'Sistema SIGL',
-      icono: 'Send',
-      color: '#3B82F6'
+  // Estados para timeline - ahora dinámico
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && consulta?.uuid && tabActivo === 'timeline') {
+      loadTimeline();
     }
-  ];
+  }, [isOpen, consulta?.uuid, tabActivo]);
+
+  const loadTimeline = async () => {
+    if (!consulta?.uuid) return;
+    try {
+      setLoadingTimeline(true);
+      const historial = await legalService.getConsultaJuridicaHistorial(consulta.uuid);
+
+      // Mapeo básico de historial a formato timeline visual si es necesario
+      // Asumimos que el backend retorna campos compatibles o los mapeamos aquí
+      const mappedTimeline = historial.map((h: any) => ({
+        id: h.id,
+        tipo: mapTipoToLabel(h.tipoEvento),
+        descripcion: h.descripcion,
+        detalle: h.detalle,
+        fecha: new Date(h.fecha),
+        usuario: h.usuario || 'Sistema',
+        icono: mapTipoToIcon(h.tipoEvento),
+        color: mapTipoToColor(h.tipoEvento)
+      }));
+      setTimeline(mappedTimeline);
+    } catch (error) {
+      console.error('Error loading timeline:', error);
+      // Fallback a array vacio o error discreto
+      setTimeline([]);
+    } finally {
+      setLoadingTimeline(false);
+    }
+  };
+
+  const mapTipoToIcon = (tipo: string) => {
+    switch (tipo) {
+      case 'CREACIÓN': return 'FileQuestion';
+      case 'ASIGNACIÓN': return 'User';
+      case 'REASIGNACIÓN': return 'User';
+      case 'CAMBIO_ETAPA': return 'Activity';
+      case 'RESPUESTA': return 'Send';
+      case 'NOTIFICACIÓN': return 'Bell';
+      case 'CARGA_DOCUMENTO': return 'Paperclip';
+      default: return 'Clock'; // default
+    }
+  };
+
+  const mapTipoToColor = (tipo: string) => {
+    switch (tipo) {
+      case 'CREACIÓN': return '#2962FF';
+      case 'ASIGNACIÓN': return '#10B981'; // Green
+      case 'REASIGNACIÓN': return '#10B981';
+      case 'CAMBIO_ETAPA': return '#F59E0B'; // Orange
+      case 'RESPUESTA': return '#3B82F6'; // Blue
+      case 'NOTIFICACIÓN': return '#8B5CF6'; // Purple
+      default: return '#6B7280'; // Gray
+    }
+  };
+
+  const mapTipoToLabel = (tipo: string) => {
+    // Si el backend viene con mayusculas/guiones, intentar hacerlo legible
+    return tipo.replace(/_/g, ' ');
+  };
+
+  const getIconComponent = (iconName: string) => {
+    const icons: any = {
+      FileQuestion, User, Bell, Activity, Paperclip,
+      MessageSquare, CheckCircle, Send, Clock
+    };
+    return icons[iconName] || Activity;
+  };
 
   // Estados para comentarios
   const [comentarios, setComentarios] = useState<any[]>([]);
@@ -264,6 +255,55 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [editandoAbogado, setEditandoAbogado] = useState(false);
   const [abogadoSeleccionado, setAbogadoSeleccionado] = useState('');
   const [loadingAbogados, setLoadingAbogados] = useState(false);
+
+  // Estados para edición de etapa
+  const [editandoEtapa, setEditandoEtapa] = useState(false);
+  const [etapaSeleccionada, setEtapaSeleccionada] = useState('');
+  const [loadingEtapa, setLoadingEtapa] = useState(false);
+
+  const handleGuardarEtapa = async () => {
+    if (!etapaSeleccionada) {
+      setEditandoEtapa(false);
+      return;
+    }
+    try {
+      setLoadingEtapa(true);
+      toast.loading('Cambiando etapa...', { id: 'change-stage' });
+
+      // Construir nombre de usuario, evitando undefined
+      const firstName = user?.firstName || '';
+      const lastName = user?.lastName || '';
+      const usuarioNombre = (firstName || lastName)
+        ? `${firstName} ${lastName}`.trim()
+        : (user?.email || 'Usuario Sistema');
+
+      // Obtener el nombre legible de la etapa para el timeline
+      const estadoInfo = estadosActivos.find(e => e.id === etapaSeleccionada);
+      const estadoNombre = estadoInfo?.nombre || etapaSeleccionada;
+
+      if (consulta.uuid) {
+        await legalService.updateEstadoConsulta(consulta.uuid, etapaSeleccionada, usuarioNombre, estadoNombre);
+      } else {
+        await legalService.updateEstadoConsulta(consulta.id, etapaSeleccionada, usuarioNombre, estadoNombre);
+      }
+
+      toast.success(`Etapa actualizada correctamente`, { id: 'change-stage' });
+      setEditandoEtapa(false);
+
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al cambiar etapa', { id: 'change-stage' });
+    } finally {
+      setLoadingEtapa(false);
+    }
+  };
 
   useEffect(() => {
     // Cargar lista de abogados al montar si no están cargados
@@ -292,27 +332,19 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid, { abogadoAsignadoId: abogadoSeleccionado });
+      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
 
-      // Actualizar UI localmente (idealmente recargar consulta completa)
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
-
-      // Notificar al padre para recargar si es necesario, o forzar reload
-      // Por ahora simulamos la actualización visual
-      // (Nota: La prop consulta es readonly, idealmente deberíamos tener un onUpdate o reloadConsulta)
-
-      // Hack: Forzar visualización temporal o pedir recarga
-      toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
+      // Cerrar el modal principal para que al reabrir muestre datos frescos
+      onClose();
+
+      // Notificar al padre para recargar la lista
       if (onUpdate) {
         onUpdate();
       }
-
-      // Si onClose dispara recarga en padre, bien. Si no, quizá debamos inyectar onRefresh.
-      // Como no tengo onRefresh en props, solo cierro edición.
-      // El usuario verá el cambio real al reabrir o si el padre se actualiza.
     } catch (error) {
       console.error(error);
       toast.error('Error al reasignar abogado', { id: 'assign-lawyer' });
@@ -361,6 +393,32 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
+
+
+  const handleArchivar = async () => {
+    if (!consulta?.uuid) return;
+    if (!motivoArchivo.trim()) {
+      toast.error('Debe ingresar un motivo para archivar');
+      return;
+    }
+
+    try {
+      toast.loading('Archivando consulta...');
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+
+      await legalService.archivarConsulta(consulta.uuid || consulta.id, motivoArchivo, usuarioNombre);
+      toast.dismiss();
+      toast.success('Consulta archivada exitosamente');
+      setShowArchivarModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.dismiss();
+      toast.error('Error al archivar la consulta');
+    }
+  };
+
   // ==================== HANDLERS ====================
 
   /**
@@ -389,8 +447,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         filename = url.split('/').pop() || url;
       }
 
-      // Construir URL: directo sin prefix, gateway con /legal/api/v1/
-      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      // Construir URL: directo sin prefix, gateway con /legal/ (NO /api/v1 para archivos)
+      const prefix = API_MODE === 'direct' ? '' : '/legal';
       const fullUrl = url.startsWith('http') ? url : `${baseUrl}${prefix}/files/${filename}`;
 
       const response = await fetch(fullUrl);
@@ -412,7 +470,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   const handleEliminarDocumento = async (doc: any) => {
-    if (!confirm(`¿Estás seguro de eliminar el documento "${doc.nombre}"?`)) return;
+    // Eliminación inmediata sin confirmación
+    // const confirmado = await confirm({ ... }); 
+    // if (!confirmado) return;
 
     try {
       toast.loading('Eliminando documento...', { id: 'delete-doc' });
@@ -445,7 +505,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       filename = url.split('/').pop() || url;
     }
 
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -476,7 +537,9 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     toast.loading('📦 Preparando descarga ZIP...', { id: 'download-docs' });
 
     try {
-      const url = legalService.getDocumentosConsultaDownloadUrl(consulta.uuid);
+      const baseUrl = getServiceUrl('legal');
+      const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+      const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -487,7 +550,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `consulta_juridica_${consulta.id || consulta.uuid}.zip`;
+      link.download = `Consultas_${consulta.id || consulta.uuid}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -598,7 +661,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl h-[95vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[95vh] flex flex-col p-0">
+          <ConfirmationComponent />
           <DialogTitle className="sr-only">Expediente Consulta Jurídica {consulta.id}</DialogTitle>
           <DialogDescription className="sr-only">
             Visualización completa del expediente de consulta jurídica
@@ -607,14 +671,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           {/* HEADER - flex-shrink-0 (siempre visible) */}
           <ModalHeaderClean
             icono={FileQuestion}
-            colorIcono={semaforo.diasRestantes <= 3 ? 'red' : semaforo.diasRestantes <= 5 ? 'orange' : 'green'}
+            colorIcono={consulta.diasRestantes <= 3 ? 'red' : consulta.diasRestantes <= 5 ? 'orange' : 'green'}
             titulo={`Consulta ${consulta.id}`}
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
             badges={
               <>
-                <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border">
+                <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
                   {consulta.etapa}
+                  <button
+                    onClick={() => {
+                      // Usar el estado original (ID) si existe, sino la etapa visual
+                      // Esto asegura que el Select seleccione la opción correcta si coincide con un ID de configuración
+                      setEtapaSeleccionada(consulta.estado || consulta.etapa);
+                      setEditandoEtapa(true);
+                    }}
+                    className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
+                    title="Cambiar etapa"
+                  >
+                    <Edit className="w-3 h-3" />
+                  </button>
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 bg-gray-100 text-gray-700 border-gray-300 font-semibold text-xs border">
                   <Clock className="w-3 h-3" />
@@ -701,9 +777,49 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 </div>
                 <div>
                   <p className="text-xs text-gray-600">Etapa</p>
-                  <Badge variant="outline" className="font-bold">
-                    {consulta.etapa}
-                  </Badge>
+                  {!editandoEtapa ? (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-bold">
+                        {consulta.etapa}
+                      </Badge>
+                      {/* Permitir editar si no está finalizada (opcional, usuario no especificó restricción de editar si ya está enviada, pero dijo "menos a enviada") */}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => {
+                          // Mapear etapa actual a valor backend si es necesario, o inicializar vacio
+                          setEtapaSeleccionada('');
+                          setEditandoEtapa(true);
+                        }}
+                        title="Cambiar Etapa"
+                      >
+                        <Edit className="w-3 h-3 text-gray-500" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 mt-1">
+                      <select
+                        className="text-xs border border-gray-300 rounded p-1 w-32 focus:outline-none focus:border-blue-500"
+                        value={etapaSeleccionada}
+                        onChange={(e) => setEtapaSeleccionada(e.target.value)}
+                        disabled={loadingEtapa}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {estadosActivos.map(estado => (
+                          <option key={estado.id} value={estado.id}>
+                            {estado.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleGuardarEtapa}>
+                        <CheckCircle className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setEditandoEtapa(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -883,10 +999,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         <Download className="w-4 h-4 mr-2" />
                         Descargar Todos (ZIP)
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
-                        <Upload className="w-4 h-4 mr-2" />
-                        {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingDoc}>
+                          <Upload className="w-4 h-4 mr-2" />
+                          {uploadingDoc ? 'Subiendo...' : 'Subir Documento'}
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -933,15 +1051,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                               <Download className="w-4 h-4 mr-1" />
                               Descargar
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                              onClick={() => handleEliminarDocumento(doc)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              Eliminar
-                            </Button>
+                            {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                onClick={() => handleEliminarDocumento(doc)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Eliminar
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </Card>
@@ -969,6 +1089,18 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           )}
                         </div>
                       </div>
+
+                      {/* Indicador de envío por correo */}
+                      {consulta.emailSolicitante && (
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
+                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
+                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="bg-white p-6 rounded-lg border border-green-200">
                         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                           {consulta.respuesta}
@@ -1024,39 +1156,42 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 {/* TAB: TIMELINE */}
                 <TabsContent value="timeline" className="space-y-4 mt-0">
                   <div className="space-y-3">
-                    {timeline.map((evento, index) => (
-                      <Card key={evento.id} className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div
-                            className="p-2 rounded-lg flex-shrink-0"
-                            style={{ background: `${evento.color}20` }}
-                          >
-                            <Activity className="w-5 h-5" style={{ color: evento.color }} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-1">
-                              <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
-                              <Badge variant="outline" className="text-xs">
-                                {evento.tipo}
-                              </Badge>
+                    {timeline.map((evento, index) => {
+                      const IconComponent = getIconComponent(evento.icono);
+                      return (
+                        <Card key={evento.id} className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div
+                              className="p-2 rounded-lg flex-shrink-0"
+                              style={{ background: `${evento.color}20` }}
+                            >
+                              <IconComponent className="w-5 h-5" style={{ color: evento.color }} />
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-gray-600">
-                              <span className="flex items-center gap-1">
-                                <User className="w-3 h-3" />
-                                {evento.usuario}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {new Date(evento.fecha).toLocaleString('es-CO')}
-                              </span>
+                            <div className="flex-1">
+                              <div className="flex items-start justify-between mb-1">
+                                <h4 className="font-bold text-gray-900">{evento.descripcion}</h4>
+                                <Badge variant="outline" className="text-xs">
+                                  {evento.tipo}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {evento.usuario}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {new Date(evento.fecha).toLocaleString('es-CO')}
+                                </span>
+                              </div>
+                              {evento.detalle && (
+                                <p className="text-xs text-gray-500 mt-1">{evento.detalle}</p>
+                              )}
                             </div>
-                            {evento.detalle && (
-                              <p className="text-xs text-gray-500 mt-1">{evento.detalle}</p>
-                            )}
                           </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </TabsContent>
 
@@ -1133,8 +1268,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
           {/* FOOTER CON ACCIONES */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-            <div className="flex items-center justify-end">
-              <Button onClick={onClose}>
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                onClick={(e: React.MouseEvent) => {
+                  e.preventDefault();
+                  console.log('Click en Archivar');
+                  setShowArchivarModal(true);
+                }}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archivar
+              </Button>
+              <Button type="button" onClick={onClose}>
                 Cerrar
               </Button>
             </div>
@@ -1142,6 +1290,106 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
         </DialogContent>
       </Dialog>
 
+      {/* Modal Cambio de Etapa */}
+      <Dialog open={editandoEtapa} onOpenChange={(open: boolean) => {
+        setEditandoEtapa(open);
+        if (open) {
+          // Preseleccionar valor actual
+          setEtapaSeleccionada(consulta.estado || '');
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cambiar Etapa del Caso</DialogTitle>
+            <DialogDescription>
+              Seleccione la nueva etapa para este caso de asesoría jurídica.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Nueva Etapa
+            </label>
+            {estadosActivos.length === 0 && (
+              <p className="text-xs text-red-500 mb-2">⚠️ No se cargaron las etapas desde configuración</p>
+            )}
+            <Select value={etapaSeleccionada} onValueChange={setEtapaSeleccionada}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccione una etapa" />
+              </SelectTrigger>
+              <SelectContent className="z-[9999]">
+                {estadosActivos.map((estado) => (
+                  <SelectItem key={estado.id} value={estado.id}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: estado.color }} />
+                      {estado.nombre}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setEditandoEtapa(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleGuardarEtapa}
+              disabled={loadingEtapa || !etapaSeleccionada}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {loadingEtapa ? 'Guardando...' : 'Confirmar Cambio'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Archivar */}
+      <Dialog open={showArchivarModal} onOpenChange={setShowArchivarModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archivar Consulta</DialogTitle>
+            <DialogDescription>
+              ¿Está seguro de archivar esta consulta? Desaparecerá de la lista activa y se moverá a la pestaña de Archivados.
+            </DialogDescription>
+          </DialogHeader>
+
+
+          <div className="py-4">
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Motivo del Archivo
+            </label>
+            <Textarea
+              placeholder="Indique la razón por la cual se archiva este expediente..."
+              value={motivoArchivo}
+              onChange={(e) => setMotivoArchivo(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+
+
+
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowArchivarModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="bg-orange-600 hover:bg-orange-700 text-white border-none"
+              onClick={handleArchivar}
+            >
+              <Archive className="w-4 h-4 mr-2" />
+              Confirmar Archivo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* MODALES SECUNDARIOS */}
       {/* 
       {modalCompartirAbierto && (

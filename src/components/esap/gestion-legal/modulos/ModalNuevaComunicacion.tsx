@@ -163,8 +163,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit }: ModalNueva
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
-        <DialogTitle className="sr-only">Redactar Correo</DialogTitle>
+      <DialogContent hideCloseButton className="w-[95vw] max-w-[650px] lg:max-w-2xl h-[90vh] flex flex-col p-0">
+        <DialogTitle className="sr-only">Nueva Comunicación</DialogTitle>
         <DialogDescription className="sr-only">
           Enviar correo electrónico desde la Oficina Jurídica
         </DialogDescription>

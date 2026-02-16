@@ -15,7 +15,7 @@ export class ActuacionService {
     ) { }
 
     async registrarActuacion(expedienteId: string, data: Partial<Actuacion>): Promise<Actuacion> {
-        console.log('ActuacionService.registrarActuacion input:', { expedienteId, data });
+
         const safeData = data || {};
         const nuevaActuacion = this.actuacionRepository.create({
             ...safeData,
@@ -49,9 +49,48 @@ export class ActuacionService {
         return saved;
     }
 
+    /**
+     * Registra automáticamente un evento crítico en el historial cronológico unificado
+     * (Usado por hooks desde otros servicios)
+     */
+    async registrarEventoAutomatico(
+        expedienteId: string,
+        titulo: string,
+        descripcion: string,
+        origen: string,
+        referenciaId: string,
+        metadatos: any = {},
+        usuario: string = 'Sistema'
+    ): Promise<Actuacion> {
+        const actuacion = this.actuacionRepository.create({
+            expedienteId,
+            tipoActuacion: titulo, // El título del evento actúa como tipo
+            descripcion,
+            origen,
+            referenciaId,
+            metadata: metadatos,
+            usuarioResponsable: usuario,
+            fechaActuacion: new Date()
+        });
+        return this.actuacionRepository.save(actuacion);
+    }
+
     async listarPorExpediente(expedienteId: string): Promise<Actuacion[]> {
+        // Try to resolve full expediente to get both UUID and Radicado
+        const expediente = await this.expedienteService.findOne(expedienteId) ||
+            await this.expedienteService.findOneByRadicado(expedienteId);
+
+        let whereCondition: any = { expedienteId };
+
+        if (expediente) {
+            whereCondition = [
+                { expedienteId: expediente.id },
+                { expedienteId: expediente.radicado }
+            ];
+        }
+
         return this.actuacionRepository.find({
-            where: { expedienteId },
+            where: whereCondition,
             order: { fechaActuacion: 'DESC' }
         });
     }

@@ -47,6 +47,8 @@ import { TerminoProcesal } from './entities/termino-procesal.entity';
 import { DiaFestivo } from './entities/dia-festivo.entity';
 import { ReglaAlerta } from './entities/regla-alerta.entity';
 import { AlertaEnviada } from './entities/alerta-enviada.entity';
+import { PlantillaAuto } from './entities/plantilla-auto.entity';
+import { AutoConfiguration } from './entities/auto-configuration.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -57,19 +59,21 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DATABASE_NAME ?? process.env.DB_NAME,
   schema: process.env.DB_SCHEMA,
   entities: [
-    DisciplinaryNews, 
-    DisciplinaryProcess, 
-    LegalAuto, 
-    Sequence, 
-    DisciplinaryProfessional, 
-    Evidence, 
-    StageConfiguration, 
-    SystemConfiguration, 
+    DisciplinaryNews,
+    DisciplinaryProcess,
+    LegalAuto,
+    Sequence,
+    DisciplinaryProfessional,
+    Evidence,
+    StageConfiguration,
+    SystemConfiguration,
+    PlantillaAuto,
     AutoVersion,
     TerminoProcesal,
     DiaFestivo,
     ReglaAlerta,
-    AlertaEnviada
+    AlertaEnviada,
+    AutoConfiguration,
   ],
   synchronize: false,
   logging: false,

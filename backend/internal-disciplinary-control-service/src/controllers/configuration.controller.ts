@@ -192,12 +192,13 @@ export class ConfigurationController {
         const stagesCount = await this.stageConfigRepo.count();
         if (stagesCount === 0) {
             const defaults = [
-                { etapa: 'RECEPCIÓN', diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-                { etapa: 'VALORACIÓN', diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-                { etapa: 'INDAGACIÓN', diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-                { etapa: 'INVESTIGACIÓN', diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+                { etapa: 'RECEPCION', diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+                { etapa: 'VALORACION', diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+                { etapa: 'INDAGACION_PREVIA', diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+                { etapa: 'INVESTIGACION', diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+                { etapa: 'EVALUACION', diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
                 { etapa: 'JUZGAMIENTO', diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-                { etapa: 'FALLO', diasHabiles: 10, descripcion: 'Emisión de fallo', activo: true },
+                { etapa: 'SEGUNDA_INSTANCIA', diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
             ];
             await this.stageConfigRepo.save(defaults);
         }

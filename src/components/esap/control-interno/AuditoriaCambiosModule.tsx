@@ -30,7 +30,7 @@ import {
   User, FileText, Activity, BarChart3, TrendingUp,
   Clock, AlertCircle, CheckCircle, XCircle, Edit,
   Trash2, ArrowRightCircle, PlusCircle, X, ChevronLeft,
-  ChevronRight, Save, AlertTriangle, Info
+  ChevronRight, ChevronDown, Save, AlertTriangle, Info
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -50,20 +50,28 @@ import {
   type TipoEntidad
 } from './services/auditLogService';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ============ TIPOS ============
 
 type VistaActiva = 'logs';
 
 // ============ DATOS MOCK ============
 
-// Generar logs de ejemplo al cargar
+// Generar logs de ejemplo al cargar - TODOS LOS MÓDULOS
 const generarLogsMock = () => {
   const usuarios = [
     { id: 'u1', nombre: 'María González', email: 'mgonzalez@esap.edu.co', rol: 'Jefe OCI' },
     { id: 'u2', nombre: 'Carlos Rodríguez', email: 'crodriguez@esap.edu.co', rol: 'Auditor Líder' },
     { id: 'u3', nombre: 'Ana Martínez', email: 'amartinez@esap.edu.co', rol: 'Auditor Operativo' },
-    { id: 'u4', nombre: 'Jorge Pérez', email: 'jperez@esap.edu.co', rol: 'Área Auditada' },
-    { id: 'u5', nombre: 'Laura Sánchez', email: 'lsanchez@esap.edu.co', rol: 'Auditor Líder' }
+    { id: 'u4', nombre: 'Jorge Pérez', email: 'jperez@esap.edu.co', rol: 'Coordinador Disciplinario' },
+    { id: 'u5', nombre: 'Laura Sánchez', email: 'lsanchez@esap.edu.co', rol: 'Auditor Líder' },
+    { id: 'u6', nombre: 'Pedro Ramírez', email: 'pramirez@esap.edu.co', rol: 'Coordinador Legal' },
+    { id: 'u7', nombre: 'Sofía Torres', email: 'storres@esap.edu.co', rol: 'Gestora Talento Humano' },
+    { id: 'u8', nombre: 'Luis Hernández', email: 'lhernandez@esap.edu.co', rol: 'Coordinador Académico' },
+    { id: 'u9', nombre: 'Diana Castro', email: 'dcastro@esap.edu.co', rol: 'Administrador Sistema' },
+    { id: 'u10', nombre: 'Andrés Moreno', email: 'amoreno@esap.edu.co', rol: 'Director Regional' }
   ];
 
   const acciones: { 
@@ -72,120 +80,444 @@ const generarLogsMock = () => {
     tabla: TipoEntidad; 
     registroId: string;
     cambios: any;
+    modulo: string;
   }[] = [
+    // ========== CONTROL INTERNO ==========
     {
       accion: 'aprobar',
-      descripcion: 'Aprobar Plan Anual 2025',
+      descripcion: 'Aprobar Plan Anual de Auditoría 2025',
       tabla: 'plan_anual',
       registroId: 'plan-2025-001',
+      modulo: 'Control Interno',
       cambios: {
         antes: { estado: 'EN_REVISION' },
-        despues: { estado: 'APROBADO', fechaAprobacion: '2025-12-22' }
+        despues: { estado: 'APROBADO', fechaAprobacion: '2026-01-14' }
       }
     },
     {
-      accion: 'crear',
-      descripcion: 'Crear auditoría AUD-2025-015',
+      accion: 'crear_auditoria',
+      descripcion: 'Crear auditoría de Gestión Financiera',
       tabla: 'auditoria',
-      registroId: 'aud-2025-015',
+      registroId: 'aud-2026-015',
+      modulo: 'Control Interno',
       cambios: {
-        despues: { codigo: 'AUD-2025-015', nombre: 'Auditoría Gestión Financiera', estado: 'PLANEACION' }
+        despues: { codigo: 'AUD-2026-015', nombre: 'Auditoría Gestión Financiera', estado: 'PLANEACION' }
       }
     },
     {
-      accion: 'actualizar',
-      descripcion: 'Actualizar actividad "Revisión de Riesgos"',
-      tabla: 'actividad',
-      registroId: 'act-2025-045',
-      cambios: {
-        antes: { porcentaje: 50, estado: 'EN_EJECUCION' },
-        despues: { porcentaje: 75, estado: 'EN_EJECUCION' }
-      }
-    },
-    {
-      accion: 'crear',
-      descripcion: 'Registrar hallazgo crítico en auditoría',
+      accion: 'crear_hallazgo',
+      descripcion: 'Registrar hallazgo crítico: Falta de segregación de funciones',
       tabla: 'hallazgo',
-      registroId: 'hall-2025-023',
+      registroId: 'hall-2026-023',
+      modulo: 'Control Interno',
       cambios: {
-        despues: { tipo: 'NO_CONFORMIDAD', criticidad: 'CRITICA', descripcion: 'Falta de segregación de funciones' }
+        despues: { tipo: 'NO_CONFORMIDAD', criticidad: 'CRITICA', descripcion: 'Falta de segregación de funciones en tesorería' }
       }
     },
     {
-      accion: 'validar',
+      accion: 'validar_evidencia',
       descripcion: 'Validar evidencia de plan de mejoramiento',
       tabla: 'evidencia',
-      registroId: 'ev-2025-089',
+      registroId: 'ev-2026-089',
+      modulo: 'Control Interno',
       cambios: {
         antes: { estado: 'CARGADA' },
         despues: { estado: 'VALIDADA', validadoPor: 'María González' }
       }
     },
+    
+    // ========== GESTIÓN DE USUARIOS Y PERSONAS ==========
     {
-      accion: 'cambiar_estado',
-      descripcion: 'Cambiar estado de auditoría a Ejecución',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-012',
+      accion: 'crear',
+      descripcion: 'Crear nuevo usuario: Juan Pablo García',
+      tabla: 'usuario',
+      registroId: 'usr-2026-458',
+      modulo: 'Gestión de Usuarios',
       cambios: {
-        antes: { estado: 'PLANEACION' },
-        despues: { estado: 'EJECUCION', fechaInicio: '2025-12-20' }
-      }
-    },
-    {
-      accion: 'generar',
-      descripción: 'Generar Informe Preliminar de Auditoría',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-012',
-      cambios: {
-        despues: { informePreliminar: 'informe-prelim-aud-012.pdf', fechaGeneracion: '2025-12-21' }
-      }
-    },
-    {
-      accion: 'asignar',
-      descripcion: 'Asignar equipo auditor a auditoría',
-      tabla: 'auditoria',
-      registroId: 'aud-2025-016',
-      cambios: {
-        antes: { equipo: [] },
-        despues: { equipo: ['Carlos Rodríguez', 'Ana Martínez', 'Laura Sánchez'], lider: 'Carlos Rodríguez' }
-      }
-    },
-    {
-      accion: 'rechazar',
-      descripcion: 'Rechazar evidencia del plan de mejoramiento',
-      tabla: 'evidencia',
-      registroId: 'ev-2025-091',
-      cambios: {
-        antes: { estado: 'EN_REVISION' },
-        despues: { estado: 'RECHAZADA', motivo: 'Documento incompleto, falta firma del responsable' }
+        despues: { nombre: 'Juan Pablo García', email: 'jgarcia@esap.edu.co', rol: 'Docente', estado: 'ACTIVO' }
       }
     },
     {
       accion: 'actualizar',
-      descripcion: 'Actualizar porcentaje de acción correctiva',
-      tabla: 'accion_correctiva',
-      registroId: 'ac-2025-034',
+      descripcion: 'Actualizar información de perfil de usuario',
+      tabla: 'persona',
+      registroId: 'per-2026-789',
+      modulo: 'Gestión de Usuarios',
       cambios: {
-        antes: { porcentajeAvance: 60 },
-        despues: { porcentajeAvance: 85 }
+        antes: { telefono: '3001234567', direccion: 'Calle 45 #23-12' },
+        despues: { telefono: '3109876543', direccion: 'Carrera 7 #45-89' }
+      }
+    },
+    {
+      accion: 'asignar_rol',
+      descripcion: 'Asignar rol de Coordinador Académico',
+      tabla: 'usuario',
+      registroId: 'usr-2026-234',
+      modulo: 'Roles y Permisos',
+      cambios: {
+        antes: { roles: ['Docente'] },
+        despues: { roles: ['Docente', 'Coordinador Académico'] }
+      }
+    },
+    {
+      accion: 'cargar_documento',
+      descripcion: 'Cargar cédula de ciudadanía en carpeta digital',
+      tabla: 'carpeta_digital',
+      registroId: 'doc-2026-991',
+      modulo: 'Carpeta Digital',
+      cambios: {
+        despues: { tipoDocumento: 'Cédula', nombreArchivo: 'cedula-123456789.pdf', tamaño: '2.4 MB' }
+      }
+    },
+    
+    // ========== GRADUADOS Y REGISTRO ACADÉMICO ==========
+    {
+      accion: 'crear',
+      descripcion: 'Registrar nuevo graduado: María Fernanda López',
+      tabla: 'graduado',
+      registroId: 'grad-2026-341',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { nombre: 'María Fernanda López', programa: 'Administración Pública', fechaGrado: '2025-12-15', promedio: 4.2 }
+      }
+    },
+    {
+      accion: 'generar_certificado',
+      descripcion: 'Generar certificado de título profesional',
+      tabla: 'certificado_titulo',
+      registroId: 'cert-titulo-2026-124',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { graduadoId: 'grad-2026-341', consecutivo: 'CT-2026-124', qrCode: 'QR-CT124', estado: 'ACTIVO' }
+      }
+    },
+    {
+      accion: 'validar_certificado',
+      descripcion: 'Validar autenticidad de certificado de título',
+      tabla: 'certificado_titulo',
+      registroId: 'cert-titulo-2026-098',
+      modulo: 'Graduados',
+      cambios: {
+        despues: { validado: true, validadoPor: 'Sistema', fechaValidacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== ENROLAMIENTO ==========
+    {
+      accion: 'enrolar_usuario',
+      descripcion: 'Enrolar usuario individual: Carlos Méndez',
+      tabla: 'enrolamiento',
+      registroId: 'enr-2026-556',
+      modulo: 'Enrolamiento',
+      cambios: {
+        despues: { usuarioId: 'usr-2026-556', rol: 'Estudiante', programaId: 'prog-adm-pub', estado: 'COMPLETADO' }
+      }
+    },
+    {
+      accion: 'enrolamiento_masivo',
+      descripcion: 'Enrolamiento masivo: 45 estudiantes nuevos',
+      tabla: 'enrolamiento_masivo',
+      registroId: 'enr-masivo-2026-003',
+      modulo: 'Enrolamiento',
+      cambios: {
+        despues: { archivo: 'estudiantes-2026-01.xlsx', cantidadRegistros: 45, exitosos: 43, fallidos: 2 }
+      }
+    },
+    
+    // ========== COMUNIDAD ==========
+    {
+      accion: 'crear_publicacion',
+      descripcion: 'Crear publicación: "Convocatoria Semilleros de Investigación"',
+      tabla: 'publicacion',
+      registroId: 'pub-2026-234',
+      modulo: 'Comunidad',
+      cambios: {
+        despues: { titulo: 'Convocatoria Semilleros de Investigación', contenido: '...', categoria: 'Investigación', estado: 'PUBLICADA' }
+      }
+    },
+    {
+      accion: 'crear_evento',
+      descripcion: 'Crear evento: "Foro de Administración Pública 2026"',
+      tabla: 'evento',
+      registroId: 'evt-2026-089',
+      modulo: 'Eventos',
+      cambios: {
+        despues: { titulo: 'Foro de Administración Pública 2026', fecha: '2026-03-15', lugar: 'Auditorio Principal', cupos: 200 }
+      }
+    },
+    {
+      accion: 'crear_anuncio',
+      descripcion: 'Crear anuncio: "Modificación calendario académico"',
+      tabla: 'anuncio',
+      registroId: 'anun-2026-045',
+      modulo: 'Anuncios',
+      cambios: {
+        despues: { titulo: 'Modificación calendario académico', contenido: '...', prioridad: 'ALTA', destinatarios: 'TODOS' }
+      }
+    },
+    
+    // ========== BOLSA DE EMPLEO ==========
+    {
+      accion: 'crear',
+      descripcion: 'Publicar oferta de empleo: Analista de Presupuesto',
+      tabla: 'oferta_empleo',
+      registroId: 'emp-2026-178',
+      modulo: 'Bolsa de Empleo',
+      cambios: {
+        despues: { cargo: 'Analista de Presupuesto', empresa: 'Ministerio de Hacienda', salario: '$4.500.000', estado: 'ACTIVA' }
       }
     },
     {
       accion: 'crear',
-      descripcion: 'Crear Informe de Ley - Informe Pormenorizado',
-      tabla: 'informe_ley',
-      registroId: 'il-2025-003',
+      descripcion: 'Registrar postulación a oferta de empleo',
+      tabla: 'postulacion',
+      registroId: 'post-2026-445',
+      modulo: 'Bolsa de Empleo',
       cambios: {
-        despues: { codigo: 'IL-2025-003', tipo: 'PORMENORIZADO', periodo: '2025-Q1' }
+        despues: { ofertaId: 'emp-2026-178', graduadoId: 'grad-2026-341', estado: 'ENVIADA', fechaPostulacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== CERTIFICADOS LABORALES ==========
+    {
+      accion: 'generar_certificado',
+      descripcion: 'Generar certificado laboral para Pedro Sánchez',
+      tabla: 'certificado_laboral',
+      registroId: 'cert-lab-2026-089',
+      modulo: 'Certificados Laborales',
+      cambios: {
+        despues: { empleadoId: 'emp-2026-567', consecutivo: '001-2026-TH', cargo: 'Docente TC', dependencia: 'Territorial Bogotá' }
       }
     },
     {
-      accion: 'exportar',
-      descripcion: 'Exportar Reporte Ejecutivo a PDF',
-      tabla: 'reporte',
-      registroId: 'rep-2025-089',
+      accion: 'validar_certificado',
+      descripcion: 'Validar autenticidad de certificado laboral',
+      tabla: 'certificado_laboral',
+      registroId: 'cert-lab-2026-078',
+      modulo: 'Certificados Laborales',
       cambios: {
-        despues: { formato: 'PDF', archivo: 'reporte-ejecutivo-dic-2025.pdf' }
+        despues: { validado: true, codigoQR: 'QR-CL078', fechaValidacion: '2026-01-14' }
+      }
+    },
+    
+    // ========== FIRMA ELECTRÓNICA ==========
+    {
+      accion: 'solicitar_firma',
+      descripcion: 'Solicitar firma electrónica para resolución',
+      tabla: 'solicitud_firma',
+      registroId: 'firma-2026-234',
+      modulo: 'Firma Electrónica',
+      cambios: {
+        despues: { documentoId: 'doc-res-2026-045', solicitante: 'Coordinador Académico', destinatarios: ['Director', 'Decano'], estado: 'PENDIENTE' }
+      }
+    },
+    {
+      accion: 'firmar_documento',
+      descripcion: 'Firmar digitalmente acta de comité',
+      tabla: 'firma_digital',
+      registroId: 'firma-dig-2026-112',
+      modulo: 'Firma Electrónica',
+      cambios: {
+        despues: { documentoId: 'doc-acta-2026-008', firmante: 'María González', timestamp: '2026-01-14T10:30:00Z', hash: 'SHA256:abc123...' }
+      }
+    },
+    
+    // ========== CONTROL DISCIPLINARIO ==========
+    {
+      accion: 'iniciar_proceso',
+      descripcion: 'Iniciar proceso disciplinario PD-2026-015',
+      tabla: 'proceso_disciplinario',
+      registroId: 'pd-2026-015',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { codigo: 'PD-2026-015', quejoso: 'Anónimo', investigado: 'Servidor Público X', etapa: 'INDAGACION_PRELIMINAR' }
+      }
+    },
+    {
+      accion: 'crear_auto',
+      descripcion: 'Crear auto de apertura de investigación',
+      tabla: 'auto_disciplinario',
+      registroId: 'auto-2026-023',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { procesoId: 'pd-2026-015', numero: 'AUTO-023-2026', tipo: 'APERTURA', fechaExpedicion: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'aplicar_sancion',
+      descripcion: 'Aplicar sanción disciplinaria: Suspensión 30 días',
+      tabla: 'sancion',
+      registroId: 'sanc-2026-007',
+      modulo: 'Control Disciplinario',
+      cambios: {
+        despues: { procesoId: 'pd-2026-012', tipo: 'SUSPENSION', duracionDias: 30, fechaInicio: '2026-01-20', estado: 'EJECUTORIA' }
+      }
+    },
+    
+    // ========== GESTIÓN LEGAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear expediente legal: Acción de tutela',
+      tabla: 'expediente_legal',
+      registroId: 'exp-legal-2026-034',
+      modulo: 'Gestión Legal',
+      cambios: {
+        despues: { codigo: 'EXP-TUT-2026-034', tipo: 'TUTELA', demandante: 'Ciudadano X', demandado: 'ESAP', estado: 'ACTIVO' }
+      }
+    },
+    {
+      accion: 'asignar_abogado',
+      descripcion: 'Asignar abogado externo a proceso legal',
+      tabla: 'expediente_legal',
+      registroId: 'exp-legal-2026-034',
+      modulo: 'Gestión Legal',
+      cambios: {
+        antes: { abogado: null },
+        despues: { abogado: 'Dr. Carlos Mendoza', tipo: 'EXTERNO', fechaAsignacion: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Crear concepto jurídico sobre normatividad académica',
+      tabla: 'concepto_juridico',
+      registroId: 'conc-jur-2026-018',
+      modulo: 'Gestión Legal',
+      cambios: {
+        despues: { codigo: 'CJ-2026-018', tema: 'Normatividad Académica', solicitante: 'Registro Académico', estado: 'EN_REVISION' }
+      }
+    },
+    
+    // ========== ESTRUCTURA ORGANIZACIONAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear nueva dependencia: Dirección de Innovación',
+      tabla: 'dependencia',
+      registroId: 'dep-2026-045',
+      modulo: 'Estructura Organizacional',
+      cambios: {
+        despues: { codigo: 'DEP-INNOV', nombre: 'Dirección de Innovación', nivel: 'DIRECCION', dependePadre: 'RECTORIA' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Crear nuevo cargo: Coordinador de Transformación Digital',
+      tabla: 'cargo',
+      registroId: 'cargo-2026-089',
+      modulo: 'Estructura Organizacional',
+      cambios: {
+        despues: { codigo: 'COORD-TD', nombre: 'Coordinador Transformación Digital', nivel: 'COORDINACION', dependenciaId: 'dep-2026-045' }
+      }
+    },
+    
+    // ========== PROGRAMAS ACADÉMICOS ==========
+    {
+      accion: 'crear',
+      descripcion: 'Crear nuevo programa académico: Maestría en Gobernanza',
+      tabla: 'programa_academico',
+      registroId: 'prog-2026-012',
+      modulo: 'Programas Académicos',
+      cambios: {
+        despues: { codigo: 'MAES-GOB', nombre: 'Maestría en Gobernanza', nivel: 'POSGRADO', modalidad: 'PRESENCIAL', creditos: 48 }
+      }
+    },
+    
+    // ========== ARQUITECTURA EMPRESARIAL ==========
+    {
+      accion: 'crear',
+      descripcion: 'Documentar capacidad: Gestión de Talento Humano',
+      tabla: 'capacidad',
+      registroId: 'cap-2026-023',
+      modulo: 'Arquitectura Empresarial',
+      cambios: {
+        despues: { codigo: 'CAP-GTH', nombre: 'Gestión de Talento Humano', nivel: 'NIVEL_2', macroproceso: 'APOYO' }
+      }
+    },
+    {
+      accion: 'crear',
+      descripcion: 'Registrar sistema de información: SIGL',
+      tabla: 'sistema_informacion',
+      registroId: 'si-2026-008',
+      modulo: 'Arquitectura Empresarial',
+      cambios: {
+        despues: { codigo: 'SIGL', nombre: 'Sistema de Gestión Legal', estado: 'PRODUCCION', criticidad: 'ALTA' }
+      }
+    },
+    
+    // ========== GESTIÓN PROFESORAL ==========
+    {
+      accion: 'crear_convocatoria',
+      descripcion: 'Crear convocatoria docente: Administración Pública',
+      tabla: 'convocatoria',
+      registroId: 'conv-doc-2026-004',
+      modulo: 'Gestión Profesoral',
+      cambios: {
+        despues: { codigo: 'CONV-DOC-2026-004', area: 'Administración Pública', plazas: 3, fechaCierre: '2026-02-15', estado: 'ABIERTA' }
+      }
+    },
+    {
+      accion: 'evaluar_desempeño',
+      descripcion: 'Evaluar desempeño docente: Luis Martínez',
+      tabla: 'evaluacion_desempeño',
+      registroId: 'eval-doc-2026-078',
+      modulo: 'Gestión Profesoral',
+      cambios: {
+        despues: { docenteId: 'doc-2026-234', periodo: '2025-02', puntaje: 4.5, estado: 'APROBADA' }
+      }
+    },
+    
+    // ========== INFORMES Y REPORTES ==========
+    {
+      accion: 'generar_reporte',
+      descripcion: 'Generar reporte ejecutivo mensual',
+      tabla: 'reporte',
+      registroId: 'rep-2026-089',
+      modulo: 'Informes',
+      cambios: {
+        despues: { tipo: 'EJECUTIVO', periodo: '2026-01', formato: 'PDF', archivo: 'reporte-ejecutivo-ene-2026.pdf' }
+      }
+    },
+    {
+      accion: 'exportar_excel',
+      descripcion: 'Exportar datos de usuarios a Excel',
+      tabla: 'reporte',
+      registroId: 'rep-2026-090',
+      modulo: 'Informes',
+      cambios: {
+        despues: { tipo: 'USUARIOS', cantidadRegistros: 1250, formato: 'XLSX', tamaño: '3.2 MB' }
+      }
+    },
+    
+    // ========== AUTENTICACIÓN Y SEGURIDAD ==========
+    {
+      accion: 'login',
+      descripcion: 'Inicio de sesión exitoso',
+      tabla: 'usuario',
+      registroId: 'usr-2026-234',
+      modulo: 'Gestión de Usuarios',
+      cambios: {
+        despues: { ultimoAcceso: '2026-01-14T08:30:00Z', ip: '192.168.1.45', navegador: 'Chrome 120' }
+      }
+    },
+    {
+      accion: 'cambiar_password',
+      descripcion: 'Cambiar contraseña de usuario',
+      tabla: 'usuario',
+      registroId: 'usr-2026-456',
+      modulo: 'Gestión de Passwords',
+      cambios: {
+        antes: { passwordHash: 'hash-anterior' },
+        despues: { passwordHash: 'hash-nuevo', fechaCambio: '2026-01-14' }
+      }
+    },
+    {
+      accion: 'revocar_permiso',
+      descripcion: 'Revocar permiso de administración',
+      tabla: 'permiso',
+      registroId: 'perm-2026-089',
+      modulo: 'Roles y Permisos',
+      cambios: {
+        antes: { usuarioId: 'usr-2026-234', permiso: 'ADMIN_USUARIOS', estado: 'ACTIVO' },
+        despues: { usuarioId: 'usr-2026-234', permiso: 'ADMIN_USUARIOS', estado: 'REVOCADO', fechaRevocacion: '2026-01-14' }
       }
     }
   ];
@@ -194,7 +526,8 @@ const generarLogsMock = () => {
   const logs: Promise<AuditLog>[] = [];
   const hoy = new Date();
   
-  for (let i = 0; i < 60; i++) {
+  // Generar 100 logs variados de todos los módulos
+  for (let i = 0; i < 100; i++) {
     const usuario = usuarios[Math.floor(Math.random() * usuarios.length)];
     const accionData = acciones[Math.floor(Math.random() * acciones.length)];
     const diasAtras = Math.floor(Math.random() * 30);
@@ -214,7 +547,7 @@ const generarLogsMock = () => {
       accionData.registroId,
       accionData.cambios,
       {
-        modulo: obtenerModuloPorTabla(accionData.tabla),
+        modulo: accionData.modulo as any,
         ip: `192.168.1.${Math.floor(Math.random() * 255)}`
       }
     ).then(log => {
@@ -227,28 +560,6 @@ const generarLogsMock = () => {
   }
 
   return Promise.all(logs);
-};
-
-const obtenerModuloPorTabla = (tabla: TipoEntidad): string => {
-  const mapeo: Record<TipoEntidad, string> = {
-    plan_anual: 'Planificación',
-    actividad: 'Planificación',
-    auditoria: 'Proceso Auditoría',
-    programa_anual: 'Planificación',
-    hallazgo: 'Proceso Auditoría',
-    evidencia: 'Proceso Auditoría',
-    plan_mejoramiento: 'Planes de Mejoramiento',
-    accion_correctiva: 'Planes de Mejoramiento',
-    informe_ley: 'Soporte',
-    documento: 'Soporte',
-    notificacion: 'Soporte',
-    usuario: 'Configuración',
-    rol: 'Configuración',
-    permiso: 'Configuración',
-    configuracion: 'Configuración',
-    reporte: 'Soporte'
-  };
-  return mapeo[tabla] || 'Sistema';
 };
 
 // ============ COMPONENTE PRINCIPAL ============
@@ -344,7 +655,7 @@ export function AuditoriaCambiosModule() {
   }, [logs]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6">
+    <Container4K>
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* HEADER */}
@@ -456,7 +767,7 @@ export function AuditoriaCambiosModule() {
           />
         )}
       </div>
-    </div>
+    </Container4K>
   );
 }
 
@@ -477,6 +788,40 @@ function VistaLogs({
   onCambiarPagina: (pagina: number) => void;
   cargando: boolean;
 }) {
+  const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
+
+  // Contar filtros activos (excluyendo búsqueda y paginación)
+  const contarFiltrosActivos = () => {
+    let count = 0;
+    if (filtros.fechaInicio) count++;
+    if (filtros.fechaFin) count++;
+    if (filtros.accion && filtros.accion !== 'todas') count++;
+    if (filtros.tabla && filtros.tabla !== 'todas') count++;
+    if (filtros.modulo && filtros.modulo !== 'todos') count++;
+    if (filtros.criticidad && filtros.criticidad !== 'todas') count++;
+    if (filtros.usuarioId) count++;
+    return count;
+  };
+
+  const filtrosActivos = contarFiltrosActivos();
+  const hayFiltros = filtrosActivos > 0 || filtros.busqueda;
+
+  // Función para limpiar todos los filtros
+  const limpiarFiltros = () => {
+    onCambiarFiltros({
+      usuarioId: undefined,
+      fechaInicio: undefined,
+      fechaFin: undefined,
+      accion: 'todas',
+      tabla: 'todas',
+      modulo: 'todos',
+      criticidad: 'todas',
+      busqueda: '',
+      pagina: 1,
+      registrosPorPagina: 20
+    });
+  };
+
   return (
     <motion.div
       key="logs"
@@ -485,75 +830,281 @@ function VistaLogs({
       exit={{ opacity: 0, x: 20 }}
       className="space-y-4"
     >
-      {/* FILTROS */}
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-blue-600" />
-          <h3 className="font-bold text-gray-900">Filtros</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* Búsqueda */}
-          <div className="lg:col-span-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar en logs..."
-                value={filtros.busqueda}
-                onChange={(e) => onCambiarFiltros({ ...filtros, busqueda: e.target.value, pagina: 1 })}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+      {/* BÚSQUEDA Y FILTROS */}
+      <Card className="p-6 border-l-4 border-l-blue-600">
+        {/* Búsqueda Global */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Search className="w-5 h-5 text-blue-600" />
+              <h3 className="font-bold text-gray-900">Buscar eventos por usuario, acción, módulo...</h3>
             </div>
+            {hayFiltros && (
+              <button
+                onClick={limpiarFiltros}
+                className="text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-1 transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+                Limpiar todos los filtros
+              </button>
+            )}
+          </div>
+          
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por usuario, acción, descripción, módulo, ID..."
+              value={filtros.busqueda}
+              onChange={(e) => onCambiarFiltros({ ...filtros, busqueda: e.target.value, pagina: 1 })}
+              className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+            />
+            {filtros.busqueda && (
+              <button
+                onClick={() => onCambiarFiltros({ ...filtros, busqueda: '', pagina: 1 })}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
-          {/* Fecha Inicio */}
-          <input
-            type="date"
-            value={filtros.fechaInicio || ''}
-            onChange={(e) => onCambiarFiltros({ ...filtros, fechaInicio: e.target.value, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {/* Indicador de búsqueda activa */}
+          {filtros.busqueda && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+              <Search className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <span className="text-sm font-medium text-blue-900">
+                Buscando: <span className="font-bold">"{filtros.busqueda}"</span>
+              </span>
+            </div>
+          )}
+        </div>
 
-          {/* Fecha Fin */}
-          <input
-            type="date"
-            value={filtros.fechaFin || ''}
-            onChange={(e) => onCambiarFiltros({ ...filtros, fechaFin: e.target.value, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-
-          {/* Acción */}
-          <select
-            value={filtros.accion}
-            onChange={(e) => onCambiarFiltros({ ...filtros, accion: e.target.value as any, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        {/* Botón de Filtros Avanzados */}
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <button
+            onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
+            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 rounded-xl transition-all group"
           >
-            <option value="todas">Todas las acciones</option>
-            <option value="crear">Crear</option>
-            <option value="actualizar">Actualizar</option>
-            <option value="eliminar">Eliminar</option>
-            <option value="aprobar">Aprobar</option>
-            <option value="rechazar">Rechazar</option>
-            <option value="cambiar_estado">Cambiar Estado</option>
-            <option value="asignar">Asignar</option>
-            <option value="validar">Validar</option>
-            <option value="generar">Generar</option>
-            <option value="exportar">Exportar</option>
-          </select>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+                <Filter className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="font-bold text-gray-900 flex items-center gap-2">
+                  Filtros Avanzados
+                  {filtrosActivos > 0 && (
+                    <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">
+                      {filtrosActivos}
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 font-medium">
+                  {mostrarFiltrosAvanzados ? 'Ocultar' : 'Mostrar'} opciones de filtrado detallado
+                </div>
+              </div>
+            </div>
+            <ChevronDown 
+              className={`w-5 h-5 text-gray-600 transition-transform ${mostrarFiltrosAvanzados ? 'rotate-180' : ''}`}
+            />
+          </button>
 
-          {/* Criticidad */}
-          <select
-            value={filtros.criticidad}
-            onChange={(e) => onCambiarFiltros({ ...filtros, criticidad: e.target.value as any, pagina: 1 })}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="todas">Todas las criticidades</option>
-            <option value="baja">Baja</option>
-            <option value="media">Media</option>
-            <option value="alta">Alta</option>
-            <option value="critica">Crítica</option>
-          </select>
+          {/* Panel de Filtros Avanzados */}
+          <AnimatePresence>
+            {mostrarFiltrosAvanzados && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 p-6 bg-gray-50 rounded-xl border-2 border-gray-200 space-y-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Filter className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-bold text-gray-700">
+                      Combina múltiples filtros para refinar tu búsqueda
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Fecha Inicio */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        📅 Fecha Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={filtros.fechaInicio || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, fechaInicio: e.target.value, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+
+                    {/* Fecha Fin */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        📅 Fecha Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={filtros.fechaFin || ''}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, fechaFin: e.target.value, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+
+                    {/* Acción */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        ⚡ Tipo de Acción
+                      </label>
+                      <select
+                        value={filtros.accion}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, accion: e.target.value as any, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="todas">Todas las acciones</option>
+                        <option value="crear">➕ Crear</option>
+                        <option value="actualizar">✏️ Actualizar</option>
+                        <option value="eliminar">🗑️ Eliminar</option>
+                        <option value="aprobar">✅ Aprobar</option>
+                        <option value="rechazar">❌ Rechazar</option>
+                        <option value="cambiar_estado">🔄 Cambiar Estado</option>
+                        <option value="asignar">👥 Asignar</option>
+                        <option value="validar">✓ Validar</option>
+                        <option value="generar">📄 Generar</option>
+                        <option value="exportar">📥 Exportar</option>
+                      </select>
+                    </div>
+
+                    {/* Módulo */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        📦 Módulo del Sistema
+                      </label>
+                      <select
+                        value={filtros.modulo}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, modulo: e.target.value as any, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="todos">Todos los módulos</option>
+                        <option value="Control Interno">🛡️ Control Interno</option>
+                        <option value="Control Disciplinario">⚖️ Control Disciplinario</option>
+                        <option value="Gestión Legal">📜 Gestión Legal</option>
+                        <option value="Gestión de Usuarios">👥 Gestión de Usuarios</option>
+                        <option value="Graduados">🎓 Graduados</option>
+                        <option value="Certificados Laborales">📋 Certificados Laborales</option>
+                        <option value="Firma Electrónica">✍️ Firma Electrónica</option>
+                      </select>
+                    </div>
+
+                    {/* Tabla/Entidad */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        🗄️ Entidad/Tabla
+                      </label>
+                      <select
+                        value={filtros.tabla}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, tabla: e.target.value as any, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="todas">Todas las entidades</option>
+                        <option value="usuarios">Usuarios</option>
+                        <option value="graduados">Graduados</option>
+                        <option value="certificados">Certificados</option>
+                        <option value="auditorias">Auditorías</option>
+                        <option value="expedientes">Expedientes</option>
+                        <option value="procesos">Procesos</option>
+                      </select>
+                    </div>
+
+                    {/* Criticidad */}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-2">
+                        🚨 Nivel de Criticidad
+                      </label>
+                      <select
+                        value={filtros.criticidad}
+                        onChange={(e) => onCambiarFiltros({ ...filtros, criticidad: e.target.value as any, pagina: 1 })}
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                      >
+                        <option value="todas">Todas las criticidades</option>
+                        <option value="baja">🟢 Baja</option>
+                        <option value="media">🟡 Media</option>
+                        <option value="alta">🟠 Alta</option>
+                        <option value="critica">🔴 Crítica</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Indicadores de filtros activos */}
+                  {filtrosActivos > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-300">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-gray-700">Filtros aplicados:</span>
+                        {filtros.fechaInicio && (
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium flex items-center gap-1">
+                            📅 Desde: {filtros.fechaInicio}
+                            <button
+                              onClick={() => onCambiarFiltros({ ...filtros, fechaInicio: undefined, pagina: 1 })}
+                              className="hover:bg-blue-200 rounded-full p-0.5"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                        {filtros.fechaFin && (
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium flex items-center gap-1">
+                            📅 Hasta: {filtros.fechaFin}
+                            <button
+                              onClick={() => onCambiarFiltros({ ...filtros, fechaFin: undefined, pagina: 1 })}
+                              className="hover:bg-blue-200 rounded-full p-0.5"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                        {filtros.accion && filtros.accion !== 'todas' && (
+                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-lg text-xs font-medium flex items-center gap-1">
+                            ⚡ {filtros.accion}
+                            <button
+                              onClick={() => onCambiarFiltros({ ...filtros, accion: 'todas', pagina: 1 })}
+                              className="hover:bg-green-200 rounded-full p-0.5"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                        {filtros.modulo && filtros.modulo !== 'todos' && (
+                          <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-lg text-xs font-medium flex items-center gap-1">
+                            📦 {filtros.modulo}
+                            <button
+                              onClick={() => onCambiarFiltros({ ...filtros, modulo: 'todos', pagina: 1 })}
+                              className="hover:bg-purple-200 rounded-full p-0.5"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                        {filtros.criticidad && filtros.criticidad !== 'todas' && (
+                          <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-lg text-xs font-medium flex items-center gap-1">
+                            🚨 {filtros.criticidad}
+                            <button
+                              onClick={() => onCambiarFiltros({ ...filtros, criticidad: 'todas', pagina: 1 })}
+                              className="hover:bg-orange-200 rounded-full p-0.5"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </Card>
 

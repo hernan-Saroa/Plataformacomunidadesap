@@ -1,15 +1,14 @@
 /**
  * MODAL SUBIR DOCUMENTO - RF003
- * Sistema completo de gestión documental con drag & drop
+ * Diseño actualizado alineado con el estándar ESAP (SIGL v5.0)
  */
 
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   X, Upload, FileText, File, Image, FileSpreadsheet,
-  Trash2, Check, AlertCircle, Paperclip
+  Trash2, Check, AlertCircle, Paperclip, Plus, Info
 } from 'lucide-react';
-import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 
@@ -84,7 +83,6 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
   };
 
   const agregarArchivos = (nuevosArchivos: File[]) => {
-    // Validar tipos de archivo permitidos
     const permitidos = ['application/pdf', 'application/msword', 
                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                        'application/vnd.ms-excel',
@@ -92,7 +90,6 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
                        'image/jpeg', 'image/png', 'image/jpg'];
     
     const archivosValidos = nuevosArchivos.filter(archivo => {
-      // Validar tipo
       if (!permitidos.includes(archivo.type)) {
         toast.error(`Archivo no permitido: ${archivo.name}`, {
           description: 'Solo se permiten PDF, Word, Excel e imágenes'
@@ -100,27 +97,34 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
         return false;
       }
       
-      // Validar tamaño (máx 10MB)
       if (archivo.size > 10 * 1024 * 1024) {
         toast.error(`Archivo muy grande: ${archivo.name}`, {
-          description: 'El tamaño máximo es 10MB'
+          description: 'El tamaño máximo es 10 MB'
         });
         return false;
       }
       
       return true;
     });
-
+    
     setArchivos([...archivos, ...archivosValidos]);
+    
+    if (archivosValidos.length > 0) {
+      toast.success(`${archivosValidos.length} archivo(s) agregado(s)`);
+    }
   };
 
   const eliminarArchivo = (index: number) => {
-    setArchivos(archivos.filter((_, i) => i !== index));
+    const nuevosArchivos = archivos.filter((_, i) => i !== index);
+    setArchivos(nuevosArchivos);
+    toast.info('Archivo eliminado de la lista');
   };
 
   const handleConfirmar = () => {
     if (archivos.length === 0) {
-      toast.error('Debes seleccionar al menos un archivo');
+      toast.error('No hay archivos', {
+        description: 'Debes agregar al menos un archivo para continuar'
+      });
       return;
     }
 
@@ -132,20 +136,18 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
     }));
 
     onConfirm(documentos);
+    toast.success('Documentos Cargados', {
+      description: `${archivos.length} documento(s) agregado(s) al proceso ${proceso.numero}`
+    });
+    onClose();
   };
 
   const getIconoArchivo = (tipo: string) => {
-    if (tipo.includes('pdf')) return <FileText className="w-6 h-6 text-red-600" />;
-    if (tipo.includes('word')) return <File className="w-6 h-6 text-blue-600" />;
-    if (tipo.includes('sheet') || tipo.includes('excel')) return <FileSpreadsheet className="w-6 h-6 text-green-600" />;
-    if (tipo.includes('image')) return <Image className="w-6 h-6 text-purple-600" />;
-    return <File className="w-6 h-6 text-gray-600" />;
-  };
-
-  const formatearTamano = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    if (tipo.includes('pdf')) return <FileText className="w-5 h-5" style={{ color: '#DC2626' }} />;
+    if (tipo.includes('word')) return <FileText className="w-5 h-5" style={{ color: '#2563EB' }} />;
+    if (tipo.includes('excel') || tipo.includes('sheet')) return <FileSpreadsheet className="w-5 h-5" style={{ color: '#059669' }} />;
+    if (tipo.includes('image')) return <Image className="w-5 h-5" style={{ color: '#8B5CF6' }} />;
+    return <File className="w-5 h-5" style={{ color: '#6B7280' }} />;
   };
 
   return (
@@ -153,7 +155,7 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[250]"
+      className="fixed inset-0 bg-black/60 flex items-start justify-center pt-16 sm:pt-20 p-4 z-[200]"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
@@ -162,208 +164,192 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
         className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-2xl font-bold mb-2" style={{ color: '#003DA5' }}>
-                Adjuntar Documentos al Expediente
-              </h2>
-              <p className="text-sm text-gray-600">
-                {proceso.numeroProceso} • {proceso.denunciado.nombre}
-              </p>
+        <div className="p-6 border-b" style={{ borderColor: '#E5E7EB' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+                <Upload className="w-6 h-6" style={{ color: '#003DA5' }} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold" style={{ color: '#003DA5' }}>
+                  Cargar Documentos
+                </h2>
+                <p className="text-sm" style={{ color: '#6B7280' }}>
+                  Proceso: {proceso.numero}
+                </p>
+              </div>
             </div>
             <button
               onClick={onClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-gray-600" />
+              <X className="w-5 h-5" style={{ color: '#6B7280' }} />
             </button>
           </div>
         </div>
 
         {/* Contenido */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Zona de drag & drop */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Etapa y Tipo */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                Etapa del Proceso *
+              </label>
+              <select
+                value={etapaSeleccionada}
+                onChange={(e) => setEtapaSeleccionada(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                style={{ borderColor: '#E5E7EB' }}
+              >
+                {ETAPAS_DISPONIBLES.map(etapa => (
+                  <option key={etapa} value={etapa}>{etapa}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                Tipo de Documento *
+              </label>
+              <select
+                value={tipoDocumento}
+                onChange={(e) => setTipoDocumento(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                style={{ borderColor: '#E5E7EB' }}
+              >
+                {TIPOS_DOCUMENTO.map(tipo => (
+                  <option key={tipo} value={tipo}>{tipo}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Descripción */}
           <div>
-            <label className="block font-semibold mb-3 text-gray-900">
-              Archivos a Adjuntar <span className="text-red-500">*</span>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Descripción (Opcional)
+            </label>
+            <textarea
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder="Descripción breve del documento o contexto..."
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+              style={{ borderColor: '#E5E7EB' }}
+            />
+          </div>
+
+          {/* Área de Drag & Drop */}
+          <div>
+            <label className="block mb-2 text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+              Archivos *
             </label>
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`
-                border-2 border-dashed rounded-xl p-8 text-center transition-all
-                ${isDragging 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'}
-              `}
+              className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                isDragging 
+                  ? 'border-[#003DA5] bg-blue-50' 
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+              onClick={() => fileInputRef.current?.click()}
             >
-              <Upload className={`
-                w-12 h-12 mx-auto mb-4
-                ${isDragging ? 'text-blue-600' : 'text-gray-400'}
-              `} />
-              
-              <p className="text-lg font-semibold text-gray-900 mb-2">
-                {isDragging ? '¡Suelta los archivos aquí!' : 'Arrastra y suelta archivos aquí'}
-              </p>
-              
-              <p className="text-sm text-gray-600 mb-4">
-                o haz click para seleccionar
-              </p>
-
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#E0EDFF' }}>
+                  <Upload className="w-8 h-8" style={{ color: '#003DA5' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                    Arrastra y suelta archivos aquí
+                  </p>
+                  <p className="text-xs" style={{ color: '#6B7280' }}>
+                    o haz clic para seleccionar
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs" style={{ color: '#9CA3AF' }}>
+                  <Info className="w-4 h-4" />
+                  <span>PDF, Word, Excel, Imágenes (máx. 10 MB)</span>
+                </div>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
                 onChange={handleFileSelect}
                 className="hidden"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               />
-              
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                variant="outline"
-                type="button"
-              >
-                <Paperclip className="w-4 h-4 mr-2" />
-                Seleccionar Archivos
-              </Button>
-
-              <p className="text-xs text-gray-500 mt-4">
-                Formatos permitidos: PDF, Word, Excel, Imágenes (JPG, PNG)
-                <br />
-                Tamaño máximo por archivo: 10MB
-              </p>
             </div>
           </div>
 
-          {/* Lista de archivos seleccionados */}
+          {/* Lista de archivos */}
           {archivos.length > 0 && (
             <div>
-              <label className="block font-semibold mb-3 text-gray-900">
-                Archivos Seleccionados ({archivos.length})
-              </label>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold uppercase" style={{ color: '#4B5563' }}>
+                  Archivos Seleccionados
+                </p>
+                <Badge style={{ background: '#E0EDFF', color: '#003DA5' }}>
+                  {archivos.length} {archivos.length === 1 ? 'archivo' : 'archivos'}
+                </Badge>
+              </div>
+              <div className="space-y-2">
                 {archivos.map((archivo, index) => (
                   <div
                     key={index}
-                    className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-xl border-2"
+                    style={{ borderColor: '#E5E7EB', background: '#F8FAFC' }}
                   >
-                    {getIconoArchivo(archivo.type)}
+                    <div className="flex-shrink-0">
+                      {getIconoArchivo(archivo.type)}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#1F2937' }}>
                         {archivo.name}
                       </p>
-                      <p className="text-sm text-gray-600">
-                        {formatearTamano(archivo.size)}
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {(archivo.size / 1024).toFixed(0)} KB
                       </p>
                     </div>
                     <button
-                      onClick={() => eliminarArchivo(index)}
-                      className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        eliminarArchivo(index);
+                      }}
+                      className="p-2 rounded-lg hover:bg-red-50 transition-colors"
                       title="Eliminar archivo"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <Trash2 className="w-4 h-4" style={{ color: '#DC2626' }} />
                     </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Etapa Asociada */}
-          <div>
-            <label className="block font-semibold mb-2 text-gray-900">
-              Etapa Procesal Asociada <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={etapaSeleccionada}
-              onChange={(e) => setEtapaSeleccionada(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-            >
-              {ETAPAS_DISPONIBLES.map((etapa) => (
-                <option key={etapa} value={etapa}>
-                  {etapa}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Los documentos se organizarán por etapa procesal en el expediente
-            </p>
-          </div>
-
-          {/* Tipo de Documento */}
-          <div>
-            <label className="block font-semibold mb-2 text-gray-900">
-              Tipo de Documento <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={tipoDocumento}
-              onChange={(e) => setTipoDocumento(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 bg-white"
-            >
-              {TIPOS_DOCUMENTO.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Descripción */}
-          <div>
-            <label className="block font-semibold mb-2 text-gray-900">
-              Descripción / Observaciones (Opcional)
-            </label>
-            <textarea
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Ej: Respuesta de Talento Humano con información laboral del denunciado..."
-              className="w-full h-24 px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 resize-none"
-            />
-          </div>
-
-          {/* Info sobre registro automático */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="flex gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-blue-900 mb-1">
-                  Registro Automático
-                </p>
-                <p className="text-sm text-blue-700">
-                  El sistema registrará automáticamente:
-                </p>
-                <ul className="text-sm text-blue-700 list-disc list-inside mt-2 space-y-1">
-                  <li>Usuario que carga el documento</li>
-                  <li>Fecha y hora exacta de carga</li>
-                  <li>Etapa procesal asociada</li>
-                  <li>Tipo de documento</li>
-                </ul>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50 flex gap-3">
-          <Button
-            onClick={onClose}
-            variant="outline"
-            className="flex-1"
-          >
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleConfirmar}
-            className="flex-1"
-            style={{ background: '#10B981', color: '#FFFFFF' }}
-            disabled={archivos.length === 0}
-          >
-            <Check className="w-4 h-4 mr-2" />
-            Adjuntar {archivos.length > 0 && `(${archivos.length})`}
-          </Button>
+        <div className="p-6 border-t" style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+              style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirmar}
+              disabled={archivos.length === 0}
+              className="px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: '#003DA5' }}
+            >
+              <Upload className="w-4 h-4" />
+              Cargar {archivos.length > 0 && `(${archivos.length})`}
+            </button>
+          </div>
         </div>
       </motion.div>
     </motion.div>

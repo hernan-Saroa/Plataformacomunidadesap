@@ -135,7 +135,17 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
+    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
     return user?.permissions?.includes(permission) || false;
+  }
+
+  /**
+   * Verifica si el usuario es un super admin
+   */
+  isSuperAdmin(): boolean {
+    const user = this.getCurrentUser();
+    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
+    return false;
   }
 
   /**
@@ -143,7 +153,13 @@ class AuthService {
    */
   hasRole(role: string): boolean {
     const user = this.getCurrentUser();
-    return user?.roles?.includes(role) || false;
+    const roles = user?.roles || [];
+
+    // Manejar tanto arrays de string como objetos { code, name }
+    return roles.some((r: any) => {
+      if (typeof r === 'string') return r === role;
+      return r?.code === role || r?.name === role;
+    });
   }
 
   /**

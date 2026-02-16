@@ -27,6 +27,9 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { toast } from 'sonner@2.0.3';
 
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
+
 // ====================================
 // TIPOS
 // ====================================
@@ -46,10 +49,10 @@ const TABS_CONFIG: TabConfig[] = [
   {
     id: 'tipos',
     label: 'Tipos de Auditoría',
-    description: 'Regular, Territorial, Especial',
+    description: 'Gestión, Financiera, Cumplimiento, TI, Territorial',
     icon: CheckSquare,
     color: '#10B981',
-    badge: 3
+    badge: 5
   },
   {
     id: 'listas',
@@ -100,9 +103,9 @@ interface ListaChequeo {
 const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
   {
     id: 'tipo-001',
-    codigo: 'AUD-REG',
-    nombre: 'Regular',
-    descripcion: 'Auditoría de tipo regular',
+    codigo: 'AUD-GEST',
+    nombre: 'Auditoría de Gestión',
+    descripcion: 'Evaluación de la eficiencia y eficacia de los procesos',
     alcance: 'Procesos administrativos, académicos y financieros',
     duracionPromedio: 30,
     equipoPromedio: 3,
@@ -112,10 +115,10 @@ const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
   },
   {
     id: 'tipo-002',
-    codigo: 'AUD-TERR',
-    nombre: 'Territorial',
-    descripcion: 'Auditoría a sedes territoriales',
-    alcance: 'Procesos de territoriales',
+    codigo: 'AUD-FIN',
+    nombre: 'Auditoría Financiera',
+    descripcion: 'Revisión de estados financieros y manejo de recursos',
+    alcance: 'Presupuesto, contabilidad y tesorería',
     duracionPromedio: 45,
     equipoPromedio: 4,
     color: '#10B981',
@@ -124,15 +127,39 @@ const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
   },
   {
     id: 'tipo-003',
-    codigo: 'AUD-ESP',
-    nombre: 'Especial',
-    descripcion: 'Auditoría de tipo especial',
-    alcance: 'Procesos específicos según requiera',
+    codigo: 'AUD-COMP',
+    nombre: 'Auditoría de Cumplimiento',
+    descripcion: 'Verificación del cumplimiento normativo',
+    alcance: 'Normas legales, decretos y resoluciones',
     duracionPromedio: 20,
     equipoPromedio: 2,
     color: '#F59E0B',
     activa: true,
     auditoriasProgramadas: 12
+  },
+  {
+    id: 'tipo-004',
+    codigo: 'AUD-TI',
+    nombre: 'Auditoría de Sistemas de Información',
+    descripcion: 'Evaluación de controles en sistemas TI',
+    alcance: 'Infraestructura tecnológica y seguridad',
+    duracionPromedio: 25,
+    equipoPromedio: 3,
+    color: '#8B5CF6',
+    activa: true,
+    auditoriasProgramadas: 3
+  },
+  {
+    id: 'tipo-005',
+    codigo: 'AUD-TERR',
+    nombre: 'Auditoría Territorial',
+    descripcion: 'Auditoría a sedes territoriales',
+    alcance: 'Procesos de territoriales',
+    duracionPromedio: 19,
+    equipoPromedio: 3,
+    color: '#EC4899',
+    activa: true,
+    auditoriasProgramadas: 16
   }
 ];
 
@@ -140,7 +167,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-001',
     nombre: 'Lista de Chequeo #1',
-    tipoAuditoria: 'Regular',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Verificación de procesos administrativos',
     items: [
       { id: 'item-1', texto: '¿Existe documentación de procesos?', categoria: 'Documentación', obligatorio: true },
@@ -155,7 +182,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-002',
     nombre: 'Lista de Chequeo #2',
-    tipoAuditoria: 'Regular',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Control de calidad en servicios',
     items: [
       { id: 'item-4', texto: '¿Se miden indicadores de calidad?', categoria: 'Medición', obligatorio: true },
@@ -169,7 +196,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-003',
     nombre: 'Lista de Chequeo #3',
-    tipoAuditoria: 'Territorial',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Revisión de recursos humanos',
     items: [
       { id: 'item-6', texto: '¿Personal capacitado?', categoria: 'Capacitación', obligatorio: true },
@@ -183,7 +210,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-004',
     nombre: 'Lista de Chequeo #4',
-    tipoAuditoria: 'Especial',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Verificación financiera básica',
     items: [
       { id: 'item-8', texto: '¿Presupuesto documentado?', categoria: 'Financiero', obligatorio: true }
@@ -196,7 +223,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-005',
     nombre: 'Lista de Chequeo #5',
-    tipoAuditoria: 'Regular',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Control de inventarios',
     items: [
       { id: 'item-9', texto: '¿Inventario actualizado?', categoria: 'Inventario', obligatorio: true }
@@ -209,7 +236,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-006',
     nombre: 'Lista de Chequeo #6',
-    tipoAuditoria: 'Regular',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Seguridad y salud en el trabajo',
     items: [
       { id: 'item-10', texto: '¿Plan de emergencias?', categoria: 'Seguridad', obligatorio: true }
@@ -222,7 +249,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-007',
     nombre: 'Lista de Chequeo #7',
-    tipoAuditoria: 'Territorial',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Gestión documental',
     items: [
       { id: 'item-11', texto: '¿Sistema de archivo adecuado?', categoria: 'Documental', obligatorio: true }
@@ -235,7 +262,7 @@ const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
   {
     id: 'lista-008',
     nombre: 'Lista de Chequeo #8',
-    tipoAuditoria: 'Regular',
+    tipoAuditoria: 'Auditoría de Gestión',
     descripcion: 'Atención al usuario',
     items: [
       { id: 'item-12', texto: '¿Protocolo de atención definido?', categoria: 'Servicio', obligatorio: true }
@@ -669,7 +696,7 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
             <Input
               value={formData.nombre}
               onChange={(e) => handleChange('nombre', e.target.value)}
-              placeholder="Regular"
+              placeholder="Auditoría de Gestión"
               required
             />
           </div>
@@ -946,7 +973,7 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar }: ModalListaChequeoProp
     lista || {
       id: '',
       nombre: '',
-      tipoAuditoria: 'Regular',
+      tipoAuditoria: 'Auditoría de Gestión',
       descripcion: '',
       items: [],
       activa: true,
@@ -1059,9 +1086,10 @@ function ModalListaChequeo({ lista, onGuardar, onCerrar }: ModalListaChequeoProp
                 onChange={(e) => handleChange('tipoAuditoria', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option>Regular</option>
-                <option>Territorial</option>
-                <option>Especial</option>
+                <option>Auditoría de Gestión</option>
+                <option>Auditoría Financiera</option>
+                <option>Auditoría de Cumplimiento</option>
+                <option>Auditoría de Sistemas TI</option>
                 <option>Auditoría Territorial</option>
               </select>
             </div>

@@ -36,20 +36,13 @@ export function ModalComentarRequerimiento({
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock de comentarios existentes
+  // Mock de comentarios existentes (REDUCIDOS)
   const [comentariosExistentes] = useState<Comentario[]>([
     {
       id: '1',
-      usuario: 'Dra. María Fernández',
+      usuario: 'Usuario Ejemplo',
       fecha: new Date('2024-12-20T10:30:00'),
-      contenido: 'Solicité información complementaria al área de Contratación. Esperando respuesta para consolidar datos.',
-      tipo: 'interno',
-    },
-    {
-      id: '2',
-      usuario: 'Dr. Carlos Pérez',
-      fecha: new Date('2024-12-21T14:15:00'),
-      contenido: 'Revisé la normatividad aplicable. El término para responder vence el 8 de enero. Prioridad alta.',
+      contenido: 'Comentario de ejemplo para referencia',
       tipo: 'interno',
     },
   ]);
@@ -142,12 +135,12 @@ export function ModalComentarRequerimiento({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => e.stopPropagation()}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[90vh] overflow-y-auto"
+            className="fixed left-1/2 top-[15vh] -translate-x-1/2 w-full max-w-3xl bg-white rounded-2xl shadow-2xl z-[9999] max-h-[70vh] overflow-y-auto"
           >
             {/* Header */}
             <ModalHeaderClean

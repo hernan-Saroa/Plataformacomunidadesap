@@ -15,18 +15,19 @@
  * ÚLTIMA ACTUALIZACIÓN: 4 Enero 2026
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Shield, Users, Key, UserPlus, Edit2, Trash2, Eye,
-  Search, CheckCircle2, XCircle, AlertCircle, Loader
+  Search, CheckCircle2, XCircle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
-import { usersService, type User } from '@/services/usersService';
-import { rolesService, type SystemRole } from '@/services/api';
+
+// ✅ DÍA 4: Container4K para padding adaptativo
+import { Container4K } from '@/components/ui';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -197,71 +198,6 @@ const EQUIPO_MOCK: PersonaAsignada[] = [
 
 export function RolesYPermisosModulePremium() {
   const [vistaActiva, setVistaActiva] = useState<VistaActual>('equipo');
-  const [equipo, setEquipo] = useState<PersonaAsignada[]>([]);
-  const [cargandoEquipo, setCargandoEquipo] = useState(true);
-  const [rolesDisponibles, setRolesDisponibles] = useState<SystemRole[]>([]);
-
-  // Cargar usuarios desde el auth service
-  useEffect(() => {
-    const cargarEquipo = async () => {
-      try {
-        setCargandoEquipo(true);
-        
-        // Cargar usuarios desde el auth service
-        const usuariosResponse = await usersService.getUsers({
-          limit: 1000, // Obtener todos los usuarios (ajustar según necesidad)
-          status: 'active'
-        });
-
-        // Cargar roles disponibles
-        const rolesResponse = await rolesService.getRoles({ limit: 1000 });
-
-        if (rolesResponse.roles) {
-          setRolesDisponibles(rolesResponse.roles);
-        }
-
-        if (usuariosResponse.data) {
-          // Mapear usuarios de la API al formato PersonaAsignada
-          const equipoMapeado: PersonaAsignada[] = usuariosResponse.data.map((user: User) => {
-            // Obtener el primer rol del usuario (o 'Sin rol' si no tiene)
-            const rolPrincipal = user.roles && user.roles.length > 0 
-              ? user.roles[0].name 
-              : 'Sin rol';
-
-            // Mapear permisos del usuario (basado en sus roles)
-            const permisos: string[] = user.roles?.flatMap(role => [
-              `${role.code}:read`,
-              `${role.code}:write`
-            ]) || [];
-
-            return {
-              id: user.id_user,
-              personaId: user.person?.id?.toString() || user.id_user,
-              nombreCompleto: user.person?.full_name || `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || user.username,
-              email: user.person?.email || '',
-              telefono: user.person?.phone || '',
-              rolAsignado: rolPrincipal,
-              permisos: permisos,
-              fechaAsignacion: user.created_at ? new Date(user.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-              estado: user.is_active ? 'ACTIVO' : 'INACTIVO',
-              ultimoAcceso: user.updated_at ? new Date(user.updated_at).toLocaleString('es-CO') : 'N/A'
-            };
-          });
-
-          setEquipo(equipoMapeado);
-        }
-      } catch (error) {
-        console.error('Error cargando equipo:', error);
-        toast.error('Error al cargar equipo', {
-          description: 'No se pudieron cargar los usuarios desde el servidor'
-        });
-      } finally {
-        setCargandoEquipo(false);
-      }
-    };
-
-    cargarEquipo();
-  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -272,7 +208,7 @@ export function RolesYPermisosModulePremium() {
 
       {/* Banner Informativo */}
       <div className="bg-blue-50 border-b border-blue-200">
-        <div className="mx-auto px-8 py-4 max-w-[1920px]">
+        <div className="w-full px-8 py-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-blue-700 flex-shrink-0 mt-0.5" />
             <div>
@@ -290,14 +226,14 @@ export function RolesYPermisosModulePremium() {
 
       {/* Navegación */}
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="mx-auto px-8 max-w-[1920px]">
+        <div className="w-full px-8">
           <div className="flex gap-1">
             <TabButton
               active={vistaActiva === 'equipo'}
               onClick={() => setVistaActiva('equipo')}
               icon={<Users className="w-4 h-4" />}
               label="Equipo Control Interno"
-              badge={equipo.length.toString()}
+              badge={EQUIPO_MOCK.length.toString()}
             />
             <TabButton
               active={vistaActiva === 'permisos'}
@@ -318,7 +254,7 @@ export function RolesYPermisosModulePremium() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {vistaActiva === 'equipo' && <VistaEquipo equipo={equipo} cargandoEquipo={cargandoEquipo} />}
+          {vistaActiva === 'equipo' && <VistaEquipo />}
           {vistaActiva === 'permisos' && <VistaPermisos />}
         </motion.div>
       </AnimatePresence>
@@ -367,18 +303,13 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 // VISTA: EQUIPO CONTROL INTERNO
 // ════════════════════════════════════════════════════════════════════════════
 
-interface VistaEquipoProps {
-  equipo: PersonaAsignada[];
-  cargandoEquipo: boolean;
-}
-
-function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
+function VistaEquipo() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroRol, setFiltroRol] = useState<string>('TODOS');
   const [modalAsignar, setModalAsignar] = useState(false);
 
   const equipoFiltrado = useMemo(() => {
-    let resultado = equipo;
+    let resultado = EQUIPO_MOCK;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -393,19 +324,19 @@ function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
     }
 
     return resultado;
-  }, [busqueda, filtroRol, equipo]);
+  }, [busqueda, filtroRol]);
 
   const estadisticas = useMemo(() => {
-    const total = equipo.length;
-    const activos = equipo.filter(p => p.estado === 'ACTIVO').length;
+    const total = EQUIPO_MOCK.length;
+    const activos = EQUIPO_MOCK.filter(p => p.estado === 'ACTIVO').length;
     const porRol = ROLES_CONTROL_INTERNO.map(rol => ({
       rol: rol.nombre,
-      count: equipo.filter(p => p.rolAsignado === rol.nombre).length,
+      count: EQUIPO_MOCK.filter(p => p.rolAsignado === rol.nombre).length,
       color: rol.color
     }));
 
     return { total, activos, porRol };
-  }, [equipo]);
+  }, []);
 
   const handleAsignarPersona = () => {
     setModalAsignar(true);
@@ -424,7 +355,7 @@ function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
   };
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       {/* Header con Título y Botón */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between">
@@ -476,27 +407,16 @@ function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
 
       {/* Lista de Equipo */}
       <div className="space-y-4">
-        {cargandoEquipo ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <Loader className="w-12 h-12 text-[#1e5da8] mx-auto mb-4 animate-spin" />
-            <h3 className="text-base text-gray-900 mb-2">Cargando equipo...</h3>
-            <p className="text-sm text-gray-600">
-              Obteniendo datos desde el servidor
-            </p>
-          </div>
-        ) : equipoFiltrado.length > 0 ? (
-          equipoFiltrado.map((persona) => (
-            <CardPersonaEquipo key={persona.id} persona={persona} />
-          ))
-        ) : (
+        {equipoFiltrado.map((persona) => (
+          <CardPersonaEquipo key={persona.id} persona={persona} />
+        ))}
+
+        {equipoFiltrado.length === 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-base text-gray-900 mb-2">No se encontraron personas</h3>
             <p className="text-sm text-gray-600">
-              {busqueda || filtroRol !== 'TODOS' 
-                ? 'Intenta con otros criterios de búsqueda'
-                : 'No hay personas asignadas al equipo de Control Interno'
-              }
+              Intenta con otros criterios de búsqueda
             </p>
           </div>
         )}
@@ -505,16 +425,14 @@ function VistaEquipo({ equipo, cargandoEquipo }: VistaEquipoProps) {
       {/* Modal Asignar Persona */}
       {modalAsignar && (
         <ModalAsignarPersona
-          equipoActual={equipo}
           onClose={() => setModalAsignar(false)}
-          onAsignar={(nuevaPersona) => {
-            setEquipo([...equipo, nuevaPersona]);
+          onAsignar={() => {
             setModalAsignar(false);
             toast.success('Persona asignada exitosamente');
           }}
         />
       )}
-    </div>
+    </Container4K>
   );
 }
 
@@ -711,7 +629,7 @@ function VistaPermisos() {
   const acciones = ['Leer', 'Crear', 'Editar', 'Eliminar', 'Aprobar'];
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex-1">
@@ -789,7 +707,7 @@ function VistaPermisos() {
           </div>
         ))}
       </div>
-    </div>
+    </Container4K>
   );
 }
 
@@ -798,154 +716,34 @@ function VistaPermisos() {
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalAsignarPersonaProps {
-  equipoActual: PersonaAsignada[];
   onClose: () => void;
-  onAsignar: (persona: PersonaAsignada) => void;
+  onAsignar: () => void;
 }
 
-function ModalAsignarPersona({ equipoActual, onClose, onAsignar }: ModalAsignarPersonaProps) {
-  const [usuarios, setUsuarios] = useState<User[]>([]);
-  const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
-  const [busquedaPersona, setBusquedaPersona] = useState('');
-  const [personaSeleccionada, setPersonaSeleccionada] = useState<User | null>(null);
+function ModalAsignarPersona({ onClose, onAsignar }: ModalAsignarPersonaProps) {
   const [rolSeleccionado, setRolSeleccionado] = useState<string>('');
-  const [permisosSeleccionados, setPermisosSeleccionados] = useState<string[]>([]);
+  const [busquedaPersona, setBusquedaPersona] = useState('');
 
-  // Cargar usuarios disponibles al abrir el modal
-  useEffect(() => {
-    const cargarUsuarios = async () => {
-      try {
-        setCargandoUsuarios(true);
-        const response = await usersService.getUsers({
-          limit: 1000,
-          status: 'active'
-        });
-
-        if (response.data) {
-          // Filtrar usuarios que ya están en el equipo
-          const idsEquipoActual = new Set(equipoActual.map(p => p.id));
-          const usuariosDisponibles = response.data.filter(
-            (user: User) => !idsEquipoActual.has(user.id_user)
-          );
-          setUsuarios(usuariosDisponibles);
-        }
-      } catch (error) {
-        console.error('Error cargando usuarios:', error);
-        toast.error('Error al cargar usuarios', {
-          description: 'No se pudieron cargar los usuarios disponibles'
-        });
-      } finally {
-        setCargandoUsuarios(false);
-      }
-    };
-
-    cargarUsuarios();
-  }, [equipoActual]);
-
-  // Cuando se selecciona un rol, actualizar permisos seleccionados con los permisos del rol
-  useEffect(() => {
-    if (rolSeleccionado) {
-      const rol = ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado);
-      if (rol) {
-        // Inicializar con los permisos del rol
-        const permisosRol = rol.permisos.map(p => p.id);
-        setPermisosSeleccionados(permisosRol);
-      }
-    } else {
-      setPermisosSeleccionados([]);
-    }
-  }, [rolSeleccionado]);
-
-  // Filtrar usuarios por búsqueda
-  const usuariosFiltrados = useMemo(() => {
-    if (!busquedaPersona.trim()) return usuarios.slice(0, 10); // Mostrar solo los primeros 10
-
-    const search = busquedaPersona.toLowerCase();
-    return usuarios.filter((user: User) => {
-      const nombreCompleto = user.person?.full_name || 
-        `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || 
-        user.username;
-      const email = user.person?.email || '';
-      const documento = user.person?.identification_number || '';
-
-      return nombreCompleto.toLowerCase().includes(search) ||
-             email.toLowerCase().includes(search) ||
-             documento.toLowerCase().includes(search);
-    }).slice(0, 10);
-  }, [busquedaPersona, usuarios]);
-
-  const handleSeleccionarPersona = (user: User) => {
-    setPersonaSeleccionada(user);
-    setBusquedaPersona(
-      user.person?.full_name || 
-      `${user.person?.first_name || ''} ${user.person?.last_name || ''}`.trim() || 
-      user.username
-    );
-  };
-
-  const handleTogglePermiso = (permisoId: string) => {
-    setPermisosSeleccionados(prev => 
-      prev.includes(permisoId)
-        ? prev.filter(p => p !== permisoId)
-        : [...prev, permisoId]
-    );
-  };
-
-  const handleAsignar = async () => {
-    if (!personaSeleccionada) {
-      toast.error('Debes seleccionar una persona');
-      return;
-    }
-
+  const handleAsignar = () => {
     if (!rolSeleccionado) {
       toast.error('Debes seleccionar un rol');
       return;
     }
 
-    if (permisosSeleccionados.length === 0) {
-      toast.error('Debes seleccionar al menos un permiso');
-      return;
-    }
+    toast.success('Persona asignada al equipo', {
+      description: `Rol: ${ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado)?.nombre}`,
+      duration: 4000,
+    });
 
-    try {
-      const rolSeleccionadoData = ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado);
-      
-      // Mapear permisos seleccionados a formato de permisos
-      const permisosMapeados = permisosSeleccionados.map(permisoId => {
-        const permiso = rolSeleccionadoData?.permisos.find(p => p.id === permisoId);
-        return permiso ? `${permiso.modulo.toLowerCase().replace(/\s+/g, '_')}:${permiso.accion}` : permisoId;
-      });
+    console.log('👥 Asignar persona al módulo Control Interno:', {
+      rolSeleccionado: rolSeleccionado,
+      rolNombre: ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado)?.nombre,
+      busquedaPersona,
+      accion: 'asignar',
+      timestamp: new Date().toISOString()
+    });
 
-      // Crear objeto PersonaAsignada
-      const nuevaPersona: PersonaAsignada = {
-        id: personaSeleccionada.id_user,
-        personaId: personaSeleccionada.person?.id?.toString() || personaSeleccionada.id_user,
-        nombreCompleto: personaSeleccionada.person?.full_name || 
-          `${personaSeleccionada.person?.first_name || ''} ${personaSeleccionada.person?.last_name || ''}`.trim() || 
-          personaSeleccionada.username,
-        email: personaSeleccionada.person?.email || '',
-        telefono: personaSeleccionada.person?.phone || '',
-        rolAsignado: rolSeleccionadoData?.nombre || '',
-        permisos: permisosMapeados,
-        fechaAsignacion: new Date().toISOString().split('T')[0],
-        estado: personaSeleccionada.is_active ? 'ACTIVO' : 'INACTIVO',
-        ultimoAcceso: 'N/A'
-      };
-
-      // TODO: Aquí deberías llamar al backend para persistir la asignación
-      // Por ahora, solo actualizamos el estado local
-      onAsignar(nuevaPersona);
-
-      toast.success('Persona asignada al equipo', {
-        description: `${nuevaPersona.nombreCompleto} - ${rolSeleccionadoData?.nombre}`,
-        duration: 4000,
-      });
-    } catch (error) {
-      console.error('Error asignando persona:', error);
-      toast.error('Error al asignar persona', {
-        description: 'No se pudo completar la asignación'
-      });
-    }
+    onAsignar();
   };
 
   return (
@@ -1020,35 +818,19 @@ function ModalAsignarPersona({ equipoActual, onClose, onAsignar }: ModalAsignarP
               </select>
             </div>
 
-            {/* Selección de Permisos */}
+            {/* Preview de Permisos */}
             {rolSeleccionado && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">
-                  Permisos del rol seleccionado (puedes ajustarlos):
-                </h4>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado)?.permisos.map(permiso => {
-                    const isSelected = permisosSeleccionados.includes(permiso.id);
-                    return (
-                      <label
-                        key={permiso.id}
-                        className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleTogglePermiso(permiso.id)}
-                            className="w-4 h-4 text-[#1e5da8] border-gray-300 rounded focus:ring-[#1e5da8]"
-                          />
-                          <span className="text-sm text-gray-700">{permiso.modulo}</span>
-                        </div>
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                          {permiso.descripcion}
-                        </span>
-                      </label>
-                    );
-                  })}
+                <h4 className="text-sm font-medium text-gray-900 mb-3">Permisos del rol seleccionado:</h4>
+                <div className="space-y-2">
+                  {ROLES_CONTROL_INTERNO.find(r => r.id === rolSeleccionado)?.permisos.map(permiso => (
+                    <div key={permiso.id} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-700">{permiso.modulo}</span>
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                        {permiso.descripcion}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -81,12 +81,6 @@ export default function PublicCertificateValidation({ qrCodeParam }: PublicCerti
   const validateCertificate = async (qrCode: string) => {
     try {
       setLoading(true);
-      
-      // TODO: Reemplazar con llamada real a API
-      // const response = await fetch(`/api/public/validate-certificate?qr=${qrCode}`);
-      // const data = await response.json();
-      
-      // Mock data para demostración
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const mockData: CertificateValidationData = {
@@ -126,17 +120,6 @@ export default function PublicCertificateValidation({ qrCodeParam }: PublicCerti
 
   const registerScan = async (qrCode: string) => {
     try {
-      // TODO: Registrar escaneo en backend
-      // await fetch('/api/public/register-scan', {
-      //   method: 'POST',
-      //   body: JSON.stringify({
-      //     qrCode,
-      //     scannedAt: new Date().toISOString(),
-      //     userAgent: navigator.userAgent,
-      //     // La IP y ubicación se capturan en el backend
-      //   })
-      // });
-      
       console.log('Scan registered for QR:', qrCode);
     } catch (err) {
       console.error('Error registering scan:', err);
@@ -435,7 +418,7 @@ export default function PublicCertificateValidation({ qrCodeParam }: PublicCerti
                   minute: '2-digit',
                   second: '2-digit'
                 })}</p>
-                <p><strong>Estado:</strong> {isValid ? 'ACTIVO Y VÁLIDO' : 'INVÁLIDO'}</p>
+                <p><strong>Estado:</strong> {isValid ? 'VÁLIDO' : 'INVÁLIDO'}</p>
                 <p className="text-xs text-blue-700 mt-2">
                   🔒 Esta validación ha sido registrada en el sistema ESAP con fines de trazabilidad y seguridad.
                 </p>

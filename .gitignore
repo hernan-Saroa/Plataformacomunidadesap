@@ -158,7 +158,7 @@ temp/
 *.sqlite3
 
 # Docker
-.dockerignore
+# .dockerignore
 
 # Kubernetes
 *.yaml.bak
@@ -178,6 +178,7 @@ db/prod/
 backend/internal-disciplinary-control-service/uploads/
 backend/legal-management-service/uploads/
 backend/internal-institutional-control-service/uploads/control-interno/
+backend/academic-registration-service/uploads/
 .env.dev
 .env.qa
 .env.pre

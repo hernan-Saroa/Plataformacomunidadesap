@@ -13,7 +13,7 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 
@@ -439,7 +439,8 @@ export class ApiClient {
         return null;
       }
 
-      const response = await fetch(`${this.baseURL}/auth/refresh`, {
+      // 🔄 Nuevo endpoint versionado para refresh
+      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -452,7 +453,13 @@ export class ApiClient {
       }
 
       const data = await response.json();
-      const newToken = data.data.accessToken;
+
+      // El backend expone el token en data.data.accessToken (contrato NestJS)
+      const newToken = data?.data?.accessToken || data?.accessToken;
+
+      if (!newToken) {
+        throw new Error('Refresh response sin accessToken');
+      }
 
       // Guardar nuevo token
       localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
@@ -537,13 +544,6 @@ export class ApiClient {
           // Por ahora, mantenemos el path completo incluyendo /api/v1 si existe
           const path = restPath || '/';
           fullUrl = `${serviceUrl}${path}`;
-          console.log('🔗 API Client [DIRECT MODE]:', {
-            endpoint,
-            serviceName,
-            serviceUrl,
-            restPath: path,
-            finalURL: fullUrl,
-          });
         } else {
           // Servicio no encontrado, usar baseURL normal
           console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
@@ -562,12 +562,6 @@ export class ApiClient {
       } else {
         fullUrl = new URL(endpoint, this.baseURL).toString();
       }
-
-      console.log('🔗 API Client [GATEWAY MODE]:', {
-        endpoint,
-        baseURL: this.baseURL,
-        finalURL: fullUrl,
-      });
     }
 
     // Agregar parámetros de query

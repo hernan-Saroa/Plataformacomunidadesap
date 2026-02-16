@@ -1,5 +1,4 @@
-// import { ApiClient } from './apiClient';
-import { apiClient } from './client';
+import { apiClient } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway
@@ -56,14 +55,38 @@ export interface Actuacion {
     fechaActuacion: string;
     descripcion: string;
     tipoActuacion: string;
+    origen?: 'MANUAL' | 'AUDIENCIA' | 'AUTO' | 'ACTA' | 'EVIDENCIA' | 'OFICIO';
+    referenciaId?: string;
+    metadata?: any;
+    usuarioResponsable?: string;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface Audiencia {
+    id: string;
+    titulo: string;
+    fechaHoraInicio: string;
+    duracionMinutos: number;
+    modalidad: 'VIRTUAL' | 'PRESENCIAL';
+    ubicacion?: string;
+    linkReunion?: string;
+    estado: string;
+    notasPreparacion?: string;
+    abogadoId: string;
+    expedienteId: string;
+    // Campos opcionales de vista
+    radicado?: string;
+    nombreInvestigado?: string;
+    nombreAbogado?: string;
 }
 
 export class LegalService {
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, { params: filtros });
     }
+
+
 
     async getJuzgamientoProcesos(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento`);
@@ -115,6 +138,27 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}`, data);
     }
 
+    async createJuzgamientoActuacion(radicado: string, data: {
+        tipoActuacion: string;
+        descripcion: string;
+        fechaActuacion: string;
+        file?: File;
+    }): Promise<any> {
+        if (data.file) {
+            const formData = new FormData();
+            formData.append('file', data.file);
+            formData.append('tipoActuacion', data.tipoActuacion);
+            formData.append('descripcion', data.descripcion);
+            formData.append('fechaActuacion', data.fechaActuacion);
+            return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, formData);
+        }
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, {
+            tipoActuacion: data.tipoActuacion,
+            descripcion: data.descripcion,
+            fechaActuacion: data.fechaActuacion
+        });
+    }
+
     // Renaming getExpedienteById to getExpediente as per instruction, and adapting the signature
     async getExpediente(id: string): Promise<Expediente> {
         return apiClient.get<Expediente>(`${SERVICE_PREFIX}/expedientes/${id}`);
@@ -126,6 +170,35 @@ export class LegalService {
 
     async createExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return apiClient.post<Expediente>(`${SERVICE_PREFIX}/expedientes`, data);
+    }
+
+    async deleteExpediente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
+    }
+
+    // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
+    async getExpedientesArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/estado/archivados`);
+    }
+
+    async archivarExpediente(id: string, motivo?: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/archivar`, { motivo, usuario });
+    }
+
+    async eliminarExpedienteSoft(id: string, motivo?: string, usuario?: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/eliminar`, { motivo, usuario });
+    }
+
+    async restaurarExpediente(id: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${id}/restaurar`, {});
+    }
+
+    async eliminarPermanenteExpediente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}/permanente`);
+    }
+
+    async deleteAudiencia(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/audiencias/${id}`);
     }
 
     // Alias en español para mantener compatibilidad
@@ -158,18 +231,53 @@ export class LegalService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
     }
 
+
+
+    // ==================== PROCESOS COACTIVOS ====================
+    async getProcesosCoactivos(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/procesos-coactivos`);
+    }
+
+    async getProcesoCoactivo(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    async getCoactivoAdjuntos(procesoId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`);
+    }
+
+    async uploadCoactivoAdjunto(procesoId: string, file: File, tipo: string = 'DOCUMENTO', descripcion?: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('tipo', tipo);
+        if (descripcion) formData.append('descripcion', descripcion);
+
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
+    }
+
     // ==================== ABOGADOS ====================
 
-    // Actuaciones
+    // ==================== ACTUACIONES (HISTORIAL UNIFICADO) ====================
     async getActuaciones(expedienteId: string): Promise<Actuacion[]> {
         return apiClient.get<Actuacion[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`);
     }
 
-    async registrarActuacion(expedienteId: string, data: any): Promise<Actuacion> {
-        if (data instanceof FormData) {
-            return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
+    async createActuacion(data: {
+        expedienteId: string;
+        tipoActuacion: string;
+        descripcion: string;
+        fechaActuacion: string;
+        file?: File;
+    }): Promise<Actuacion> {
+        if (data.file) {
+            const formData = new FormData();
+            formData.append('file', data.file);
+            formData.append('tipoActuacion', data.tipoActuacion);
+            formData.append('descripcion', data.descripcion);
+            formData.append('fechaActuacion', data.fechaActuacion); // Backend espera string ISO o similar
+            return apiClient.upload<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, formData);
         }
-        return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones`, data);
+        return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
     }
 
     // Abogados
@@ -181,26 +289,37 @@ export class LegalService {
         return apiClient.get<any>(`${SERVICE_PREFIX}/stats/general`);
     }
 
-    // Dashboard Ejecutivo SIGL
-    async getDashboardEjecutivo(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
-    }
+
 
     async createAbogado(data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
     }
 
-    // Audiencias
-    async getAudiencias(filtros?: { start?: string; end?: string }): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
+    // ==================== AUDIENCIAS ====================
+    async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
+        return apiClient.get<Audiencia[]>(`${SERVICE_PREFIX}/audiencias`, { params: filtros });
     }
 
     async getAudienciasDashboard(): Promise<any> {
         return apiClient.get<any>(`${SERVICE_PREFIX}/audiencias/dashboard`);
     }
 
-    async createAudiencia(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/audiencias`, data);
+    async createAudiencia(data: {
+        expedienteId: string;
+        abogadoId: string;
+        titulo: string;
+        fechaHoraInicio: string; // ISO string
+        duracionMinutos: number;
+        modalidad: 'VIRTUAL' | 'PRESENCIAL';
+        ubicacion?: string;
+        linkReunion?: string;
+        notasPreparacion?: string;
+    }): Promise<Audiencia> {
+        return apiClient.post<Audiencia>(`${SERVICE_PREFIX}/audiencias`, data);
+    }
+
+    async updateAudiencia(id: string, data: any): Promise<Audiencia> {
+        return apiClient.put<Audiencia>(`${SERVICE_PREFIX}/audiencias/${id}`, data);
     }
 
     // Autos
@@ -258,6 +377,12 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/documentos/${id}`);
     }
 
+    getDocumentosDownloadZipUrl(expedienteId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/documentos/expediente/${expedienteId}/download-zip`;
+    }
+
     // ==================== EVIDENCIAS ====================
     async getEvidencias(expedienteId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/evidencias/expediente/${expedienteId}`);
@@ -296,33 +421,61 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/archivo`, formData);
     }
 
-    // ===== CONSULTAS JURÍDICAS (Asesoría Jurídica) =====
-    async getConsultasJuridicas(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
+    // ==================== EXCEPCIONES PROCESALES ====================
+    async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
     }
 
-    async getConsultaJuridica(id: string): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+    async createJuzgamientoExcepcion(radicado: string, data: {
+        tipo: string;
+        descripcion: string;
+        fundamento: string;
+        presentadoPor?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`, data);
     }
 
-    async createConsultaJuridica(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/consultas-juridicas`, data);
+    async resolverExcepcion(excepcionId: string, data: {
+        estado: 'RESUELTA' | 'RECHAZADA';
+        resolucion: string;
+    }): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/juzgamiento/excepciones/${excepcionId}/resolver`, data);
     }
 
-    async updateConsultaJuridica(id: string, data: any): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}`, data);
+    // ==================== OFICIOS JUDICIALES ====================
+    async createOficio(formData: FormData): Promise<any> {
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/oficios`, formData);
     }
 
-    async updateConsultaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado });
+    async getOficios(expedienteId: string, modulo?: string): Promise<any[]> {
+        const params = modulo ? `?modulo=${encodeURIComponent(modulo)}` : '';
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/oficios/expediente/${expedienteId}${params}`);
+    }
+
+    getOficiosDownloadZipUrl(expedienteId: string, modulo?: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        const params = modulo ? `?modulo=${encodeURIComponent(modulo)}` : '';
+        return `${baseUrl}${prefix}/oficios/expediente/${expedienteId}/download-zip${params}`;
+    }
+
+    async deleteOficio(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/oficios/${id}`);
+    }
+
+    // Duplicates removed
+
+
+    async updateEstadoConsulta(id: string, estado: string, usuario?: string, estadoNombre?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/estado`, { estado, usuario, estadoNombre });
     }
 
     async responderConsulta(id: string, respuestaData: any): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
-    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar });
+    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean, usuario?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar, usuario });
     }
 
     async getComentariosConsulta(consultaId: string): Promise<any[]> {
@@ -334,7 +487,32 @@ export class LegalService {
     }
 
     async deleteConsultaJuridica(id: string): Promise<void> {
-        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`);
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}`); // Esto sería soft delete si el backend lo maneja así, o hard delete
+    }
+
+    // --- Métodos de Archivo Consultas ---
+    async getConsultasArchivadas(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/archivadas/lista`);
+    }
+
+    async archivarConsulta(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/archivar`, { motivo, usuario });
+    }
+
+    async eliminarConsultaSoft(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/eliminar`, { motivo, usuario });
+    }
+
+    async restaurarConsulta(id: string, usuario: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/consultas-juridicas/${id}/restaurar`, { usuario });
+    }
+
+    async eliminarConsultaPermanente(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/consultas-juridicas/${id}/permanente`);
+    }
+
+    async getConsultaJuridicaHistorial(id: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/historial`);
     }
 
     // ===== DOCUMENTOS DE CONSULTAS JURÍDICAS =====
@@ -424,19 +602,7 @@ export class LegalService {
         return apiClient.delete(`${SERVICE_PREFIX}/expedientes/notas/${notaId}`);
     }
 
-    // ==================== PLANES DE MEJORAMIENTO ====================
-    async getPlanesMejoramiento(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
-    }
 
-    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
-    }
-
-    // Métodos para ModalNuevoPlan
-    async createPlanMejoramiento(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
-    }
 
     async getRiesgosDisponibles(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/riesgos-disponibles`);
@@ -463,10 +629,8 @@ export class LegalService {
         return apiClient.getBlob(`${SERVICE_PREFIX}/pei/export/zip`);
     }
 
-    // ==================== DASHBOARD EJECUTIVO ====================
-    async getDashboardEjecutivo(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/dashboard/ejecutivo`);
-    }
+    // Duplicate removed
+
 
     // Método Wrapper para Requerimientos OC (por si acaso el componente llama a legalService.getRequerimientosOC)
     async getRequerimientosOC(): Promise<any[]> {
@@ -475,6 +639,10 @@ export class LegalService {
 
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
     }
 
     async createRequerimientoOC(data: any): Promise<any> {
@@ -491,6 +659,40 @@ export class LegalService {
 
     async deleteRequerimientoOC(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
+    }
+
+    // ==================== CONFIGURACIONES ====================
+    async getConfiguration(key: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/configurations/${key}`);
+    }
+
+    async saveConfiguration(key: string, value: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/configurations/${key}`, { value });
+    }
+
+    // ==================== PLANES DE MEJORAMIENTO ====================
+    async getPlanesMejoramiento(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento`);
+    }
+
+    async getPlanMejoramiento(id: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
+    }
+
+    async createPlanMejoramiento(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento`, data);
+    }
+
+    async updatePlanMejoramiento(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/update`, data);
+    }
+
+    async addSeguimientoPlan(id: string, data: { descripcionAvance: string; porcentajeReportado: number }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/seguimiento`, data);
+    }
+
+    async addEvidenciaPlan(id: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/evidencias`, data);
     }
 }
 
@@ -559,6 +761,11 @@ class OCService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
     }
 
+    // Catálogo de tipos de requerimiento
+    async getTiposRequerimientoOC(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/tipos-requerimiento`);
+    }
+
     // Requerimientos OC
     async getRequerimientosOC(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc`);
@@ -582,6 +789,27 @@ class OCService {
 
     async deleteRequerimientoOC(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
+    }
+
+    async reasignarRequerimiento(id: string, nuevoAbogadoId: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/reasignar`, { nuevoAbogadoId });
+    }
+
+    // Sistema de Archivo
+    async getArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/archivados/list`);
+    }
+
+    async archivarRequerimiento(id: string, motivo: string, usuario: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/archivar`, { motivo, usuario });
+    }
+
+    async restaurarRequerimiento(id: string, usuario: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/restaurar`, { usuario });
+    }
+
+    async eliminarRequerimientoPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}/permanente`, { params: { usuario, motivo } });
     }
 
     // Solicitudes de Insumos (Delegación)
@@ -629,12 +857,56 @@ class OCService {
     async deleteDocumento(documentoId: string): Promise<void> {
         await apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/documentos/${documentoId}`);
     }
+
+    getDocumentosDownloadUrl(requerimientoId: string, nombre?: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        let url = `${baseUrl}${prefix}/requerimientos-oc/${requerimientoId}/documentos/download-zip`;
+        if (nombre) {
+            url += `?nombre=${encodeURIComponent(nombre)}`;
+        }
+        return url;
+    }
+
+    // Enviar respuesta formal al órgano de control
+    async enviarRespuesta(requerimientoId: string, data: {
+        destinatarioEmail: string;
+        asunto: string;
+        cuerpoMensaje: string;
+        tipoRespuesta: string;
+        destinatarioNombre?: string;
+        destinatarioCargo?: string;
+    }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/response`, data);
+    }
+
+    // Borradores de Respuesta
+    async getBorradorRespuesta(requerimientoId: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/borrador`);
+    }
+
+    async saveBorradorRespuesta(requerimientoId: string, data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/${requerimientoId}/borrador`, data);
+    }
+
+    // Solicitar insumos a otra área (alias más claro)
+    async solicitarInsumo(requerimientoId: string, data: {
+        areaDestino: string;
+        descripcionSolicitud: string;
+        fechaVencimientoInterna: string;
+        documentosSolicitados?: string;
+        funcionarioDestino?: string;
+        emailDestino?: string;
+    }): Promise<any> {
+        return this.createSolicitudInsumo(requerimientoId, data);
+    }
 }
 
 // ==================== Riesgos API ====================
 
 export interface RiesgoAPI {
     id: string;
+    motivoArchivo?: string;
     codigo: string;
     nombre: string;
     descripcion: string;
@@ -655,6 +927,15 @@ export interface RiesgoAPI {
     estado: 'ACTIVO' | 'ARCHIVADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
+    // Provisión Contable
+    cuantiaEstimada?: number;
+    provisionContable?: number;
+    porcentajeProvision?: number;
+    fechaCalculoProvision?: string;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
 }
 
 export interface CreateRiesgoData {
@@ -671,6 +952,23 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    cuantiaEstimada?: number;
+    // Asociación con Proceso
+    moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
+    procesoId?: string;
+    procesoRadicado?: string;
+}
+
+export interface RiesgoHistorialAPI {
+    id: string;
+    riesgoId: string;
+    tipoEvento: 'CREACION' | 'ACTUALIZACION' | 'CAMBIO_ETAPA' | 'CAMBIO_ZONA' | 'ARCHIVADO' | 'CONTROL_AGREGADO' | 'CONTROL_MODIFICADO' | 'TRATAMIENTO_AGREGADO';
+    descripcion: string;
+    campoModificado: string | null;
+    valorAnterior: string | null;
+    valorNuevo: string | null;
+    usuario: string;
+    createdAt: string;
 }
 
 class RiesgosService {
@@ -698,8 +996,20 @@ class RiesgosService {
         return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/etapa`, { etapa });
     }
 
-    async archivar(id: string): Promise<RiesgoAPI> {
-        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/archivar`, {});
+    async archivar(id: string, motivo?: string): Promise<RiesgoAPI> {
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/archivar`, { motivo });
+    }
+
+    async getArchived(): Promise<RiesgoAPI[]> {
+        return apiClient.get<RiesgoAPI[]>(`${SERVICE_PREFIX}/riesgos/archivados/all`);
+    }
+
+    async restaurar(id: string): Promise<RiesgoAPI> {
+        return apiClient.patch<RiesgoAPI>(`${SERVICE_PREFIX}/riesgos/${id}/restaurar`, {});
+    }
+
+    async eliminarPermanente(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/riesgos/${id}/permanente`);
     }
 
     async getEstadisticas(): Promise<{
@@ -709,6 +1019,18 @@ class RiesgosService {
         porEtapa: Record<string, number>;
     }> {
         return apiClient.get(`${SERVICE_PREFIX}/riesgos/estadisticas`);
+    }
+
+    getReporteContabilidadUrl(): string {
+        const baseUrl = getServiceUrl('legal');
+        // Usar SERVICE_PREFIX (/legal/api/v1) en modo gateway para consistencia con otros endpoints
+        // En modo directo, asumir root del backend (sin prefijo si main.ts no lo tiene)
+        const path = API_MODE === 'direct' ? '' : SERVICE_PREFIX;
+        return `${baseUrl}${path}/riesgos/export/contabilidad`;
+    }
+
+    async getHistorial(riesgoId: string): Promise<RiesgoHistorialAPI[]> {
+        return apiClient.get<RiesgoHistorialAPI[]>(`${SERVICE_PREFIX}/riesgos/${riesgoId}/historial`);
     }
 }
 
@@ -730,6 +1052,9 @@ export interface CorreoJuridico {
     categoria: string | null;
     moduloSugerido: string | null;
     confianzaClasificacion: number | null;
+    aiSuggestedCategory?: string;
+    isTrained?: boolean;
+    expedienteId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -767,8 +1092,8 @@ export class CorreosJuridicosService {
     /**
      * Trigger manual sync from Microsoft Graph
      */
-    async syncCorreos(): Promise<{ synced: number; errors: number }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, {});
+    async syncCorreos(nextLink?: string): Promise<{ synced: number; errors: number; total: number; nextLink: string | null }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/sync`, { nextLink });
     }
 
     /**
@@ -859,10 +1184,191 @@ export class CorreosJuridicosService {
         const blob = await apiClient.getBlob(`${SERVICE_PREFIX}/correos/${id}/export/zip`);
         return window.URL.createObjectURL(blob);
     }
+
+    /**
+     * Update classification manually (AI Feedback Loop)
+     */
+    async updateClasificacion(id: string, category: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/classify`, { category });
+    }
+
+    /**
+     * Link email to legal process
+     */
+    async vincularProceso(id: string, expedienteId: string, targetModule?: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/link-process`, { expedienteId, targetModule });
+    }
+
+
+}
+
+// ===== PROCESOS COACTIVOS SERVICE =====
+export interface ProcesoCoactivoDeudor {
+    nombre: string;
+    identificacion: string;
+    telefono?: string;
+    email?: string;
+    direccion?: string;
+}
+
+export interface ProcesoCoactivoObligacion {
+    concepto: string;
+    valor: number;
+    fechaVencimiento: string;
+}
+
+export interface ProcesoCoactivo {
+    id: string;
+    radicado: string;
+    deudor: ProcesoCoactivoDeudor;
+    obligacion: ProcesoCoactivoObligacion;
+    estado: 'IDENTIFICADO' | 'PERSUASIVO' | 'PREJURIDICO' | 'MANDAMIENTO' | 'EMBARGO' | 'FINALIZADO';
+    responsable?: string;
+    documentosAdjuntos: number;
+    notificacionesEnviadas: number;
+    observaciones?: string;
+    ultimaActuacion?: string;
+    fechaCreacion: string;
+    valorPagado?: number;
+    saldoPendiente?: number;
+}
+
+export interface PagoCoactivo {
+    id: string;
+    procesoId: string;
+    valor: number;
+    fechaPago: string;
+    soporteUrl?: string;
+    origen: string;
+    observaciones?: string;
+}
+
+export interface CoactivoHistorial {
+    id: string;
+    procesoId: string;
+    tipoEvento: string;
+    campoModificado?: string;
+    valorAnterior?: string;
+    valorNuevo?: string;
+    usuario?: string;
+    detalles?: string;
+    fechaEvento: string;
+}
+
+export interface ProcesoCoactivoStats {
+    total: number;
+    activos: number;
+    criticos: number;
+    totalMonto: number;
+    porEstado: Record<string, number>;
+}
+
+export interface CreateProcesoCoactivoDto {
+    deudor: ProcesoCoactivoDeudor;
+    obligacion: ProcesoCoactivoObligacion;
+    responsable?: string;
+    observaciones?: string;
+}
+
+export interface ProcesoCoactivoAdjunto {
+    id: string;
+    procesoId: string;
+    nombreOriginal: string;
+    nombreArchivo: string;
+    mimeType: string;
+    tamano: number;
+    fechaCreacion: string;
+}
+
+export class ProcesosCoactivosService {
+    async getAll(): Promise<ProcesoCoactivo[]> {
+        return apiClient.get<ProcesoCoactivo[]>(`${SERVICE_PREFIX}/procesos-coactivos`);
+    }
+
+    async getOne(id: string): Promise<ProcesoCoactivo> {
+        return apiClient.get<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    async getStats(): Promise<ProcesoCoactivoStats> {
+        return apiClient.get<ProcesoCoactivoStats>(`${SERVICE_PREFIX}/procesos-coactivos/stats`);
+    }
+
+    async create(dto: CreateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
+        return apiClient.post<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos`, dto);
+    }
+
+    async update(id: string, dto: Partial<ProcesoCoactivo>): Promise<ProcesoCoactivo> {
+        return apiClient.put<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}`, dto);
+    }
+
+    async delete(id: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/${id}`);
+    }
+
+    // Archivos
+    async uploadAdjunto(procesoId: string, file: File): Promise<ProcesoCoactivoAdjunto> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.upload<ProcesoCoactivoAdjunto>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`, formData);
+    }
+
+    async getAdjuntos(procesoId: string): Promise<ProcesoCoactivoAdjunto[]> {
+        return apiClient.get<ProcesoCoactivoAdjunto[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/adjuntos`);
+    }
+
+    async deleteAdjunto(adjuntoId: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/adjuntos/${adjuntoId}`);
+    }
+
+    getAdjuntoDownloadUrl(filename: string, originalName: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        // Ajuste: El endpoint de files está en /files/download/{filename}
+        return `${baseUrl}${prefix}/files/download/${filename}?name=${encodeURIComponent(originalName)}`;
+    }
+
+    getFichaDownloadUrl(procesoId: string): string {
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal';
+        return `${baseUrl}${prefix}/procesos-coactivos/${procesoId}/download-zip`;
+    }
+
+    async registrarPago(procesoId: string, data: any): Promise<PagoCoactivo> {
+        return apiClient.post<PagoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/pagos`, data);
+    }
+
+    async getPagos(procesoId: string): Promise<PagoCoactivo[]> {
+        return apiClient.get<PagoCoactivo[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/pagos`);
+    }
+
+    async getHistorial(procesoId: string): Promise<CoactivoHistorial[]> {
+        return apiClient.get<CoactivoHistorial[]>(`${SERVICE_PREFIX}/procesos-coactivos/${procesoId}/historial`);
+    }
+
+    async deletePago(pagoId: string): Promise<void> {
+        await apiClient.delete(`${SERVICE_PREFIX}/procesos-coactivos/pagos/${pagoId}`);
+    }
+
+    async downloadPagoSoporte(filename: string): Promise<string> {
+        let url: string;
+        if (API_MODE === 'direct') {
+            url = `${MICROSERVICE_URLS.legal}/procesos-coactivos/pagos/soporte/${filename}`;
+        } else {
+            const baseUrl = getServiceUrl('legal');
+            url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
+        }
+
+        // Fetch to get blob
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Error descargando soporte');
+
+        const blob = await response.blob();
+        return window.URL.createObjectURL(blob);
+    }
 }
 
 export const legalService = new LegalService();
 export const ocService = new OCService();
 export const riesgosService = new RiesgosService();
 export const correosJuridicosService = new CorreosJuridicosService();
-
+export const procesosCoactivosService = new ProcesosCoactivosService();

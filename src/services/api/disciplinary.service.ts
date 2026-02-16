@@ -28,24 +28,26 @@ export interface DisciplinaryNews {
     hechos: string;
     conductas?: string[];
     adjuntos?: string[];
-    denunciante: Array<{
+    denunciante?: {
         nombre: string;
-        email: string;
+        email?: string;
         telefono?: string;
         direccion?: string;
         cargo?: string;
         cedula?: string;
+        documento?: string;
         dependencia?: string;
         entidad?: string;
-    }>;
-    disciplinable: Array<{
+    };
+    disciplinable?: {
         nombre: string;
         cargo: string;
         cedula?: string;
+        documento?: string;
         email?: string;
         telefono?: string;
         dependencia?: string;
-    }>;
+    };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
     createdAt: string;
@@ -68,7 +70,7 @@ export interface CreateNewsDto {
 export interface DisciplinaryProcess {
     id: string;
     radicadoProceso: string;
-    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO';
+    etapaActual: 'EVALUACION' | 'INDAGACION_PREVIA' | 'INVESTIGACION' | 'JUZGAMIENTO' | 'FALLO' | 'SEGUNDA_INSTANCIA' | 'INDAGACION';
     kanbanStage?: string;
     kanbanNotice?: string;
     estado: 'ACTIVO' | 'SUSPENDIDO' | 'ARCHIVADO' | 'PRESCRITO';
@@ -106,6 +108,39 @@ export interface LegalAuto {
     comentarios?: string;
     processId: string;
     createdAt: string;
+}
+
+// Tipo para configuración de autos
+export interface AutoConfiguration {
+    id: string;
+    tipo: string;
+    nombre: string;
+    estado: string;
+    plantilla?: string;
+    stage: string | null;
+    orden: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+// DTO para crear configuración de auto
+export interface CreateAutoConfigurationDto {
+    tipo: string;
+    nombre: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
+}
+
+// DTO para actualizar configuración de auto
+export interface UpdateAutoConfigurationDto {
+    tipo?: string;
+    nombre?: string;
+    estado?: 'activo' | 'inactivo';
+    plantilla?: string;
+    stage?: string;
+    orden?: number;
 }
 
 export interface CreateNewsDto {
@@ -338,7 +373,46 @@ class DisciplinaryService {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        document.body.removeChild(link);
         window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar archivo desde una URL directa (para Autos y otros)
+     */
+    async downloadFileFromUrl(url: string, filename: string): Promise<void> {
+        // La URL ya viene relativa del backend (ej: /control-disciplinario/api/v1/...)
+        // NO remover el slash inicial
+        const fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+        const token = localStorage.getItem('esap_access_token');
+        const headers: HeadersInit = {
+            'Accept': '*/*', // Aceptar cualquier cosa (binarios)
+        };
+
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(objUrl);
     }
 
     /**
@@ -360,17 +434,32 @@ class DisciplinaryService {
     }
 
     /**
-     * Obtener URL completa para archivos adjuntos de noticias
+     * Obtener URL completa para archivos adjuntos
+     * SIMPLIFICADO: Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
      */
     getFileUrl(urlRelativa: string): string {
         if (!urlRelativa) return '';
+
+        // Si ya es una URL completa, devolverla tal cual
         if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
 
-        const normalized = urlRelativa.startsWith('/') ? urlRelativa : `/${urlRelativa}`;
-        if (API_MODE === 'direct') {
-            return `${MICROSERVICE_URLS['control-disciplinario']}${normalized}`;
+        // Extraer solo el nombre del archivo (última parte del path)
+        let filename = urlRelativa;
+        if (urlRelativa.includes('/')) {
+            filename = urlRelativa.split('/').pop() || urlRelativa;
         }
-        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}${normalized}`;
+        // Limpiar prefijo /files/ si existe
+        if (filename.startsWith('/files/')) {
+            filename = filename.substring(7);
+        } else if (filename.startsWith('files/')) {
+            filename = filename.substring(6);
+        }
+
+        // Construir URL simple: /files/{filename}
+        if (API_MODE === 'direct') {
+            return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
+        }
+        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}/files/${filename}`;
     }
 
     // --- AUTOS ---
@@ -389,6 +478,10 @@ class DisciplinaryService {
 
     async deleteAuto(id: string): Promise<void> {
         return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`);
+    }
+
+    async updateAuto(id: string, data: any): Promise<LegalAuto> {
+        return apiClient.put<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}`, data);
     }
 
     async updateAutoContent(id: string, contenidoHtml: string): Promise<LegalAuto> {
@@ -414,8 +507,8 @@ class DisciplinaryService {
         });
     }
 
-    async firmarAuto(id: string, userId: string): Promise<LegalAuto> {
-        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, {});
+    async firmarAuto(id: string, userId: string, data?: any): Promise<LegalAuto> {
+        return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/sign?userId=${userId}`, data || {});
     }
 
     async devolverAuto(id: string, aprobadoPorId: string, observaciones: string): Promise<LegalAuto> {
@@ -545,6 +638,19 @@ class DisciplinaryService {
         );
     }
 
+    // --- PLANTILLAS DE AUTOS ---
+    async getPlantillaAuto(tipoAuto: string): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/${tipoAuto}`);
+    }
+
+    async getConfiguracionPlantillaAuto(): Promise<any> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/auto-templates/config`);
+    }
+
+    async updateConfiguracionPlantillaAuto(config: any): Promise<any> {
+        return apiClient.put<any>(`${SERVICE_PREFIX}/auto-templates/config`, config);
+    }
+
     // --- EVIDENCIAS ---
     // Nota: Estos endpoints pertenecen al microservicio legal-management
     // Prefix: /legal/api/v1 -> api-gateway:3000/legal/api/v1/* -> legal-management-service:3008/*
@@ -593,6 +699,64 @@ class DisciplinaryService {
 
     async deleteActaReal(id: string): Promise<void> {
         return apiClient.delete<void>(`/legal/api/v1/actas/${id}`);
+    }
+
+    // ==================== CONFIGURACIÓN DE AUTOS ====================
+
+    /**
+     * Obtener todas las configuraciones de autos
+     */
+    async getAutosConfiguration(): Promise<AutoConfiguration[]> {
+        return apiClient.get<AutoConfiguration[]>(`${SERVICE_PREFIX}/autos-configuration`);
+    }
+
+    /**
+     * Obtener solo las configuraciones de autos activas
+     */
+    async getAutosConfigurationActive(): Promise<AutoConfiguration[]> {
+        return apiClient.get<AutoConfiguration[]>(`${SERVICE_PREFIX}/autos-configuration/active`);
+    }
+
+    /**
+     * Obtener una configuración de auto por ID
+     */
+    async getAutosConfigurationById(id: string): Promise<AutoConfiguration> {
+        return apiClient.get<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
+    }
+
+    /**
+     * Obtener una configuración de auto por tipo
+     */
+    async getAutosConfigurationByTipo(tipo: string): Promise<AutoConfiguration> {
+        return apiClient.get<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/tipo/${tipo}`);
+    }
+
+    /**
+     * Crear nueva configuración de auto
+     */
+    async createAutosConfiguration(data: CreateAutoConfigurationDto): Promise<AutoConfiguration> {
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration`, data);
+    }
+
+    /**
+     * Actualizar configuración de auto
+     */
+    async updateAutosConfiguration(id: string, data: UpdateAutoConfigurationDto): Promise<AutoConfiguration> {
+        return apiClient.put<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}`, data);
+    }
+
+    /**
+     * Eliminar configuración de auto
+     */
+    async deleteAutosConfiguration(id: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/autos-configuration/${id}`);
+    }
+
+    /**
+     * Activar/desactivar configuración de auto
+     */
+    async toggleAutosConfigurationEstado(id: string): Promise<AutoConfiguration> {
+        return apiClient.patch<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/toggle-estado`, {});
     }
 }
 

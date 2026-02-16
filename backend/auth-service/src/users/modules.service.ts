@@ -76,12 +76,14 @@ export class ModulesService {
       display_order: module.display_order,
       category: module.category,
       is_active: module.is_active,
-      permissions: (module.permissions || []).map(p => ({
-        id: p.id_permission,
-        code: p.code,
-        name: p.name,
-        description: p.description || '',
-      })),
+      permissions: (module.permissions || [])
+        .filter(p => p.is_active)
+        .map(p => ({
+          id: p.id_permission,
+          code: p.code,
+          name: p.name,
+          description: p.description || '',
+        })),
     }));
   }
 

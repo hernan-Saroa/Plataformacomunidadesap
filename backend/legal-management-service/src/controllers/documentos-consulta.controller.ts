@@ -46,7 +46,7 @@ export class DocumentosConsultaController {
             nombre: body.nombre || file.originalname,
             tipoDocumento: body.tipoDocumento || 'otro',
             descripcion: body.descripcion,
-            archivoUrl: `/legal/files/${file.filename}`,
+            archivoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
             archivoNombreOriginal: file.originalname,
             subidoPor: body.subidoPor,
             tamanoBytes: file.size,
@@ -80,7 +80,7 @@ export class DocumentosConsultaController {
 
             // Sanitizar el ID para el nombre del archivo
             const sanitizedId = consultaId.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
-            const zipFilename = `consulta_juridica_${sanitizedId}.zip`;
+            const zipFilename = `Consultas_${sanitizedId}.zip`;
 
             res.set({
                 'Content-Type': 'application/zip',

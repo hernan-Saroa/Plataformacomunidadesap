@@ -74,7 +74,7 @@ export function ProcesosCoactivosView() {
   const [modalCrear, setModalCrear] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoCoactivo | null>(null);
 
-  // Datos de ejemplo - En producción vendrían de la API
+  // Datos de ejemplo - En producción vendrían de la API - REDUCIDO
   const [procesos, setProcesos] = useState<ProcesoCoactivo[]>([
     {
       id: 'PC-2025-001',
@@ -97,9 +97,7 @@ export function ProcesosCoactivosView() {
       ultimaActuacion: 'Proceso en etapa de PERSUASIVO',
       fechaUltimaActuacion: new Date('2025-01-15'),
       obligaciones: [
-        { concepto: 'Matrícula 2024-2', valor: 3500000, periodo: '2024-2' },
-        { concepto: 'Diplomado Gestión Pública', valor: 2000000, periodo: '2024-2' },
-        { concepto: 'Intereses de mora', valor: 550000, periodo: '2024-2' }
+        { concepto: 'Matrícula 2024-2', valor: 3500000, periodo: '2024-2' }
       ],
       historialPagos: [],
       actuaciones: [
@@ -108,12 +106,6 @@ export function ProcesosCoactivosView() {
           tipo: 'CREACIÓN',
           descripcion: 'Proceso coactivo iniciado',
           responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2025-01-16'),
-          tipo: 'ASIGNACIÓN',
-          descripcion: 'Proceso asignado a Dra. Laura Sánchez',
-          responsable: 'Admin Legal'
         }
       ],
       documentos: [
@@ -121,233 +113,6 @@ export function ProcesosCoactivosView() {
           nombre: 'Título Ejecutivo.pdf',
           tipo: 'PDF',
           fecha: new Date('2025-01-15'),
-          url: '#'
-        }
-      ]
-    },
-    {
-      id: 'PC-2025-002',
-      deudor: {
-        tipo: 'PERSONA',
-        nombre: 'María Fernanda López',
-        documento: '9876543210',
-        correo: 'maria.lopez@email.com',
-        telefono: '3109876543',
-        direccion: 'Carrera 45 # 12-34, Bogotá'
-      },
-      responsable: 'Dr. Roberto Díaz',
-      etapa: 'PREJUDICIAL',
-      fechaInicio: new Date('2024-12-01'),
-      fechaLimite: new Date('2025-02-28'),
-      diasRestantes: 30,
-      valorDeuda: 4200000,
-      valorTotal: 4620000,
-      valorPagado: 1000000,
-      ultimaActuacion: 'Proceso en etapa PREJUDICIAL',
-      fechaUltimaActuacion: new Date('2025-01-10'),
-      obligaciones: [
-        { concepto: 'Certificación profesional', valor: 2500000, periodo: '2024-2' },
-        { concepto: 'Material de estudio', valor: 1700000, periodo: '2024-2' },
-        { concepto: 'Intereses', valor: 420000, periodo: '2024-2' }
-      ],
-      historialPagos: [
-        {
-          fecha: new Date('2025-01-05'),
-          valor: 1000000,
-          concepto: 'Abono a cuenta',
-          comprobante: 'TRF-2025-0001'
-        }
-      ],
-      actuaciones: [
-        {
-          fecha: new Date('2024-12-01'),
-          tipo: 'CREACIÓN',
-          descripcion: 'Proceso coactivo iniciado',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2024-12-15'),
-          tipo: 'NOTIFICACIÓN',
-          descripcion: 'Comunicación persuasiva enviada',
-          responsable: 'Dr. Roberto Díaz'
-        },
-        {
-          fecha: new Date('2025-01-05'),
-          tipo: 'PAGO',
-          descripcion: 'Pago parcial recibido: $1,000,000',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2025-01-10'),
-          tipo: 'CAMBIO_ETAPA',
-          descripcion: 'Proceso avanzado a PREJUDICIAL',
-          responsable: 'Dr. Roberto Díaz'
-        }
-      ],
-      documentos: [
-        {
-          nombre: 'Título Ejecutivo.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2024-12-01'),
-          url: '#'
-        },
-        {
-          nombre: 'Comprobante Pago.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2025-01-05'),
-          url: '#'
-        }
-      ]
-    },
-    {
-      id: 'PC-2025-003',
-      deudor: {
-        tipo: 'EMPRESA',
-        nombre: 'Constructora ABC S.A.S.',
-        documento: '900123456-7',
-        correo: 'juridica@constructoraabc.com',
-        telefono: '6012345678',
-        direccion: 'Avenida 68 # 100-50, Bogotá'
-      },
-      responsable: 'Dra. Laura Sánchez',
-      etapa: 'MANDAMIENTO',
-      fechaInicio: new Date('2024-10-01'),
-      fechaLimite: new Date('2025-01-31'),
-      diasRestantes: 2,
-      valorDeuda: 12500000,
-      valorTotal: 15000000,
-      valorPagado: 3000000,
-      ultimaActuacion: 'Mandamiento de pago notificado',
-      fechaUltimaActuacion: new Date('2025-01-20'),
-      obligaciones: [
-        { concepto: 'Capacitación empresarial', valor: 8000000, periodo: '2024-2' },
-        { concepto: 'Certificación ISO', valor: 4500000, periodo: '2024-2' },
-        { concepto: 'Intereses y costas', valor: 2500000, periodo: '2024-2' }
-      ],
-      historialPagos: [
-        {
-          fecha: new Date('2024-11-15'),
-          valor: 2000000,
-          concepto: 'Pago parcial 1',
-          comprobante: 'TRF-2024-0789'
-        },
-        {
-          fecha: new Date('2024-12-20'),
-          valor: 1000000,
-          concepto: 'Pago parcial 2',
-          comprobante: 'TRF-2024-0901'
-        }
-      ],
-      actuaciones: [
-        {
-          fecha: new Date('2024-10-01'),
-          tipo: 'CREACIÓN',
-          descripcion: 'Proceso coactivo iniciado',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2024-10-15'),
-          tipo: 'NOTIFICACIÓN',
-          descripcion: 'Comunicación persuasiva enviada',
-          responsable: 'Dra. Laura Sánchez'
-        },
-        {
-          fecha: new Date('2024-11-01'),
-          tipo: 'CAMBIO_ETAPA',
-          descripcion: 'Proceso avanzado a PREJUDICIAL',
-          responsable: 'Dra. Laura Sánchez'
-        },
-        {
-          fecha: new Date('2024-11-15'),
-          tipo: 'PAGO',
-          descripcion: 'Pago parcial recibido: $2,000,000',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2024-12-01'),
-          tipo: 'ACTO_ADMINISTRATIVO',
-          descripcion: 'Mandamiento de pago generado',
-          responsable: 'Dra. Laura Sánchez'
-        },
-        {
-          fecha: new Date('2024-12-20'),
-          tipo: 'PAGO',
-          descripcion: 'Pago parcial recibido: $1,000,000',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2025-01-20'),
-          tipo: 'NOTIFICACIÓN',
-          descripcion: 'Mandamiento de pago notificado',
-          responsable: 'Dra. Laura Sánchez'
-        }
-      ],
-      documentos: [
-        {
-          nombre: 'Título Ejecutivo.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2024-10-01'),
-          url: '#'
-        },
-        {
-          nombre: 'Mandamiento de Pago.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2024-12-01'),
-          url: '#'
-        },
-        {
-          nombre: 'Notificación Mandamiento.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2025-01-20'),
-          url: '#'
-        }
-      ]
-    },
-    {
-      id: 'PC-2025-006',
-      deudor: {
-        tipo: 'PERSONA',
-        nombre: 'Ana Patricia Gómez',
-        documento: '5555666677',
-        correo: 'ana.gomez@email.com',
-        telefono: '3155556666',
-        direccion: 'Calle 50 # 20-30, Bogotá'
-      },
-      responsable: 'Dr. Roberto Díaz',
-      etapa: 'PERSUASIVO',
-      fechaInicio: new Date('2025-01-20'),
-      fechaLimite: new Date('2025-03-20'),
-      diasRestantes: 50,
-      valorDeuda: 3400000,
-      valorTotal: 3740000,
-      valorPagado: 0,
-      ultimaActuacion: 'Proceso en etapa de PERSUASIVO',
-      fechaUltimaActuacion: new Date('2025-01-20'),
-      obligaciones: [
-        { concepto: 'Curso virtual 2024-2', valor: 3000000, periodo: '2024-2' },
-        { concepto: 'Material digital', valor: 400000, periodo: '2024-2' },
-        { concepto: 'Intereses', valor: 340000, periodo: '2024-2' }
-      ],
-      historialPagos: [],
-      actuaciones: [
-        {
-          fecha: new Date('2025-01-20'),
-          tipo: 'CREACIÓN',
-          descripcion: 'Proceso coactivo iniciado',
-          responsable: 'Sistema SIGL'
-        },
-        {
-          fecha: new Date('2025-01-21'),
-          tipo: 'ASIGNACIÓN',
-          descripcion: 'Proceso asignado a Dr. Roberto Díaz',
-          responsable: 'Admin Legal'
-        }
-      ],
-      documentos: [
-        {
-          nombre: 'Título Ejecutivo.pdf',
-          tipo: 'PDF',
-          fecha: new Date('2025-01-20'),
           url: '#'
         }
       ]

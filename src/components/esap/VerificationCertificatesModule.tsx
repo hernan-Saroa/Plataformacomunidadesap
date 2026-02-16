@@ -26,6 +26,7 @@ import {
   Mail,
   Building2,
   User,
+  UserCircle,
   Calendar,
   MapPin,
   Clock,
@@ -35,12 +36,12 @@ import {
   TrendingUp,
   Globe,
   MoreVertical,
-  Edit,
   ExternalLink,
   Copy,
   RefreshCw,
   AlertTriangle,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Card } from '../ui/card';
@@ -57,15 +58,18 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import React from 'react';
+import { copyToClipboard } from '@/utils/browser';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
-import { PROGRAMAS_ESAP } from '../../data/oferta-academica-esap';
 import graduadosService, {
   CertificadoGraduado,
   DescargaCertificado,
   SolicitudCertificadoGraduado,
+  UpdateCertificadoPayload,
   ValidacionCertificado,
 } from '../../services/api/graduados.service';
 import estructuraService from '../../services/estructuraService';
+import { authService } from '../../services/api/authService';
+import { Permissions } from '../../enums/permissions';
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -78,6 +82,8 @@ interface CertificateRequest {
     fullName: string;
     document: string;
     program: string;
+    email?: string;
+    phone?: string;
     graduationDate: string;
     campus?: string;
     seccionalName?: string;
@@ -90,8 +96,12 @@ interface CertificateRequest {
   requester: {
     name: string;
     email: string;
+    phone?: string;
     type: 'entidad' | 'graduado'; // Quién solicitó el certificado
     logo?: string;
+    companyName?: string;
+    companyNit?: string;
+    contactPerson?: string;
   };
   status: 'active' | 'revoked' | 'expired'; // Estado del certificado/QR
   firstRequestedAt: string; // Primera vez que se solicitó
@@ -140,6 +150,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+  const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
@@ -156,16 +167,29 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     fullName: '',
     idNumber: '',
     email: '',
-    phone: '',
     programName: '',
-    programType: '',
-    degreeTitle: '',
     graduationDate: '',
     diplomaNumber: '',
     actaNumber: '',
     campus: '',
     seccionalName: '',
+    numRegistro: '',
+    numFolio: '',
+    numLibro: '',
   });
+  const PROGRAMAS_APROBACION = [
+    'ADMINISTRACIÓN PÚBLICA',
+    'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
+    'ESPECIALIZACIÓN EN ALTA DIRECCIÓN DEL ESTADO',
+    'ESPECIALIZACIÓN EN DERECHOS HUMANOS',
+    'ESPECIALIZACIÓN EN FINANZAS PÚBLICAS',
+    'ESPECIALIZACIÓN EN GERENCIA SOCIAL',
+    'ESPECIALIZACIÓN EN GESTIÓN PÚBLICA',
+    'ESPECIALIZACIÓN EN GESTIÓN Y PLANIFICACIÓN DEL DESARROLLO URBANO Y REGIONAL',
+    'ESPECIALIZACIÓN EN PROYECTOS DE DESARROLLO',
+    'MAESTRÍA EN ADMINISTRACIÓN PÚBLICA',
+    'MAESTRÍA EN DERECHOS HUMANOS, GESTIÓN DE LA TRANSICIÓN Y POSCONFLICTO',
+  ];
 
   const mapStatus = (status: CertificadoGraduado['status']): CertificateRecord['status'] => {
     if (status === 'REVOKED') return 'revoked';
@@ -182,6 +206,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     if (!value) return '';
     const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
     return isDateOnly ? `${value}T00:00:00` : value;
+  };
+
+  const sanitizeRegistroDigits = (value?: string) =>
+    (value || '').replace(/\D+/g, '').slice(0, 12);
+  const formatRegistroValue = (value?: string) => {
+    const digits = sanitizeRegistroDigits(value);
+    if (!digits || /^0+$/.test(digits)) return '';
+    return digits.match(/.{1,4}/g)?.join('-') ?? digits;
   };
 
   const generateDiplomaNumber = () => {
@@ -279,10 +311,25 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       });
 
       const mappedCertificates = certificatesData.map((certificate) => {
-          const mainRequest = requestsById.get(certificate.requestId);
+          const mainRequest =
+            requestsById.get(certificate.requestId) ||
+            (certificate as any)?.request;
           const requestDate = mainRequest?.requestDate;
+          const acceptedAtRaw =
+            mainRequest?.reviewedAt ||
+            mainRequest?.completionDate ||
+            certificate.issueDate;
           const normalizedRequestDate = requestDate ? normalizeDate(requestDate) : '';
           const fallbackIssueDate = normalizeDate(certificate.issueDate);
+          const isGraduateRequester = mainRequest?.requesterType === 'GRADUATE';
+          const graduateEmail =
+            mainRequest?.graduateEmail ||
+            (isGraduateRequester ? mainRequest?.requesterEmail : '') ||
+            '';
+          const graduatePhone =
+            mainRequest?.graduatePhone ||
+            (isGraduateRequester ? mainRequest?.requesterPhone : '') ||
+            '';
 
           const firstRequestedAt = normalizedRequestDate || fallbackIssueDate;
           const lastRequestedAt = normalizedRequestDate || fallbackIssueDate;
@@ -309,6 +356,21 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           const lastActivity = lastActivityCandidates.length
             ? new Date(Math.max(...lastActivityCandidates)).toISOString()
             : normalizeDate(certificate.issueDate);
+          const requesterType = mapRequesterType(mainRequest?.requesterType);
+          const requesterNameRaw = (mainRequest?.requesterName || '').trim();
+          const requesterCompanyName = (mainRequest?.companyName || '').trim();
+          const requesterContactPerson = (mainRequest?.contactPerson || '').trim();
+          const requesterDisplayName =
+            requesterType === 'entidad'
+              ? requesterCompanyName || requesterNameRaw || certificate.fullName
+              : requesterNameRaw || certificate.fullName;
+          const requesterContactDisplay =
+            requesterType === 'entidad'
+              ? requesterContactPerson ||
+                (requesterNameRaw && requesterNameRaw !== requesterDisplayName
+                  ? requesterNameRaw
+                  : '')
+              : '';
 
           return {
             id: certificate.id,
@@ -320,6 +382,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               fullName: certificate.fullName,
               document: certificate.idNumber,
               program: certificate.programName,
+              email: graduateEmail,
+              phone: graduatePhone,
               graduationDate: certificate.graduationDate,
               campus: certificate.campus || (certificate as any)?.graduate?.campus || '',
               seccionalName:
@@ -333,14 +397,22 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             actaNumber: certificate.actaNumber,
             campus: certificate.campus || '',
             requester: {
-              name: mainRequest?.requesterName || certificate.fullName,
+              name: requesterDisplayName,
               email: mainRequest?.requesterEmail || '',
-              type: mapRequesterType(mainRequest?.requesterType),
+              phone: mainRequest?.requesterPhone || '',
+              type: requesterType,
+              companyName:
+                requesterType === 'entidad'
+                  ? requesterCompanyName || requesterDisplayName
+                  : undefined,
+              companyNit: mainRequest?.companyNit,
+              contactPerson: requesterContactDisplay || undefined,
             },
             status: mapStatus(certificate.status),
             firstRequestedAt,
             lastRequestedAt,
             generatedAt: normalizeDate(certificate.issueDate),
+            acceptedAt: normalizeDate(acceptedAtRaw),
             generatedBy: certificate.signerName || 'Registro Academico',
             requestCount: 1,
             qrScanCount: scanHistory.length,
@@ -361,7 +433,21 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           } as CertificateRecord;
         });
 
-      setCertificates(mappedCertificates);
+      const getSortTime = (value?: string) => {
+        if (!value) return 0;
+        const time = new Date(value).getTime();
+        return Number.isNaN(time) ? 0 : time;
+      };
+
+      const sortedCertificates = [...mappedCertificates].sort((a, b) => {
+        const aAccepted = (a as any).acceptedAt as string | undefined;
+        const bAccepted = (b as any).acceptedAt as string | undefined;
+        const aTime = getSortTime(aAccepted || a.generatedAt || a.lastRequestedAt);
+        const bTime = getSortTime(bAccepted || b.generatedAt || b.lastRequestedAt);
+        return bTime - aTime;
+      });
+
+      setCertificates(sortedCertificates);
     } catch (error) {
       console.error('Error cargando certificados:', error);
       toast.error('No se pudieron cargar los certificados', {
@@ -389,14 +475,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const handleOpenEditCertificate = async (cert: CertificateRecord) => {
     setSelectedCertificate(cert);
     setIsExistingGraduate(false);
+    const initialProgram = (cert.graduate.program || '').trim();
     setEditCertificateForm({
       fullName: cert.graduate.fullName || '',
       idNumber: cert.graduate.document || '',
-      email: '',
-      phone: '',
-      programName: cert.graduate.program || '',
-      programType: cert.programType || '',
-      degreeTitle: cert.degreeTitle || '',
+      email: cert.graduate.email || '',
+      programName: PROGRAMAS_APROBACION.includes(initialProgram) ? initialProgram : '',
       graduationDate: cert.graduate.graduationDate?.slice(0, 10) || '',
       diplomaNumber: cert.diplomaNumber || '',
       actaNumber: cert.actaNumber || '',
@@ -405,6 +489,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         (cert as any)?.seccionalName ||
         cert.graduate.seccionalName ||
         '',
+      numRegistro: '',
+      numFolio: '',
+      numLibro: '',
     });
     setIsEditGraduateModalOpen(true);
     setIsLoadingGraduate(true);
@@ -415,7 +502,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cert.graduateId) &&
         !/^([0-9a-f])\1{7}-\1{4}-\1{4}-\1{4}-\1{12}$/i.test(cert.graduateId);
 
-      if (!isValidGraduateId || cert.requester.type !== 'graduado') {
+      if (!isValidGraduateId) {
         setIsLoadingGraduate(false);
         return;
       }
@@ -426,14 +513,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         ...prev,
         fullName: graduate.fullName || prev.fullName,
         idNumber: graduate.idNumber || prev.idNumber,
-        email: graduate.email || '',
-        phone: graduate.phone || '',
+        email: graduate.email || prev.email,
         campus: graduate.campus || prev.campus,
-        seccionalName: graduate.seccionalName || '',
-        programName: graduate.programName || prev.programName,
-        programType: graduate.programType || prev.programType,
-        degreeTitle: graduate.degreeTitle || prev.degreeTitle,
+        seccionalName: graduate.seccionalName || prev.seccionalName,
+        programName: PROGRAMAS_APROBACION.includes((graduate.programName || '').trim())
+          ? (graduate.programName || '').trim()
+          : prev.programName,
         graduationDate: graduate.graduationDate?.toString().slice(0, 10) || prev.graduationDate,
+        numRegistro: sanitizeRegistroDigits(graduate.numRegistro),
+        numFolio: sanitizeRegistroDigits(graduate.numFolio),
+        numLibro: sanitizeRegistroDigits(graduate.numLibro),
       }));
     } catch (error) {
       const status = error?.response?.status;
@@ -452,13 +541,48 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleSaveCertificate = async () => {
     if (!selectedCertificate) return;
-    if (!editCertificateForm.fullName || !editCertificateForm.idNumber) {
-      toast.error('Nombre y documento son obligatorios');
+    const trimmedFullName = editCertificateForm.fullName.trim();
+    const trimmedIdNumber = editCertificateForm.idNumber.trim();
+    const trimmedEmail = editCertificateForm.email.trim();
+    const trimmedProgramName = editCertificateForm.programName.trim();
+    const trimmedGraduationDate = editCertificateForm.graduationDate.trim();
+    const trimmedCampus = editCertificateForm.campus.trim();
+    const trimmedSeccionalName = editCertificateForm.seccionalName.trim();
+
+    if (!trimmedFullName) {
+      toast.error('El nombre completo es obligatorio');
       return;
     }
-    if (!editCertificateForm.programName || (!isExistingGraduate && !editCertificateForm.graduationDate)) {
-      toast.error('Programa y fecha de graduación son obligatorios');
+    if (!trimmedEmail) {
+      toast.error('El email es obligatorio');
       return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      toast.error('El email no tiene un formato valido');
+      return;
+    }
+    if (!trimmedProgramName) {
+      toast.error('El programa es obligatorio');
+      return;
+    }
+    if (!trimmedCampus) {
+      toast.error('La sede es obligatoria');
+      return;
+    }
+    if (!trimmedSeccionalName) {
+      toast.error('La seccional es obligatoria');
+      return;
+    }
+    if (!isExistingGraduate) {
+      if (!trimmedIdNumber) {
+        toast.error('El documento es obligatorio');
+        return;
+      }
+      if (!trimmedGraduationDate) {
+        toast.error('La fecha de graduacion es obligatoria');
+        return;
+      }
     }
 
     setIsSavingGraduate(true);
@@ -468,33 +592,52 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const actaNumber = editCertificateForm.actaNumber || generateActaNumber();
       const nextForm = {
         ...editCertificateForm,
+        fullName: trimmedFullName,
+        idNumber: trimmedIdNumber,
+        email: trimmedEmail,
+        programName: trimmedProgramName,
+        graduationDate: trimmedGraduationDate,
+        campus: trimmedCampus,
+        seccionalName: trimmedSeccionalName,
         diplomaNumber,
         actaNumber,
       };
       setEditCertificateForm(nextForm);
 
-      const certificatePayload: Partial<CertificadoGraduado> = isExistingGraduate
+      const isGraduateRequester = selectedCertificate.requester.type === 'graduado';
+      const requesterName = (
+        isGraduateRequester ? nextForm.fullName : selectedCertificate.requester.name
+      ).trim();
+      const requesterEmail = (
+        isGraduateRequester ? nextForm.email : selectedCertificate.requester.email || ''
+      ).trim();
+      const requesterPhone = selectedCertificate.requester.phone || '';
+      const certificatePayload: UpdateCertificadoPayload = isExistingGraduate
         ? {
             fullName: nextForm.fullName,
             programName: nextForm.programName,
-            programType: nextForm.programType,
-            degreeTitle: nextForm.degreeTitle,
             campus: nextForm.campus,
             seccionalName: nextForm.seccionalName,
             diplomaNumber,
             actaNumber,
+            requesterName,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
           }
         : {
             fullName: nextForm.fullName,
             idNumber: nextForm.idNumber,
             programName: nextForm.programName,
-            programType: nextForm.programType,
-            degreeTitle: nextForm.degreeTitle,
             graduationDate: nextForm.graduationDate,
             diplomaNumber,
             actaNumber,
             campus: nextForm.campus,
             seccionalName: nextForm.seccionalName,
+            requesterName,
+            requesterEmail,
+            requesterPhone,
+            graduateEmail: nextForm.email,
           };
 
       await graduadosService.certificados.actualizar(
@@ -519,8 +662,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               email: nextForm.email,
               phone: nextForm.phone,
               programName: nextForm.programName,
-              programType: nextForm.programType,
-              degreeTitle: nextForm.degreeTitle,
               campus: nextForm.campus,
               seccionalName: nextForm.seccionalName,
             }
@@ -530,8 +671,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               email: nextForm.email,
               phone: nextForm.phone,
               programName: nextForm.programName,
-              programType: nextForm.programType,
-              degreeTitle: nextForm.degreeTitle,
               graduationDate: nextForm.graduationDate,
               diplomaNumber,
               actaNumber,
@@ -558,12 +697,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   graduationDate: nextForm.graduationDate,
                   campus: nextForm.campus,
                   seccionalName: nextForm.seccionalName,
+                  email: nextForm.email,
+                  phone: nextForm.phone,
                 },
-                programType: nextForm.programType,
-                degreeTitle: nextForm.degreeTitle,
                 diplomaNumber,
                 actaNumber,
                 campus: nextForm.campus,
+                requester: {
+                  ...cert.requester,
+                  name: requesterName,
+                  email: requesterEmail,
+                  phone: requesterPhone,
+                },
               }
             : cert
         )
@@ -594,45 +739,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     };
   }, [certificates]);
 
-  const programNameOptions = useMemo(() => {
-    const names = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nombre) {
-        names.add(programa.nombre);
-      }
-    });
-    certificates.forEach((cert) => {
-      if (cert.graduate.program) {
-        names.add(cert.graduate.program);
-      }
-    });
-    return Array.from(names);
-  }, [certificates]);
-
-  const programTypeOptions = useMemo(() => {
-    const types = new Set<string>();
-    PROGRAMAS_ESAP.forEach((programa) => {
-      if (programa?.nivel) {
-        types.add(programa.nivel);
-      }
-    });
-    certificates.forEach((cert) => {
-      if (cert.programType) {
-        types.add(cert.programType);
-      }
-    });
-    return Array.from(types);
-  }, [certificates]);
-
-  const degreeTitleOptions = useMemo(() => {
-    const titles = new Set<string>();
-    certificates.forEach((cert) => {
-      if (cert.degreeTitle) {
-        titles.add(cert.degreeTitle);
-      }
-    });
-    return Array.from(titles);
-  }, [certificates]);
+  const programNameOptions = useMemo(() => PROGRAMAS_APROBACION, []);
 
   const filteredCertificates = useMemo(() => {
     return certificates.filter(cert => {
@@ -640,6 +747,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         cert.graduate.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.requester.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (cert.requester.companyName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (cert.requester.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         cert.requester.email.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
@@ -754,6 +863,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     return date.toLocaleString('es-CO', options);
   };
 
+  const formatDateOnly = (
+    value?: string,
+    options?: Intl.DateTimeFormatOptions
+  ) => {
+    if (!value) return '';
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day, 12, 0, 0);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString('es-CO', options);
+      }
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('es-CO', options);
+  };
+
   const handleViewDetails = (cert: CertificateRecord) => {
     setExpandedCertId(expandedCertId === cert.id ? null : cert.id);
   };
@@ -771,7 +900,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleCopyToClipboard = async (text: string, label: string) => {
-    const { copyToClipboard } = await import('@/utils/browser');
     const success = await copyToClipboard(text);
     if (success) {
       toast.success(`${label} copiado al portapapeles`);
@@ -785,27 +913,56 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     setIsQrModalOpen(true);
   };
 
+  const handleResendCertificate = async (cert: CertificateRecord) => {
+    if (resendingCertificateId === cert.id) {
+      return;
+    }
+    setResendingCertificateId(cert.id);
+    try {
+      const response = await graduadosService.certificados.reenviar(cert.id);
+      toast.success('Certificado reenviado', {
+        description: response?.mensaje || `Se reenvio el certificado a ${cert.requester.email}`,
+      });
+    } catch (error: any) {
+      console.error('Error reenviando certificado:', error);
+      toast.error('No se pudo reenviar el certificado', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    } finally {
+      setResendingCertificateId(null);
+    }
+  };
+
   const getPublicValidationUrl = (qrCode: string) => {
     return `${window.location.origin}/verificar-certificado/${qrCode}`;
   };
 
   const buildExportRows = (items: CertificateRecord[]) => {
     return items.map((cert) => ({
-      certificado: cert.certificateNumber,
+      numero_certificado: cert.certificateNumber,
       estado: cert.status,
       codigo_qr: cert.qrCode,
-      url_verificacion: getPublicValidationUrl(cert.qrCode),
+      url_validacion: getPublicValidationUrl(cert.qrCode),
       graduado: cert.graduate.fullName,
       documento: cert.graduate.document,
       programa: cert.graduate.program,
+      sede: cert.graduate.campus || cert.campus || '',
+      territorial: cert.graduate.seccionalName || '',
       fecha_grado: cert.graduate.graduationDate || '',
-      solicitante: cert.requester.name,
-      email_solicitante: cert.requester.email,
+      registro_folio_libro: cert.actaNumber || '',
+      solicitante:
+        cert.requester.type === 'entidad'
+          ? cert.requester.companyName || cert.requester.name
+          : cert.requester.name,
       tipo_solicitante: cert.requester.type,
-      solicitudes: cert.requestCount,
-      escaneos: cert.qrScanCount,
+      nit: cert.requester.companyNit || '',
+      persona_que_solicito:
+        cert.requester.contactPerson ||
+        (cert.requester.companyName && cert.requester.name !== cert.requester.companyName
+          ? cert.requester.name
+          : ''),
+      email_solicitante: cert.requester.email,
       fecha_generacion: cert.generatedAt,
-      ultima_solicitud: cert.lastRequestedAt,
     }));
   };
   
@@ -935,7 +1092,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillStyle = '#F9FAFB';
       ctx.fillRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
-      ctx.strokeStyle = qrPreviewCertificate.status === 'active' ? '#10B981' : '#9CA3AF';
+      ctx.strokeStyle = '#9CA3AF';
       ctx.lineWidth = 4;
       ctx.strokeRect(qrX - 20, qrY - 20, qrSize + 40, qrSize + 40);
   
@@ -964,15 +1121,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       ctx.fillText(`Programa: ${qrPreviewCertificate.graduate.program}`, leftMargin, infoY + 60);
       ctx.fillText(`N? Certificado: ${qrPreviewCertificate.certificateNumber}`, leftMargin, infoY + 90);
   
-      const statusY = infoY + 140;
-      ctx.font = 'bold 18px Arial';
-      if (qrPreviewCertificate.status === 'active') {
-        ctx.fillStyle = '#10B981';
-        ctx.fillText('CERTIFICADO ACTIVO Y VALIDO', leftMargin, statusY);
-      } else {
-        ctx.fillStyle = '#EF4444';
-        ctx.fillText('CERTIFICADO REVOCADO', leftMargin, statusY);
-      }
   
       ctx.font = '14px Arial';
       ctx.fillStyle = '#6B7280';
@@ -1060,6 +1208,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       </motion.div>
 
           <div className="flex justify-end">
+            {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all"
@@ -1085,6 +1234,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <Download className="w-5 h-5" strokeWidth={2} />
               <span>Exportar</span>
             </button>
+            )}
           </div>
 
       {/* Info Banner */}
@@ -1169,7 +1319,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row gap-3">
             {/* Filtro Estado */}
-            <select
+            {/* <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="border-2 rounded-lg px-4 py-2.5 text-sm transition-all"
@@ -1192,7 +1342,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               <option value="active">Activos</option>
               <option value="revoked">Revocados</option>
               <option value="expired">Expirados</option>
-            </select>
+            </select> */}
 
             {/* Filtro Tipo Solicitante */}
             <select
@@ -1294,8 +1444,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div className="col-span-2">SOLICITADO POR</div>
                 <div className="col-span-2">QR ÚNICO / ESCANEOS</div>
                 <div className="col-span-2">N° CERTIFICADO</div>
-                <div className="col-span-2">ESTADO / VALIDACIÓN</div>
-                <div className="col-span-1 text-right">ACCIONES</div>
+                <div className="col-span-3 text-right">ACCIONES</div>
               </div>
             </div>
 
@@ -1343,8 +1492,15 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                       <div className="space-y-1">
                         {getRequesterTypeBadge(cert.requester.type)}
                         <p className="text-sm font-medium line-clamp-1" style={{ color: '#1F2937' }}>
-                          {cert.requester.name}
+                          {cert.requester.type === 'entidad'
+                            ? cert.requester.companyName || cert.requester.name
+                            : cert.requester.name}
                         </p>
+                        {cert.requester.type === 'entidad' && cert.requester.contactPerson && (
+                          <p className="text-xs line-clamp-1" style={{ color: '#6B7280' }}>
+                            Contacto: {cert.requester.contactPerson}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -1354,7 +1510,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <button
                           onClick={() => handleViewQR(cert)}
                           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 relative"
-                          style={{ background: cert.status === 'active' ? '#FEF3C7' : '#F3F4F6', cursor: 'pointer' }}
+                          style={{ background: '#F3F4F6', cursor: 'pointer' }}
                           title="Ver código QR único"
                         >
                           <QrCode className="w-5 h-5" style={{ color: cert.status === 'active' ? '#F59E0B' : '#9CA3AF' }} />
@@ -1364,9 +1520,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
                               {cert.qrScanCount} escaneos
                             </p>
-                            {cert.status === 'active' && (
-                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="QR Activo para Validación"></div>
-                            )}
                           </div>
                           <p className="text-xs truncate font-mono" style={{ color: '#6B7280' }}>
                             {cert.qrCode}
@@ -1392,12 +1545,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                     </div>
 
                     {/* Columna 5: Estado */}
-                    <div className="col-span-2">
+                    {/* <div className="col-span-2">
                       {getStatusBadge(cert.status)}
-                    </div>
+                    </div> */}
 
                     {/* Columna 6: Acciones */}
-                    <div className="col-span-1 flex items-center justify-end gap-2">
+                    <div className="col-span-3 flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleViewDetails(cert)}
                         className="p-2 rounded-lg transition-all"
@@ -1434,10 +1587,25 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Editar certificado
+                            <Eye className="w-4 h-4 mr-2" />
+                            Ver certificado
                           </DropdownMenuItem>
+                          )}
+                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_REENVIAR) && (
+                          <DropdownMenuItem
+                            onClick={() => handleResendCertificate(cert)}
+                            disabled={resendingCertificateId === cert.id}
+                          >
+                            {resendingCertificateId === cert.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Mail className="w-4 h-4 mr-2" />
+                            )}
+                            {resendingCertificateId === cert.id ? 'Reenviando...' : 'Reenviar certificado'}
+                          </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1519,7 +1687,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 <div>
                                   <p className="text-xs text-gray-600">Fecha de Graduación</p>
                                   <p className="font-semibold text-gray-900">
-                                    {new Date(cert.graduate.graduationDate).toLocaleDateString('es-CO', {
+                                    {formatDateOnly(cert.graduate.graduationDate, {
                                       year: 'numeric',
                                       month: 'long',
                                       day: 'numeric'
@@ -1541,8 +1709,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                 {cert.requester.type === 'entidad' && <Building2 className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 {cert.requester.type === 'graduado' && <User className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />}
                                 <div>
-                                  <p className="text-xs text-gray-600">Nombre/Razón Social</p>
-                                  <p className="font-semibold text-gray-900">{cert.requester.name}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {cert.requester.type === 'entidad' ? 'Empresa' : 'Nombre completo'}
+                                  </p>
+                                  <p className="font-semibold text-gray-900">
+                                    {cert.requester.type === 'entidad'
+                                      ? cert.requester.companyName || cert.requester.name
+                                      : cert.requester.name}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-start gap-2">
@@ -1552,6 +1726,32 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   <p className="font-semibold text-gray-900">{cert.requester.email}</p>
                                 </div>
                               </div>
+                              {cert.requester.type === 'entidad' && (
+                                <div className="flex items-start gap-2">
+                                  <Hash className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">NIT</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {cert.requester.companyNit || 'No informado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              {cert.requester.type === 'entidad' && (
+                                <div className="flex items-start gap-2">
+                                  <UserCircle className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">Persona que solicit&oacute;</p>
+                                    <p className="font-semibold text-gray-900">
+                                      {cert.requester.contactPerson ||
+                                        (cert.requester.companyName &&
+                                        cert.requester.name !== cert.requester.companyName
+                                          ? cert.requester.name
+                                          : 'No informado')}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                               <div className="flex items-start gap-2">
                                 <Shield className="w-4 h-4 mt-0.5 text-gray-500 flex-shrink-0" />
                                 <div>
@@ -1800,36 +2000,31 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         </motion.div>
       )}
 
-            {/* Modal: Editar Certificado */}
+      {/* Modal: Ver Certificado */}
       <Dialog open={isEditGraduateModalOpen} onOpenChange={setIsEditGraduateModalOpen}>
         <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Editar Certificado
+              <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />
+              Ver Certificado
             </DialogTitle>
             <DialogDescription>
-              Actualiza los datos de verificacion del certificado y del graduado asociado.
+              Consulta los datos de verificacion del certificado y del graduado asociado.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            {isExistingGraduate && (
-              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Este graduado ya existe. Solo puedes editar todos los campos excepto documento, fecha de graduacion y numeros de acta/diploma.
-              </div>
-            )}
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              Los datos mostrados son informativos y no se pueden editar.
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-full-name">Nombre completo</Label>
                 <Input
                   id="edit-full-name"
                   value={editCertificateForm.fullName}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, fullName: e.target.value })
-                  }
                   placeholder="Nombre completo"
-                  disabled={isLoadingGraduate}
+                  disabled
                 />
               </div>
 
@@ -1838,11 +2033,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <Input
                   id="edit-id-number"
                   value={editCertificateForm.idNumber}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, idNumber: e.target.value })
-                  }
                   placeholder="Numero de documento"
-                  disabled={isLoadingGraduate || isExistingGraduate}
+                  disabled
                 />
               </div>
 
@@ -1852,24 +2044,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   id="edit-email"
                   type="email"
                   value={editCertificateForm.email}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, email: e.target.value })
-                  }
                   placeholder="correo@ejemplo.com"
-                  disabled={isLoadingGraduate}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Telefono</Label>
-                <Input
-                  id="edit-phone"
-                  value={editCertificateForm.phone}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, phone: e.target.value })
-                  }
-                  placeholder="+57 300 1234567"
-                  disabled={isLoadingGraduate}
+                  disabled
                 />
               </div>
 
@@ -1878,54 +2054,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <select
                   id="edit-program"
                   value={editCertificateForm.programName}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, programName: e.target.value })
-                  }
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
                   style={{ borderColor: '#D1D5DB' }}
-                  disabled={isLoadingGraduate}
+                  disabled
                 >
                   <option value="">Seleccionar programa</option>
                   {programNameOptions.map((program) => (
                     <option key={program} value={program}>{program}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-program-type">Tipo de programa</Label>
-                <select
-                  id="edit-program-type"
-                  value={editCertificateForm.programType}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, programType: e.target.value })
-                  }
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-                  style={{ borderColor: '#D1D5DB' }}
-                  disabled={isLoadingGraduate}
-                >
-                  <option value="">Seleccionar tipo</option>
-                  {programTypeOptions.map((programType) => (
-                    <option key={programType} value={programType}>{programType}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-degree-title">Titulo</Label>
-                <select
-                  id="edit-degree-title"
-                  value={editCertificateForm.degreeTitle}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, degreeTitle: e.target.value })
-                  }
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
-                  style={{ borderColor: '#D1D5DB' }}
-                  disabled={isLoadingGraduate}
-                >
-                  <option value="">Seleccionar titulo</option>
-                  {degreeTitleOptions.map((title) => (
-                    <option key={title} value={title}>{title}</option>
                   ))}
                 </select>
               </div>
@@ -1936,35 +2071,33 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   id="edit-graduation-date"
                   type="date"
                   value={editCertificateForm.graduationDate}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, graduationDate: e.target.value })
-                  }
-                  disabled={isLoadingGraduate || isExistingGraduate}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-diploma">Numero de diploma</Label>
-                <Input
-                  id="edit-diploma"
-                  value={editCertificateForm.diplomaNumber}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, diplomaNumber: e.target.value })
-                  }
-                  placeholder="Numero de diploma"
                   disabled
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-acta">Numero de acta</Label>
+                <Label htmlFor="edit-num-registro">Numero de registro</Label>
                 <Input
-                  id="edit-acta"
-                  value={editCertificateForm.actaNumber}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, actaNumber: e.target.value })
-                  }
-                  placeholder="Numero de acta"
+                  id="edit-num-registro"
+                  value={formatRegistroValue(editCertificateForm.numRegistro)}
+                  disabled
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-num-folio">Numero de folio</Label>
+                <Input
+                  id="edit-num-folio"
+                  value={formatRegistroValue(editCertificateForm.numFolio)}
+                  disabled
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-num-libro">Numero de libro</Label>
+                <Input
+                  id="edit-num-libro"
+                  value={formatRegistroValue(editCertificateForm.numLibro)}
                   disabled
                 />
               </div>
@@ -1974,12 +2107,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <select
                   id="edit-campus"
                   value={editCertificateForm.campus}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, campus: e.target.value })
-                  }
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
                   style={{ borderColor: '#D1D5DB' }}
-                  disabled={isLoadingGraduate}
+                  disabled
                 >
                   <option value="">Seleccionar sede</option>
                   {sedesOptions.map((sede) => (
@@ -1989,16 +2119,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-seccional">Seccional</Label>
+                <Label htmlFor="edit-seccional">Territorial</Label>
                 <select
                   id="edit-seccional"
                   value={editCertificateForm.seccionalName}
-                  onChange={(e) =>
-                    setEditCertificateForm({ ...editCertificateForm, seccionalName: e.target.value })
-                  }
-                  className="w-full border-2 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border-2 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
                   style={{ borderColor: '#D1D5DB' }}
-                  disabled={isLoadingGraduate}
+                  disabled
                 >
                   <option value="">Seleccionar seccional</option>
                   {seccionalesOptions.map((seccional) => (
@@ -2018,17 +2145,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
               onClick={() => setIsEditGraduateModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
               style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
-              disabled={isSavingGraduate}
             >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSaveCertificate}
-              className="px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-              disabled={isSavingGraduate || isLoadingGraduate}
-            >
-              {isSavingGraduate ? 'Guardando...' : 'Guardar cambios'}
+              Cerrar
             </button>
           </DialogFooter>
         </DialogContent>
@@ -2166,7 +2284,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[92vw] max-w-2xl max-h-[80vh] overflow-y-auto top-1/2 -translate-y-1/2">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5 text-amber-600" />
@@ -2184,9 +2302,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 {/* QR real */}
                 <div 
                   className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{ 
-                    background: qrPreviewCertificate?.status === 'active' ? '#FFFFFF' : '#F3F4F6',
-                    border: `2px solid ${qrPreviewCertificate?.status === 'active' ? '#10B981' : '#D1D5DB'}`
+                  style={{
+                    background: '#FFFFFF',
+                    border: '2px solid #D1D5DB'
                   }}
                 >
                   <div className="text-center p-2">
@@ -2258,7 +2376,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                 <div>
                   <span className="text-gray-600">Fecha de graduación:</span>
                   <span className="ml-2 font-semibold text-gray-900">
-                    {qrPreviewCertificate && new Date(qrPreviewCertificate.graduate.graduationDate).toLocaleDateString('es-CO')}
+                    {qrPreviewCertificate && formatDateOnly(qrPreviewCertificate?.graduate.graduationDate)}
                   </span>
                 </div>
                 <div>
@@ -2372,8 +2490,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                   <div className="text-xs text-amber-800">
                     <p className="font-semibold mb-2">¿Qué sucede cuando alguien escanea este QR para validar?</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado está ACTIVO y es válido</li>
-                      <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li>
+                      <li><strong>Validación Inmediata:</strong> Sistema verifica si el certificado es válido</li>
+                      {/* <li><strong>Badge Visual:</strong> Muestra "✅ CERTIFICADO ACTIVO Y VÁLIDO" o "❌ CERTIFICADO INVÁLIDO"</li> */}
                       <li><strong>Datos del Graduado:</strong> Nombre completo, documento, programa y fecha de graduación</li>
                       <li><strong>Datos del Certificado:</strong> Número único, fecha de emisión y solicitante</li>
                       <li><strong>Registro de Validación:</strong> El escaneo queda registrado con IP, ubicación, dispositivo y fecha/hora</li>
@@ -2419,5 +2537,6 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     </div>
   );
 }
+
 
 

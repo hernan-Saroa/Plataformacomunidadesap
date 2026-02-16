@@ -32,27 +32,61 @@ const VITE_PUBLIC_FRONTEND_URL = import.meta.env.VITE_PUBLIC_FRONTEND_URL as str
 const VITE_API_MODE = import.meta.env.VITE_API_MODE as string | undefined;
 const isLocalhost = typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+const isLoopbackHost = (host?: string | null) =>
+  host === 'localhost' || host === '127.0.0.1' || host === '::1';
+
+const rewriteLoopbackUrl = (rawUrl: string): string => {
+  if (typeof window === 'undefined') return rawUrl;
+
+  try {
+    const url = new URL(rawUrl);
+    const hadTrailingSlash = rawUrl.endsWith('/');
+    const currentHost = window.location.hostname;
+
+    if (isLoopbackHost(url.hostname) && currentHost && !isLoopbackHost(currentHost)) {
+      url.hostname = currentHost;
+      if (!hadTrailingSlash && url.pathname === '/' && !url.search && !url.hash) {
+        return `${url.protocol}//${url.host}`;
+      }
+      return url.toString();
+    }
+  } catch {
+    // Mantener URL original si no es parseable
+  }
+
+  return rawUrl;
+};
+
+const withLocalhost = (port: number, override?: string) =>
+  rewriteLoopbackUrl(override || `http://localhost:${port}`);
+
 export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
+
+// URL de OnlyOffice Document Server
+const VITE_ONLYOFFICE_URL = import.meta.env.VITE_ONLYOFFICE_URL as string | undefined;
+export const ONLYOFFICE_URL = VITE_ONLYOFFICE_URL || (isLocalhost ? 'http://localhost:8080' : 'http://onlyoffice:80');
 
 // URLs base del API Gateway según el entorno
 const API_GATEWAY_URLS = {
   development: 'http://localhost:3000', // API Gateway local
-  dev: 'http://4.156.71.181:3000', // Servidor de desarrollo del equipo
-  production: 'http://4.156.71.181:3000',
+  dev: 'http://4.156.71.181/services', // Servidor de desarrollo del equipo (via Nginx)
+  production: 'http://4.156.71.181/services', // Gateway expuesto en /services
 };
 
 // URLs directas a cada microservicio (para desarrollo local sin Docker)
 export const MICROSERVICE_URLS = {
-  auth: 'http://localhost:3001',
-  'registro-academico': 'http://localhost:3002',
-  pta: 'http://localhost:3003',
-  certificados: VITE_CERTIFICADOS_URL || 'http://localhost:3004',
-  'control-disciplinario': 'http://localhost:3005',
-  interoperabilidad: 'http://localhost:3006',
-  'control-institucional': 'http://localhost:3007',
-  legal: 'http://localhost:3008',
-  notificaciones: 'http://localhost:3009',
-  viaticos: 'http://localhost:3010',
+  auth: withLocalhost(3001),
+  'registro-academico': withLocalhost(3002),
+  pta: withLocalhost(3003),
+  certificados: withLocalhost(3004, VITE_CERTIFICADOS_URL),
+  'control-disciplinario': withLocalhost(3005),
+  interoperabilidad: withLocalhost(3006),
+  'control-institucional': withLocalhost(3007),
+  legal: withLocalhost(3008),
+  notificaciones: withLocalhost(3009),
+  viaticos: withLocalhost(3010),
+  audit: withLocalhost(3011),
 };
 
 // Helper para otras variables de entorno (solo para variables no críticas)
@@ -161,7 +195,22 @@ export const config = {
   API_RETRY_DELAY: 1000,
 
   // WebSocket URL (para notificaciones en tiempo real)
-  WS_URL: getEnvVar('VITE_WS_URL') || (ENV === 'dev' ? 'ws://4.156.71.181:3000' : 'ws://localhost:3000'),
+  WS_URL: (() => {
+    const defaultHttp =
+      VITE_API_URL || API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
+
+    const asWs = (() => {
+      try {
+        const url = new URL(defaultHttp);
+        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+        return url.toString();
+      } catch {
+        return defaultHttp.replace(/^http/, 'ws');
+      }
+    })();
+
+    return getEnvVar('VITE_WS_URL') || asWs;
+  })(),
 
   // Configuración de paginación por defecto
   DEFAULT_PAGE_SIZE: 20,

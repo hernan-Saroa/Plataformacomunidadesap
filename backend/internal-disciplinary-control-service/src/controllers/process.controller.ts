@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   Res,
   HttpException,
+  Inject,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -25,24 +26,30 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import { ProcessService } from '../services/process.service';
+import { NewsService } from '../services/news.service';
 import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
 import { ChangeStageDto } from '../dtos/change-stage.dto';
 import { UpdateDisciplinaryProcessDto } from '../dtos/update-disciplinary-process.dto';
+import { RemitirPorCompetenciaDto, RemisionPorCompetenciaResponseDto } from '../dtos/remitir-competencia.dto';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { StorageService } from '../services/storage.service';
 import type { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
 export class ProcessController {
   constructor(
     private processService: ProcessService,
+    private newsService: NewsService,
     private storageService: StorageService,
+    private httpService: HttpService,
   ) { }
 
   /**
@@ -219,18 +226,23 @@ export class ProcessController {
         );
       }
 
-      // Validar tamaño del archivo si se proporciona
-      if (file && file.size > 50 * 1024 * 1024) {
-        throw new HttpException(
-          'El archivo excede el tamaño máximo permitido de 50MB',
-          HttpStatus.BAD_REQUEST,
-        );
+      // Validar tamaño del archivo si se proporciona (10GB para evidencias, 50MB para otros)
+      if (file) {
+        const isEvidencia = body.tipo?.toUpperCase() === 'EVIDENCIA';
+        const maxSize = isEvidencia ? 10 * 1024 * 1024 * 1024 : 50 * 1024 * 1024;
+        
+        if (file.size > maxSize) {
+          throw new HttpException(
+            `El archivo excede el tamaño máximo permitido de ${isEvidencia ? '10GB' : '50MB'}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
       }
 
       // Obtener proceso para usar su radicado (sin cargar autos para evitar errores)
       const proceso = await this.processService.findById(id, false);
       console.log('✅ Proceso encontrado:', proceso.radicadoProceso);
-      
+
       let tipoDocumento = body.tipo || 'DOCUMENTO';
       let rutaRelativa: string;
       let nombreDocumento: string;
@@ -283,7 +295,7 @@ export class ProcessController {
       let etapa = body.etapa || null;
       let descripcionFinal = body.descripcion || '';
       const participantes = body.participantes ? Number(body.participantes) : undefined;
-      
+
       console.log('📋 Datos a guardar:', {
         nombreDocumento,
         tipoDocumento,
@@ -352,77 +364,150 @@ export class ProcessController {
   })
   async getDocuments(@Param('id') id: string) {
     try {
-      // Obtener evidencias del proceso directamente sin cargar relaciones pesadas
+      // Obtener evidencias del proceso
       const evidencias = await this.processService.getEvidenceByProcessId(id);
-      
-      // Verificar que el proceso existe y obtener solo su radicado
-      // No cargamos autos para evitar errores si faltan columnas en la BD
-      const proceso = await this.processService.findById(id, false);
 
-    // Construir documentos con toda la información guardada en BD
-    const documentos = evidencias.map(evidencia => {
-      // Formatear tamaño
-      const tamañoKB = evidencia.fileSize ? (evidencia.fileSize / 1024).toFixed(0) : '0';
-      const tamaño = evidencia.fileSize >= 1024 * 1024 
-        ? `${(evidencia.fileSize / (1024 * 1024)).toFixed(2)} MB`
-        : `${tamañoKB} KB`;
+      // Obtener el proceso con sus autos
+      const proceso = await this.processService.findById(id, true);
 
-      // Mapear tipoDocumento al formato esperado por el frontend
-      const tipoMap: Record<string, 'auto' | 'evidencia' | 'oficio' | 'notificacion' | 'acta' | 'otro'> = {
-        'AUTO': 'auto',
-        'EVIDENCIA': 'evidencia',
-        'OFICIO': 'oficio',
-        'NOTIFICACION': 'notificacion',
-        'ACTA': 'acta',
-      };
-      const tipo = tipoMap[evidencia.tipoDocumento?.toUpperCase() || ''] || 'otro';
+      // Mapear evidencias a documentos
+      const documentosEvidencia = evidencias.map(evidencia => {
+        // Formatear tamaño
+        const tamañoKB = evidencia.fileSize ? (evidencia.fileSize / 1024).toFixed(0) : '0';
+        const tamaño = evidencia.fileSize >= 1024 * 1024
+          ? `${(evidencia.fileSize / (1024 * 1024)).toFixed(2)} MB`
+          : `${tamañoKB} KB`;
 
-      // Detectar si la URL es externa (empieza con http:// o https://)
-      const isUrlExterna = evidencia.url && (evidencia.url.startsWith('http://') || evidencia.url.startsWith('https://'));
-      
-      return {
-        id: evidencia.id,
-        nombre: evidencia.nombreDocumento || evidencia.filename || 'Documento sin nombre',
-        archivoNombre: evidencia.filename || evidencia.nombreDocumento || 'Documento sin nombre',
-        tipo,
-        categoria: evidencia.categoria || null,
-        destinatario: evidencia.destinatario || null,
-        asunto: evidencia.asunto || null,
-        participantes: evidencia.participantes ?? null,
-        etapa: evidencia.etapa || 'Sin etapa',
-        version: 1, // Por ahora siempre versión 1
-        tamaño,
-        fechaCarga: evidencia.createdAt?.toISOString() || new Date().toISOString(),
-        usuarioCarga: evidencia.usuarioCarga || 'Sistema',
-        descripcion: evidencia.description || '',
-        url: evidencia.url,
-        urlExterna: isUrlExterna ? evidencia.url : null,
-        downloadUrl: isUrlExterna ? null : `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
-        processId: evidencia.processId,
-        fileType: evidencia.fileType,
-        fileSize: evidencia.fileSize,
-        versiones: [
-          {
-            numero: 1,
-            fecha: evidencia.createdAt?.toISOString() || new Date().toISOString(),
-            usuario: evidencia.usuarioCarga || 'Sistema',
-            cambios: 'Versión inicial',
-            tamaño,
+        // Mapear tipoDocumento
+        const tipoMap: Record<string, 'auto' | 'evidencia' | 'oficio' | 'notificacion' | 'acta' | 'otro'> = {
+          'AUTO': 'auto',
+          'EVIDENCIA': 'evidencia',
+          'OFICIO': 'oficio',
+          'NOTIFICACION': 'notificacion',
+          'ACTA': 'acta',
+        };
+        const tipo = tipoMap[evidencia.tipoDocumento?.toUpperCase() || ''] || 'otro';
+
+        // Detectar si la URL es externa
+        const isUrlExterna = evidencia.url && (evidencia.url.startsWith('http://') || evidencia.url.startsWith('https://'));
+
+        return {
+          id: evidencia.id,
+          nombre: evidencia.nombreDocumento || evidencia.filename || 'Documento sin nombre',
+          archivoNombre: evidencia.filename || evidencia.nombreDocumento || 'Documento sin nombre',
+          tipo, // Si es 'auto' aquí, es un archivo subido manualmente como auto
+          etapa: evidencia.etapa || 'Sin etapa',
+          version: 1,
+          tamaño,
+          fechaCarga: evidencia.createdAt?.toISOString() || new Date().toISOString(),
+          usuarioCarga: evidencia.usuarioCarga || 'Sistema',
+          descripcion: evidencia.description || '',
+          url: evidencia.url,
+          urlExterna: isUrlExterna ? evidencia.url : null,
+          downloadUrl: isUrlExterna ? null : `/control-disciplinario/api/v1/disciplinary-processes/${id}/documents/${evidencia.id}/download`,
+          processId: evidencia.processId,
+          fileType: evidencia.fileType,
+          fileSize: evidencia.fileSize,
+          versiones: [
+            {
+              numero: 1,
+              fecha: evidencia.createdAt?.toISOString() || new Date().toISOString(),
+              usuario: evidencia.usuarioCarga || 'Sistema',
+              cambios: 'Versión inicial',
+              tamaño,
+            }
+          ],
+          metadatos: {
+            firmado: false,
+            notificado: false,
+            esAutoDigital: false, // Flag para distinguir
           },
-        ],
-        metadatos: {
-          firmado: false,
-          notificado: false,
-        },
-      };
-    });
+        };
+      });
+
+      // Mapear autos procesales a documentos
+      const documentosAutos = (proceso.autos || []).map((auto: any) => {
+        // Calcular tamaño aproximado del contenido HTML
+        const sizeBytes = new TextEncoder().encode(auto.contenido || '').length;
+        const tamaño = sizeBytes >= 1024 * 1024
+          ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+          : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`;
+
+        return {
+          id: auto.id,
+          nombre: `${auto.tipo || 'Auto'} ${auto.numero || ''}`.trim(),
+
+          tipo: 'auto',
+          etapa: 'Gestión', // O la etapa del auto
+          version: auto.currentVersion || 1,
+          tamaño,
+          fechaCarga: auto.createdAt?.toISOString() || new Date().toISOString(),
+          usuarioCarga: 'Sistema', // O el creador
+          descripcion: auto.asunto || '',
+          // Si el auto tiene un archivo físico asociado (pdf), usar esa URL.
+          // Si no, usar la URL del generador de PDF (HTML).
+          url: null,
+          urlExterna: null,
+          downloadUrl: auto.documentUrl
+            ? auto.documentUrl
+            : `/disciplinary-autos/${auto.id}/pdf`,
+          processId: id,
+          // Si hay archivo, usar su tipo. Si no, es HTML.
+          fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
+          archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
+          fileSize: sizeBytes,
+          versiones: [
+            // Agregar la versión actual como la más reciente
+            {
+              numero: auto.currentVersion || 1,
+              fecha: auto.updatedAt || auto.createdAt,
+              usuario: 'Usuario Actual', // Idealmente obtener nombre
+              cambios: 'Versión Actual',
+              tamaño: sizeBytes >= 1024 * 1024
+                ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+                : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`,
+              downloadUrl: auto.documentUrl
+                ? auto.documentUrl
+                : `/disciplinary-autos/${auto.id}/pdf` // La url actual
+            },
+            ...(auto.versions || []).map((v: any) => {
+              const vSizeBytes = new TextEncoder().encode(v.contenido || '').length;
+              const vTam = vSizeBytes >= 1024 * 1024
+                ? `${(vSizeBytes / (1024 * 1024)).toFixed(2)} MB`
+                : `${Math.max(1, (vSizeBytes / 1024)).toFixed(0)} KB`;
+
+              return {
+                numero: v.versionNumber,
+                fecha: v.createdAt,
+                usuario: v.createdBy || 'Sistema',
+                cambios: v.changeReason || 'Versión guardada',
+                tamaño: vTam,
+                downloadUrl: `/disciplinary-autos/${auto.id}/versions/${v.versionNumber}/pdf` // URL de descarga para la versión
+              };
+            })],
+          contenido: auto.contenido, // Incluir contenido para el editor
+          metadatos: {
+            firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
+            notificado: auto.estado === 'NOTIFICADO',
+            esAutoDigital: true,
+            estado: auto.estado,
+            tipoAuto: auto.tipo, // Tipo específico para edición
+            numero: auto.numero // Número para pre-llenar título
+          },
+        };
+      });
+
+      // Combinar y ordenar por fecha
+      const todosDocumentos = [...documentosEvidencia, ...documentosAutos].sort((a, b) => {
+        return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
+      });
 
       return {
         proceso: {
           id: proceso.id,
           radicadoProceso: proceso.radicadoProceso,
         },
-        documentos,
+        documentos: todosDocumentos,
       };
     } catch (error) {
       console.error('❌ ERROR en getDocuments:', error);
@@ -468,7 +553,7 @@ export class ProcessController {
     }
 
     const rutaCompleta = this.storageService.getFullPath(documento.url);
-    
+
     // Verificar que el archivo existe
     if (!fs.existsSync(rutaCompleta)) {
       throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
@@ -583,5 +668,106 @@ export class ProcessController {
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async delete(@Param('id') id: string): Promise<void> {
     return await this.processService.delete(id);
+  }
+
+  /**
+   * Remitir noticia por competencia a otra entidad
+   * Envía un correo con toda la información de la noticia a la entidad destinataria
+   */
+  @Post('remitir-competencia')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remitir por Competencia',
+    description: 'Envía la información de una noticia disciplinaria por correo a otra entidad por falta de competencia',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo enviado exitosamente',
+    type: RemisionPorCompetenciaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  async remitirPorCompetencia(
+    @Body() dto: RemitirPorCompetenciaDto,
+  ): Promise<RemisionPorCompetenciaResponseDto> {
+    try {
+      console.log('📧 [RemitirCompetencia] Iniciando remisión por competencia...');
+      console.log('📧 [RemitirCompetencia] Datos recibidos:', JSON.stringify(dto, null, 2));
+
+      // 1. Obtener la noticia
+      const noticia = await this.newsService.findById(dto.newsId);
+      console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
+
+      // 2. Construir el contenido HTML del correo
+      const emailHtml = this.newsService.buildRemisionEmailContent(
+        noticia,
+        dto.entidadDestino,
+        dto.justificacion,
+      );
+      console.log('📧 [RemitirCompetencia] HTML del correo construido');
+
+      // 3. Enviar el correo usando el servicio de notificaciones
+      const notificationsServiceUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3003';
+      console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
+
+      const emailPayload = {
+        to: dto.emailDestinatario,
+        subject: `Remisión por Competencia - Noticia Disciplinaria ${noticia.radicado}`,
+        text: `Se remite la noticia disciplinaria ${noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+        html: emailHtml,
+      };
+
+      console.log('📧 [RemitirCompetencia] Enviando correo a:', dto.emailDestinatario);
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${notificationsServiceUrl}/emails/send`, emailPayload),
+      );
+
+      console.log('📧 [RemitirCompetencia] Respuesta del servicio de notificaciones:', response.data);
+
+      // 4. Registrar la remisión en el historial de la noticia
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'remision_competencia',
+        usuario: dto.usuarioRemision || 'Sistema',
+        fecha: new Date().toISOString(),
+        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Justificación: ${dto.justificacion}`,
+        resultado: 'enviado',
+      };
+
+      // Actualizar el historial de la noticia
+      await this.newsService.updateHistory(dto.newsId, historyEntry);
+
+      return {
+        success: true,
+        message: 'Correo enviado exitosamente',
+        newsId: dto.newsId,
+        emailEnviado: dto.emailDestinatario,
+        fechaRemision: new Date(),
+      };
+    } catch (error) {
+      console.error('❌ [RemitirCompetencia] Error al enviar correo:', error);
+      console.error('❌ [RemitirCompetencia] Stack:', error.stack);
+
+      // Registrar el intento fallido
+      try {
+        const historyEntry = {
+          id: Date.now().toString(),
+          tipo: 'remision_competencia',
+          usuario: dto.usuarioRemision || 'Sistema',
+          fecha: new Date().toISOString(),
+          observaciones: `Intento de remisión a ${dto.entidadDestino} fallido. Error: ${error.message}`,
+          resultado: 'error',
+        };
+        await this.newsService.updateHistory(dto.newsId, historyEntry);
+      } catch (historyError) {
+        console.error('❌ [RemitirCompetencia] Error al registrar historial:', historyError);
+      }
+
+      throw new HttpException(
+        `Error al remitir por competencia: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

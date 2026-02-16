@@ -1,4 +1,5 @@
 import { Module as NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
@@ -15,6 +16,7 @@ import { ProgramaAcademico } from './programas/programa.entity';
 import { RegistroCalificado } from './programas/registro-calificado.entity';
 import { AcreditacionPrograma } from './programas/acreditacion.entity';
 import { ProgramasModule } from './programas/programas.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @NestModule({
   imports: [
@@ -45,6 +47,12 @@ import { ProgramasModule } from './programas/programas.module';
     UsersModule,
     AuthModule,
     ProgramasModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
   ],
 })
 export class AppModule {}

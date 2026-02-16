@@ -28,6 +28,19 @@ export function VerificarCertificado() {
   const [certificado, setCertificado] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
+    html.style.overflow = prevHtmlOverflow || 'auto';
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   // Verificar automáticamente cuando se carga el componente
   useEffect(() => {
     const verificarCertificado = async () => {
@@ -40,10 +53,35 @@ export function VerificarCertificado() {
       console.log('🔍 Verificando certificado con código:', codigo);
       setIsValidating(true);
       setError(null);
+      const codigoNormalizado = codigo.trim().toUpperCase();
 
       try {
         // Llamar al endpoint que registra la verificación
-        const response = await certificadosService.validacion.verificarCertificadoLaboral(codigo);
+        const response = await certificadosService.validacion.verificarCertificadoLaboral(codigoNormalizado);
+        const responseMessage = typeof response?.message === 'string' ? response.message : '';
+        const isNotFoundMessage = responseMessage.toLowerCase().includes('no encontrado');
+        const hasCertificateData = Boolean(
+          response?.verification_code ||
+            response?.certificate_number ||
+            response?.full_name,
+        );
+        const hasErrorResponse =
+          response?.statusCode >= 400 ||
+          response?.error ||
+          isNotFoundMessage ||
+          !hasCertificateData;
+
+        if (hasErrorResponse) {
+          const message =
+            responseMessage ||
+            'No se pudo verificar el certificado';
+          setError(message);
+          setCertificado(null);
+          toast.error('Error de verificacion', {
+            description: 'El certificado no existe o el codigo es invalido'
+          });
+          return;
+        }
 
         console.log('✅ Certificado verificado - Response completo:', response);
         console.log('📊 Datos del certificado:', {
@@ -84,9 +122,81 @@ export function VerificarCertificado() {
     navigate('/');
   };
 
+  const parseDateOnly = (fechaStr: string) => {
+    if (!fechaStr) return null;
+    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      return new Date(year, month, day, 12, 0, 0);
+    }
+    const parsed = new Date(fechaStr);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const normalizarCodigo = (value?: string | number | null) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits || raw.replace(/\s+/g, '');
+  };
+
+  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+
+  const construirCargoVariable = (
+    careerCategory?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+  ) => {
+    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
+    const codCargoRaw = normalizarCodigo(codCargo);
+    const codGradeRaw = normalizarCodigo(codGrade);
+
+    const esNoDefinido = /no\s+definido/i.test(careerRaw);
+    const cargoEsCero = esCodigoCero(codCargoRaw);
+    const gradoEsCero = esCodigoCero(codGradeRaw);
+
+    if (esNoDefinido && cargoEsCero && gradoEsCero) {
+      return 'No Definido';
+    }
+
+    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
+    let baseText = careerRaw;
+    if (hasLeadingCode) {
+      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
+    }
+    if (/grado/i.test(baseText)) {
+      const antesGrado = baseText.split(/grado/i)[0].trim();
+      if (antesGrado) {
+        baseText = antesGrado;
+      }
+    }
+    if (!baseText) {
+      baseText = careerRaw;
+    }
+
+    let cargoCode = codCargoRaw;
+    if (cargoCode.length > 4) {
+      cargoCode = cargoCode.slice(0, 4);
+    }
+
+    const parts: string[] = [];
+    if (baseText) parts.push(baseText);
+    if (cargoCode) parts.push(cargoCode);
+    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
+      parts.push(`Grado ${codGradeRaw || '0'}`);
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
+
   const formatearFecha = (fechaStr: string) => {
     try {
-      const fecha = new Date(fechaStr);
+      const fecha = parseDateOnly(fechaStr);
+      if (!fecha) return 'Fecha no disponible';
       return fecha.toLocaleDateString('es-CO', {
         day: '2-digit',
         month: 'long',
@@ -124,6 +234,22 @@ export function VerificarCertificado() {
     );
   };
 
+  const cargoCalculado = certificado
+    ? construirCargoVariable(
+        certificado?.career_category || certificado?.careerCategory || certificado?.career_category_name || certificado?.position_category || certificado?.positionCategory || certificado?.cargo,
+        certificado?.cod_cargo || certificado?.codCargo || certificado?.request?.cod_cargo || certificado?.request?.codCargo,
+        certificado?.cod_grade || certificado?.codGrade || certificado?.request?.cod_grade || certificado?.request?.codGrade,
+      )
+    : '';
+  const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';
+  const dependenciaMostrar =
+    certificado?.department ||
+    certificado?.request?.department ||
+    certificado?.request?.departmentName ||
+    certificado?.position_location ||
+    certificado?.positionLocation ||
+    '';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Hero Section */}
@@ -150,7 +276,7 @@ export function VerificarCertificado() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-24">
         {isValidating ? (
           /* Estado de Carga - Verificando */
           <motion.div
@@ -278,7 +404,7 @@ export function VerificarCertificado() {
                     Cargo
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.position_category}
+                    {cargoCalculado || certificado.position_category}
                   </p>
                 </div>
 
@@ -287,7 +413,7 @@ export function VerificarCertificado() {
                     Tipo de Vinculación
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.career_category}
+                    {tipoVinculacion || 'No especificado'}
                   </p>
                 </div>
 
@@ -296,7 +422,7 @@ export function VerificarCertificado() {
                     Dependencia
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {certificado.department || 'No especificado'}
+                    {dependenciaMostrar || 'No especificado'}
                   </p>
                 </div>
 
@@ -385,6 +511,8 @@ export function VerificarCertificado() {
                 </div>
               </div>
             </div>
+
+            <div className="h-16 sm:h-24" />
           </motion.div>
         )}
       </div>

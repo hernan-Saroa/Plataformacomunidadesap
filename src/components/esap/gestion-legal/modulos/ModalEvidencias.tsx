@@ -29,11 +29,14 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '../../../../enums/permissions';
 
 interface ModalEvidenciasProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  modulo: string;
 }
 
 const categorias = [
@@ -46,7 +49,7 @@ const categorias = [
   'Digitales'
 ];
 
-export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidenciasProps) {
+export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEvidenciasProps) {
   const [evidencias, setEvidencias] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
@@ -141,10 +144,21 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
 
-      const response = await fetch(url);
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
 
       if (!response.ok) {
-        throw new Error('Error al descargar las evidencias');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -163,13 +177,28 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       });
     } catch (error) {
       console.error('Error descargando ZIP:', error);
-      toast.error('Error al descargar evidencias', { id: 'download-evidencias' });
+      // Fallback: intentar descarga directa
+      try {
+        const expedienteId = expediente.uuid || expediente.id;
+        const baseUrl = getServiceUrl('legal');
+        const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+        const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-evidencias' });
+      } catch {
+        toast.error('Error al descargar evidencias', { id: 'download-evidencias' });
+      }
     }
   };
 
   // Helper para construir URL correcta de archivo
   // Direct mode: localhost:3008/files/:filename
-  // Gateway mode: localhost:3000/legal/files/:filename
+  // Gateway mode: localhost:3000/legal/files/:filename (NOT /legal/api/v1/files!)
   const getFileUrl = (archivoUrl: string): string => {
     if (!archivoUrl) return '';
 
@@ -183,9 +212,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       filename = archivoUrl.split('/').pop() || archivoUrl;
     }
 
-    // En modo directo: localhost:3008/files/
-    // En modo gateway: localhost:3000/legal/api/v1/files/
-    const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
+    // Gateway rutea /legal/files/* -> backend /files/* (NO usa /api/v1 para archivos)
+    const prefix = API_MODE === 'direct' ? '' : '/legal';
     return `${baseUrl}${prefix}/files/${filename}`;
   };
 
@@ -199,6 +227,13 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     toast.success('👁️ Documento abierto', { description: ev.nombre });
   };
 
+  // Helper para verificar si el archivo es previsualizable en el navegador
+  const isPrevisuable = (filename: string): boolean => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['pdf', 'jpg', 'jpeg', 'png', 'gif'].includes(ext || '');
+  };
+
   const handleDescargarEvidencia = async (ev: any) => {
     const fileUrl = getFileUrl(ev.url);
     if (!fileUrl) {
@@ -208,8 +243,19 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
 
     toast.loading('⏳ Descargando...', { id: 'download-evidencia' });
     try {
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error('Error al descargar');
+      // Obtener token para autenticación
+      const token = localStorage.getItem('esap_auth_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(fileUrl, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -224,7 +270,19 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       toast.success('✅ Descarga completada', { id: 'download-evidencia', description: ev.nombre });
     } catch (error) {
       console.error('Error descargando:', error);
-      toast.error('Error al descargar el archivo', { id: 'download-evidencia' });
+      // Fallback: intentar descarga directa
+      try {
+        const link = document.createElement('a');
+        link.href = fileUrl;
+        link.setAttribute('download', ev.nombre || 'evidencia');
+        link.setAttribute('target', '_blank');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.info('📥 Descargando via enlace directo...', { id: 'download-evidencia' });
+      } catch {
+        toast.error('Error al descargar el archivo', { id: 'download-evidencia' });
+      }
     }
   };
 
@@ -260,7 +318,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
       formData.append('nombre', newEvidenciaData.nombre || selectedFile.name);
       formData.append('descripcion', newEvidenciaData.descripcion || 'Sin descripción');
       formData.append('tipo', newEvidenciaData.tipo);
-      formData.append('relevancia', newEvidenciaData.relevancia);
+      formData.append('prioridad', newEvidenciaData.relevancia);
       formData.append('categoria', newEvidenciaData.tipo);
       formData.append('aportadoPor', 'ESAP');
 
@@ -284,15 +342,41 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
     }
   };
 
+  const hasPermission = (action: string) => {
+    switch (modulo) {
+      case 'defensa-judicial':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      case 'juzgamiento-disciplinario':
+        if (action === 'create') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_CREATE)
+        if (action === 'delete') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_DELETE)
+        if (action === 'admitir') return authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EVIDENCIAS_ADMITIR)
+        return authService.isSuperAdmin()
+      default:
+        return authService.isSuperAdmin()
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
-          <DialogTitle className="sr-only">Evidencias y Pruebas</DialogTitle>
+        <DialogContent
+          hideCloseButton
+          className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] overflow-hidden flex flex-col p-0 gap-0"
+        >
+          <DialogTitle className="sr-only">
+            Evidencias y Pruebas - Expediente {expediente.id}
+          </DialogTitle>
           <DialogDescription className="sr-only">
             Gestión de evidencias y pruebas documentales del expediente {expediente.id}
           </DialogDescription>
 
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
+
+
+          {/* Header Corporativo ESAP 2025 - Diseño Limpio y Usable */}
           <ModalHeaderClean
             titulo="Evidencias y Pruebas Documentales"
             subtitulo={`Material probatorio del expediente ${expediente.id}`}
@@ -310,7 +394,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   {evidenciasPendientes} pendientes
                 </Badge>
                 <Badge variant="outline" className="font-semibold text-xs border-blue-300 text-blue-700">
-                  Total {totalEvidencias}
+                  <Paperclip className="w-3 h-3 mr-1" />
+                  {totalEvidencias} total
                 </Badge>
               </>
             }
@@ -402,32 +487,37 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
-                            <Eye className="w-3.5 h-3.5 mr-1" />
-                            Ver
-                          </Button>
+                          {/* Botón Ver - Solo para archivos previsualizables (PDF, imágenes) */}
+                          {isPrevisuable(ev.nombre) && (
+                            <Button size="sm" onClick={() => handleVerEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#F57C00' }}>
+                              <Eye className="w-3.5 h-3.5 mr-1" />
+                              Ver
+                            </Button>
+                          )}
                           <Button size="sm" onClick={() => handleDescargarEvidencia(ev)} className="font-bold text-xs px-3 py-1.5 text-white" style={{ background: '#003DA5' }}>
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Descargar
                           </Button>
-                          {ev.estado !== 'Admitida' && (
+                          {ev.estado !== 'Admitida' && hasPermission('admitir') && (
                             <Button size="sm" onClick={() => handleMarcarAdmitida(ev.id)} className="font-bold text-xs px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white">
                               <CheckCircle className="w-3.5 h-3.5 mr-1" />
                               Admitir
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (confirm(`¿Estás seguro de eliminar "${ev.nombre}"?`)) {
-                                handleEliminarEvidencia(ev.id, ev.nombre);
-                              }
-                            }}
-                            className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          {hasPermission('delete') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                if (confirm(`¿Estás seguro de eliminar "${ev.nombre}"?`)) {
+                                  handleEliminarEvidencia(ev.id, ev.nombre);
+                                }
+                              }}
+                              className="font-bold text-xs px-2 py-1.5 border-red-400 text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -460,10 +550,12 @@ export function ModalEvidencias({ isOpen, onClose, expediente }: ModalEvidencias
                   <Download className="w-4 h-4 mr-1.5" />
                   Descargar Todas (ZIP)
                 </Button>
-                <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
-                  <Upload className="w-4 h-4 mr-1.5" />
-                  Cargar Evidencia
-                </Button>
+                {hasPermission('create') && (
+                  <Button onClick={handleCargarNuevaEvidencia} className="font-bold text-white" style={{ background: '#F57C00' }}>
+                    <Upload className="w-4 h-4 mr-1.5" />
+                    Cargar Evidencia
+                  </Button>
+                )}
               </div>
             </div>
           </div>

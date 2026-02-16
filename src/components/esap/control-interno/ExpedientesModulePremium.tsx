@@ -32,6 +32,9 @@ import { toast } from 'sonner@2.0.3';
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 
+// ✅ FASE 1 DÍA 3: Componentes responsive
+import { Container4K, ResponsiveGrid } from '@/components/ui';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -131,27 +134,10 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     fechaInicio: '2025-01-15',
     estado: 'EN_PROCESO',
     responsable: 'Fernando Ávila',
-    totalDocumentos: 18,
+    totalDocumentos: 6,
     documentos: [
-      // PLANIFICACIÓN
       { id: 'd1', nombre: 'Programa de Auditoría AU-2025-001.pdf', tipo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      { id: 'd2', nombre: 'Memorando de Asignación.pdf', tipo: 'PDF', tamanio: '345 KB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      { id: 'd3', nombre: 'Alcance y Objetivos.docx', tipo: 'DOCX', tamanio: '89 KB', fechaCreacion: '2025-01-16', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      
-      // EJECUCIÓN
-      { id: 'd4', nombre: 'Papeles de Trabajo - Semana 1.xlsx', tipo: 'XLSX', tamanio: '2.4 MB', fechaCreacion: '2025-01-22', autor: 'María Rodríguez', fase: 'EJECUCION' },
-      { id: 'd5', nombre: 'Evidencia Contratos Vigentes.pdf', tipo: 'PDF', tamanio: '5.6 MB', fechaCreacion: '2025-01-25', autor: 'Carlos Gómez', fase: 'EJECUCION' },
-      { id: 'd6', nombre: 'Acta Entrevista Director Jurídico.pdf', tipo: 'PDF', tamanio: '678 KB', fechaCreacion: '2025-01-28', autor: 'Fernando Ávila', fase: 'EJECUCION' },
-      { id: 'd7', nombre: 'Papeles de Trabajo - Semana 2.xlsx', tipo: 'XLSX', tamanio: '3.1 MB', fechaCreacion: '2025-02-05', autor: 'María Rodríguez', fase: 'EJECUCION' },
-      
-      // HALLAZGOS
-      { id: 'd8', nombre: 'Matriz de Hallazgos Preliminar.xlsx', tipo: 'XLSX', tamanio: '1.8 MB', fechaCreacion: '2025-02-10', autor: 'Fernando Ávila', fase: 'HALLAZGOS' },
-      { id: 'd9', nombre: 'Hallazgo H-001 Evidencias.pdf', tipo: 'PDF', tamanio: '4.2 MB', fechaCreacion: '2025-02-12', autor: 'María Rodríguez', fase: 'HALLAZGOS' },
-      { id: 'd10', nombre: 'Respuesta Auditado Hallazgo H-001.pdf', tipo: 'PDF', tamanio: '890 KB', fechaCreacion: '2025-02-15', autor: 'Sistema', fase: 'HALLAZGOS' },
-      
-      // COMUNICACIÓN
-      { id: 'd11', nombre: 'Informe Final AU-2025-001.pdf', tipo: 'PDF', tamanio: '3.5 MB', fechaCreacion: '2025-02-20', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' },
-      { id: 'd12', nombre: 'Acta Reunión Cierre.pdf', tipo: 'PDF', tamanio: '567 KB', fechaCreacion: '2025-02-22', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' }
+      { id: 'd2', nombre: 'Informe Final AU-2025-001.pdf', tipo: 'PDF', tamanio: '3.5 MB', fechaCreacion: '2025-02-20', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' }
     ]
   },
   {
@@ -163,25 +149,9 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     fechaFin: '2024-12-20',
     estado: 'CERRADO',
     responsable: 'María Rodríguez',
-    totalDocumentos: 24,
+    totalDocumentos: 3,
     documentos: [
-      { id: 'd13', nombre: 'Programa de Auditoría AU-2024-012.pdf', tipo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'María Rodríguez', fase: 'PLANIFICACION' },
-      { id: 'd14', nombre: 'Informe Final AU-2024-012.pdf', tipo: 'PDF', tamanio: '4.8 MB', fechaCreacion: '2024-12-15', autor: 'María Rodríguez', fase: 'COMUNICACION_RESULTADOS' },
-      { id: 'd15', nombre: 'Acta de Cierre Definitivo.pdf', tipo: 'PDF', tamanio: '445 KB', fechaCreacion: '2024-12-20', autor: 'María Rodríguez', fase: 'CIERRE' }
-    ]
-  },
-  {
-    id: 'exp-3',
-    codigoAuditoria: 'AU-2025-003',
-    nombreAuditoria: 'Auditoría Talento Humano',
-    tipoAuditoria: 'Auditoría de Gestión',
-    fechaInicio: '2025-02-01',
-    estado: 'ABIERTO',
-    responsable: 'Carlos Gómez',
-    totalDocumentos: 6,
-    documentos: [
-      { id: 'd16', nombre: 'Programa de Auditoría AU-2025-003.pdf', tipo: 'PDF', tamanio: '980 KB', fechaCreacion: '2025-02-01', autor: 'Carlos Gómez', fase: 'PLANIFICACION' },
-      { id: 'd17', nombre: 'Memorando de Asignación.pdf', tipo: 'PDF', tamanio: '234 KB', fechaCreacion: '2025-02-01', autor: 'Carlos Gómez', fase: 'PLANIFICACION' }
+      { id: 'd13', nombre: 'Programa de Auditoría AU-2024-012.pdf', tipo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'María Rodríguez', fase: 'PLANIFICACION' }
     ]
   }
 ];
@@ -202,7 +172,7 @@ export function ExpedientesModulePremium() {
 
       {/* Navegación */}
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="mx-auto px-8 max-w-[1920px]">
+        <div className="w-full px-8">
           <div className="flex gap-1">
             <TabButton
               active={vistaActiva === 'expedientes'}
@@ -313,7 +283,7 @@ function VistaExpedientes() {
   }, []);
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       {/* Dashboard */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-6">
@@ -324,7 +294,7 @@ function VistaExpedientes() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-5 gap-4">
+        <ResponsiveGrid cols="5" gap="4">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Expedientes</div>
             <div className="text-2xl font-semibold text-blue-900">{estadisticas.total}</div>
@@ -354,7 +324,7 @@ function VistaExpedientes() {
             <div className="text-2xl font-semibold text-purple-900">{estadisticas.totalDocs}</div>
             <div className="text-xs text-purple-600 mt-1">Total archivados</div>
           </div>
-        </div>
+        </ResponsiveGrid>
       </div>
 
       {/* Búsqueda y Filtros */}
@@ -416,7 +386,7 @@ function VistaExpedientes() {
           />
         ))}
       </div>
-    </div>
+    </Container4K>
   );
 }
 
@@ -672,11 +642,6 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
       timestamp: new Date().toISOString()
     });
 
-    // En producción: iniciar descarga real del documento
-    // const link = document.createElement('a');
-    // link.href = `/api/expedientes/documentos/${doc.id}/download`;
-    // link.download = doc.nombre;
-    // link.click();
   };
 
   return (
@@ -797,11 +762,11 @@ function VistaEstadisticas() {
   }, []);
 
   return (
-    <div className="mx-auto px-8 py-6 max-w-[1920px]">
+    <Container4K className="py-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
         <h2 className="text-xl text-gray-900 font-medium mb-6">Estadísticas de Expedientes</h2>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <ResponsiveGrid cols="3" gap="4" className="mb-6">
           <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
             <div className="text-xs text-blue-700 mb-1">Total Documentos</div>
             <div className="text-2xl font-semibold text-blue-900">{stats.totalDocs}</div>
@@ -814,7 +779,7 @@ function VistaEstadisticas() {
             <div className="text-xs text-purple-700 mb-1">Promedio Docs/Expediente</div>
             <div className="text-2xl font-semibold text-purple-900">{Math.round(stats.totalDocs / EXPEDIENTES_MOCK.length)}</div>
           </div>
-        </div>
+        </ResponsiveGrid>
 
         <h3 className="text-sm font-medium text-gray-900 mb-4">Documentos por Fase</h3>
         <div className="space-y-3">
@@ -837,7 +802,7 @@ function VistaEstadisticas() {
           })}
         </div>
       </div>
-    </div>
+    </Container4K>
   );
 }
 

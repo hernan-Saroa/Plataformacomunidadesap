@@ -20,18 +20,18 @@ import {
   Loader2,
   ArrowUp
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { VerificationCertificate } from '../../types';
+import { VerificationCertificate } from '../../types/index';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '@/utils/browser';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import esapLogo from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import graduadosService from '../../services/api/graduados.service';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import headerImg from '../../assets/graduation-certificates/img_primera.png';
 import footerImg from '../../assets/graduation-certificates/img_segunda.png';
+import { QRCodeSVG } from 'qrcode.react';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface VerificationCertificateDisplayProps {
   certificate: VerificationCertificate;
@@ -45,6 +45,9 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const lastEmailSentRef = useRef<string | null>(null);
+  const lastEmailAttemptRef = useRef<string | null>(null);
 
   const formatDateOnly = (value?: string) => {
     if (!value) {
@@ -160,11 +163,44 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
     }
   };
 
+  const generatePdfFromTemplate = async () => {
+    if (!pdfTemplateRef.current) {
+      throw new Error('No se pudo preparar la plantilla del certificado.');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const canvas = await html2canvas(pdfTemplateRef.current, {
+      scale: 3,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: 816,
+      windowHeight: 1056,
+      imageTimeout: 0,
+    });
+
+    const pdf = new jsPDF({
+      unit: 'px',
+      format: [816, 1056],
+      orientation: 'portrait',
+      compress: true,
+    });
+
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
+
+    const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+    return { pdf, fileName };
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
-    toast.loading('Generando certificado PDF...', { id: 'pdf-generation' });
+    toast.loading('Descargando certificado PDF...', { id: 'pdf-generation' });
 
     try {
+      // Registrar la descarga
       if (certificate?.id) {
         try {
           await graduadosService.descargas.registrar(certificate.id);
@@ -173,39 +209,22 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
         }
       }
 
-      if (!pdfTemplateRef.current) {
-        throw new Error('No se pudo preparar la plantilla del certificado.');
-      }
+      // Descargar el PDF desde el backend (el mismo que se envía por correo)
+      const pdfBlob = await graduadosService.certificados.descargarPDF(certificate.id);
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      const canvas = await html2canvas(pdfTemplateRef.current, {
-        scale: 3,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 816,
-        windowHeight: 1056,
-        imageTimeout: 0,
-      });
-
-      const pdf = new jsPDF({
-        unit: 'px',
-        format: [816, 1056],
-        orientation: 'portrait',
-        compress: true,
-      });
-
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      pdf.addImage(imgData, 'PNG', 0, 0, 816, 1056, '', 'FAST');
-
-      const fileName = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
-      pdf.save(fileName);
+      // Crear URL temporal para descargar
+      const url = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Certificado_ESAP_${certificate.certificateNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
 
       toast.success('Certificado descargado exitosamente!', {
         id: 'pdf-generation',
-        description: `Archivo: Certificado_${certificate.graduate.fullName.replace(/\s+/g, '_')}.pdf`
+        description: `Archivo: Certificado_ESAP_${certificate.certificateNumber}.pdf`
       });
     } catch (error: any) {
       console.error('Error al descargar certificado:', error);
@@ -217,6 +236,46 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
       setIsDownloading(false);
     }
   };
+
+  const enviarCertificadoPorEmail = async () => {
+    const destinatario = certificate.requester?.email;
+    if (!destinatario) {
+      return;
+    }
+
+    if (lastEmailAttemptRef.current === certificate.certificateNumber) {
+      return;
+    }
+    lastEmailAttemptRef.current = certificate.certificateNumber;
+
+    setIsSendingEmail(true);
+    toast.loading('Enviando certificado por correo...', { id: 'auto-email-certificate' });
+
+    try {
+      await graduadosService.certificados.reenviar(certificate.id);
+
+      lastEmailSentRef.current = certificate.certificateNumber;
+      toast.success('Certificado enviado por correo', {
+        id: 'auto-email-certificate',
+        description: `Se envio a ${destinatario}`,
+        duration: 4000,
+      });
+    } catch (error: any) {
+      console.error('Error al enviar certificado por correo:', error);
+      toast.error('No se pudo enviar el certificado por correo', {
+        id: 'auto-email-certificate',
+        description: error?.message || 'Intenta nuevamente',
+        duration: 5000,
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // NOTA: El backend ya envia el correo automaticamente al crear el certificado
+  // en solicitarCertificadoLanding -> notifyCertificateDelivery
+  // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
+  // para evitar enviar correos duplicados.
 
   const handleShare = async () => {
     /**
@@ -422,13 +481,22 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
             </tbody>
           </table>
 
-          <div style={{ textAlign: 'justify', marginBottom: '16px', padding: '0 15px' }}>
-            <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
-          </div>
-
-          <div style={{ marginTop: '22px', textAlign: 'left', paddingLeft: '15px' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '10.5pt' }}>
-              Dirección Técnica Registro y Control
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: '16px', padding: '0 15px' }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ marginBottom: '12px' }}>Cordialmente,</p>
+              <div style={{ marginTop: '22px', fontWeight: 'bold', fontSize: '10.5pt' }}>
+                Dirección Técnica Registro y Control
+              </div>
+            </div>
+            {/* Código QR de validación */}
+            <div style={{ textAlign: 'center', marginLeft: '20px' }}>
+              <QRCodeSVG
+                value={verificationUrl}
+                size={100}
+                level="H"
+                includeMargin={false}
+                fgColor="#000000"
+              />
             </div>
           </div>
 
@@ -476,20 +544,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
 
           <Card className="border-4 border-[#1e5da8] shadow-2xl bg-white">
             {/* Official Header with Logo */}
-            <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="bg-white rounded-xl p-3 shadow-lg">
-                    <img src={esapLogo} alt="ESAP Logo" className="h-16 w-auto" />
-                  </div>
-                  <div className="text-white">
-                    <h1 className="text-2xl font-bold tracking-wide">
-                      ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA
-                    </h1>
-                    <p className="text-blue-100 text-sm mt-1 tracking-wider">
-                      ESAP • República de Colombia
-                    </p>
-                  </div>
+            {/* <div className="bg-gradient-to-r from-[#1e5da8] to-[#154a85] px-8 py-6"> */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="bg-white rounded-xl p-3 shadow-lg">
+                  <ESAPLogo variant="color" className="h-16 w-auto" />
                 </div>
                 <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
                   <Shield className="w-5 h-5 text-white" />
@@ -697,7 +756,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                             <p className="text-xs text-gray-600 uppercase tracking-wider mb-1">Estado del Certificado</p>
                             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-800 rounded-lg font-bold text-sm">
                               <CheckCircle className="w-4 h-4" />
-                              {certificate.status === 'active' ? 'Activo y Válido' : certificate.status}
+                              {certificate.status === 'active' ? 'Válido' : certificate.status}
                             </span>
                           </div>
                         </div>
