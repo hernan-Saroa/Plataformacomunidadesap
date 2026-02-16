@@ -39,6 +39,22 @@ export interface Actividad {
   porcentaje_avance: number;
   observaciones?: string;
   prioridad: PrioridadActividad;
+  // Campos extendidos (migración 129)
+  control?: string;
+  evaluacion?: string;
+  seguimiento?: string;
+  requiereVerificacionDirector?: boolean;
+  requiere_verificacion_director?: boolean; // snake_case desde backend
+  verificadaPorDirector?: boolean;
+  verificada_por_director?: boolean; // snake_case desde backend
+  fechaVerificacion?: string;
+  fecha_verificacion?: string; // snake_case desde backend
+  observacionesDirector?: string;
+  observaciones_director?: string; // snake_case desde backend
+  configuracionEvidencias?: ConfiguracionEvidencias;
+  configuracion_evidencias?: ConfiguracionEvidencias; // snake_case desde backend
+  adjuntos?: AdjuntoActividad[];
+  bitacoraObservaciones?: any[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -102,6 +118,12 @@ export interface CreateActividadDto {
   fecha_fin: string;
   prioridad?: PrioridadActividad;
   observaciones?: string;
+  // Campos nuevos migración 129
+  control?: string;
+  evaluacion?: string;
+  seguimiento?: string;
+  requiereVerificacionDirector?: boolean;
+  configuracionEvidencias?: ConfiguracionEvidencias;
 }
 
 export interface UpdateActividadDto {
@@ -172,4 +194,63 @@ export interface FiltrosActividad {
   estado?: EstadoActividad;
   responsable?: string;
   prioridad?: PrioridadActividad;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADJUNTOS DE ACTIVIDADES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface AdjuntoActividad {
+  id: string;
+  actividadId: string;
+  nombre: string;
+  tipo?: string;
+  tamanio?: number;
+  fechaCarga: string;
+  cargadoPor?: string;
+  cargadoPorId?: number;
+  rutaArchivo?: string;
+  url?: string;
+  hashArchivo?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateAdjuntoDto {
+  nombre: string;
+  tipo?: string;
+  tamanio?: number;
+  cargadoPor?: string;
+  cargadoPorId?: number;
+  rutaArchivo?: string;
+  url?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURACIÓN DE EVIDENCIAS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type RequisitoEvidencia = 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+
+export interface ConfiguracionEvidencias {
+  adjuntosRequeridos: RequisitoEvidencia;
+  observacionRequerida: RequisitoEvidencia;
+  minimoAdjuntos?: number;
+  tiposAdjuntosPermitidos?: string[];
+  longitudMinimaObservacion?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DTO ACTUALIZACIÓN EXTENDIDA DE ACTIVIDAD
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface UpdateActividadExtendidoDto extends UpdateActividadDto {
+  control?: string;
+  evaluacion?: string;
+  seguimiento?: string;
+  requiereVerificacionDirector?: boolean;
+  verificadaPorDirector?: boolean;
+  fechaVerificacion?: string;
+  observacionesDirector?: string;
+  configuracionEvidencias?: ConfiguracionEvidencias;
 }

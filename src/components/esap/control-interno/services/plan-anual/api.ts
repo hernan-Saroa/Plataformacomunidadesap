@@ -63,17 +63,14 @@ async function apiRequest<T>(
       ...options,
     });
 
-    // Manejar respuestas sin contenido (204 No Content)
-    if (response.status === 204) {
-      return { success: true };
-    }
-
-    const data = await response.json();
+    // Manejar respuestas sin contenido
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
       return {
         success: false,
-        error: data.message || data.error || `Error ${response.status}`,
+        error: data?.message || data?.error || `Error ${response.status}`,
       };
     }
 
@@ -308,9 +305,130 @@ export const estadisticasApi = {
 // EXPORT UNIFICADO
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// API: ADJUNTOS DE ACTIVIDADES
+// ═══════════════════════════════════════════════════════════════════════════
+
+import type { AdjuntoActividad, CreateAdjuntoDto, UpdateActividadExtendidoDto } from './types';
+
+export const adjuntosApi = {
+  /**
+   * Obtener adjuntos de una actividad
+   */
+  getByActividad: async (actividadId: string): Promise<ApiResponse<AdjuntoActividad[]>> => {
+    return apiRequest<AdjuntoActividad[]>(`${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}/adjuntos`);
+  },
+
+  /**
+   * Agregar adjunto a una actividad
+   */
+  create: async (actividadId: string, data: CreateAdjuntoDto): Promise<ApiResponse<AdjuntoActividad>> => {
+    return apiRequest<AdjuntoActividad>(`${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}/adjuntos`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar adjunto
+   */
+  delete: async (adjuntoId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/adjuntos/${adjuntoId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Guardar adjuntos y observaciones de una actividad
+   * Método helper que actualiza la actividad y maneja los adjuntos
+   */
+  guardarEvidencias: async (
+    actividadId: string,
+    adjuntosNuevos: CreateAdjuntoDto[],
+    adjuntosAEliminar: string[],
+    observaciones: string
+  ): Promise<ApiResponse<{ actividad: Actividad; adjuntos: AdjuntoActividad[] }>> => {
+    try {
+      // 1. Actualizar observaciones en la actividad
+      const updateResponse = await actividadesApi.update(actividadId, {
+        observaciones,
+      });
+
+      if (!updateResponse.success) {
+        return { success: false, error: updateResponse.error };
+      }
+
+      // 2. Eliminar adjuntos marcados
+      for (const adjuntoId of adjuntosAEliminar) {
+        await adjuntosApi.delete(adjuntoId);
+      }
+
+      // 3. Crear nuevos adjuntos
+      const adjuntosCreados: AdjuntoActividad[] = [];
+      for (const adjunto of adjuntosNuevos) {
+        const result = await adjuntosApi.create(actividadId, adjunto);
+        if (result.success && result.data) {
+          adjuntosCreados.push(result.data);
+        }
+      }
+
+      // 4. Obtener lista actualizada de adjuntos
+      const adjuntosResponse = await adjuntosApi.getByActividad(actividadId);
+
+      return {
+        success: true,
+        data: {
+          actividad: updateResponse.data!,
+          adjuntos: adjuntosResponse.data || adjuntosCreados,
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Error guardando evidencias',
+      };
+    }
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACTIVIDADES EXTENDIDO (con campos nuevos)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const actividadesExtendidoApi = {
+  /**
+   * Actualizar actividad con todos los campos (incluye nuevos: control, evaluacion, etc)
+   */
+  updateCompleto: async (actividadId: string, data: UpdateActividadExtendidoDto): Promise<ApiResponse<Actividad>> => {
+    return apiRequest<Actividad>(`${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Verificar actividad por el Director OCIG
+   */
+  verificarPorDirector: async (
+    actividadId: string,
+    observaciones?: string
+  ): Promise<ApiResponse<Actividad>> => {
+    return apiRequest<Actividad>(`${PLAN_ANUAL_ENDPOINT}/actividades/${actividadId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        verificadaPorDirector: true,
+        fechaVerificacion: new Date().toISOString(),
+        observacionesDirector: observaciones,
+      }),
+    });
+  },
+};
+
 export const planAnualService = {
   plan: planAnualApi,
   actividades: actividadesApi,
+  actividadesExtendido: actividadesExtendidoApi,
+  adjuntos: adjuntosApi,
   auditores: auditoresApi,
   estadisticas: estadisticasApi,
 };

@@ -68,6 +68,40 @@ export class ActividadPlanAnual5 {
   })
   prioridad: 'Alta' | 'Media' | 'Baja';
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NUEVOS CAMPOS - Migración 129
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'text', nullable: true })
+  control: string;
+
+  @Column({ type: 'text', nullable: true })
+  evaluacion: string;
+
+  @Column({ type: 'text', nullable: true })
+  seguimiento: string;
+
+  @Column({ type: 'boolean', name: 'requiere_verificacion_director', default: false })
+  requiereVerificacionDirector: boolean;
+
+  @Column({ type: 'boolean', name: 'verificada_por_director', default: false })
+  verificadaPorDirector: boolean;
+
+  @Column({ type: 'timestamp', name: 'fecha_verificacion', nullable: true })
+  fechaVerificacion: Date;
+
+  @Column({ type: 'text', name: 'observaciones_director', nullable: true })
+  observacionesDirector: string;
+
+  @Column({ type: 'jsonb', name: 'configuracion_evidencias', nullable: true })
+  configuracionEvidencias: {
+    adjuntosRequeridos: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+    observacionRequerida: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+    minimoAdjuntos?: number;
+    tiposAdjuntosPermitidos?: string[];
+    longitudMinimaObservacion?: number;
+  };
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

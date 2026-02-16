@@ -4,9 +4,11 @@ import { Repository, DataSource } from 'typeorm';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
+import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
 
@@ -27,6 +29,8 @@ export class PlanAnual5RolesService {
     private readonly rolRepository: Repository<RolPlanAnual5>,
     @InjectRepository(ActividadPlanAnual5)
     private readonly actividadRepository: Repository<ActividadPlanAnual5>,
+    @InjectRepository(AdjuntoActividadPlanAnual5)
+    private readonly adjuntoRepository: Repository<AdjuntoActividadPlanAnual5>,
     @InjectRepository(HistorialPlanAnual)
     private readonly historialRepository: Repository<HistorialPlanAnual>,
     private readonly dataSource: DataSource,
@@ -213,10 +217,34 @@ export class PlanAnual5RolesService {
     const fechaInicio = createDto.fecha_inicio || new Date().toISOString().split('T')[0];
     const fechaFin = createDto.fecha_fin || new Date().toISOString().split('T')[0];
     
+    // Asignar configuración de evidencias por defecto si no se proporciona
+    // Lógica: si documentos/observaciones están en true, son OBLIGATORIOS para completar la actividad
+    let configEvidencias = createDto.configuracionEvidencias;
+    if (!configEvidencias) {
+      // Por defecto: ambas secciones habilitadas y OBLIGATORIAS
+      configEvidencias = {
+        observaciones: true,
+        documentos: true,
+        observacionRequerida: 'OBLIGATORIO' as const,
+        adjuntosRequeridos: 'OBLIGATORIO' as const,
+        minimoAdjuntos: 1,
+        longitudMinimaObservacion: 10
+      };
+    } else {
+      // Si se proporciona configuración, asegurar que si una sección está en true sea OBLIGATORIA
+      if (configEvidencias.documentos === true && !configEvidencias.adjuntosRequeridos) {
+        configEvidencias.adjuntosRequeridos = 'OBLIGATORIO';
+      }
+      if (configEvidencias.observaciones === true && !configEvidencias.observacionRequerida) {
+        configEvidencias.observacionRequerida = 'OBLIGATORIO';
+      }
+    }
+    
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 
-      (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11)
+      (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
+       control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
     `;
     
@@ -232,6 +260,15 @@ export class PlanAnual5RolesService {
       createDto.porcentaje_avance || 0,
       createDto.observaciones || null,
       createDto.prioridad || 'Media',
+      // Nuevos campos migración 129
+      createDto.control || null,
+      createDto.evaluacion || null,
+      createDto.seguimiento || null,
+      createDto.requiereVerificacionDirector || false,
+      createDto.verificadaPorDirector || false,
+      createDto.fechaVerificacion || null,
+      createDto.observacionesDirector || null,
+      JSON.stringify(configEvidencias),
     ]);
 
     const saved = result[0];
@@ -796,6 +833,47 @@ export class PlanAnual5RolesService {
       // Fecha de consulta
       fechaConsulta: new Date(),
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MÉTODOS PARA ADJUNTOS DE ACTIVIDADES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getAdjuntos(actividadId: string): Promise<AdjuntoActividadPlanAnual5[]> {
+    // Verificar que la actividad existe
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    return this.adjuntoRepository.find({
+      where: { actividadId },
+      order: { fechaCarga: 'DESC' },
+    });
+  }
+
+  async addAdjunto(actividadId: string, createDto: CreateAdjuntoDto): Promise<AdjuntoActividadPlanAnual5> {
+    // Verificar que la actividad existe
+    const actividad = await this.actividadRepository.findOne({ where: { id: actividadId } });
+    if (!actividad) {
+      throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
+    }
+
+    const adjunto = this.adjuntoRepository.create({
+      actividadId,
+      ...createDto,
+    });
+
+    return this.adjuntoRepository.save(adjunto);
+  }
+
+  async deleteAdjunto(adjuntoId: string): Promise<void> {
+    const adjunto = await this.adjuntoRepository.findOne({ where: { id: adjuntoId } });
+    if (!adjunto) {
+      throw new NotFoundException(`Adjunto con ID ${adjuntoId} no encontrado`);
+    }
+
+    await this.adjuntoRepository.remove(adjunto);
   }
 }
 

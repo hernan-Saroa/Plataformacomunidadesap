@@ -41,12 +41,13 @@ async function apiRequest<T>(
       ...options,
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || 'Error en la petición',
+        error: data?.error || 'Error en la petición',
       };
     }
 

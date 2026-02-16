@@ -20,6 +20,8 @@ import {
   type PuntoControl, 
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
+// Hook para sincronizar evidencias con backend
+import { useSaveEvidencias, actividadesApi } from './services/plan-anual';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
@@ -33,7 +35,7 @@ interface Auditor {
 }
 
 interface Actividad {
-  id: number;
+  id: number | string;
   nombre: string;
   descripcion: string;
   fechaInicio: string;
@@ -46,7 +48,12 @@ interface Actividad {
   evaluacion: string;
   seguimiento: string;
   adjuntos?: ArchivoAdjunto[]; // Archivos adjuntos para evidencia de cumplimiento
-  observacionesCumplimiento?: ObservacionCumplimiento[]; // MÚLTIPLES observaciones sobre el cumplimiento
+  observacionesCumplimiento?: ObservacionCumplimiento[] | string; // FLEXIBILIDAD: array para múltiples o string simple
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // CONFIGURACIÓN DE EVIDENCIAS - Define si adjuntos/observaciones son requeridos
+  // ═══════════════════════════════════════════════════════════════════════
+  configuracionEvidencias?: ConfiguracionEvidencias;
   
   // Sistema de autorización del Jefe OCIG - Configurado en creación del plan
   requiereAutorizacionJefeOCIG?: boolean; // Indica si requiere autorización del Jefe OCIG para completar
@@ -443,8 +450,8 @@ function Paso2({
   fechaInicio: string;
   fechaFin: string;
 }) {
-  const [rolExpandido, setRolExpandido] = useState<number | null>(1);
-  const [mostrarFormActividad, setMostrarFormActividad] = useState<number | null>(null);
+  const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
+  const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
   const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
     nombre: '',
     descripcion: '',
@@ -1544,8 +1551,8 @@ function SeccionGestionYSeguimiento({
   onAbrirRol4?: () => void;
 }) {
   // Estados para el seguimiento
-  const [actividadExpandida, setActividadExpandida] = useState<number | null>(null);
-  const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number; rolNumero: number } | null>(null);
+  const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
+  const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
   // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
@@ -1556,6 +1563,12 @@ function SeccionGestionYSeguimiento({
     seguimiento: '',
     porcentaje: 0
   });
+  
+  // Hook para sincronizar evidencias con backend
+  const { guardar: guardarEvidencias } = useSaveEvidencias();
+  
+  // Estado para indicar que se está guardando
+  const [guardando, setGuardando] = useState(false);
 
   // ✅ NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
@@ -1576,6 +1589,20 @@ function SeccionGestionYSeguimiento({
 
   // Funciones de seguimiento
   const abrirSeguimiento = (actividad: Actividad) => {
+    // DEBUG: Ver datos de la actividad incluyendo configuracionEvidencias
+    console.log('[SEGUIMIENTO] Abriendo actividad:', {
+      id: actividad.id,
+      nombre: actividad.nombre,
+      estado: actividad.estado,
+      porcentajeAvance: actividad.porcentajeAvance,
+      configuracionEvidencias: actividad.configuracionEvidencias,
+      adjuntos: actividad.adjuntos?.length || 0,
+      observaciones: Array.isArray(actividad.observacionesCumplimiento) 
+        ? actividad.observacionesCumplimiento.length 
+        : (actividad.observacionesCumplimiento ? 1 : 0),
+      actividadCompleta: actividad
+    });
+    
     const porcentajeCalculado = calcularPorcentajeAutomatico(actividad);
     const controlAutomatico = actividad.frecuenciaPuntosControl 
       ? obtenerTextoPeriodicidad(actividad.frecuenciaPuntosControl)
@@ -1592,7 +1619,7 @@ function SeccionGestionYSeguimiento({
     setActividadExpandida(actividad.id);
   };
 
-  const agregarObservacion = (rolNumero: number, actividadId: number) => {
+  const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
     if (!nuevaObservacion.trim()) {
       toast.error('Observación vacía', { description: 'Debes escribir una observación' });
       return;
@@ -1613,10 +1640,13 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
+                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
+                  ? act.observacionesCumplimiento 
+                  : [];
                 return { 
                   ...act,
                   observacionesCumplimiento: [
-                    ...(act.observacionesCumplimiento || []),
+                    ...obsActuales,
                     nuevaObs
                   ]
                 };
@@ -1634,7 +1664,7 @@ function SeccionGestionYSeguimiento({
     toast.success('Observación agregada', { description: 'Se registró exitosamente' });
   };
 
-  const eliminarObservacion = (rolNumero: number, actividadId: number, observacionId: string) => {
+  const eliminarObservacion = (rolNumero: number, actividadId: number | string, observacionId: string) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -1643,9 +1673,12 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
+                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
+                  ? act.observacionesCumplimiento 
+                  : [];
                 return { 
                   ...act,
-                  observacionesCumplimiento: (act.observacionesCumplimiento || []).filter(obs => obs.id !== observacionId)
+                  observacionesCumplimiento: obsActuales.filter((obs: ObservacionCumplimiento) => obs.id !== observacionId)
                 };
               }
               return act;
@@ -1660,7 +1693,7 @@ function SeccionGestionYSeguimiento({
     toast.success('Observación eliminada');
   };
 
-  const agregarResponsableApoyo = (rolNumero: number, actividadId: number, auditor: Auditor) => {
+  const agregarResponsableApoyo = (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -1700,7 +1733,7 @@ function SeccionGestionYSeguimiento({
     toast.success('Responsable de apoyo agregado', { description: `${auditor.nombre} se agregó al equipo` });
   };
 
-  const eliminarResponsableApoyo = (rolNumero: number, actividadId: number, auditorId: string) => {
+  const eliminarResponsableApoyo = (rolNumero: number, actividadId: number | string, auditorId: string) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -1726,7 +1759,7 @@ function SeccionGestionYSeguimiento({
     toast.success('Responsable de apoyo eliminado');
   };
 
-  const guardarSeguimiento = (rolNumero: number, actividadId: number) => {
+  const guardarSeguimiento = async (rolNumero: number, actividadId: number | string) => {
     const actividadActual = plan.roles
       .find(r => r.numero === rolNumero)
       ?.actividades.find(a => a.id === actividadId);
@@ -1747,6 +1780,34 @@ function SeccionGestionYSeguimiento({
       formulario.porcentaje > 0 ? 'EN_EJECUCION' :
       'PENDIENTE';
 
+    // Mapear estado del frontend al formato del backend
+    const estadoBackend = 
+      nuevoEstado === 'COMPLETADA' ? 'completada' :
+      nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+      'pendiente';
+
+    setGuardando(true);
+    
+    try {
+      // Intentar guardar en backend
+      console.log('[GUARDAR] Intentando guardar seguimiento:', { rolNumero, actividadId, formulario, nuevoEstado, estadoBackend });
+      
+      const response = await actividadesApi.update(String(actividadId), {
+        estado: estadoBackend as any, // El tipo del backend es diferente
+        porcentaje_avance: formulario.porcentaje,
+        observaciones: formulario.seguimiento
+      });
+      
+      console.log('[GUARDAR] Respuesta backend:', response);
+      
+      if (!response.success) {
+        console.warn('[GUARDAR] Backend falló, solo actualizando estado local');
+      }
+    } catch (error) {
+      console.warn('[GUARDAR] Error al guardar en backend:', error);
+    }
+
+    // Actualizar estado local siempre
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -1771,7 +1832,9 @@ function SeccionGestionYSeguimiento({
         return rol;
       })
     };
+    
     onActualizar(planActualizado);
+    setGuardando(false);
     toast.success('Seguimiento registrado', { description: 'Información actualizada correctamente' });
     setActividadExpandida(null);
     setNuevaObservacion('');
@@ -2090,7 +2153,7 @@ function SeccionGestionYSeguimiento({
               >
                 <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={actividad.id} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
                 {/* Header */}
                 <div className="p-4 bg-gray-50">
                   <div className="flex items-start justify-between mb-3">
@@ -2100,6 +2163,18 @@ function SeccionGestionYSeguimiento({
                           {idx + 1}
                         </span>
                         <p className="font-semibold text-gray-900">{actividad.nombre}</p>
+                        {/* INDICADOR: Configuración de Evidencias */}
+                        {actividad.configuracionEvidencias ? (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-green-100 text-green-700 border border-green-300" title={`Adj: ${actividad.configuracionEvidencias.adjuntosRequeridos || 'N/A'} | Obs: ${actividad.configuracionEvidencias.observacionRequerida || 'N/A'}`}>
+                            <FileText className="w-3 h-3" />
+                            Evidencias: ✓
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-gray-100 text-gray-500 border border-gray-300">
+                            <FileText className="w-3 h-3" />
+                            Evidencias: ✗
+                          </span>
+                        )}
                         {actividad.requiereAutorizacionJefeOCIG && (
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
                             actividad.autorizadaPorJefeOCIG
@@ -2343,10 +2418,56 @@ function SeccionGestionYSeguimiento({
                           </div>
 
                           {/* Botón gestionar evidencias */}
-                          <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
+                          <div className={`bg-white rounded-lg border-2 p-4 ${
+                            actividad.configuracionEvidencias 
+                              ? 'border-green-300' 
+                              : 'border-gray-200'
+                          }`}>
+                            {/* Info de configuración de evidencias */}
+                            {actividad.configuracionEvidencias && (
+                              <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Configuración de evidencias
+                                </p>
+                                <div className="flex items-center gap-4 text-xs">
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    actividad.configuracionEvidencias.adjuntosRequeridos === 'OBLIGATORIO' 
+                                      ? 'bg-red-100 text-red-700' 
+                                      : actividad.configuracionEvidencias.adjuntosRequeridos === 'OPCIONAL'
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-gray-100 text-gray-500'
+                                  }`}>
+                                    📎 Adjuntos: {actividad.configuracionEvidencias.adjuntosRequeridos}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    actividad.configuracionEvidencias.observacionRequerida === 'OBLIGATORIO' 
+                                      ? 'bg-red-100 text-red-700' 
+                                      : actividad.configuracionEvidencias.observacionRequerida === 'OPCIONAL'
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-gray-100 text-gray-500'
+                                  }`}>
+                                    📝 Observaciones: {actividad.configuracionEvidencias.observacionRequerida}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {!actividad.configuracionEvidencias && (
+                              <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <p className="text-xs text-gray-500 flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5" />
+                                  Sin configuración de evidencias - Adjuntos y observaciones opcionales
+                                </p>
+                              </div>
+                            )}
+                            
                             <button
                               onClick={() => setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero })}
-                              className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2"
+                              className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                actividad.configuracionEvidencias 
+                                  ? 'bg-green-600 hover:bg-green-700' 
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
                             >
                               <Paperclip className="w-5 h-5" />
                               Gestionar evidencias y observaciones
@@ -2369,10 +2490,27 @@ function SeccionGestionYSeguimiento({
                           <div className="flex gap-3">
                             <button
                               onClick={() => guardarSeguimiento(rol.numero, actividad.id)}
-                              className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2"
+                              disabled={guardando}
+                              className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
+                                guardando 
+                                  ? 'bg-gray-400 cursor-not-allowed' 
+                                  : 'bg-green-600 hover:bg-green-700'
+                              }`}
                             >
-                              <Check className="w-5 h-5" />
-                              Guardar
+                              {guardando ? (
+                                <>
+                                  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                  </svg>
+                                  Guardando...
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-5 h-5" />
+                                  Guardar
+                                </>
+                              )}
                             </button>
                             <button
                               onClick={() => {
@@ -2407,7 +2545,25 @@ function SeccionGestionYSeguimiento({
             .find(r => r.numero === modalAdjuntos.rolNumero)
             ?.actividades.find(a => a.id === modalAdjuntos.actividadId)!}
           onCerrar={() => setModalAdjuntos(null)}
-          onActualizar={(adjuntos, observaciones) => {
+          onActualizar={async (adjuntos, observaciones) => {
+            // Obtener actividad actual
+            const actividad = plan.roles
+              .find(r => r.numero === modalAdjuntos.rolNumero)
+              ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
+            
+            const adjuntosOriginales = actividad?.adjuntos || [];
+            
+            // Intentar sincronizar con backend
+            const actividadIdStr = String(modalAdjuntos.actividadId);
+            
+            await guardarEvidencias(
+              actividadIdStr,
+              adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
+              adjuntosOriginales,
+              observaciones
+            );
+            
+            // Actualizar estado local
             const planActualizado = {
               ...plan,
               roles: plan.roles.map(rol => {
@@ -2426,7 +2582,6 @@ function SeccionGestionYSeguimiento({
               })
             };
             onActualizar(planActualizado);
-            toast.success('Evidencias y observaciones actualizadas correctamente');
           }}
         />
       )}
@@ -2439,8 +2594,8 @@ function SeccionGestionYSeguimiento({
 // ════════════════════════════════════════════════════════════════════════════
 
 function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void }) {
-  const [rolExpandido, setRolExpandido] = useState<number | null>(null);
-  const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | null>(null);
+  const [rolExpandido, setRolExpandido] = useState<number | string | null>(null);
+  const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | string | null>(null);
   const [nuevaActividad, setNuevaActividad] = useState({
     nombre: '',
     descripcion: '',
@@ -2448,7 +2603,7 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
     fechaFin: new Date().toISOString().split('T')[0]
   });
 
-  const asignarResponsable = (rolNumero: number, actividadId: number, auditor: Auditor) => {
+  const asignarResponsable = (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2476,11 +2631,11 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
       return;
     }
 
-    // Obtener el ID más alto actual
-    const maxId = Math.max(...plan.roles.flatMap(r => r.actividades.map(a => a.id)));
+    // Generar UUID para nueva actividad (compatible con backend)
+    const nuevoId = crypto.randomUUID();
 
     const actividadNueva: Actividad = {
-      id: maxId + 1,
+      id: nuevoId,
       nombre: nuevaActividad.nombre,
       descripcion: nuevaActividad.descripcion,
       fechaInicio: nuevaActividad.fechaInicio,
@@ -2490,7 +2645,8 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
       estado: 'PENDIENTE',
       control: 'Seguimiento trimestral',
       evaluacion: '0% avance',
-      seguimiento: 'Por definir'
+      seguimiento: 'Por definir',
+      requiereVerificacionDirector: false
     };
 
     const planActualizado = {
@@ -2519,7 +2675,7 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
     setMostrarFormNuevaActividad(null);
   };
 
-  const eliminarActividad = (rolNumero: number, actividadId: number) => {
+  const eliminarActividad = (rolNumero: number, actividadId: number | string) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2601,7 +2757,7 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
                       </div>
                     ) : (
                       rol.actividades.map((actividad, index) => (
-                        <div key={actividad.id} className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                        <div key={`${rol.numero}-${index}-${actividad.id}`} className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
                             {index + 1}
                           </div>
@@ -2801,8 +2957,8 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
 // ════════════════════════════════════════════════════════════════════════════
 
 function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onAbrirRol4?: () => void }) {
-  const [actividadExpandida, setActividadExpandida] = useState<number | null>(null);
-  const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number; rolNumero: number } | null>(null);
+  const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
+  const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
   const [formulario, setFormulario] = useState({
@@ -2832,7 +2988,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     setActividadExpandida(actividad.id);
   };
 
-  const agregarObservacion = (rolNumero: number, actividadId: number) => {
+  const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
     if (!nuevaObservacion.trim()) {
       toast.error('Observación vacía', { description: 'Debes escribir una observación' });
       return;
@@ -2853,10 +3009,13 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
+                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
+                  ? act.observacionesCumplimiento 
+                  : [];
                 return { 
                   ...act,
                   observacionesCumplimiento: [
-                    ...(act.observacionesCumplimiento || []),
+                    ...obsActuales,
                     nuevaObs
                   ]
                 };
@@ -2874,7 +3033,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     toast.success('Observación agregada', { description: 'Se registró exitosamente' });
   };
 
-  const eliminarObservacion = (rolNumero: number, actividadId: number, observacionId: string) => {
+  const eliminarObservacion = (rolNumero: number, actividadId: number | string, observacionId: string) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2883,9 +3042,12 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
+                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
+                  ? act.observacionesCumplimiento 
+                  : [];
                 return { 
                   ...act,
-                  observacionesCumplimiento: (act.observacionesCumplimiento || []).filter(obs => obs.id !== observacionId)
+                  observacionesCumplimiento: obsActuales.filter((obs: ObservacionCumplimiento) => obs.id !== observacionId)
                 };
               }
               return act;
@@ -2900,7 +3062,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     toast.success('Observación eliminada');
   };
 
-  const agregarResponsableApoyo = (rolNumero: number, actividadId: number, auditor: Auditor) => {
+  const agregarResponsableApoyo = (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2940,7 +3102,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     toast.success('Responsable de apoyo agregado', { description: `${auditor.nombre} se agregó al equipo` });
   };
 
-  const eliminarResponsableApoyo = (rolNumero: number, actividadId: number, auditorId: string) => {
+  const eliminarResponsableApoyo = (rolNumero: number, actividadId: number | string, auditorId: string) => {
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2966,7 +3128,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     toast.success('Responsable de apoyo eliminado');
   };
 
-  const guardarSeguimiento = (rolNumero: number, actividadId: number) => {
+  const guardarSeguimiento = (rolNumero: number, actividadId: number | string) => {
     // Validar si la actividad requiere autorización y está al 100%
     const actividadActual = plan.roles
       .find(r => r.numero === rolNumero)
@@ -3080,7 +3242,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
 
           <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={actividad.id} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
                 {/* Header */}
                 <div className="p-4 bg-gray-50">
                   <div className="flex items-start justify-between mb-3">
@@ -3457,9 +3619,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                               </label>
 
                               {/* Historial de observaciones */}
-                              {actividad.observacionesCumplimiento && actividad.observacionesCumplimiento.length > 0 && (
+                              {Array.isArray(actividad.observacionesCumplimiento) && actividad.observacionesCumplimiento.length > 0 && (
                                 <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
-                                  {actividad.observacionesCumplimiento.map((obs) => (
+                                  {actividad.observacionesCumplimiento.map((obs: ObservacionCumplimiento) => (
                                     <div key={obs.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3 relative group">
                                       <div className="flex items-start gap-2 mb-2">
                                         <div className="flex-1">

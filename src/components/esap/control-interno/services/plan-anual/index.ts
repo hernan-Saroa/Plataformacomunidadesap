@@ -48,6 +48,13 @@ export type {
   
   // Response
   ApiResponse,
+  
+  // Adjuntos y Evidencias (Migración 129)
+  AdjuntoActividad,
+  CreateAdjuntoDto,
+  ConfiguracionEvidencias,
+  RequisitoEvidencia,
+  UpdateActividadExtendidoDto,
 } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -65,6 +72,9 @@ export {
   useCreatePlanAnual,
   useAuditores,
   useActividadesMutations,
+  
+  // Hook para evidencias (Migración 129)
+  useSaveEvidencias,
 } from './hooks';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -77,4 +87,8 @@ export {
   auditoresApi,
   estadisticasApi,
   planAnualService,
+  
+  // APIs de evidencias (Migración 129)
+  adjuntosApi,
+  actividadesExtendidoApi,
 } from './api';

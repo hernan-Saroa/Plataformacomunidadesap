@@ -17,6 +17,7 @@ import {
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
+import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @Controller('plan-anual-5-roles')
@@ -230,6 +231,37 @@ export class PlanAnual5RolesController {
       throw new BadRequestException('planId es requerido');
     }
     return this.service.getIndicadores(planId);
+  }
+
+  // ============ ENDPOINTS DE ADJUNTOS ============
+
+  @Get('actividades/:actividadId/adjuntos')
+  async getAdjuntos(@Param('actividadId') actividadId: string) {
+    if (!actividadId || actividadId === 'undefined') {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    return this.service.getAdjuntos(actividadId);
+  }
+
+  @Post('actividades/:actividadId/adjuntos')
+  @HttpCode(HttpStatus.CREATED)
+  async addAdjunto(
+    @Param('actividadId') actividadId: string,
+    @Body() createDto: CreateAdjuntoDto,
+  ) {
+    if (!actividadId || actividadId === 'undefined') {
+      throw new BadRequestException('actividadId es requerido');
+    }
+    return this.service.addAdjunto(actividadId, createDto);
+  }
+
+  @Delete('adjuntos/:adjuntoId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAdjunto(@Param('adjuntoId') adjuntoId: string) {
+    if (!adjuntoId || adjuntoId === 'undefined') {
+      throw new BadRequestException('adjuntoId es requerido');
+    }
+    await this.service.deleteAdjunto(adjuntoId);
   }
 }
 

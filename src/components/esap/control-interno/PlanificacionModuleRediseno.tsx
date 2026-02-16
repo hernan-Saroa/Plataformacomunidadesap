@@ -349,31 +349,33 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa' }: Pla
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* FOOTER CON INDICADORES */}
+      {/* FOOTER CON INDICADORES - Solo para Universo/Programa */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-3">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-4 text-gray-600">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-blue-600 rounded-full" />
-              <span>Año Fiscal: {filtros.año}</span>
+      {vista !== 'plan-operativo' && (
+        <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-4 text-gray-600">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                <span>Año Fiscal: {filtros.año}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-3 h-3 text-green-600" />
+                <span>{estadisticas.auditoriasAprobadas} aprobadas</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Activity className="w-3 h-3 text-yellow-600" />
+                <span>{estadisticas.cumplimientoPrograma}% cumplimiento</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-3 h-3 text-green-600" />
-              <span>{estadisticas.auditoriasAprobadas} aprobadas</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Activity className="w-3 h-3 text-yellow-600" />
-              <span>{estadisticas.cumplimientoPrograma}% cumplimiento</span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 text-gray-500">
-            <BarChart3 className="w-3 h-3" />
-            <span>Última actualización: Hoy 14:30</span>
+            <div className="flex items-center gap-2 text-gray-500">
+              <BarChart3 className="w-3 h-3" />
+              <span>Última actualización: Hoy 14:30</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

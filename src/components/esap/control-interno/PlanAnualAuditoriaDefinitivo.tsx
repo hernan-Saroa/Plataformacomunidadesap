@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto } from './services/plan-anual';
+import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi } from './services/plan-anual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -54,7 +54,7 @@ interface Auditor {
 }
 
 interface Actividad {
-  id: number;
+  id: number | string;
   nombre: string;
   descripcion: string;
   fechaInicio: string;
@@ -1188,12 +1188,17 @@ FIN MOCK crearPlanConDatosMock */
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanAnualAuditoriaDefinitivo() {
-  const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('dashboard');
+  const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // SELECTOR DE AÑO
+  // ═══════════════════════════════════════════════════════════════════════
+  const añoActual = new Date().getFullYear();
+  const [añoSeleccionado, setAñoSeleccionado] = useState(añoActual);
   
   // ═══════════════════════════════════════════════════════════════════════
   // CARGA DESDE BACKEND - Plan Anual y Auditores
   // ═══════════════════════════════════════════════════════════════════════
-  const añoActual = new Date().getFullYear();
   const {
     plan: planDesdeBackend,
     auditores,
@@ -1205,7 +1210,7 @@ export function PlanAnualAuditoriaDefinitivo() {
     updateActividad,
     deleteActividad,
     updateEstado,
-  } = usePlanAnualCompleto(añoActual);
+  } = usePlanAnualCompleto(añoSeleccionado);
 
   // Estado local para el plan (sincronizado con backend)
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
@@ -1241,25 +1246,38 @@ export function PlanAnualAuditoriaDefinitivo() {
           color: rol.color,
           icono: obtenerIconoRol(rol.rol_numero),
           descripcion: rol.descripcion,
-          actividades: rol.actividades.map(act => ({
-            id: parseInt(act.id) || Math.random(),
-            nombre: act.nombre,
-            descripcion: act.descripcion || '',
-            fechaInicio: act.fecha_inicio,
-            fechaFin: act.fecha_fin,
-            responsable: auditores.find(a => a.nombre === act.responsable) || null,
-            porcentajeAvance: act.porcentaje_avance,
-            estado: act.estado.toUpperCase() as EstadoActividad,
-            control: '',
-            evaluacion: '',
-            seguimiento: act.observaciones || '',
-            requiereVerificacionDirector: false,
-            adjuntos: [],
-            bitacoraObservaciones: []
-          }))
+          actividades: rol.actividades.map(act => {
+            // Cast a any para acceder campos extendidos que vienen del backend
+            const actExtendido = act as any;
+            
+            // Obtener configuración de evidencias del backend (ya viene correcta)
+            const configEvidencias = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;
+            
+            return {
+              id: act.id, // UUID string desde el backend
+              nombre: act.nombre,
+              descripcion: act.descripcion || '',
+              fechaInicio: act.fecha_inicio,
+              fechaFin: act.fecha_fin,
+              responsable: auditores.find(a => a.nombre === act.responsable) || null,
+              porcentajeAvance: act.porcentaje_avance,
+              estado: act.estado.toUpperCase() as EstadoActividad,
+              control: actExtendido.control || '',
+              evaluacion: actExtendido.evaluacion || '',
+              seguimiento: actExtendido.seguimiento || act.observaciones || '',
+              requiereVerificacionDirector: actExtendido.requiere_verificacion_director || actExtendido.requiereVerificacionDirector || false,
+              verificadaPorDirector: actExtendido.verificada_por_director || actExtendido.verificadaPorDirector || false,
+              fechaVerificacion: actExtendido.fecha_verificacion || actExtendido.fechaVerificacion,
+              observacionesDirector: actExtendido.observaciones_director || actExtendido.observacionesDirector,
+              configuracionEvidencias: configEvidencias,
+              adjuntos: actExtendido.adjuntos || [],
+              bitacoraObservaciones: actExtendido.bitacoraObservaciones || []
+            };
+          })
         }))
       };
       setPlanActual(planTransformado);
+      setVista('dashboard'); // Cambiar a dashboard cuando hay datos
     }
   }, [planDesdeBackend, auditores]);
   
@@ -1267,13 +1285,68 @@ export function PlanAnualAuditoriaDefinitivo() {
   // TODO: GET /plan-anual-5-roles para traer histórico
   const [planesAnteriores] = useState<PlanAnual[]>([]);
 
-  const handleCrearPlan = (vigencia: number, jefeOCI: Auditor, rolesConfig: any) => {
-    const nuevoPlan = crearPlanInicial(vigencia, jefeOCI, rolesConfig);
-    setPlanActual(nuevoPlan);
-    setVista('dashboard');
-    toast.success('Plan creado exitosamente', {
-      description: `Plan anual de auditoría ${vigencia} iniciado en estado borrador`
+  // Hook para crear plan en backend
+  const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
+
+  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[]) => {
+    // Crear plan en backend
+    const planCreado = await crearPlanEnBackend({
+      año: vigencia,
+      responsable: jefeOCI.nombre
     });
+
+    if (planCreado && planCreado.roles) {
+      // Crear actividades para cada rol
+      for (const rolConfig of rolesConfig) {
+        // Buscar el rol correspondiente en el plan creado
+        const rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rolConfig.numero);
+        
+        if (rolBackend) {
+          // Combinar actividades seleccionadas y custom
+          const todasActividades = [
+            ...(rolConfig.actividadesSeleccionadas || []),
+            ...(rolConfig.actividadesCustom || [])
+          ];
+
+          // Crear cada actividad en el backend
+          for (let i = 0; i < todasActividades.length; i++) {
+            const act = todasActividades[i];
+            // Asignar responsable rotativo de los responsables del rol
+            const responsables = rolConfig.responsables || [];
+            const responsable = responsables.length > 0 
+              ? responsables[i % responsables.length]?.nombre 
+              : jefeOCI.nombre;
+
+            await actividadesApi.create(rolBackend.id, {
+              nombre: act.nombre,
+              descripcion: act.descripcion || '',
+              responsable: responsable,
+              fecha_inicio: act.fechaInicio || `${vigencia}-01-01`,
+              fecha_fin: act.fechaFin || `${vigencia}-12-31`,
+              observaciones: act.seguimiento || '',
+              // Campos nuevos migración 129
+              control: act.control || '',
+              evaluacion: act.evaluacion || '',
+              seguimiento: act.seguimiento || '',
+              requiereVerificacionDirector: act.requiereVerificacionDirector || false,
+              configuracionEvidencias: act.configuracionEvidencias || undefined
+            });
+          }
+        }
+      }
+
+      // Recargar datos del backend
+      await recargarPlan();
+      setVista('dashboard');
+      toast.success('Plan creado exitosamente', {
+        description: `Plan anual ${vigencia} con actividades guardado en el sistema`
+      });
+    } else {
+      // Error al crear - NO cargar datos mock, solo mostrar error
+      toast.error('Error al crear el plan', {
+        description: 'Verifique que el año sea válido (2020-2028) y vuelva a intentar'
+      });
+    }
   };
   
   // ═══════════════════════════════════════════════════════════════════════
@@ -1290,8 +1363,51 @@ export function PlanAnualAuditoriaDefinitivo() {
   };
   FIN MOCK handleCrearPlanConMock */
 
+  // Mostrar loading mientras carga
+  if (cargandoDatos) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50/30">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
+        <p className="text-gray-600">Cargando plan anual...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
+      {/* Selector de Año */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Calendar className="w-5 h-5 text-blue-600" />
+            <span className="text-sm font-medium text-gray-700">Año del Plan:</span>
+            <select
+              value={añoSeleccionado}
+              onChange={(e) => {
+                setAñoSeleccionado(parseInt(e.target.value));
+                setPlanActual(null); // Resetear plan al cambiar año
+                setVista('inicio');
+              }}
+              className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {[2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028].map(año => (
+                <option key={año} value={año}>{año}</option>
+              ))}
+            </select>
+          </div>
+          {planDesdeBackend && (
+            <span className="text-sm text-green-600 font-medium">
+              ✓ Plan {añoSeleccionado} encontrado
+            </span>
+          )}
+          {!planDesdeBackend && !cargandoDatos && (
+            <span className="text-sm text-amber-600 font-medium">
+              No existe plan para {añoSeleccionado}
+            </span>
+          )}
+        </div>
+      </div>
+
       <AnimatePresence mode="wait">
         {vista === 'inicio' && (
           <PantallaInicio

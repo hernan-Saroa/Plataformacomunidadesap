@@ -65,8 +65,8 @@ export function usePlanAnualByYear(year: number): UseQueryResult<PlanAnual> & {
 
     const response = await planAnualApi.getByYear(year);
 
-    if (response.success && response.data) {
-      setData(response.data);
+    if (response.success) {
+      setData(response.data || null); // Puede ser null si no existe plan para ese año
     } else {
       setError(response.error || 'Error al cargar el plan anual');
       // No mostrar toast en error 404 (plan no existe aún)
@@ -373,6 +373,108 @@ export function usePlanAnualCompleto(year: number) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// HOOK: GUARDAR EVIDENCIAS (ADJUNTOS Y OBSERVACIONES)
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { adjuntosApi, actividadesExtendidoApi } from './api';
+import type { AdjuntoActividad, CreateAdjuntoDto, UpdateActividadExtendidoDto } from './types';
+
+interface ArchivoLocal {
+  id: string;
+  nombre: string;
+  tipo: string;
+  tamaño: number;
+  fechaCarga: string;
+  cargadoPor: string;
+  url?: string;
+  esNuevo?: boolean; // true si es archivo nuevo que hay que subir al backend
+}
+
+export function useSaveEvidencias() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Guarda evidencias de una actividad en el backend
+   * @param actividadId - UUID de la actividad (string)
+   * @param adjuntos - Lista de adjuntos actuales
+   * @param adjuntosOriginales - Lista de adjuntos antes de editar (para detectar eliminados)
+   * @param observaciones - Texto de observaciones
+   * @returns Promise con booleano de éxito
+   */
+  const guardar = useCallback(async (
+    actividadId: string,
+    adjuntos: ArchivoLocal[],
+    adjuntosOriginales: ArchivoLocal[],
+    observaciones: string
+  ): Promise<boolean> => {
+    // Si el ID no es UUID válido (es número local), solo retornar éxito sin llamar backend
+    const isUUID = typeof actividadId === 'string' && actividadId.length >= 32;
+    if (!isUUID) {
+      return true;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Actualizar observaciones de la actividad
+      const updateResponse = await actividadesExtendidoApi.updateCompleto(actividadId, {
+        observaciones,
+      });
+
+      if (!updateResponse.success) {
+        throw new Error(updateResponse.error || 'Error actualizando observaciones');
+      }
+
+      // 2. Detectar adjuntos eliminados (estaban en originales pero ya no están)
+      const idsActuales = new Set(adjuntos.map(a => a.id));
+      const adjuntosEliminados = adjuntosOriginales.filter(a => !idsActuales.has(a.id));
+
+      // 3. Eliminar adjuntos del backend
+      for (const adj of adjuntosEliminados) {
+        // Solo eliminar si tiene ID de backend (UUID)
+        if (adj.id.length >= 32) {
+          await adjuntosApi.delete(adj.id);
+        }
+      }
+
+      // 4. Crear adjuntos nuevos en el backend
+      const adjuntosNuevos = adjuntos.filter(a => a.esNuevo);
+      console.log('[ADJUNTOS] Adjuntos nuevos a crear:', adjuntosNuevos.length);
+      for (const adj of adjuntosNuevos) {
+        const payload = {
+          nombre: adj.nombre,
+          tipo: adj.tipo,
+          tamanio: adj.tamaño,
+          cargadoPor: adj.cargadoPor,
+          url: adj.url,
+        };
+        console.log('[ADJUNTOS] Creando adjunto:', { actividadId, payload });
+        const result = await adjuntosApi.create(actividadId, payload);
+        console.log('[ADJUNTOS] Resultado:', result);
+      }
+
+      toast.success('Evidencias guardadas correctamente');
+      setLoading(false);
+      return true;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Error guardando evidencias';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      setLoading(false);
+      return false;
+    }
+  }, []);
+
+  return {
+    guardar,
+    loading,
+    error,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -384,4 +486,5 @@ export default {
   useAuditores,
   useActividadesMutations,
   usePlanAnualCompleto,
+  useSaveEvidencias,
 };

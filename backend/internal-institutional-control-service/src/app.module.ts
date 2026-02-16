@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module';
 import { PlanAnual5Roles } from './esap/plan-anual-5-roles/entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './esap/plan-anual-5-roles/entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/actividad-plan-anual-5.entity';
+import { AdjuntoActividadPlanAnual5 } from './esap/plan-anual-5-roles/entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual } from './esap/plan-anual-5-roles/entities/historial-plan-anual.entity';
 import { InformeLey } from './esap/informes-ley/entities/informe-ley.entity';
 import { EntregaInformeLey } from './esap/informes-ley/entities/entrega-informe-ley.entity';
@@ -86,6 +87,7 @@ import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity
             PlanAnual5Roles,
             RolPlanAnual5,
             ActividadPlanAnual5,
+            AdjuntoActividadPlanAnual5,
             HistorialPlanAnual,
             InformeLey,
             EntregaInformeLey,
