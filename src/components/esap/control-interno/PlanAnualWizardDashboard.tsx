@@ -1962,10 +1962,13 @@ function SeccionGestionYSeguimiento({
 
       {/* Lista de roles y actividades con seguimiento */}
       {plan.roles.map((rol) => {
+        const totalActividades = rol.actividades.length;
         const asignadas = rol.actividades.filter(a => a.responsable !== null).length;
         const completadas = rol.actividades.filter(a => a.estado === 'COMPLETADA').length;
         const enProgreso = rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length;
-        const avance = Math.round(rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0) / rol.actividades.length);
+        const avance = totalActividades > 0 
+          ? Math.round(rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0) / totalActividades) 
+          : 0;
         const estaColapsado = rolesColapsados[rol.numero] || false;
         
         return (
@@ -2035,23 +2038,23 @@ function SeccionGestionYSeguimiento({
                     <div className="grid grid-cols-5 gap-3 mb-4">
                       <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
                         <p className="text-xs text-gray-600 mb-1">Total</p>
-                        <p className="text-2xl font-bold text-gray-900">{rol.actividades.length}</p>
+                        <p className="text-2xl font-bold text-gray-900">{totalActividades}</p>
                         <p className="text-[10px] text-gray-500">actividades</p>
                       </div>
                       <div className="bg-purple-50 rounded-lg p-3 text-center border border-purple-200">
                         <p className="text-xs text-purple-600 mb-1">Asignadas</p>
                         <p className="text-2xl font-bold text-purple-700">{asignadas}</p>
-                        <p className="text-[10px] text-purple-600">{Math.round(asignadas/rol.actividades.length*100)}%</p>
+                        <p className="text-[10px] text-purple-600">{totalActividades > 0 ? Math.round(asignadas/totalActividades*100) : 0}%</p>
                       </div>
                       <div className="bg-orange-50 rounded-lg p-3 text-center border border-orange-200">
                         <p className="text-xs text-orange-600 mb-1">En curso</p>
                         <p className="text-2xl font-bold text-orange-700">{enProgreso}</p>
-                        <p className="text-[10px] text-orange-600">{Math.round(enProgreso/rol.actividades.length*100)}%</p>
+                        <p className="text-[10px] text-orange-600">{totalActividades > 0 ? Math.round(enProgreso/totalActividades*100) : 0}%</p>
                       </div>
                       <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
                         <p className="text-xs text-green-600 mb-1">Completadas</p>
                         <p className="text-2xl font-bold text-green-700">{completadas}</p>
-                        <p className="text-[10px] text-green-600">{Math.round(completadas/rol.actividades.length*100)}%</p>
+                        <p className="text-[10px] text-green-600">{totalActividades > 0 ? Math.round(completadas/totalActividades*100) : 0}%</p>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
                         <p className="text-xs text-blue-600 mb-1">Avance</p>

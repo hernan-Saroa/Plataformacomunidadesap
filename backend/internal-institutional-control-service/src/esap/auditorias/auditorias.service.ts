@@ -2466,11 +2466,9 @@ export class AuditoriasService {
           num_identificacion,
           tip_identificacion,
           nom_largo,
-          sig_tercero,
           nom_tercero,
           pri_apellido,
           seg_apellido,
-          seg_nombre,
           dir_email
          FROM auth.personas 
          WHERE id_tercero IS NOT NULL
@@ -2481,7 +2479,7 @@ export class AuditoriasService {
         id: String(p.id_tercero),
         idPersona: Number(p.id_tercero),
         nombre: p.nom_largo || 'Usuario Sin Nombre',
-        iniciales: p.sig_tercero || this.getIniciales(p.nom_largo || 'US'),
+        iniciales: this.getIniciales(p.nom_largo || 'US'),
         tipoIdentificacion: p.tip_identificacion || 'CC',
         numeroIdentificacion: p.num_identificacion || '',
         email: p.dir_email || '',

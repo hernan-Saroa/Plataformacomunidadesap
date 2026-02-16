@@ -16,21 +16,26 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SERVICIO API - Plan Anual (cargar datos desde backend)
+// ═══════════════════════════════════════════════════════════════════════════
+import { usePlanAnualCompleto } from './services/plan-anual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
   BookOpen, Eye, Clock, FileCheck, ChevronRight, X
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { WizardCreacion, DashboardPlan } from './PlanAnualWizardDashboard';
 import { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 import { IntegracionRol4Provider } from './IntegracionRol4Context';
 import {
   ConfiguracionEvidencias,
   ObservacionHistorica,
-  ArchivoAdjunto,
+  // ArchivoAdjunto se define localmente para evitar conflicto de tipos
   CONFIGURACIONES_PREDEFINIDAS
 } from './SistemaEvidenciasActividades';
 
@@ -62,11 +67,11 @@ interface Actividad {
   seguimiento: string;
   
   // ═══════════════════════════════════════════════════════════════════════
-  // SISTEMA DE EVIDENCIAS COMPLETO
+  // SISTEMA DE EVIDENCIAS COMPLETO (opcionales para datos iniciales)
   // ═══════════════════════════════════════════════════════════════════════
   configuracionEvidencias?: ConfiguracionEvidencias; // Configuración de requisitos
-  adjuntos: ArchivoAdjunto[]; // Archivos adjuntos con metadata completa
-  bitacoraObservaciones: ObservacionHistorica[]; // Historial de observaciones
+  adjuntos?: ArchivoAdjunto[]; // Archivos adjuntos con metadata completa (opcional)
+  bitacoraObservaciones?: ObservacionHistorica[]; // Historial de observaciones (opcional)
   
   // ═══════════════════════════════════════════════════════════════════════
   // VERIFICACIÓN DEL DIRECTOR
@@ -109,9 +114,10 @@ interface PlanAnual {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS: AUDITORES DISPONIBLES
+// DATOS MOCK COMENTADOS - Ahora se cargan desde el backend
 // ════════════════════════════════════════════════════════════════════════════
-
+// Los auditores ahora vienen del hook useAuditores()
+/*
 const AUDITORES: Auditor[] = [
   { id: '1', nombre: 'Mario Oswaldo Bernal', cargo: 'Jefe de Control Interno', email: 'mario.bernal@esap.edu.co' },
   { id: '2', nombre: 'Ana María López', cargo: 'Auditora sénior', email: 'ana.lopez@esap.edu.co' },
@@ -119,11 +125,22 @@ const AUDITORES: Auditor[] = [
   { id: '4', nombre: 'Laura Rodríguez', cargo: 'Auditora', email: 'laura.rodriguez@esap.edu.co' },
   { id: '5', nombre: 'Juan Pablo García', cargo: 'Auditor júnior', email: 'juan.garcia@esap.edu.co' }
 ];
+*/
 
 // ════════════════════════════════════════════════════════════════════════════
 // DATOS: ESTRUCTURA OFICIAL DECRETO 648/2017
 // ════════════════════════════════════════════════════════════════════════════
-
+//
+// ⚠️ MOCK DATA - En producción estos datos vienen del backend:
+//    - Los 5 roles se cargan automáticamente al crear un plan
+//    - Endpoint: GET /plan-anual-5-roles/year/:año
+//    - El backend trae plan.roles[] con actividades incluidas
+//    - Hook: usePlanAnualByYear(año) de './services/plan-anual'
+//
+// TODO: Reemplazar por datos de BD cuando el backend esté conectado
+// const { plan } = usePlanAnualByYear(2026);
+// plan.roles contiene los 5 roles con sus actividades
+//
 const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   {
     numero: 1,
@@ -162,7 +179,16 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   }
 ];
 
-// Actividades por rol (basadas en RolesOCI_Estructurado.md)
+// ════════════════════════════════════════════════════════════════════════════
+// ACTIVIDADES POR ROL (basadas en RolesOCI_Estructurado.md)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ MOCK DATA - En producción las actividades vienen del backend:
+//    - Ya incluidas en plan.roles[].actividades[]
+//    - Se pueden agregar nuevas: POST /plan-anual-5-roles/:rolId/actividades
+//    - Se pueden actualizar: PUT /plan-anual-5-roles/actividades/:id
+//    - Hook: useActividadesMutations() de './services/plan-anual'
+//
 const ACTIVIDADES_ROL_1: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvance' | 'estado'>[] = [
   {
     nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP',
@@ -754,9 +780,10 @@ function crearPlanInicial(vigencia: number, jefeOCI: Auditor, rolesConfig?: any)
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCIÓN: CREAR PLAN CON DATOS MOCK (PARA TESTING)
+// FUNCIÓN: CREAR PLAN CON DATOS MOCK (COMENTADA - AHORA SE USA BACKEND)
 // ════════════════════════════════════════════════════════════════════════════
 
+/* MOCK COMENTADO - Ahora los datos vienen del backend via usePlanAnualCompleto()
 function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
   const planBase = crearPlanInicial(vigencia, jefeOCI);
   
@@ -1154,6 +1181,7 @@ function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanAnual {
     roles: rolesConProgreso
   };
 }
+FIN MOCK crearPlanConDatosMock */
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -1163,29 +1191,81 @@ export function PlanAnualAuditoriaDefinitivo() {
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('dashboard');
   
   // ═══════════════════════════════════════════════════════════════════════
-  // CARGAR AUTOMÁTICAMENTE DATOS MOCK (como los demás módulos)
+  // CARGA DESDE BACKEND - Plan Anual y Auditores
   // ═══════════════════════════════════════════════════════════════════════
-  const [planActual, setPlanActual] = useState<PlanAnual | null>(() => {
-    // Inicializar con plan mock de la vigencia actual
-    return crearPlanConDatosMock(new Date().getFullYear(), AUDITORES[0]);
-  });
+  const añoActual = new Date().getFullYear();
+  const {
+    plan: planDesdeBackend,
+    auditores,
+    estadisticas,
+    loading: cargandoDatos,
+    error: errorCarga,
+    refetch: recargarPlan,
+    createActividad,
+    updateActividad,
+    deleteActividad,
+    updateEstado,
+  } = usePlanAnualCompleto(añoActual);
+
+  // Estado local para el plan (sincronizado con backend)
+  const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
+
+  // Función helper para obtener icono según número de rol
+  function obtenerIconoRol(numeroRol: number): string {
+    const iconos: Record<number, string> = {
+      1: '🎯', // Liderazgo estratégico
+      2: '🛡️', // Enfoque hacia la prevención
+      3: '⚠️', // Evaluación de la gestión del riesgo
+      4: '✓', // Evaluación del sistema de control interno
+      5: '⚖️'  // Relación con organismos externos
+    };
+    return iconos[numeroRol] || '📋';
+  }
+
+  // Sincronizar plan del backend con estado local
+  useEffect(() => {
+    if (planDesdeBackend) {
+      // Transformar datos del backend al formato del frontend
+      const planTransformado: PlanAnual = {
+        id: planDesdeBackend.id,
+        vigencia: planDesdeBackend.año,
+        version: 1,
+        estado: planDesdeBackend.estado.toUpperCase() as EstadoPlan,
+        jefeOCI: auditores[0] || { id: '1', nombre: planDesdeBackend.responsable, cargo: 'Jefe de Control Interno', email: '' },
+        fechaCreacion: planDesdeBackend.fecha_creacion,
+        fechaAprobacion: null,
+        actaCICC: null,
+        roles: planDesdeBackend.roles.map(rol => ({
+          numero: rol.rol_numero,
+          nombre: rol.nombre,
+          color: rol.color,
+          icono: obtenerIconoRol(rol.rol_numero),
+          descripcion: rol.descripcion,
+          actividades: rol.actividades.map(act => ({
+            id: parseInt(act.id) || Math.random(),
+            nombre: act.nombre,
+            descripcion: act.descripcion || '',
+            fechaInicio: act.fecha_inicio,
+            fechaFin: act.fecha_fin,
+            responsable: auditores.find(a => a.nombre === act.responsable) || null,
+            porcentajeAvance: act.porcentaje_avance,
+            estado: act.estado.toUpperCase() as EstadoActividad,
+            control: '',
+            evaluacion: '',
+            seguimiento: act.observaciones || '',
+            requiereVerificacionDirector: false,
+            adjuntos: [],
+            bitacoraObservaciones: []
+          }))
+        }))
+      };
+      setPlanActual(planTransformado);
+    }
+  }, [planDesdeBackend, auditores]);
   
-  // Crear planes anteriores para simular histórico del cliente
-  const [planesAnteriores] = useState<PlanAnual[]>(() => {
-    const año = new Date().getFullYear();
-    return [
-      {
-        ...crearPlanConDatosMock(año - 1, AUDITORES[0]),
-        estado: 'CERRADO' as EstadoPlan,
-        fechaAprobacion: `${año - 1}-02-15`
-      },
-      {
-        ...crearPlanConDatosMock(año - 2, AUDITORES[0]),
-        estado: 'CERRADO' as EstadoPlan,
-        fechaAprobacion: `${año - 2}-02-10`
-      }
-    ];
-  });
+  // Planes anteriores - Se cargarán desde backend cuando se implemente
+  // TODO: GET /plan-anual-5-roles para traer histórico
+  const [planesAnteriores] = useState<PlanAnual[]>([]);
 
   const handleCrearPlan = (vigencia: number, jefeOCI: Auditor, rolesConfig: any) => {
     const nuevoPlan = crearPlanInicial(vigencia, jefeOCI, rolesConfig);
@@ -1197,8 +1277,9 @@ export function PlanAnualAuditoriaDefinitivo() {
   };
   
   // ═══════════════════════════════════════════════════════════════════════
-  // FUNCIÓN PARA CARGAR DATOS MOCK (PARA TESTING)
+  // FUNCIÓN PARA CARGAR DATOS MOCK (COMENTADA - AHORA SE USA BACKEND)
   // ═══════════════════════════════════════════════════════════════════════
+  /* MOCK COMENTADO - Ahora los datos vienen del backend
   const handleCrearPlanConMock = () => {
     const planMock = crearPlanConDatosMock(2026, AUDITORES[0]);
     setPlanActual(planMock);
@@ -1207,6 +1288,7 @@ export function PlanAnualAuditoriaDefinitivo() {
       description: '✨ Plan con datos mock para testing completo'
     });
   };
+  FIN MOCK handleCrearPlanConMock */
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
@@ -1220,7 +1302,7 @@ export function PlanAnualAuditoriaDefinitivo() {
               setPlanActual(plan);
               setVista('dashboard');
             }}
-            onCargarMock={handleCrearPlanConMock} // NUEVO: Para cargar datos de prueba
+            // onCargarMock comentado - ahora se carga desde backend
           />
         )}
 
