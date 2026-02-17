@@ -61,4 +61,10 @@ export class CorreoJuridico {
 
     @Column({ name: 'expediente_id', nullable: true })
     expedienteId: string;
+
+    @Column({ length: 20, default: 'ENTRANTE' })
+    direccion: string; // ENTRANTE, ENVIADO
+
+    @Column({ name: 'destinatarios_to', type: 'text', nullable: true })
+    destinatariosTo: string;
 }

@@ -1055,6 +1055,8 @@ export interface CorreoJuridico {
     aiSuggestedCategory?: string;
     isTrained?: boolean;
     expedienteId?: string;
+    direccion?: string; // ENTRANTE, ENVIADO
+    destinatariosTo?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -1064,6 +1066,7 @@ export interface CorreoFilters {
     leido?: boolean;
     urgente?: boolean;
     archivado?: boolean;
+    direccion?: string;
     search?: string;
 }
 
@@ -1136,6 +1139,13 @@ export class CorreosJuridicosService {
      */
     async archive(id: string): Promise<CorreoJuridico> {
         return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/archive`);
+    }
+
+    /**
+     * Unarchive email - restore to original location
+     */
+    async unarchive(id: string): Promise<CorreoJuridico> {
+        return apiClient.patch(`${SERVICE_PREFIX}/correos/${id}/unarchive`);
     }
 
     /**

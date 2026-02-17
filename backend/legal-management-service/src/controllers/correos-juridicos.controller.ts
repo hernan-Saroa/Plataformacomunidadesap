@@ -53,6 +53,7 @@ export class CorreosJuridicosController {
         @Query('leido') leido?: string,
         @Query('urgente') urgente?: string,
         @Query('archivado') archivado?: string,
+        @Query('direccion') direccion?: string,
         @Query('search') search?: string,
     ): Promise<CorreoJuridico[]> {
         const filters: EmailFilters = {};
@@ -61,6 +62,7 @@ export class CorreosJuridicosController {
         if (leido !== undefined) filters.leido = leido === 'true';
         if (urgente !== undefined) filters.urgente = urgente === 'true';
         if (archivado !== undefined) filters.archivado = archivado === 'true';
+        if (direccion) filters.direccion = direccion;
         if (search) filters.search = search;
 
         return this.correosService.getAll(filters);
@@ -91,13 +93,21 @@ export class CorreosJuridicosController {
     }
 
     /**
+     * Unarchive email - restore to original location
+     */
+    @Patch(':id/unarchive')
+    async unarchive(@Param('id') id: string): Promise<CorreoJuridico> {
+        return this.correosService.unarchive(id);
+    }
+
+    /**
      * Send email via Microsoft Graph
      */
     @Post('send')
     @HttpCode(HttpStatus.OK)
     async sendEmail(@Body() dto: SendEmailDto): Promise<{ success: boolean }> {
-        const success = await this.correosService.sendEmail(dto);
-        return { success };
+        const result = await this.correosService.sendEmail(dto);
+        return { success: result.success };
     }
 
     /**
