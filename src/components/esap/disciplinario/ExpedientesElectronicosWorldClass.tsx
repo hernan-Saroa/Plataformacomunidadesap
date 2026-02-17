@@ -7,20 +7,22 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   FolderOpen, Search, Download, Upload, ChevronRight, ChevronDown, FileText, 
   Eye, EyeOff, Calendar, User, AlertCircle,
   FileCheck, FileWarning, Scale, Gavel, AlertTriangle, Shield,
   MessageSquare, Bell, X, Clock, Folders,
   ArrowUp, ArrowDown, History, Info,
-  Paperclip, Send, FileSpreadsheet, List, Printer, Share2
+  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { toast } from 'sonner';
 
 // ============ INTERFACES ============
 
@@ -342,8 +344,11 @@ const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ExpedientesElectronicosWorldClass() {
-  const [expedientes] = useState<ExpedienteElectronico[]>(EXPEDIENTES_EJEMPLO);
-  const [documentos] = useState<Documento[]>(DOCUMENTOS_CRONOLOGICOS);
+  // ✅ Estados para datos del backend
+  const [expedientes, setExpedientes] = useState<ExpedienteElectronico[]>([]);
+  const [documentos, setDocumentos] = useState<Documento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expedienteSeleccionado, setExpedienteSeleccionado] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [busqueda, setBusqueda] = useState('');
@@ -359,6 +364,127 @@ export function ExpedientesElectronicosWorldClass() {
   // ✅ NUEVO: Estado para modal de compartir expediente
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
+
+  // ✅ Función para cargar datos del backend
+  const cargarDatos = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Obtener todos los procesos del backend
+      const procesosBackend = await disciplinaryService.getAllProcesos();
+      
+      // Transformar datos del backend al formato del componente
+      const procesosTransformados: ExpedienteElectronico[] = procesosBackend.map((proceso: any) => {
+        // Mapear etapas del backend a estados del componente
+        const estadoMap: Record<string, ExpedienteElectronico['estado']> = {
+          'VALORACION': 'valoracion',
+          'INDAGACION_PREVIA': 'indagacion',
+          'INDAGACION': 'indagacion',
+          'INVESTIGACION': 'investigacion',
+          'EVALUACION': 'investigacion',
+          'JUZGAMIENTO': 'juzgamiento',
+          'FALLO': 'finalizado',
+          'SEGUNDA_INSTANCIA': 'finalizado'
+        };
+        
+        return {
+          id: proceso.id,
+          radicado: proceso.radicadoProceso,
+          estado: estadoMap[proceso.etapaActual] || 'valoracion',
+          nombreDisciplinado: proceso.news?.disciplinable?.nombre || 'Sin nombre',
+          tipoProceso: proceso.news?.hechos?.substring(0, 50) || 'Proceso Disciplinario',
+          responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
+          fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          totalDocumentos: 0, // Se actualizará al cargar documentos
+          documentosPorTipo: {}
+        };
+      });
+      
+      setExpedientes(procesosTransformados);
+      
+      // Cargar documentos para cada proceso
+      const todosDocumentos: Documento[] = [];
+      for (const proceso of procesosBackend.slice(0, 10)) { // Limitar a 10 procesos para evitar muchas llamadas
+        try {
+          const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
+          if (docsResponse?.documentos) {
+            docsResponse.documentos.forEach((doc: any) => {
+              // Mapear tipo de documento del backend
+              const tipoMap: Record<string, string> = {
+                'auto': 'apertura',
+                'evidencia': 'pruebas',
+                'oficio': 'oficios',
+                'notificacion': 'notificaciones',
+                'acta': 'informes',
+                'otro': 'informes'
+              };
+              
+              todosDocumentos.push({
+                id: doc.id,
+                descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
+                tipologiaDocumental: doc.tipo || 'Documento',
+                anexos: doc.fileType || 'PDF',
+                fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                paginaInicio: 1,
+                paginaFinal: doc.tamaño ? Math.ceil(parseInt(doc.tamaño.replace(/[^0-9]/g, '')) / 50) : 1,
+                formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
+                tamanoKB: doc.tamaño || '0 KB',
+                archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
+                tipo: tipoMap[doc.tipo] || 'informes',
+                tipoNombre: doc.tipo || 'Documento',
+                fechaSubida: doc.fechaCarga || new Date().toISOString(),
+                subidoPor: doc.usuarioCarga || 'Sistema',
+                expedienteId: proceso.id,
+                radicado: proceso.radicadoProceso
+              });
+            });
+          }
+        } catch (docError) {
+          console.warn(`Error cargando documentos del proceso ${proceso.id}:`, docError);
+        }
+      }
+      
+      setDocumentos(todosDocumentos);
+      
+      // Actualizar total de documentos por proceso y documentos por tipo
+      const docsPorProceso = new Map<string, number>();
+      const docsPorTipoPorProceso = new Map<string, Record<string, number>>();
+      
+      todosDocumentos.forEach(doc => {
+        // Contar total por proceso
+        docsPorProceso.set(doc.expedienteId, (docsPorProceso.get(doc.expedienteId) || 0) + 1);
+        
+        // Contar por tipo
+        if (!docsPorTipoPorProceso.has(doc.expedienteId)) {
+          docsPorTipoPorProceso.set(doc.expedienteId, {});
+        }
+        const tipos = docsPorTipoPorProceso.get(doc.expedienteId)!;
+        tipos[doc.tipo] = (tipos[doc.tipo] || 0) + 1;
+      });
+      
+      setExpedientes(prev => prev.map(exp => ({
+        ...exp,
+        totalDocumentos: docsPorProceso.get(exp.id) || 0,
+        documentosPorTipo: docsPorTipoPorProceso.get(exp.id) || {}
+      })));
+      
+    } catch (err: any) {
+      console.error('Error cargando datos del backend:', err);
+      setError(err.message || 'Error al cargar los datos del servidor');
+      toast.error('Error al cargar los expedientes electrónicos');
+      // Usar datos de ejemplo como fallback
+      setExpedientes(EXPEDIENTES_EJEMPLO);
+      setDocumentos(DOCUMENTOS_CRONOLOGICOS);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ✅ Cargar datos al montar el componente
+  useEffect(() => {
+    cargarDatos();
+  }, [cargarDatos]);
 
   // Toggle expandir/colapsar expediente
   const toggleExpediente = (expedienteId: string) => {
@@ -995,9 +1121,35 @@ export function ExpedientesElectronicosWorldClass() {
       {/* ✅ CONTENIDO PRINCIPAL */}
       <div className="flex-1 overflow-auto p-4">
         <div className="max-w-7xl mx-auto">
-          <AnimatePresence mode="wait">
-            {vistaActual === 'cronologica' ? (
-              <motion.div key="cronologica" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          {/* ✅ Estado de carga */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+              <p className="text-sm font-bold text-gray-700">Cargando expedientes electrónicos...</p>
+              <p className="text-xs text-gray-500 mt-1">Obteniendo datos del servidor</p>
+            </div>
+          )}
+
+          {/* ✅ Estado de error */}
+          {error && !loading && (
+            <div className="flex flex-col items-center justify-center py-20">
+              <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+              <p className="text-sm font-bold text-gray-700">Error al cargar los datos</p>
+              <p className="text-xs text-red-500 mt-1 mb-4">{error}</p>
+              <button
+                onClick={cargarDatos}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-bold hover:bg-blue-700 transition"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
+
+          {/* ✅ Contenido normal */}
+          {!loading && !error && (
+            <AnimatePresence mode="wait">
+              {vistaActual === 'cronologica' ? (
+                <motion.div key="cronologica" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 {documentosPorExpediente.length === 0 ? (
                   <div className="text-center py-12">
                     <Clock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -1302,7 +1454,8 @@ export function ExpedientesElectronicosWorldClass() {
                 )}
               </motion.div>
             )}
-          </AnimatePresence>
+            </AnimatePresence>
+          )}
         </div>
       </div>
 

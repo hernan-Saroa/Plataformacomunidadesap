@@ -150,11 +150,59 @@ export function WizardCrearAutoWorldClass({
 
   // Estados de Autos Generados
   const [autosGenerados] = useState<AutoGenerado[]>([]);
-
-  // Datos mock
-  const tiposAutos = TIPOS_AUTOS_MOCK;
+  
+  // Estados para tipos de auto desde backend
+  const [tiposAuto, setTiposAuto] = useState<TipoAuto[]>([]);
+  const [loadingTiposAuto, setLoadingTiposAuto] = useState(true);
 
   // ==================== EFECTOS ====================
+  
+  // Cargar tipos de auto desde el backend
+  useEffect(() => {
+    cargarTiposAuto();
+  }, []);
+
+  const cargarTiposAuto = async () => {
+    setLoadingTiposAuto(true);
+    try {
+      // Cargar autos parametrizados desde el backend
+      const response = await disciplinaryService.getAutosConfigurationActive();
+      
+      // Verificar que la respuesta es un array válido
+      const autosConfig = Array.isArray(response) ? response : [];
+      
+      if (autosConfig.length > 0) {
+        // Mapear los datos del backend al formato del componente
+        // Asegurar que cada ID sea único
+        const tiposMapeados: TipoAuto[] = autosConfig.map((config, index) => ({
+          id: config?.id || config?.tipo || `auto-${config?.tipo}-${index}`,
+          nombre: config?.nombre || 'Sin nombre',
+          descripcion: config?.plantilla || `Tipo de auto: ${config?.nombre || 'desconocido'}`,
+          etapa: (config?.stage as EtapaProcesoId) || 'INVESTIGACION',
+          plantilla: null,
+          activo: config?.estado === 'activo',
+          orden: config?.orden || index,
+          fechaCreacion: config?.createdAt || new Date().toISOString(),
+          fechaModificacion: config?.updatedAt || new Date().toISOString()
+        }));
+        
+        // Ordenar por orden
+        tiposMapeados.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        
+        setTiposAuto(tiposMapeados);
+      } else {
+        // No hay datos en el backend, usar fallback
+        setTiposAuto(TIPOS_AUTOS_MOCK);
+      }
+    } catch (error) {
+      console.error('Error cargando tipos de auto:', error);
+      // Si falla, usar los tipos por defecto - NO romper la app
+      setTiposAuto(TIPOS_AUTOS_MOCK);
+    } finally {
+      setLoadingTiposAuto(false);
+    }
+  };
+
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setFechaAuto(today);
@@ -285,13 +333,21 @@ export function WizardCrearAutoWorldClass({
     setVistaActual('wizard');
   };
 
-  const tiposFiltrados = tiposAutos.filter(tipo => {
-    const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
-    const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                           tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    const tienePlantilla = tipo.plantilla !== null;
-    return cumpleFiltroEtapa && cumpleBusqueda && tienePlantilla;
-  });
+  const tiposFiltrados = loadingTiposAuto 
+    ? [] 
+    : tiposAuto.length > 0 
+      ? tiposAuto.filter(tipo => {
+          const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
+          const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+                                 (tipo.descripcion?.toLowerCase().includes(busqueda.toLowerCase()) ?? false);
+          return cumpleFiltroEtapa && cumpleBusqueda;
+        })
+      : TIPOS_AUTOS_MOCK.filter(tipo => {
+          const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
+          const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+                                 tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+          return cumpleFiltroEtapa && cumpleBusqueda;
+        });
 
   // ==================== RENDER ====================
   return (
@@ -586,7 +642,19 @@ export function WizardCrearAutoWorldClass({
                     </div>
 
                     {/* Grid de Tipos Premium */}
-                    {tiposFiltrados.length === 0 ? (
+                    {loadingTiposAuto ? (
+                      <div className="text-center py-20">
+                        <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-blue-50 flex items-center justify-center">
+                          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <p className="text-base font-bold text-gray-900 mb-2">
+                          Cargando tipos de autos...
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Obteniendo configuración del servidor
+                        </p>
+                      </div>
+                    ) : tiposFiltrados.length === 0 ? (
                       <div className="text-center py-20">
                         <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-gray-100 flex items-center justify-center">
                           <AlertCircle className="w-10 h-10 text-gray-300" />
@@ -602,9 +670,14 @@ export function WizardCrearAutoWorldClass({
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {tiposFiltrados.map((tipo) => {
                           const etapa = ETAPAS_PROCESO[tipo.etapa];
-                          if (!etapa || !tipo.plantilla) return null;
-                          
-                          const Icon = etapa.icon;
+                          // Usar una etapa por defecto si no existe en ETAPAS_PROCESO
+                          const etapaInfo = etapa || {
+                            id: tipo.etapa || 'OTROS',
+                            nombre: tipo.etapa || 'Otros',
+                            color: '#6B7280',
+                            icon: FileText
+                          };
+                          const Icon = etapaInfo.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;
 
                           return (
@@ -637,8 +710,8 @@ export function WizardCrearAutoWorldClass({
                                       seleccionado ? 'scale-110' : 'group-hover:scale-105'
                                     }`}
                                     style={{ 
-                                      background: `linear-gradient(135deg, ${etapa.color} 0%, ${etapa.color}DD 100%)`,
-                                      boxShadow: `0 8px 16px ${etapa.color}40`
+                                      background: `linear-gradient(135deg, ${etapaInfo.color} 0%, ${etapaInfo.color}DD 100%)`,
+                                      boxShadow: `0 8px 16px ${etapaInfo.color}40`
                                     }}
                                   >
                                     <Icon className="w-7 h-7 text-white" />
@@ -668,9 +741,9 @@ export function WizardCrearAutoWorldClass({
                                     <div className="flex items-center gap-2">
                                       <span
                                         className="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm"
-                                        style={{ backgroundColor: etapa.color }}
+                                        style={{ backgroundColor: etapaInfo.color }}
                                       >
-                                        {etapa.nombre}
+                                        {etapaInfo.nombre}
                                       </span>
                                       {tipo.plantilla && (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
