@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
@@ -144,6 +145,7 @@ export function WizardCrearAutoWorldClass({
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const [observacionesAdjunto, setObservacionesAdjunto] = useState('');
   const [subiendo, setSubiendo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de Autos Generados
@@ -219,22 +221,50 @@ export function WizardCrearAutoWorldClass({
     }
   };
 
-  const handleCrearAuto = () => {
-    toast.success('Auto creado exitosamente', {
-      description: `Se ha generado el auto ${tipoSeleccionado?.nombre}`,
-      duration: 4000,
-    });
-    
-    if (onAutoCreado) {
-      onAutoCreado({
-        tipo: tipoSeleccionado?.nombre,
-        fecha: fechaAuto,
-        observaciones,
-        archivo: archivoAdjunto?.name
-      });
+  const handleCrearAuto = async () => {
+    if (!tipoSeleccionado) {
+      toast.error('Debes seleccionar un tipo de auto');
+      return;
     }
-    
-    onClose();
+    if (!fechaAuto) {
+      toast.error('Debes ingresar la fecha del auto');
+      return;
+    }
+    if (!archivoAdjunto) {
+      toast.error('Debes adjuntar el archivo del auto');
+      return;
+    }
+
+    try {
+      setGuardando(true);
+      const autoCreado = await disciplinaryService.crearAuto({
+        processId: proceso.id,
+        tipoAuto: tipoSeleccionado.nombre,
+        contenidoHtml: `<p>${observaciones || 'Auto generado desde wizard'}</p>`,
+        comentarios: observacionesAdjunto || observaciones,
+        documentName: archivoAdjunto.name,
+        documentType: archivoAdjunto.type,
+        documentSize: archivoAdjunto.size
+      });
+
+      toast.success('Auto creado exitosamente', {
+        description: autoCreado.numero || `Se ha generado el auto ${tipoSeleccionado.nombre}`,
+        duration: 4000,
+      });
+
+      if (onAutoCreado) {
+        onAutoCreado(autoCreado);
+      }
+
+      onClose();
+    } catch (error) {
+      console.error('Error al crear auto:', error);
+      toast.error('No se pudo crear el auto', {
+        description: 'Verifica que el proceso exista en backend y vuelve a intentar'
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const resetearWizard = () => {
@@ -1141,11 +1171,12 @@ export function WizardCrearAutoWorldClass({
                 ) : (
                   <button
                     onClick={handleCrearAuto}
-                    className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                    disabled={guardando}
+                    className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
                   >
                     <Send className="w-4 h-4" />
-                    <span>Crear Auto</span>
+                    <span>{guardando ? 'Guardando...' : 'Crear Auto'}</span>
                   </button>
                 )}
               </div>

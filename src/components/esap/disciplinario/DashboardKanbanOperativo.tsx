@@ -46,6 +46,7 @@ import { ModalAsociarProcesoAProceso } from './ModalAsociarProcesoAProceso'; // 
 import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Utilidades de conversión
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
+import { disciplinaryService, DisciplinaryNews as ApiNoticia, DisciplinaryProcess as ApiProceso } from '../../../services/api/disciplinary.service';
 // import { ModalGenerarAuto } from './ModalGenerarAuto'; // ✅ ELIMINADO
 // import type { PlantillaAuto } from './SeccionPlantillasAutos'; // ✅ ELIMINADO
 
@@ -2147,6 +2148,125 @@ export function DashboardKanbanOperativo({
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<any>(null);
+
+  const mapStageToUi = (stage?: string): Proceso['etapaActual'] => {
+    const key = (stage || '').toString().trim().toUpperCase();
+    switch (key) {
+      case 'RECEPCION':
+        return 'Recepción';
+      case 'EVALUACION':
+      case 'VALORACION':
+        return 'Valoración';
+      case 'INDAGACION':
+      case 'INDAGACION_PREVIA':
+        return 'Indagación';
+      case 'INVESTIGACION':
+        return 'Investigación';
+      case 'JUZGAMIENTO':
+        return 'Juzgamiento';
+      case 'FALLO':
+        return 'Fallo';
+      default:
+        return 'Recepción';
+    }
+  };
+
+  const mapEstadoNoticia = (estado?: ApiNoticia['estado']): Noticia['estado'] => {
+    switch (estado) {
+      case 'ASIGNADA':
+        return 'asignada';
+      case 'EN_VALORACION':
+        return 'en-valoracion';
+      case 'DEVUELTA':
+        return 'archivada';
+      default:
+        return 'pendiente';
+    }
+  };
+
+  const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
+    const denuncianteRaw: any = Array.isArray((noticia as any).denunciante)
+      ? (noticia as any).denunciante[0]
+      : (noticia as any).denunciante || {};
+    const denunciadoRaw: any = Array.isArray((noticia as any).disciplinable)
+      ? (noticia as any).disciplinable[0]
+      : (noticia as any).disciplinable || {};
+
+    return {
+      id: (noticia as any).id || `n${Date.now()}`,
+      numero: (noticia as any).radicado || `ND-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+      fechaRecepcion: ((noticia as any).fechaRecepcion || new Date().toISOString()).split('T')[0],
+      origen: (noticia as any).origen || 'ANONIMO',
+      denunciante: {
+        nombre: denuncianteRaw.nombre || 'Sin denunciante',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || 'N/A'
+      },
+      denunciado: {
+        nombre: denunciadoRaw.nombre || 'Sin denunciado',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A'
+      },
+      hechos: (noticia as any).hechos || '',
+      estado: mapEstadoNoticia((noticia as any).estado),
+      prioridad: 'media',
+      diasPendientes: 0,
+      tipo: 'noticia'
+    };
+  };
+
+  const toProcesoFromApi = (proceso: ApiProceso): Proceso => {
+    const denuncianteRaw: any = Array.isArray((proceso as any).news?.denunciante)
+      ? (proceso as any).news.denunciante[0]
+      : (proceso as any).news?.denunciante || {};
+    const denunciadoRaw: any = Array.isArray((proceso as any).news?.disciplinable)
+      ? (proceso as any).news.disciplinable[0]
+      : (proceso as any).news?.disciplinable || {};
+    const diasRestantes = (proceso as any).fechaVencimientoEtapa
+      ? Math.ceil((new Date((proceso as any).fechaVencimientoEtapa).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : 0;
+    const porcentajeTiempo = typeof (proceso as any).timePercentage === 'number'
+      ? Math.round((proceso as any).timePercentage)
+      : 0;
+    const semaforo: Proceso['semaforo'] = diasRestantes <= 0
+      ? 'rojo'
+      : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+
+    return {
+      id: (proceso as any).id,
+      numeroProceso: (proceso as any).radicadoProceso || 'N/A',
+      noticiaOrigen: (proceso as any).news?.radicado || 'N/A',
+      denunciante: {
+        nombre: denuncianteRaw.nombre || 'Sin denunciante',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: denuncianteRaw.cedula || 'N/A'
+      },
+      denunciado: {
+        nombre: denunciadoRaw.nombre || 'Sin denunciado',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: denunciadoRaw.cedula || 'N/A'
+      },
+      cedula: denunciadoRaw.cedula || 'N/A',
+      etapaActual: mapStageToUi((proceso as any).kanbanStage || (proceso as any).etapaActual),
+      estadoActual: (proceso as any).estado || 'ACTIVO',
+      profesionalAsignado: {
+        nombre: (proceso as any).abogadoAsignadoNombre || 'Sin asignar',
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (proceso as any).abogadoAsignadoId || ''
+      },
+      profesionalAsignadoId: (proceso as any).abogadoAsignadoId || '',
+      semaforo,
+      diasRestantes,
+      porcentajeTiempo,
+      borradores: Array((proceso as any).draftsCount || 0).fill({}),
+      documentos: Array((proceso as any).documentsCount || 0).fill({}),
+      pendienteAprobacion: false,
+      ultimaActuacion: 'Actualizado desde backend',
+      fechaCreacion: ((proceso as any).createdAt || new Date().toISOString()).split('T')[0],
+      tipo: 'proceso',
+      hechos: (proceso as any).news?.hechos || ''
+    };
+  };
   
   // ✅ ELIMINADO: Estados y handlers de Generar Auto - Ya cubierto con funciones maduras
   // const [plantillasAutos, setPlantillasAutos] = useState<PlantillaAuto[]>([]);
@@ -2182,6 +2302,33 @@ export function DashboardKanbanOperativo({
     } catch (error) {
       console.error('Error al cargar entidades de remisión:', error);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const cargarProcesosYNoticias = async () => {
+      try {
+        const [noticiasApi, procesosApi] = await Promise.all([
+          disciplinaryService.getAllNoticias(),
+          disciplinaryService.getAllProcesos()
+        ]);
+
+        if (cancelled) return;
+
+        const noticias = (noticiasApi || []).map(toNoticiaFromApi);
+        const procesos = (procesosApi || []).map(toProcesoFromApi);
+        setItems([...noticias, ...procesos]);
+      } catch (error) {
+        console.error('Error cargando submódulo de procesos desde API:', error);
+        // fallback a mock ya cargado en el estado inicial
+      }
+    };
+
+    cargarProcesosYNoticias();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ✅ Auto-activar vista compacta en mobile y tablet
@@ -2262,25 +2409,101 @@ export function DashboardKanbanOperativo({
     }
   };
 
-  const handleCrearNoticia = (data: any) => {
-    const nuevaNoticia: Noticia = {
-      id: `n${Date.now()}`,
-      numero: `ND-2025-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-      fechaRecepcion: new Date().toISOString().split('T')[0],
-      origen: data.origen || 'Denuncia Ciudadana',
-      denunciado: data.denunciado?.nombre || '',
-      hechos: data.descripcionHechos || '',
-      estado: 'pendiente',
-      prioridad: 'media',
-      diasPendientes: 0,
-      tipo: 'noticia'
-    };
+  const mapearOrigenNoticia = (valor: string) => {
+    const limpio = (valor || '').toString().trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    setItems(prev => [...prev, nuevaNoticia]);
-    toast.success('Noticia Creada', {
-      description: `${nuevaNoticia.numero} en Recepción`
-    });
-    setModalActivo(null);
+    switch (limpio) {
+      case 'QUEJOSO':
+        return 'QUEJOSO';
+      case 'ANONIMO':
+        return 'ANONIMO';
+      case 'INFORMANTE':
+      case 'OFICIO':
+      case 'DE OFICIO':
+        return 'OFICIO';
+      case 'REMISION':
+      case 'REMISION POR COMPETENCIA':
+        return 'REMISION';
+      default:
+        return 'ANONIMO';
+    }
+  };
+
+  const handleCrearNoticia = async (data: any) => {
+    try {
+      const denuncianteBase = Array.isArray(data.denunciantes) && data.denunciantes.length > 0
+        ? data.denunciantes[0]
+        : data.denunciante;
+      const denunciadoBase = Array.isArray(data.denunciados) && data.denunciados.length > 0
+        ? data.denunciados[0]
+        : data.denunciado;
+
+      const hechosConsolidados = Array.isArray(data.hechosSeparados) && data.hechosSeparados.length > 0
+        ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+        : (data.descripcionHechos || '');
+
+      const payload = {
+        origen: mapearOrigenNoticia(data.origen || 'ANONIMO'),
+        fechaQueja: data.fechaQueja || undefined,
+        territorial: data.territorial || 'Dirección Nacional',
+        dependenciaDenunciado: denunciadoBase?.lugarHechos || denunciadoBase?.dependencia || 'Por determinar',
+        hechos: hechosConsolidados,
+        conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : (data.conductasSeleccionadas || []),
+        denunciante: {
+          nombre: denuncianteBase?.nombre || 'Sin denunciante',
+          cedula: denuncianteBase?.identificacion || denuncianteBase?.numeroIdentificacion || 'N/A',
+          cargo: denuncianteBase?.cargo || '',
+          telefono: denuncianteBase?.telefono || '',
+          email: denuncianteBase?.correo || denuncianteBase?.email || '',
+          direccion: denuncianteBase?.direccion || '',
+          entidad: denuncianteBase?.entidad || '',
+          dependencia: denuncianteBase?.dependencia || ''
+        },
+        disciplinable: {
+          nombre: denunciadoBase?.nombre || 'Sin denunciado',
+          cedula: denunciadoBase?.identificacion || denunciadoBase?.numeroIdentificacion || 'N/A',
+          cargo: denunciadoBase?.cargo || '',
+          dependencia: denunciadoBase?.lugarHechos || denunciadoBase?.dependencia || 'Por determinar'
+        },
+        adjuntos: (data.archivosAdjuntos || []).map((f: File) => f.name)
+      };
+
+      const apiNoticia = await disciplinaryService.radicarNoticia(payload as any, data.archivosAdjuntos || []);
+
+      const nuevaNoticia: Noticia = {
+        id: apiNoticia.id || `n${Date.now()}`,
+        numero: apiNoticia.radicado || `ND-${new Date().getFullYear()}-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
+        fechaRecepcion: (apiNoticia.fechaRecepcion || new Date().toISOString()).split('T')[0],
+        origen: apiNoticia.origen || payload.origen,
+        denunciante: {
+          nombre: apiNoticia.denunciante?.nombre || payload.denunciante.nombre,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: apiNoticia.denunciante?.cedula || payload.denunciante.cedula
+        },
+        denunciado: {
+          nombre: apiNoticia.disciplinable?.nombre || payload.disciplinable.nombre,
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: apiNoticia.disciplinable?.cedula || payload.disciplinable.cedula
+        },
+        hechos: apiNoticia.hechos || payload.hechos,
+        estado: 'pendiente',
+        prioridad: 'media',
+        diasPendientes: 0,
+        tipo: 'noticia'
+      };
+
+      setItems(prev => [...prev, nuevaNoticia]);
+      toast.success('Noticia creada correctamente', {
+        description: `${nuevaNoticia.numero} en Recepción`
+      });
+      setModalActivo(null);
+    } catch (error) {
+      console.error('Error al crear noticia:', error);
+      toast.error('No se pudo crear la noticia', {
+        description: 'Verifica la conexión con el backend y los datos obligatorios'
+      });
+    }
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
@@ -2383,10 +2606,38 @@ export function DashboardKanbanOperativo({
     setMostrarModalEditar(true);
   };
 
-  const handleConfirmarConversion = () => {
+  const handleConfirmarConversion = async () => {
     if (!profesionalSeleccionado) {
       toast.error('Error', { description: 'Selecciona un profesional' });
       return;
+    }
+    if (!itemSeleccionado) return;
+
+    try {
+      const abogadoId = `prof-${profesionalSeleccionado.toLowerCase().replace(/\s+/g, '-')}`;
+      const procesoApi = await disciplinaryService.asignarProceso({
+        newsId: itemSeleccionado.id,
+        abogadoId,
+        abogadoNombre: profesionalSeleccionado
+      });
+
+      const nuevoProceso = toProcesoFromApi(procesoApi);
+
+      setItems(prev => [
+        ...prev.filter(i => i.id !== itemSeleccionado.id),
+        nuevoProceso
+      ]);
+
+      toast.success('Proceso Creado', {
+        description: `${nuevoProceso.numeroProceso} → ${profesionalSeleccionado}`
+      });
+
+      setModalActivo(null);
+      setItemSeleccionado(null);
+      return;
+    } catch (error) {
+      console.error('Error convirtiendo noticia a proceso:', error);
+      // fallback local para no bloquear operación en entornos sin endpoint
     }
 
     const nuevoProceso: Proceso = {
