@@ -76,7 +76,8 @@ export function ConfiguracionPlantillasAutos() {
           nombreArchivo: 'plantilla.docx',
           descripcion: 'Plantilla almacenada en BD',
           tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          url: auto.plantilla,
+          url: auto.plantilla || '',
+          tamano: 0,
           version: '1.0',
           fechaCreacion: auto.createdAt,
           activo: true

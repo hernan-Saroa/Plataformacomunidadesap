@@ -108,9 +108,12 @@ export interface PlantillaArchivo {
   nombre: string;
   nombreArchivo: string;
   descripcion: string;
-  tipoArchivo: string;
+  url: string;
+  tamano: number;
+  tipoArchivo?: string;
   version: string;
   fechaCreacion: string;
+  fechaModificacion?: string;
   activo: boolean;
 }
 
