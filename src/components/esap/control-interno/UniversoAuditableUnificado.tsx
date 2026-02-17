@@ -24,7 +24,8 @@ import {
   Layers, Calendar as CalendarIcon, Target, Filter, Search, Download, Plus,
   BarChart3, Activity, AlertTriangle, CheckCircle2, Clock,
   TrendingUp, Users, FileText, Link2, Eye, Edit2, Trash2,
-  ChevronRight, AlertCircle, Info, X, FileCheck, Save, XCircle
+  ChevronRight, AlertCircle, Info, X, FileCheck, Save, XCircle,
+  Loader2, WifiOff, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
@@ -35,302 +36,22 @@ import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 
 import { TooltipGuia } from './TooltipGuia';
-import type { ProcesoAuditable } from '@/types/control-interno';
-// ✅ ELIMINADO: import { PROCESOS_MOCK_CON_DAFP } from '@/data/procesos-mock-dafp';
+// ✅ HOOKS DE INTEGRACIÓN CON BACKEND (reemplazan datos mock)
+import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
+import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI } from './hooks/useProgramaAnualData';
+import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - PROCESOS AUDITABLES
-// ════════════════════════════════════════════════════════════════════════════
-
-const PROCESOS_MOCK_CON_DAFP: ProcesoAuditable[] = [
-  {
-    id: 'proc-mock-001',
-    nombre: 'Gestión Presupuestal',
-    tipo: 'Apoyo',
-    descripcion: 'Proceso de planeación, ejecución y control del presupuesto institucional',
-    responsable: 'Dirección Financiera',
-    nivelRiesgo: 'Alto',
-    puntajeRiesgo: 85,
-    calificacionDafp: 4.2,
-    categoria: 'Financiero',
-    auditable: true,
-    ultimaAuditoria: '2025-06-15',
-    frecuenciaAuditoria: 'Anual',
-    activo: true
-  },
-  {
-    id: 'proc-mock-002',
-    nombre: 'Gestión Contractual',
-    tipo: 'Apoyo',
-    descripcion: 'Proceso de contratación y supervisión de contratos',
-    responsable: 'Subdirección Administrativa',
-    nivelRiesgo: 'Crítico',
-    puntajeRiesgo: 92,
-    calificacionDafp: 3.8,
-    categoria: 'Administrativo',
-    auditable: true,
-    ultimaAuditoria: '2025-08-20',
-    frecuenciaAuditoria: 'Anual',
-    activo: true
-  },
-  {
-    id: 'proc-mock-003',
-    nombre: 'Gestión de Nómina',
-    tipo: 'Apoyo',
-    descripcion: 'Proceso de liquidación y pago de nómina a funcionarios',
-    responsable: 'Talento Humano',
-    nivelRiesgo: 'Alto',
-    puntajeRiesgo: 78,
-    calificacionDafp: 4.5,
-    categoria: 'Financiero',
-    auditable: true,
-    ultimaAuditoria: '2025-09-10',
-    frecuenciaAuditoria: 'Anual',
-    activo: true
-  },
-  {
-    id: 'proc-mock-004',
-    nombre: 'Admisiones y Registro Académico',
-    tipo: 'Misional',
-    descripcion: 'Proceso de admisión de estudiantes y gestión de registros académicos',
-    responsable: 'Dirección Académica',
-    nivelRiesgo: 'Medio',
-    puntajeRiesgo: 65,
-    calificacionDafp: 4.7,
-    categoria: 'Académico',
-    auditable: true,
-    ultimaAuditoria: '2024-11-05',
-    frecuenciaAuditoria: 'Bienal',
-    activo: true
-  },
-  {
-    id: 'proc-mock-005',
-    nombre: 'Docencia',
-    tipo: 'Misional',
-    descripcion: 'Proceso de planeación, ejecución y evaluación de actividades docentes',
-    responsable: 'Vicerrectoría Académica',
-    nivelRiesgo: 'Medio',
-    puntajeRiesgo: 58,
-    calificacionDafp: 4.8,
-    categoria: 'Académico',
-    auditable: true,
-    ultimaAuditoria: '2025-03-12',
-    frecuenciaAuditoria: 'Bienal',
-    activo: true
-  },
-  {
-    id: 'proc-mock-006',
-    nombre: 'Seguridad de la Información',
-    tipo: 'Apoyo',
-    descripcion: 'Proceso de gestión de seguridad de la información y ciberseguridad',
-    responsable: 'Dirección de Tecnología',
-    nivelRiesgo: 'Crítico',
-    puntajeRiesgo: 88,
-    calificacionDafp: 4.1,
-    categoria: 'Tecnológico',
-    auditable: true,
-    ultimaAuditoria: '2025-05-20',
-    frecuenciaAuditoria: 'Anual',
-    activo: true
-  }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// TIPOS
+// TIPOS LOCALES (re-exportados desde hooks)
 // ════════════════════════════════════════════════════════════════════════════
 
 type TabActiva = 'universo' | 'programa' | 'vinculacion';
 type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
-type EstadoAuditoria = 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
-type TipoAuditoria = 'CUMPLIMIENTO' | 'GESTION' | 'FINANCIERA' | 'TI' | 'ESPECIAL';
 type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
-interface ProcesoAuditable {
-  id: string;
-  nombre: string;
-  tipo: TipoProceso;
-  descripcion: string;
-  responsable: string;
-  nivelRiesgo: NivelRiesgo;
-  puntajeRiesgo: number; // 0-100
-  calificacionDafp: number; // 1-5
-  categoria: string;
-  auditable: boolean;
-  ultimaAuditoria?: string;
-  frecuenciaAuditoria: 'Anual' | 'Semestral' | 'Bienal' | 'Trienal';
-  activo: boolean;
-}
-
-interface AuditoriaProgramada {
-  id: string;
-  procesoId: string;
-  proceso: ProcesoAuditable;
-  tipo: TipoAuditoria;
-  nombre: string;
-  objetivo: string;
-  alcance: string;
-  fechaInicio: string;
-  fechaFin: string;
-  trimestre: 1 | 2 | 3 | 4;
-  auditorLider: string;
-  equipo: string[];
-  estado: EstadoAuditoria;
-  avance: number;
-  horasEstimadas: number;
-  horasReales: number;
-  auditoriaOCIGId?: string; // Vinculación con módulo de Auditorías
-  planMejoramientoId?: string; // Vinculación con Planes de Mejoramiento
-  hallazgosCount: number;
-}
-
-interface Auditor {
-  id: string;
-  nombre: string;
-  cargo: string;
-  especialidad: string[];
-}
-
-interface Estadisticas {
-  // Universo Auditable
-  totalProcesos: number;
-  procesosAuditables: number;
-  procesosCriticos: number;
-  procesosAltos: number;
-  procesosMedios: number;
-  procesosBajos: number;
-  
-  // Programa Anual
-  totalProgramadas: number;
-  completadas: number;
-  enEjecucion: number;
-  programadas: number;
-  coberturaCriticos: number;
-  coberturaAltos: number;
-  horasTotales: number;
-  horasEjecutadas: number;
-  
-  // Vinculación
-  vinculadasOCIG: number;
-  conHallazgos: number;
-  conPlanesMejoramiento: number;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - AUDITORES
-// ════════════════════════════════════════════════════════════════════════════
-
-const AUDITORES: Auditor[] = [
-  { id: '1', nombre: 'Mario Oswaldo Bernal', cargo: 'Jefe de Control Interno', especialidad: ['Gestión', 'Estrategia'] },
-  { id: '2', nombre: 'Ana María López', cargo: 'Auditora sénior', especialidad: ['Financiera', 'Cumplimiento'] },
-  { id: '3', nombre: 'Carlos Mendoza', cargo: 'Auditor', especialidad: ['TI', 'Gestión'] },
-  { id: '4', nombre: 'Laura Rodríguez', cargo: 'Auditora', especialidad: ['Cumplimiento', 'Gestión'] },
-  { id: '5', nombre: 'Juan Pablo García', cargo: 'Auditor júnior', especialidad: ['Gestión'] }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - AUDITORÍAS PROGRAMADAS
-// ════════════════════════════════════════════════════════════════════════════
-
-const AUDITORIAS_PROGRAMADAS: AuditoriaProgramada[] = [
-  {
-    id: 'aud-2026-001',
-    procesoId: 'proc-mock-001',
-    proceso: PROCESOS_MOCK_CON_DAFP.find(p => p.id === 'proc-mock-001')!,
-    tipo: 'FINANCIERA',
-    nombre: 'Auditoría de Gestión Presupuestal 2026',
-    objetivo: 'Evaluar el cumplimiento normativo y la eficiencia en la ejecución presupuestal',
-    alcance: 'Ejecución presupuestal de ingresos y gastos del primer trimestre 2026',
-    fechaInicio: '2026-03-01',
-    fechaFin: '2026-03-31',
-    trimestre: 1,
-    auditorLider: 'Ana María López',
-    equipo: ['Carlos Mendoza', 'Juan Pablo García'],
-    estado: 'EN_EJECUCION',
-    avance: 45,
-    horasEstimadas: 140,
-    horasReales: 65,
-    auditoriaOCIGId: 'ocig-2026-001',
-    hallazgosCount: 3
-  },
-  {
-    id: 'aud-2026-002',
-    procesoId: 'proc-mock-002',
-    proceso: PROCESOS_MOCK_CON_DAFP.find(p => p.id === 'proc-mock-002')!,
-    tipo: 'CUMPLIMIENTO',
-    nombre: 'Auditoría de Gestión Contractual',
-    objetivo: 'Evaluar el cumplimiento de la normativa de contratación pública',
-    alcance: 'Contratos adjudicados en el segundo semestre 2025',
-    fechaInicio: '2026-02-01',
-    fechaFin: '2026-02-28',
-    trimestre: 1,
-    auditorLider: 'Mario Oswaldo Bernal',
-    equipo: ['Laura Rodríguez'],
-    estado: 'COMPLETADA',
-    avance: 100,
-    horasEstimadas: 120,
-    horasReales: 125,
-    auditoriaOCIGId: 'ocig-2026-002',
-    planMejoramientoId: 'pm-2026-001',
-    hallazgosCount: 5
-  },
-  {
-    id: 'aud-2026-003',
-    procesoId: 'proc-mock-003',
-    proceso: PROCESOS_MOCK_CON_DAFP.find(p => p.id === 'proc-mock-003')!,
-    tipo: 'CUMPLIMIENTO',
-    nombre: 'Auditoría de Gestión de Nómina',
-    objetivo: 'Verificar cumplimiento normativo en liquidación de nómina',
-    alcance: 'Nómina y prestaciones sociales del año 2025',
-    fechaInicio: '2026-04-01',
-    fechaFin: '2026-04-30',
-    trimestre: 2,
-    auditorLider: 'Ana María López',
-    equipo: ['Laura Rodríguez', 'Juan Pablo García'],
-    estado: 'PROGRAMADA',
-    avance: 0,
-    horasEstimadas: 160,
-    horasReales: 0,
-    hallazgosCount: 0
-  },
-  {
-    id: 'aud-2026-004',
-    procesoId: 'proc-mock-005',
-    proceso: PROCESOS_MOCK_CON_DAFP.find(p => p.id === 'proc-mock-005')!,
-    tipo: 'GESTION',
-    nombre: 'Auditoría al Proceso de Docencia',
-    objetivo: 'Evaluar la calidad y efectividad del proceso de docencia',
-    alcance: 'Programas académicos de pregrado y posgrado 2025',
-    fechaInicio: '2026-05-01',
-    fechaFin: '2026-05-31',
-    trimestre: 2,
-    auditorLider: 'Carlos Mendoza',
-    equipo: ['Laura Rodríguez'],
-    estado: 'PROGRAMADA',
-    avance: 0,
-    horasEstimadas: 150,
-    horasReales: 0,
-    hallazgosCount: 0
-  },
-  {
-    id: 'aud-2026-005',
-    procesoId: 'proc-mock-006',
-    proceso: PROCESOS_MOCK_CON_DAFP.find(p => p.id === 'proc-mock-006')!,
-    tipo: 'TI',
-    nombre: 'Auditoría de Seguridad de la Información',
-    objetivo: 'Evaluar los controles de seguridad de la información y ciberseguridad',
-    alcance: 'Infraestructura tecnológica y sistemas de información críticos',
-    fechaInicio: '2026-06-01',
-    fechaFin: '2026-06-30',
-    trimestre: 2,
-    auditorLider: 'Carlos Mendoza',
-    equipo: ['Juan Pablo García'],
-    estado: 'PROGRAMADA',
-    avance: 0,
-    horasEstimadas: 120,
-    horasReales: 0,
-    hallazgosCount: 0
-  }
-];
+// Re-usar los tipos de ProcesoAuditable y AuditoriaProgramada desde hooks
+type ProcesoAuditable = ProcesoAuditableUI;
+type AuditoriaProgramada = AuditoriaProgramadaUI;
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -348,46 +69,33 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
   const [busqueda, setBusqueda] = useState('');
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   
-  // 🆕 Estados para gestionar procesos auditables
-  // ✅ USANDO DATOS MOCK CON EVALUACIONES DAFP
-  const [procesos, setProcesos] = useState<ProcesoAuditable[]>(PROCESOS_MOCK_CON_DAFP);
+  // ✅ INTEGRACIÓN CON BACKEND — reemplaza todos los datos mock
+  const {
+    procesos,
+    loading: loadingProcesos,
+    error: errorProcesos,
+    isOnline: isOnlineProcesos,
+    agregarProceso,
+    editarProceso,
+    eliminarProceso,
+    refetch: refetchProcesos,
+  } = useUniversoAuditableData();
+
+  const {
+    auditorias: auditoriasProgramadas,
+    estadisticas,
+    loading: loadingAuditorias,
+    error: errorAuditorias,
+    isOnline: isOnlineAuditorias,
+    refetch: refetchAuditorias,
+  } = useProgramaAnualData({ vigencia, procesos });
+
+  const loading = loadingProcesos || loadingAuditorias;
+  const error = errorProcesos || errorAuditorias;
+  const isOnline = isOnlineProcesos && isOnlineAuditorias;
+
   const [mostrarFormularioProceso, setMostrarFormularioProceso] = useState(false);
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
-  
-  // Estadísticas calculadas
-  const estadisticas: Estadisticas = useMemo(() => {
-    const procesosAuditables = procesos.filter(p => p.auditable);
-    
-    return {
-      totalProcesos: procesos.length,
-      procesosAuditables: procesosAuditables.length,
-      procesosCriticos: procesosAuditables.filter(p => p.nivelRiesgo === 'Crítico').length,
-      procesosAltos: procesosAuditables.filter(p => p.nivelRiesgo === 'Alto').length,
-      procesosMedios: procesosAuditables.filter(p => p.nivelRiesgo === 'Medio').length,
-      procesosBajos: procesosAuditables.filter(p => p.nivelRiesgo === 'Bajo').length,
-      
-      totalProgramadas: AUDITORIAS_PROGRAMADAS.length,
-      completadas: AUDITORIAS_PROGRAMADAS.filter(a => a.estado === 'COMPLETADA').length,
-      enEjecucion: AUDITORIAS_PROGRAMADAS.filter(a => a.estado === 'EN_EJECUCION').length,
-      programadas: AUDITORIAS_PROGRAMADAS.filter(a => a.estado === 'PROGRAMADA').length,
-      
-      coberturaCriticos: Math.round(
-        (AUDITORIAS_PROGRAMADAS.filter(a => a.proceso.nivelRiesgo === 'Crítico').length / 
-        procesosAuditables.filter(p => p.nivelRiesgo === 'Crítico').length) * 100
-      ),
-      coberturaAltos: Math.round(
-        (AUDITORIAS_PROGRAMADAS.filter(a => a.proceso.nivelRiesgo === 'Alto').length / 
-        procesosAuditables.filter(p => p.nivelRiesgo === 'Alto').length) * 100
-      ),
-      
-      horasTotales: AUDITORIAS_PROGRAMADAS.reduce((sum, a) => sum + a.horasEstimadas, 0),
-      horasEjecutadas: AUDITORIAS_PROGRAMADAS.reduce((sum, a) => sum + a.horasReales, 0),
-      
-      vinculadasOCIG: AUDITORIAS_PROGRAMADAS.filter(a => a.auditoriaOCIGId).length,
-      conHallazgos: AUDITORIAS_PROGRAMADAS.filter(a => a.hallazgosCount > 0).length,
-      conPlanesMejoramiento: AUDITORIAS_PROGRAMADAS.filter(a => a.planMejoramientoId).length
-    };
-  }, [procesos]);
   
   // Filtrar procesos
   const procesosFiltrados = useMemo(() => {
@@ -402,29 +110,41 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
     });
   }, [procesos, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
   
-  // 🆕 Handlers para gestionar procesos
-  const handleAgregarProceso = (nuevoProceso: ProcesoAuditableData) => {
-    const proceso: ProcesoAuditable = {
-      ...nuevoProceso,
-      id: `proc-${Date.now()}`
-    };
-    setProcesos(prev => [...prev, proceso]);
-    toast.success('✅ Proceso agregado al Universo Auditable');
+  // ✅ HANDLERS con integración backend
+  const handleAgregarProceso = async (nuevoProceso: ProcesoAuditableData) => {
+    await agregarProceso(nuevoProceso);
   };
   
-  const handleEditarProceso = (procesoData: ProcesoAuditableData, id: string) => {
-    const procesoEditado: ProcesoAuditable = { ...procesoData, id };
-    setProcesos(prev => prev.map(p => p.id === id ? procesoEditado : p));
-    toast.success('✅ Proceso actualizado exitosamente');
+  const handleEditarProceso = async (procesoData: ProcesoAuditableData, id: string) => {
+    await editarProceso(id, procesoData);
   };
   
-  const handleEliminarProceso = (id: string) => {
-    setProcesos(prev => prev.filter(p => p.id !== id));
-    toast.success('✅ Proceso eliminado del Universo Auditable');
+  const handleEliminarProceso = async (id: string) => {
+    await eliminarProceso(id);
   };
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* INDICADOR DE ESTADO DE CONEXIÓN */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {!isOnline && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm">
+          <div className="flex items-center gap-2 text-amber-700">
+            <WifiOff className="w-4 h-4" />
+            <span className="font-medium">Sin conexión al servidor</span>
+            <span className="text-amber-600">— {error || 'Verificando conexión...'}</span>
+          </div>
+          <button
+            onClick={() => { refetchProcesos(); refetchAuditorias(); }}
+            className="flex items-center gap-1 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Reintentar
+          </button>
+        </div>
+      )}
+
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -516,46 +236,57 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
       {/* CONTENIDO */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="flex-1 overflow-y-auto p-8">
-        <AnimatePresence mode="wait">
-          {tabActiva === 'universo' && (
-            <TabUniversoAuditable
-              key="universo"
-              procesos={procesosFiltrados}
-              estadisticas={estadisticas}
-              filtroRiesgo={filtroNivelRiesgo}
-              filtroTipo={filtroTipoProceso}
-              busqueda={busqueda}
-              onFiltroRiesgoChange={setFiltroNivelRiesgo}
-              onFiltroTipoChange={setFiltroTipoProceso}
-              onBusquedaChange={setBusqueda}
-              onAgregarProceso={() => {
-                setProcesoSeleccionado(null);
-                setMostrarFormularioProceso(true);
-              }}
-              onEditarProceso={(proceso) => {
-                setProcesoSeleccionado(proceso);
-                setMostrarFormularioProceso(true);
-              }}
-              onEliminarProceso={handleEliminarProceso}
-            />
-          )}
-          {tabActiva === 'programa' && (
-            <TabProgramaAnual
-              key="programa"
-              auditorias={AUDITORIAS_PROGRAMADAS}
-              estadisticas={estadisticas}
-              mostrarFormulario={mostrarFormulario}
-              setMostrarFormulario={setMostrarFormulario}
-            />
-          )}
-          {tabActiva === 'vinculacion' && (
-            <TabVinculacion
-              key="vinculacion"
-              auditorias={AUDITORIAS_PROGRAMADAS}
-              estadisticas={estadisticas}
-            />
-          )}
-        </AnimatePresence>
+        {/* Estado de carga */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+            <p className="text-gray-600 font-medium">Cargando datos desde el servidor...</p>
+          </div>
+        )}
+
+        {/* Contenido cuando no está cargando */}
+        {!loading && (
+          <AnimatePresence mode="wait">
+            {tabActiva === 'universo' && (
+              <TabUniversoAuditable
+                key="universo"
+                procesos={procesosFiltrados}
+                estadisticas={estadisticas}
+                filtroRiesgo={filtroNivelRiesgo}
+                filtroTipo={filtroTipoProceso}
+                busqueda={busqueda}
+                onFiltroRiesgoChange={setFiltroNivelRiesgo}
+                onFiltroTipoChange={setFiltroTipoProceso}
+                onBusquedaChange={setBusqueda}
+                onAgregarProceso={() => {
+                  setProcesoSeleccionado(null);
+                  setMostrarFormularioProceso(true);
+                }}
+                onEditarProceso={(proceso) => {
+                  setProcesoSeleccionado(proceso);
+                  setMostrarFormularioProceso(true);
+                }}
+                onEliminarProceso={handleEliminarProceso}
+              />
+            )}
+            {tabActiva === 'programa' && (
+              <TabProgramaAnual
+                key="programa"
+                auditorias={auditoriasProgramadas}
+                estadisticas={estadisticas}
+                mostrarFormulario={mostrarFormulario}
+                setMostrarFormulario={setMostrarFormulario}
+              />
+            )}
+            {tabActiva === 'vinculacion' && (
+              <TabVinculacion
+                key="vinculacion"
+                auditorias={auditoriasProgramadas}
+                estadisticas={estadisticas}
+              />
+            )}
+          </AnimatePresence>
+        )}
       </div>
 
       {/* MODALES */}

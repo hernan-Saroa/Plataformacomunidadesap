@@ -47,7 +47,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers, Plus, Filter, Search, Grid, List, Edit2, Save, X,
@@ -61,6 +61,8 @@ import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
 import { ModalNuevaAreaWorldClass } from './ModalNuevaAreaWorldClass';
+// ✅ INTEGRACIÓN BACKEND
+import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
 
 // ============ TIPOS ============
 
@@ -88,417 +90,35 @@ interface AreaAuditable {
   numeroAuditorias: number;
 }
 
-// ============ DATOS MOCK - 9 PROCESOS SEDE + 16 TERRITORIALES ============
+// ============ MAPPER: Backend ProcesoAuditable → AreaAuditable ============
 
-const AREAS_AUDITABLES_MOCK: AreaAuditable[] = [
-  // ========== PROCESOS SEDE (9) ==========
-  {
-    id: 'area-001',
-    codigo: 'SEDE-001',
-    nombre: 'Gestión Financiera',
-    tipo: 'Sede',
-    descripcion: 'Presupuesto, tesorería, contabilidad y gestión financiera institucional',
-    responsable: 'Director Administrativo y Financiero',
-    criticidad: 5,
-    factorExposicion: 5,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Crítico',
-    scoreRiesgo: 12.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-03-15',
-    proximaAuditoria: '2025-03-10',
-    numeroAuditorias: 8
-  },
-  {
-    id: 'area-002',
-    codigo: 'SEDE-002',
-    nombre: 'Gestión Administrativa',
-    tipo: 'Sede',
-    descripcion: 'Servicios generales, infraestructura, correspondencia y archivo',
-    responsable: 'Subdirector Administrativo',
-    criticidad: 3,
-    factorExposicion: 5,
-    factoresMitigantes: 3,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 5.0,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-06-20',
-    proximaAuditoria: '2025-06-15',
-    numeroAuditorias: 6
-  },
-  {
-    id: 'area-003',
-    codigo: 'SEDE-003',
-    nombre: 'Formación para la Vida Pública',
-    tipo: 'Sede',
-    descripcion: 'Programas académicos, cursos, diplomados y capacitación',
-    responsable: 'Director de Formación',
-    criticidad: 5,
-    factorExposicion: 5,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Crítico',
-    scoreRiesgo: 12.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-02-10',
-    proximaAuditoria: '2025-02-05',
-    numeroAuditorias: 10
-  },
-  {
-    id: 'area-004',
-    codigo: 'SEDE-004',
-    nombre: 'Adquisición de Bienes y Servicios',
-    tipo: 'Sede',
-    descripcion: 'Contratación, compras, licitaciones y procesos de selección',
-    responsable: 'Jefe de Contratación',
-    criticidad: 5,
-    factorExposicion: 5,
-    factoresMitigantes: 3,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 8.3,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-05-10',
-    proximaAuditoria: '2025-05-05',
-    numeroAuditorias: 9
-  },
-  {
-    id: 'area-005',
-    codigo: 'SEDE-005',
-    nombre: 'Gestión de Talento Humano',
-    tipo: 'Sede',
-    descripcion: 'Nómina, bienestar, capacitación, evaluación de desempeño',
-    responsable: 'Jefe de Talento Humano',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-07-15',
-    proximaAuditoria: '2025-07-10',
-    numeroAuditorias: 7
-  },
-  {
-    id: 'area-006',
-    codigo: 'SEDE-006',
-    nombre: 'Efectividad Institucional',
-    tipo: 'Sede',
-    descripcion: 'Planeación estratégica, indicadores, gestión de calidad',
-    responsable: 'Jefe de Planeación',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 3,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 3.0,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-08-20',
-    proximaAuditoria: '2025-08-15',
-    numeroAuditorias: 5
-  },
-  {
-    id: 'area-007',
-    codigo: 'SEDE-007',
-    nombre: 'Evaluación de Control y Mejora',
-    tipo: 'Sede',
-    descripcion: 'Seguimiento a planes de mejoramiento y control interno',
-    responsable: 'Jefe OCI',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-09-10',
-    proximaAuditoria: '2025-09-05',
-    numeroAuditorias: 6
-  },
-  {
-    id: 'area-008',
-    codigo: 'SEDE-008',
-    nombre: 'Modelo de Seguridad y Privacidad',
-    tipo: 'Sede',
-    descripcion: 'Seguridad de información, protección de datos, ciberseguridad',
-    responsable: 'Oficial de Seguridad',
-    criticidad: 5,
-    factorExposicion: 5,
-    factoresMitigantes: 4,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 6.25,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-04-25',
-    proximaAuditoria: '2025-04-20',
-    numeroAuditorias: 4
-  },
-  {
-    id: 'area-009',
-    codigo: 'SEDE-009',
-    nombre: 'Transformación Digital',
-    tipo: 'Sede',
-    descripcion: 'TI, innovación digital, sistemas de información',
-    responsable: 'Director de TI',
-    criticidad: 3,
-    factorExposicion: 5,
-    factoresMitigantes: 3,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 5.0,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-10-05',
-    proximaAuditoria: '2025-10-01',
-    numeroAuditorias: 3
-  },
+function mapProcesoToAreaAuditable(proceso: ProcesoAuditableUI): AreaAuditable {
+  // Mapear puntajeRiesgo (0-100) a criticidad DAFP (5|3|1)
+  const criticidad: CriticidadNivel = proceso.puntajeRiesgo >= 70 ? 5 : proceso.puntajeRiesgo >= 40 ? 3 : 1;
+  // Mapear nivel de riesgo a factor exposición
+  const factorExposicion: ExposicionNivel = proceso.nivelRiesgo === 'Crítico' || proceso.nivelRiesgo === 'Alto' ? 5 : proceso.nivelRiesgo === 'Medio' ? 3 : 1;
+  // Mapear calificación DAFP (1-5) a factores mitigantes (1-10)
+  const factoresMitigantes = Math.max(1, Math.round(proceso.calificacionDafp * 2));
+  
+  const scoreCalc = calcularRiesgo(criticidad, factorExposicion, factoresMitigantes);
 
-  // ========== TERRITORIALES (16) ==========
-  {
-    id: 'area-010',
-    codigo: 'TERR-001',
-    nombre: 'Territorial Antioquia',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial y programas académicos región Antioquia',
-    responsable: 'Director Territorial Antioquia',
-    criticidad: 3,
-    factorExposicion: 5,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 7.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-02-20',
-    numeroAuditorias: 4
-  },
-  {
-    id: 'area-011',
-    codigo: 'TERR-002',
-    nombre: 'Territorial Atlántico-Cesar',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Caribe (Atlántico y Cesar)',
-    responsable: 'Director Territorial Atlántico',
-    criticidad: 3,
-    factorExposicion: 5,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 7.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-03-10',
-    numeroAuditorias: 4
-  },
-  {
-    id: 'area-012',
-    codigo: 'TERR-003',
-    nombre: 'Territorial Bolívar-Córdoba',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Bolívar y Córdoba',
-    responsable: 'Director Territorial Bolívar',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-04-05',
-    numeroAuditorias: 3
-  },
-  {
-    id: 'area-013',
-    codigo: 'TERR-004',
-    nombre: 'Territorial Caldas',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Eje Cafetero (Caldas)',
-    responsable: 'Director Territorial Caldas',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-05-15',
-    numeroAuditorias: 3
-  },
-  {
-    id: 'area-014',
-    codigo: 'TERR-005',
-    nombre: 'Territorial Cundinamarca',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Cundinamarca',
-    responsable: 'Director Territorial Cundinamarca',
-    criticidad: 5,
-    factorExposicion: 5,
-    factoresMitigantes: 3,
-    nivelRiesgo: 'Alto',
-    scoreRiesgo: 8.3,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-01-20',
-    numeroAuditorias: 5
-  },
-  {
-    id: 'area-015',
-    codigo: 'TERR-006',
-    nombre: 'Territorial Nariño-Putumayo',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Sur (Nariño y Putumayo)',
-    responsable: 'Director Territorial Nariño',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-06-10',
-    numeroAuditorias: 3
-  },
-  {
-    id: 'area-016',
-    codigo: 'TERR-007',
-    nombre: 'Territorial Huila',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Huila',
-    responsable: 'Director Territorial Huila',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-07-05',
-    numeroAuditorias: 3
-  },
-  {
-    id: 'area-017',
-    codigo: 'TERR-008',
-    nombre: 'Territorial Meta',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Meta',
-    responsable: 'Director Territorial Meta',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-08-15',
-    numeroAuditorias: 2
-  },
-  {
-    id: 'area-018',
-    codigo: 'TERR-009',
-    nombre: 'Territorial Cauca',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Cauca',
-    responsable: 'Director Territorial Cauca',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'pendiente',
-    ultimaAuditoria: '2023-12-10',
-    numeroAuditorias: 2
-  },
-  {
-    id: 'area-019',
-    codigo: 'TERR-010',
-    nombre: 'Territorial Amazonas',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Amazonas',
-    responsable: 'Director Territorial Amazonas',
-    criticidad: 1,
-    factorExposicion: 1,
-    factoresMitigantes: 1,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.0,
-    estado: 'pendiente',
-    numeroAuditorias: 1
-  },
-  {
-    id: 'area-020',
-    codigo: 'TERR-011',
-    nombre: 'Territorial Boyacá',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Boyacá',
-    responsable: 'Director Territorial Boyacá',
-    criticidad: 3,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Medio',
-    scoreRiesgo: 4.5,
-    estado: 'seleccionada',
-    ultimaAuditoria: '2024-09-20',
-    numeroAuditorias: 3
-  },
-  {
-    id: 'area-021',
-    codigo: 'TERR-012',
-    nombre: 'Territorial Casanare',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Casanare',
-    responsable: 'Director Territorial Casanare',
-    criticidad: 1,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.5,
-    estado: 'pendiente',
-    numeroAuditorias: 1
-  },
-  {
-    id: 'area-022',
-    codigo: 'TERR-013',
-    nombre: 'Territorial Guaviare',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Guaviare',
-    responsable: 'Director Territorial Guaviare',
-    criticidad: 1,
-    factorExposicion: 1,
-    factoresMitigantes: 1,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.0,
-    estado: 'no-aplica',
-    numeroAuditorias: 0
-  },
-  {
-    id: 'area-023',
-    codigo: 'TERR-014',
-    nombre: 'Territorial Putumayo',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Putumayo',
-    responsable: 'Director Territorial Putumayo',
-    criticidad: 1,
-    factorExposicion: 3,
-    factoresMitigantes: 2,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.5,
-    estado: 'pendiente',
-    numeroAuditorias: 1
-  },
-  {
-    id: 'area-024',
-    codigo: 'TERR-015',
-    nombre: 'Territorial Archipiélago San Andrés',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial Archipiélago de San Andrés',
-    responsable: 'Director Territorial San Andrés',
-    criticidad: 1,
-    factorExposicion: 1,
-    factoresMitigantes: 1,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.0,
-    estado: 'no-aplica',
-    numeroAuditorias: 0
-  },
-  {
-    id: 'area-025',
-    codigo: 'TERR-016',
-    nombre: 'Territorial Vichada',
-    tipo: 'Territorial',
-    descripcion: 'Dirección territorial región Vichada',
-    responsable: 'Director Territorial Vichada',
-    criticidad: 1,
-    factorExposicion: 1,
-    factoresMitigantes: 1,
-    nivelRiesgo: 'Bajo',
-    scoreRiesgo: 1.0,
-    estado: 'no-aplica',
-    numeroAuditorias: 0
-  }
-];
-
+  return {
+    id: proceso.id,
+    codigo: proceso._codigo || `PROC-${proceso.id.substring(0, 6).toUpperCase()}`,
+    nombre: proceso.nombre,
+    tipo: proceso._territorial ? 'Territorial' : 'Sede',
+    descripcion: proceso.descripcion,
+    responsable: proceso.responsable,
+    criticidad,
+    factorExposicion,
+    factoresMitigantes,
+    nivelRiesgo: scoreCalc.nivel,
+    scoreRiesgo: scoreCalc.score,
+    estado: proceso.auditable ? 'seleccionada' : 'pendiente',
+    ultimaAuditoria: proceso.ultimaAuditoria,
+    numeroAuditorias: proceso.ultimaAuditoria ? 1 : 0,
+  };
+}
 // ============ UTILIDADES ============
 
 const calcularRiesgo = (criticidad: number, exposicion: number, mitigantes: number): { nivel: NivelRiesgo; score: number } => {
@@ -535,7 +155,8 @@ const getEstadoInfo = (estado: EstadoSeleccion) => {
 // ============ COMPONENTE PRINCIPAL ============
 
 export function UniversoAuditorias() {
-  const [areas, setAreas] = useState<AreaAuditable[]>(AREAS_AUDITABLES_MOCK);
+  const { procesos: backendProcesos, loading, error, refetch } = useUniversoAuditableData({ showToasts: false });
+  const [areas, setAreas] = useState<AreaAuditable[]>([]);
   const [vistaActiva, setVistaActiva] = useState<'dashboard' | 'lista' | 'crear'>('dashboard');
   const [modoVista, setModoVista] = useState<'grid' | 'tabla'>('grid');
   const [busqueda, setBusqueda] = useState('');
@@ -544,6 +165,13 @@ export function UniversoAuditorias() {
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoSeleccion>('Todos');
   const [areaEditando, setAreaEditando] = useState<string | null>(null);
   const [modalNuevaArea, setModalNuevaArea] = useState(false);
+
+  // Sincronizar datos del backend con state local
+  useEffect(() => {
+    if (backendProcesos.length > 0) {
+      setAreas(backendProcesos.map(mapProcesoToAreaAuditable));
+    }
+  }, [backendProcesos]);
 
   // Filtrado de áreas
   const areasFiltradas = useMemo(() => {

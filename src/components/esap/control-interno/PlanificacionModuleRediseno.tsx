@@ -22,7 +22,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardList, Layers, Calendar, CheckCircle2, 
@@ -35,6 +35,9 @@ import { PlanAnualAuditoriaDefinitivo as PlanAnualOperativo } from './PlanAnualA
 import { UniversoAuditorias } from './UniversoAuditorias';
 import { ProgramaAnualCIG } from './ProgramaAnualCIG';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
+// ✅ INTEGRACIÓN BACKEND: Hook para obtener estadísticas reales
+import { useUniversoAuditableData } from './hooks/useUniversoAuditableData';
+import { useProgramaAnualData, calcularEstadisticas } from './hooks/useProgramaAnualData';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -68,21 +71,6 @@ interface EstadisticasGlobales {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
-// ════════════════════════════════════════════════════════════════════════════
-
-const ESTADISTICAS_MOCK: EstadisticasGlobales = {
-  totalAuditoriasPlanificadas: 24,
-  auditoriasAprobadas: 18,
-  procesosUniverso: 45,
-  procesosAuditables: 32,
-  auditoriasCalendarizadas: 16,
-  cumplimientoPrograma: 75,
-  areasInvolucradas: 12,
-  auditoresAsignados: 8
-};
-
-// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -99,7 +87,23 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
     busqueda: ''
   });
 
-  const estadisticas = ESTADISTICAS_MOCK;
+  // ✅ INTEGRACIÓN BACKEND: Obtener datos reales para estadísticas
+  const { procesos, loading: loadingProcesos } = useUniversoAuditableData({ showToasts: false });
+  const { auditorias, loading: loadingAuditorias } = useProgramaAnualData({ procesos, showToasts: false });
+  const stats = calcularEstadisticas(procesos, auditorias);
+
+  const estadisticas: EstadisticasGlobales = useMemo(() => ({
+    totalAuditoriasPlanificadas: stats.totalProgramadas || 0,
+    auditoriasAprobadas: stats.completadas + stats.enEjecucion + stats.programadas || 0,
+    procesosUniverso: stats.totalProcesos || 0,
+    procesosAuditables: stats.procesosAuditables || 0,
+    auditoriasCalendarizadas: stats.totalProgramadas || 0,
+    cumplimientoPrograma: stats.totalProgramadas > 0 
+      ? Math.round((stats.completadas / stats.totalProgramadas) * 100) 
+      : 0,
+    areasInvolucradas: new Set(procesos.map(p => p.categoria)).size || 0,
+    auditoresAsignados: new Set(auditorias.map(a => a.auditorLider).filter(Boolean)).size || 0,
+  }), [stats, procesos, auditorias]);
 
   // Calcular métricas derivadas
   const metricas = useMemo(() => ({
