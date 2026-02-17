@@ -47,6 +47,17 @@ export class UpdateProcesoAuditableDto {
       correctivos: number;
     };
     factoresRiesgo?: string[];
+    // Campos DAFP
+    riesgoInherente?: number;
+    riesgoResidual?: number;
+    nivelRiesgo?: string;
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
   };
 
   @IsOptional()
@@ -61,6 +72,10 @@ export class UpdateProcesoAuditableDto {
 
   @IsOptional()
   ultimaAuditoria?: string;
+
+  @IsOptional()
+  @IsString()
+  resultadoUltimaAuditoria?: string;
 
   @IsOptional()
   proximaAuditoria?: string;

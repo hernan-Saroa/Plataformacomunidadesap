@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsEnum, IsNumber, IsOptional, IsObject, ValidateNested, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsNumber, IsOptional, IsObject, ValidateNested, Min, Max, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoProceso, NivelRiesgo } from '../entities/proceso-auditable.entity';
 
@@ -19,6 +19,18 @@ class EvaluacionRiesgoDto {
   nivelControl: number;
 
   @IsOptional()
+  @IsNumber()
+  riesgoInherente?: number;
+
+  @IsOptional()
+  @IsNumber()
+  riesgoResidual?: number;
+
+  @IsOptional()
+  @IsEnum(NivelRiesgo)
+  nivelRiesgo?: NivelRiesgo;
+
+  @IsOptional()
   @IsString()
   madurezControl?: string;
 
@@ -32,6 +44,36 @@ class EvaluacionRiesgoDto {
 
   @IsOptional()
   factoresRiesgo?: string[];
+
+  // Campos DAFP para distribución de riesgos
+  @IsOptional()
+  @IsNumber()
+  riesgosExtremos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  riesgosAltos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  riesgosModerados?: number;
+
+  @IsOptional()
+  @IsNumber()
+  riesgosBajos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  totalRiesgos?: number;
+
+  // Requerimientos especiales DAFP
+  @IsOptional()
+  @IsBoolean()
+  requerimientoComite?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requerimientoEntesReg?: boolean;
 }
 
 export class CreateProcesoAuditableDto {
@@ -43,9 +85,9 @@ export class CreateProcesoAuditableDto {
   @IsNotEmpty()
   nombre: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  descripcion: string;
+  descripcion?: string;
 
   @IsEnum(TipoProceso)
   tipo: TipoProceso;
@@ -54,9 +96,9 @@ export class CreateProcesoAuditableDto {
   @IsNotEmpty()
   macroproceso: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  responsable: string;
+  responsable?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -71,12 +113,16 @@ export class CreateProcesoAuditableDto {
   @IsObject()
   evaluacionRiesgo: EvaluacionRiesgoDto;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  frecuenciaAuditoria: string;
+  frecuenciaAuditoria?: string;
 
   @IsOptional()
   ultimaAuditoria?: string;
+
+  @IsOptional()
+  @IsString()
+  resultadoUltimaAuditoria?: string;
 
   @IsOptional()
   proximaAuditoria?: string;

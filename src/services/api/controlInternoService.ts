@@ -52,6 +52,7 @@ export interface ProcesoAuditable {
   };
   frecuenciaAuditoria: string;
   ultimaAuditoria?: string;
+  resultadoUltimaAuditoria?: string;
   proximaAuditoria?: string;
   prioridad: number;
   priorizacionAnos: number;

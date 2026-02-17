@@ -25,7 +25,7 @@ import {
 
 // ==================== CONFIGURACIÓN ====================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/control-interno';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/control-interno';
 
 // Helper para requests
 async function apiRequest<T>(
@@ -156,6 +156,75 @@ export const auditoriasApi = {
     return apiRequest<Auditoria>(`/auditorias/${id}/progreso`, {
       method: 'PATCH',
       body: JSON.stringify({ progreso }),
+    });
+  },
+
+  /**
+   * Obtener personas disponibles para asignar como auditores
+   */
+  getPersonasDisponibles: async (): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>('/auditorias/personas/disponibles');
+  },
+
+  /**
+   * Obtener notas de una auditoría
+   */
+  getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/${auditoriaId}/notas`);
+  },
+
+  /**
+   * Crear nota en una auditoría
+   */
+  createNota: async (auditoriaId: string, data: { contenido: string; tipo: string }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Actualizar una nota
+   */
+  updateNota: async (auditoriaId: string, notaId: string, data: { contenido: string }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar una nota
+   */
+  deleteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/auditorias/${auditoriaId}/notas/${notaId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Marcar nota como importante
+   */
+  toggleImportanteNota: async (auditoriaId: string, notaId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`, {
+      method: 'PATCH',
+    });
+  },
+
+  /**
+   * Obtener todas las auditorías para vista Kanban
+   */
+  getAllKanban: async (): Promise<ApiResponse<Auditoria[]>> => {
+    return apiRequest<Auditoria[]>('/auditorias/kanban');
+  },
+
+  /**
+   * Solicitar ampliación de plazo
+   */
+  solicitarAmpliacionPlazo: async (auditoriaId: string, data: { nuevaFechaFin: string; justificacion: string }): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/auditorias/${auditoriaId}/ampliar-plazo`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };

@@ -36,7 +36,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar, Plus, Filter, Search, Users, MapPin,
@@ -44,7 +44,7 @@ import {
   Grid, List, Edit2, Save, Trash2, Building2,
   AlertTriangle, Eye, BarChart3, FileText, Layers, Send
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ============ COMPONENTES DEL DESIGN SYSTEM ============
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -53,6 +53,9 @@ import { Badge } from '../../ui/badge';
 
 // ============ COMPONENTES DE AUDITORÍA ============
 import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
+
+// ============ SERVICIO BACKEND ============
+import { controlInternoService } from '@/services/api/controlInternoService';
 
 // ============ INTEGRACIÓN CONTEXT ============
 import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';
@@ -236,7 +239,7 @@ const AUDITORIAS_PROGRAMADAS_MOCK: AuditoriaPrograma[] = [
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ProgramaAnualCIG() {
-  const [añoActual] = useState(2025);
+  const [añoActual] = useState(new Date().getFullYear());
   const [vistaActiva, setVistaActiva] = useState<'calendario' | 'lista' | 'auditores'>('calendario');
   const [filtroTipo, setFiltroTipo] = useState<'Todos' | 'Sede' | 'Territorial'>('Todos');
   const [filtroEstado, setFiltroEstado] = useState<'Todos' | EstadoPrograma>('Todos');
@@ -244,14 +247,91 @@ export function ProgramaAnualCIG() {
   const [mesSeleccionado, setMesSeleccionado] = useState<MesAño | null>(null);
   const [mostrarModalNueva, setMostrarModalNueva] = useState(false);
 
+  // Estado para auditorías cargadas del backend
+  const [auditoriasProgramadas, setAuditoriasProgramadas] = useState<AuditoriaPrograma[]>(AUDITORIAS_PROGRAMADAS_MOCK);
+  const [cargandoAuditorias, setCargandoAuditorias] = useState(false);
+
   // ✅ NUEVO: Integración con Context
   const { agregarAuditoriasProgramadas } = useIntegracionAuditoriaPlanes();
   const [programaAprobado, setProgramaAprobado] = useState(false);
 
+  // Cargar auditorías desde el backend
+  useEffect(() => {
+    const cargarAuditorias = async () => {
+      setCargandoAuditorias(true);
+      try {
+        const response = await controlInternoService.getAuditorias();
+        console.log('[ProgramaAnualCIG] Auditorías del backend:', response);
+        
+        if (Array.isArray(response) && response.length > 0) {
+          // Mapear auditorías del backend al formato del componente
+          const auditoriasFormateadas: AuditoriaPrograma[] = response.map((aud: any) => {
+            const fechaInicio = new Date(aud.fechaInicio);
+            const mesInicio = fechaInicio.getMonth() as MesAño;
+            const semanaInicio = Math.ceil(fechaInicio.getDate() / 7);
+            
+            return {
+              id: aud.id,
+              codigo: aud.codigo || `AUD-${añoActual}-${String(response.indexOf(aud) + 1).padStart(3, '0')}`,
+              nombre: aud.nombre || 'Sin nombre',
+              tipo: aud.territorial === 'Nacional' || aud.sede === 'Nacional' ? 'Sede' : 'Territorial' as 'Sede' | 'Territorial',
+              areaAuditable: aud.areaObjetivo || aud.procesoAuditado || '',
+              procesoId: aud.id,
+              procesoNombre: aud.procesoAuditado || aud.areaObjetivo || '',
+              auditorLider: {
+                id: String(aud.auditorLiderId || 'aud-001'),
+                nombre: aud.auditorLider || 'Sin asignar',
+                iniciales: aud.auditorLider ? aud.auditorLider.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'NA'
+              },
+              equipoAuditores: [],
+              mesInicio,
+              semanaInicio: Math.min(semanaInicio, 4) as 1 | 2 | 3 | 4,
+              fases: {
+                planeacion: { duracionDias: 7, color: '#3B82F6' },
+                ejecucion: { duracionDias: 15, color: '#10B981' },
+                comunicacion: { duracionDias: 10, color: '#8B5CF6' }
+              },
+              estadoPrograma: mapEstadoBackendToFrontend(aud.estadoKanban || aud.fase || 'Borrador'),
+              observaciones: aud.descripcion
+            };
+          });
+          
+          setAuditoriasProgramadas(auditoriasFormateadas);
+          console.log('[ProgramaAnualCIG] Auditorías formateadas:', auditoriasFormateadas.length);
+        }
+      } catch (error) {
+        console.error('[ProgramaAnualCIG] Error al cargar auditorías:', error);
+        // Mantener datos mock como fallback
+      } finally {
+        setCargandoAuditorias(false);
+      }
+    };
+    
+    cargarAuditorias();
+  }, [añoActual]);
+
+  // Helper para mapear estados
+  const mapEstadoBackendToFrontend = (estado: string): EstadoPrograma => {
+    const mapa: Record<string, EstadoPrograma> = {
+      'Planeación': 'Aprobado',
+      'Ejecución': 'En Ejecución',
+      'Comunicación': 'En Ejecución',
+      'Comunicación Preliminar': 'En Ejecución',
+      'Finalizada': 'Finalizado',
+      'planeacion': 'Aprobado',
+      'ejecucion': 'En Ejecución',
+      'comunicacion': 'En Ejecución',
+      'finalizada': 'Finalizado',
+      'Borrador': 'Borrador',
+      'borrador': 'Borrador',
+    };
+    return mapa[estado] || 'Borrador';
+  };
+
   // ✅ NUEVO: Handler para aprobar programa
   const handleAprobarPrograma = () => {
     // 1. Validar que haya auditorías aprobadas
-    const auditoriasParaKanban = AUDITORIAS_PROGRAMADAS_MOCK.filter(
+    const auditoriasParaKanban = auditoriasProgramadas.filter(
       aud => aud.estadoPrograma === 'Aprobado' || aud.estadoPrograma === 'Pendiente Aprobación'
     );
 
@@ -335,7 +415,7 @@ export function ProgramaAnualCIG() {
 
   // Filtrado de auditorías
   const auditoriasFiltradas = useMemo(() => {
-    return AUDITORIAS_PROGRAMADAS_MOCK.filter(aud => {
+    return auditoriasProgramadas.filter(aud => {
       const matchTipo = filtroTipo === 'Todos' || aud.tipo === filtroTipo;
       const matchEstado = filtroEstado === 'Todos' || aud.estadoPrograma === filtroEstado;
       const matchBusqueda = busqueda === '' || 
@@ -345,7 +425,7 @@ export function ProgramaAnualCIG() {
       
       return matchTipo && matchEstado && matchBusqueda;
     });
-  }, [filtroTipo, filtroEstado, busqueda]);
+  }, [auditoriasProgramadas, filtroTipo, filtroEstado, busqueda]);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -392,7 +472,7 @@ export function ProgramaAnualCIG() {
           )}
 
           <ButtonSIGL
-            variant="outline"
+            variant="secondary"
             icon={<Download className="w-4 h-4" />}
             onClick={() => toast.success('Exportando programa anual...')}
           >
@@ -708,17 +788,21 @@ function VistaLista({ auditorias }: { auditorias: AuditoriaPrograma[] }) {
             {/* Acciones */}
             <div className="flex items-center gap-2">
               <ButtonSIGL
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 icon={<Eye className="w-4 h-4" />}
                 onClick={() => toast.info('Ver detalle de auditoría')}
-              />
+              >
+                Ver
+              </ButtonSIGL>
               <ButtonSIGL
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 icon={<Edit2 className="w-4 h-4" />}
                 onClick={() => toast.info('Editar auditoría')}
-              />
+              >
+                Editar
+              </ButtonSIGL>
             </div>
           </div>
         </CardSIGL>
@@ -815,12 +899,55 @@ function VistaAuditores({ auditores }: { auditores: AuditorDisponible[] }) {
 // ============ MODAL NUEVA AUDITORÍA ============
 
 function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
-  const handleGuardarAuditoria = (auditoria: any) => {
-    console.log('Auditoría creada:', auditoria);
-    // Aquí podrías agregar la lógica para guardar en el estado o backend
-    toast.success('¡Auditoría agregada al programa!', {
-      description: `${auditoria.codigo} se agregó exitosamente`
-    });
+  const [guardando, setGuardando] = useState(false);
+
+  const handleGuardarAuditoria = async (auditoria: any) => {
+    setGuardando(true);
+    try {
+      // Mapear datos del formulario al formato del backend
+      const dataBackend = {
+        codigo: auditoria.codigo,
+        nombre: auditoria.nombre,
+        tipo: auditoria.tipo?.toLowerCase() || 'gestion',
+        objetivo: auditoria.objetivo || '',
+        alcance: auditoria.alcance || '',
+        procesoId: auditoria.areaAuditable?.id || null,
+        procesoNombre: auditoria.areaAuditable?.nombre || '',
+        areaAuditable: auditoria.areaAuditable?.nombre || '',
+        fechaInicio: auditoria.fechaInicio,
+        fechaFin: auditoria.fechaFin,
+        duracionDias: auditoria.duracionDias || 0,
+        auditorLider: auditoria.liderAuditor?.nombre || '',
+        equipoAuditor: auditoria.equipoAuditor?.map((m: any) => m.nombre) || [],
+        nivelRiesgo: auditoria.nivelRiesgo?.toLowerCase() || 'medio',
+        prioridad: auditoria.prioridad || 'Media',
+        estado: 'planeada',
+        año: auditoria.añoPlan || new Date().getFullYear(),
+        normativaAplicable: auditoria.normativaAplicable || [],
+        metodologia: auditoria.metodologia || '',
+        presupuestoEstimado: auditoria.presupuestoEstimado || 0,
+        horasTotales: auditoria.horasTotales || 0,
+      };
+
+      console.log('[ModalNuevaAuditoria] Enviando al backend:', dataBackend);
+      
+      const response = await controlInternoService.createAuditoria(dataBackend);
+      
+      console.log('[ModalNuevaAuditoria] Respuesta backend:', response);
+      
+      toast.success('¡Auditoría creada exitosamente!', {
+        description: `${auditoria.codigo} - ${auditoria.nombre}`
+      });
+      
+      onClose();
+    } catch (error) {
+      console.error('[ModalNuevaAuditoria] Error al guardar:', error);
+      toast.error('Error al crear la auditoría', {
+        description: error instanceof Error ? error.message : 'Error de conexión con el servidor'
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (

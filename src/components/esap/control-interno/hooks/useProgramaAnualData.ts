@@ -14,8 +14,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { controlInternoService } from '@/services/api/controlInternoService';
+import { auditoriaService, mapBackendToUI, type AuditoriaFormData } from '../services/auditoriaService';
 import type { ProcesoAuditableUI, NivelRiesgo } from './useUniversoAuditableData';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -45,6 +46,7 @@ export interface AuditoriaProgramadaUI {
   auditoriaOCIGId?: string;
   planMejoramientoId?: string;
   hallazgosCount: number;
+  territorial: string; // 🆕 Territorial para cronograma
 }
 
 export interface Auditor {
@@ -186,6 +188,7 @@ function mapAuditoriaBackendToUI(
     auditoriaOCIGId: auditoria.auditoriaOCIGId || undefined,
     planMejoramientoId: auditoria.planMejoramientoId || undefined,
     hallazgosCount: auditoria.hallazgosCount || 0,
+    territorial: auditoria.territorial || procesoUI._territorial || 'Sede Central',
   };
 }
 
@@ -234,6 +237,44 @@ export function calcularEstadisticas(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// TIPOS PARA CREAR/EDITAR AUDITORÍAS
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Datos para crear una nueva auditoría programada */
+export interface AuditoriaCreateData {
+  tipoAuditoria: string;
+  titulo: string;
+  descripcion: string;
+  territorial?: string;
+  sede?: string;
+  areaObjetivo?: string;
+  procesoAuditado?: string;
+  alcance?: string;
+  auditorLider?: string;
+  auditorAsignado?: string;
+  equipoAuditores?: string[];
+  supervisorAsignado?: string;
+  fechaInicio: string;
+  fechaFin: string;
+  periodicidad?: string;
+  objetivos?: string[];
+  criteriosAuditoria?: string[];
+  normatividadAplicable?: string[];
+  metodologia?: string;
+  nivelRiesgo?: string;
+  riesgosIdentificados?: string[];
+  controlesAplicar?: string[];
+  presupuestoEstimado?: string;
+  recursos?: any[];
+  productosEsperados?: any[];
+  hitos?: any[];
+  vinculadaPlanAnual?: boolean;
+  planAnualId?: string;
+  planAnualAño?: number;
+  rolDecretoAsociado?: string;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // HOOK PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -254,7 +295,10 @@ interface UseProgramaAnualDataReturn {
   error: string | null;
   isOnline: boolean;
   
-  // Operaciones
+  // Operaciones CRUD
+  agregarAuditoria: (data: AuditoriaCreateData) => Promise<boolean>;
+  editarAuditoria: (id: string, data: Partial<AuditoriaCreateData>) => Promise<boolean>;
+  eliminarAuditoria: (id: string) => Promise<boolean>;
   fetchAuditorias: () => Promise<void>;
   refetch: () => Promise<void>;
 }
@@ -280,45 +324,92 @@ export function useProgramaAnualData(
     setError(null);
     
     try {
-      // 1. Primero obtener los programas anuales
-      const yearStr = vigencia?.toString();
-      const programas = await controlInternoService.getProgramasAnuales(yearStr);
-      
       let allAuditorias: AuditoriaProgramadaUI[] = [];
       
-      if (Array.isArray(programas) && programas.length > 0) {
-        // 2. Para cada programa, obtener sus auditorías
-        for (const programa of programas) {
-          try {
-            const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
-            if (Array.isArray(auds)) {
-              const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
-              allAuditorias.push(...mapped);
-            }
-          } catch {
-            // Si falla un programa individual, continuar con los demás
-            console.warn(`[useProgramaAnualData] Error cargando auditorías del programa ${programa.id}`);
-          }
+      // ✅ 1. Cargar auditorías directamente del endpoint /auditorias
+      try {
+        const auditoriasDirectas = await auditoriaService.listar();
+        if (Array.isArray(auditoriasDirectas) && auditoriasDirectas.length > 0) {
+          // Convertir AuditoriaUI a AuditoriaProgramadaUI
+          const mapped = auditoriasDirectas.map(a => ({
+            id: a.id,
+            procesoId: a.procesoId || '',
+            proceso: {
+              id: a.procesoId || a.id,
+              nombre: a.proceso.nombre,
+              tipo: 'Apoyo' as const,
+              descripcion: '',
+              responsable: a.auditorLider,
+              nivelRiesgo: 'Medio' as const,
+              puntajeRiesgo: 50,
+              calificacionDafp: 3,
+              categoria: 'General',
+              auditable: true,
+              frecuenciaAuditoria: 'Anual' as const,
+              activo: true,
+              codigo: a.proceso.codigo || '',
+              macroproceso: '',
+              tipoProceso: 'Apoyo' as const,
+              dependenciaResponsable: '',
+              scoreRiesgo: 50,
+              frecuenciaSugerida: 'Anual',
+              horasEstimadas: a.horasEstimadas,
+            },
+            tipo: a.tipo,
+            nombre: a.nombre,
+            objetivo: a.objetivo || '',
+            alcance: a.alcance || '',
+            fechaInicio: a.fechaInicio,
+            fechaFin: a.fechaFin,
+            trimestre: a.trimestre,
+            auditorLider: a.auditorLider,
+            equipo: a.equipo,
+            estado: a.estado,
+            avance: a.avance,
+            horasEstimadas: a.horasEstimadas,
+            horasReales: a.horasReales || 0,
+            auditoriaOCIGId: a.auditoriaOCIGId,
+            planMejoramientoId: a.planMejoramientoId,
+            hallazgosCount: a.hallazgosCount || 0,
+            territorial: a.territorial,
+          }));
+          allAuditorias.push(...mapped);
+          console.log('[useProgramaAnualData] ✅ Cargadas', auditoriasDirectas.length, 'auditorías de /auditorias');
         }
-        setIsOnline(true);
-      } else if (programas && !Array.isArray(programas) && (programas as any).id) {
-        // Respuesta es un solo programa (no un array)
-        try {
-          const auds = await controlInternoService.getAuditoriasPrograma((programas as any).id);
-          if (Array.isArray(auds)) {
-            allAuditorias = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
-          }
-        } catch {
-          console.warn('[useProgramaAnualData] Error cargando auditorías del programa único');
-        }
-        setIsOnline(true);
-      } else {
-        setIsOnline(true);
+      } catch (err) {
+        console.warn('[useProgramaAnualData] No se pudieron cargar auditorías directas:', err);
       }
       
+      // 2. También intentar cargar de programas anuales (si existen)
+      try {
+        const yearStr = vigencia?.toString();
+        const programas = await controlInternoService.getProgramasAnuales(yearStr);
+        
+        if (Array.isArray(programas) && programas.length > 0) {
+          for (const programa of programas) {
+            try {
+              const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
+              if (Array.isArray(auds)) {
+                const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
+                // Evitar duplicados por ID
+                const idsExistentes = new Set(allAuditorias.map(a => a.id));
+                const novedades = mapped.filter(a => !idsExistentes.has(a.id));
+                allAuditorias.push(...novedades);
+              }
+            } catch {
+              // Si falla un programa individual, continuar con los demás
+            }
+          }
+        }
+      } catch {
+        // Si no hay programas anuales, continuar con las auditorías directas
+      }
+      
+      setIsOnline(true);
       setAuditorias(allAuditorias);
+      console.log('[useProgramaAnualData] Total auditorías cargadas:', allAuditorias.length);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al cargar programa anual';
+      const msg = err instanceof Error ? err.message : 'Error al cargar auditorías';
       console.warn('[useProgramaAnualData] Error al conectar con backend:', msg);
       setError(msg);
       setIsOnline(false);
@@ -338,12 +429,135 @@ export function useProgramaAnualData(
   // ── Calcular estadísticas ──
   const estadisticas = calcularEstadisticas(procesos, auditorias);
 
+  // ── Agregar nueva auditoría ──
+  const agregarAuditoria = useCallback(async (data: AuditoriaCreateData): Promise<boolean> => {
+    try {
+      // ✅ Usar el servicio centralizado que mapea correctamente al DTO del backend
+      const formData: AuditoriaFormData = {
+        tipoAuditoria: data.tipoAuditoria as any,
+        titulo: data.titulo,
+        descripcion: data.descripcion,
+        territorial: data.territorial || 'Sede Central',
+        sede: data.territorial || 'Sede Principal',
+        areaObjetivo: data.areaObjetivo,
+        procesoAuditado: data.procesoAuditado,
+        alcance: data.alcance,
+        auditorLider: data.auditorLider || 'Por asignar',
+        auditorAsignado: data.auditorAsignado,
+        equipoAuditores: data.equipoAuditores,
+        supervisorAsignado: data.supervisorAsignado,
+        responsable: data.auditorLider || 'Por asignar',
+        fechaInicio: data.fechaInicio,
+        fechaFin: data.fechaFin,
+        periodicidad: data.periodicidad,
+        objetivos: data.objetivos,
+        criteriosAuditoria: data.criteriosAuditoria,
+        normatividadAplicable: data.normatividadAplicable,
+        metodologia: data.metodologia,
+        nivelRiesgo: data.nivelRiesgo,
+        riesgosIdentificados: data.riesgosIdentificados,
+        controlesAplicar: data.controlesAplicar,
+        presupuestoEstimado: data.presupuestoEstimado,
+        recursos: data.recursos,
+        productosEsperados: data.productosEsperados,
+        hitos: data.hitos,
+        vinculadaPlanAnual: data.vinculadaPlanAnual,
+        planAnualId: data.planAnualId,
+        planAnualAño: data.planAnualAño,
+        rolDecretoAsociado: data.rolDecretoAsociado,
+      };
+
+      console.log('[useProgramaAnualData] Creando auditoría con servicio:', formData);
+      
+      const auditoriaId = await auditoriaService.crear(formData, showToasts);
+      
+      if (auditoriaId) {
+        // Refrescar datos
+        await fetchAuditorias();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al crear auditoría';
+      console.error('[useProgramaAnualData] Error al crear auditoría:', msg);
+      if (showToasts) {
+        toast.error(`Error: ${msg}`);
+      }
+      return false;
+    }
+  }, [vigencia, showToasts, fetchAuditorias]);
+
+  // ── Editar auditoría existente ──
+  const editarAuditoria = useCallback(async (
+    id: string, 
+    data: Partial<AuditoriaCreateData>
+  ): Promise<boolean> => {
+    try {
+      const updates: Record<string, unknown> = {};
+      
+      if (data.titulo) updates.nombre = data.titulo;
+      if (data.tipoAuditoria) updates.tipo = data.tipoAuditoria.toLowerCase();
+      if (data.descripcion) updates.alcance = data.descripcion;
+      if (data.alcance) updates.alcance = data.alcance;
+      if (data.fechaInicio) updates.fechaInicioPlaneada = data.fechaInicio;
+      if (data.fechaFin) updates.fechaFinPlaneada = data.fechaFin;
+      if (data.auditorLider) updates.auditorLider = data.auditorLider;
+      if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo.toLowerCase();
+      if (data.territorial) updates.territorial = data.territorial;
+      
+      console.log('[useProgramaAnualData] Actualizando auditoría:', { id, updates });
+      
+      const resultado = await controlInternoService.updateAuditoria(id, updates);
+      
+      if (resultado) {
+        if (showToasts) {
+          toast.success('Auditoría actualizada');
+        }
+        await fetchAuditorias();
+        return true;
+      }
+      return false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al actualizar auditoría';
+      console.error('[useProgramaAnualData] Error al actualizar:', msg);
+      if (showToasts) {
+        toast.error(`Error: ${msg}`);
+      }
+      return false;
+    }
+  }, [showToasts, fetchAuditorias]);
+
+  // ── Eliminar auditoría ──
+  const eliminarAuditoria = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      console.log('[useProgramaAnualData] Eliminando auditoría:', id);
+      
+      await controlInternoService.deleteAuditoria(id);
+      
+      if (showToasts) {
+        toast.success('Auditoría eliminada');
+      }
+      await fetchAuditorias();
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error al eliminar auditoría';
+      console.error('[useProgramaAnualData] Error al eliminar:', msg);
+      if (showToasts) {
+        toast.error(`Error: ${msg}`);
+      }
+      return false;
+    }
+  }, [showToasts, fetchAuditorias]);
+
   return {
     auditorias,
     estadisticas,
     loading,
     error,
     isOnline,
+    agregarAuditoria,
+    editarAuditoria,
+    eliminarAuditoria,
     fetchAuditorias,
     refetch: fetchAuditorias,
   };

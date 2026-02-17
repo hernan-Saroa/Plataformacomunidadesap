@@ -39,7 +39,8 @@ import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { auditoriasApi } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -181,7 +182,8 @@ const PROCESOS_INSTITUCIONALES = [
   'Almacén'
 ];
 
-const AUDITORES_MOCK = [
+// Datos fallback si no se cargan del backend
+const AUDITORES_FALLBACK = [
   { id: 'aud-001', nombre: 'Juan Pérez Gómez', cargo: 'Auditor Senior' },
   { id: 'aud-002', nombre: 'Ana María López Silva', cargo: 'Auditor Junior' },
   { id: 'aud-003', nombre: 'Carlos Ramírez Díaz', cargo: 'Auditor Senior' },
@@ -189,6 +191,13 @@ const AUDITORES_MOCK = [
   { id: 'aud-005', nombre: 'Roberto Torres Sánchez', cargo: 'Auditor Líder' },
   { id: 'aud-006', nombre: 'Fernando Ávila García', cargo: 'Jefe OCI' }
 ];
+
+// Tipo para auditor
+interface AuditorOption {
+  id: string;
+  nombre: string;
+  cargo: string;
+}
 
 const ROLES_DECRETO_648 = [
   'Liderazgo Estratégico',
@@ -294,8 +303,49 @@ export function FormularioAuditoriaUnificado({
   const [normaTemporal, setNormaTemporal] = useState('');
   const [riesgoTemporal, setRiesgoTemporal] = useState('');
   const [controlTemporal, setControlTemporal] = useState('');
+  
+  // Estado para auditores cargados del backend
+  const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
+  const [cargandoAuditores, setCargandoAuditores] = useState(false);
 
   const TOTAL_PASOS = 9;
+  
+  // Cargar auditores/usuarios del backend
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      if (!open) return;
+      
+      setCargandoAuditores(true);
+      try {
+        const response = await auditoriasApi.getPersonasDisponibles();
+        console.log('[FormularioAuditoria] Response:', response);
+        
+        if (response.success && response.data && response.data.length > 0) {
+          const auditores = response.data
+            .filter((persona: any) => {
+              const personaId = persona.idPersona || persona.id_tercero || persona.id;
+              return !!personaId;
+            })
+            .map((persona: any) => ({
+              id: String(persona.idPersona || persona.id_tercero || persona.id),
+              nombre: persona.nombre || persona.nom_largo || 'Sin nombre',
+              cargo: persona.cargo || 'Auditor'
+            }));
+          setAuditoresDisponibles(auditores);
+          console.log('[FormularioAuditoria] Auditores cargados:', auditores.length, auditores);
+        } else {
+          console.warn('[FormularioAuditoria] No se obtuvieron personas:', response.error);
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar auditores:', error);
+        // Mantener los datos fallback
+      } finally {
+        setCargandoAuditores(false);
+      }
+    };
+    
+    cargarAuditores();
+  }, [open]);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -504,7 +554,7 @@ export function FormularioAuditoriaUnificado({
       case 2:
         return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} />;
       case 3:
-        return <Paso3EquipoAuditor formData={formData} onChange={handleChange} />;
+        return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
       case 4:
         return <Paso4Programacion formData={formData} onChange={handleChange} />;
       case 5:
@@ -955,7 +1005,11 @@ function Paso2ClasificacionAlcance({ formData, onChange }: PasoProps) {
 // PASO 3: EQUIPO AUDITOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
+interface Paso3Props extends PasoProps {
+  auditores: AuditorOption[];
+}
+
+function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
   const handleToggleAuditor = (auditorId: string) => {
     const existe = formData.equipoAuditores.includes(auditorId);
     if (existe) {
@@ -985,7 +1039,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {AUDITORES_MOCK.map(auditor => (
+              {auditores.map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre} - {auditor.cargo}
                 </option>
@@ -1001,7 +1055,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor asignado...</option>
-              {AUDITORES_MOCK.filter(a => a.id !== formData.auditorLider).map(auditor => (
+              {auditores.filter(a => a.id !== formData.auditorLider).map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre} - {auditor.cargo}
                 </option>
@@ -1017,7 +1071,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el supervisor...</option>
-              {AUDITORES_MOCK.filter(a =>
+              {auditores.filter(a =>
                 a.id !== formData.auditorLider && a.id !== formData.auditorAsignado
               ).map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
@@ -1033,7 +1087,7 @@ function Paso3EquipoAuditor({ formData, onChange }: PasoProps) {
             helpText="Seleccione otros auditores que participarán"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {AUDITORES_MOCK.filter(a =>
+              {auditores.filter(a =>
                 a.id !== formData.auditorLider &&
                 a.id !== formData.auditorAsignado &&
                 a.id !== formData.supervisorAsignado

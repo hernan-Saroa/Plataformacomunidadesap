@@ -45,20 +45,22 @@ import { toast } from 'sonner@2.0.3';
 
 // 🆕 Importar datos de territoriales y CETAP
 import { TERRITORIALES_ESAP } from '../../../data/territoriales-cetap-completo';
+// ✅ Importar tipos del hook para compatibilidad
+import type { AuditoriaProgramadaUI, TipoAuditoria as TipoAuditoriaHook, EstadoAuditoria as EstadoAuditoriaHook } from './hooks/useProgramaAnualData';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
 type VistaCalendario = 'dia' | 'semana' | 'mes' | 'año';
-type EstadoAuditoria = 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
-type TipoAuditoria = 'regular' | 'territorial' | 'especial'; // 🆕 CORREGIDO
+type EstadoAuditoria = EstadoAuditoriaHook; // Usar tipo del hook
+type TipoAuditoria = TipoAuditoriaHook | 'regular' | 'territorial' | 'especial'; // Combinar tipos
 
 interface AuditoriaProgramada {
   id: string;
   nombre: string;
   tipo: TipoAuditoria;
-  proceso: { nombre: string; codigo: string };
+  proceso: { nombre: string; codigo?: string };
   fechaInicio: string;
   fechaFin: string;
   estado: EstadoAuditoria;
@@ -71,7 +73,7 @@ interface AuditoriaProgramada {
 }
 
 interface CronogramaAuditoriasPremiumProps {
-  auditorias: AuditoriaProgramada[];
+  auditorias: AuditoriaProgramada[] | AuditoriaProgramadaUI[];
   vigencia?: number;
 }
 
@@ -86,10 +88,17 @@ const COLORES_ESTADO = {
   'CANCELADA': { bg: '#FEE2E2', border: '#EF4444', text: '#991B1B' }
 };
 
-const COLORES_TIPO = {
+const COLORES_TIPO: Record<string, string> = {
+  // Tipos legacy
   'regular': '#3B82F6',
   'territorial': '#8B5CF6',
-  'especial': '#EF4444'
+  'especial': '#EF4444',
+  // Tipos del hook
+  'CUMPLIMIENTO': '#3B82F6',
+  'GESTION': '#10B981',
+  'FINANCIERA': '#F59E0B',
+  'TI': '#6366F1',
+  'ESPECIAL': '#EF4444'
 };
 
 const MESES = [

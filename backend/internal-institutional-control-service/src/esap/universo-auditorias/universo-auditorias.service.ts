@@ -110,7 +110,9 @@ export class UniversoAuditoriasService {
 
     const riesgoInherente = this.calcularRiesgoInherente(probabilidad, impacto);
     const riesgoResidual = this.calcularRiesgoResidual(riesgoInherente, nivelControl);
-    const nivelRiesgo = this.determinarNivelRiesgo(riesgoResidual);
+    
+    // Si viene nivelRiesgo desde DAFP, usarlo; sino calcularlo
+    const nivelRiesgo = evaluacionRiesgo.nivelRiesgo || this.determinarNivelRiesgo(riesgoResidual);
     const priorizacionAnos = this.calcularPriorizacionAnos(nivelRiesgo);
     const prioridad = this.calcularPrioridad(priorizacionAnos);
 
@@ -125,6 +127,14 @@ export class UniversoAuditoriasService {
         madurezControl: evaluacionRiesgo.madurezControl,
         controles: evaluacionRiesgo.controles,
         factoresRiesgo: evaluacionRiesgo.factoresRiesgo || [],
+        // Campos DAFP - preservar si vienen del frontend
+        riesgosExtremos: evaluacionRiesgo.riesgosExtremos,
+        riesgosAltos: evaluacionRiesgo.riesgosAltos,
+        riesgosModerados: evaluacionRiesgo.riesgosModerados,
+        riesgosBajos: evaluacionRiesgo.riesgosBajos,
+        totalRiesgos: evaluacionRiesgo.totalRiesgos,
+        requerimientoComite: evaluacionRiesgo.requerimientoComite,
+        requerimientoEntesReg: evaluacionRiesgo.requerimientoEntesReg,
       },
       prioridad,
       priorizacionAnos,
@@ -215,21 +225,22 @@ export class UniversoAuditoriasService {
 
     // Si hay ultimaAuditoria pero no proximaAuditoria, calcularla automáticamente
     if (ultimaAuditoria && !proximaAuditoria) {
-      proximaAuditoria = this.calcularProximaAuditoria(ultimaAuditoria, createDto.frecuenciaAuditoria);
+      proximaAuditoria = this.calcularProximaAuditoria(ultimaAuditoria, createDto.frecuenciaAuditoria || 'anual');
     }
 
     const proceso = this.procesoRepository.create({
       codigo: createDto.codigo,
       nombre: createDto.nombre,
-      descripcion: createDto.descripcion,
+      descripcion: createDto.descripcion || createDto.nombre,
       tipo: createDto.tipo,
       macroproceso: createDto.macroproceso,
-      responsable: createDto.responsable,
+      responsable: createDto.responsable || 'Sin asignar',
       dependencia: createDto.dependencia,
       territorial: createDto.territorial,
       evaluacionRiesgo: evaluacionRiesgoCompleta,
-      frecuenciaAuditoria: createDto.frecuenciaAuditoria,
+      frecuenciaAuditoria: createDto.frecuenciaAuditoria || 'anual',
       ultimaAuditoria,
+      resultadoUltimaAuditoria: createDto.resultadoUltimaAuditoria,
       proximaAuditoria,
       prioridad,
       priorizacionAnos,
@@ -275,6 +286,11 @@ export class UniversoAuditoriasService {
         // Si se elimina ultimaAuditoria, también eliminar proximaAuditoria
         proceso.proximaAuditoria = undefined;
       }
+    }
+    
+    // Manejar actualización de resultadoUltimaAuditoria
+    if (updateDto.resultadoUltimaAuditoria !== undefined) {
+      proceso.resultadoUltimaAuditoria = updateDto.resultadoUltimaAuditoria;
     }
     
     // Si se actualiza frecuenciaAuditoria y hay ultimaAuditoria, recalcular proximaAuditoria

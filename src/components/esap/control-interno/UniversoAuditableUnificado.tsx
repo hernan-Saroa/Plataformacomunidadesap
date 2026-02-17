@@ -24,10 +24,10 @@ import {
   Layers, Calendar as CalendarIcon, Target, Filter, Search, Download, Plus,
   BarChart3, Activity, AlertTriangle, CheckCircle2, Clock,
   TrendingUp, Users, FileText, Link2, Eye, Edit2, Trash2,
-  ChevronRight, AlertCircle, Info, X, FileCheck, Save, XCircle,
-  Loader2, WifiOff, RefreshCw
+  ChevronRight, ChevronDown, AlertCircle, Info, X, FileCheck, Save, XCircle,
+  Loader2, WifiOff, RefreshCw, FileSpreadsheet
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 // ✅ NUEVO: Cuestionario DAFP Visual SIMPLIFICADO - Implementación exacta según CUESTIONARIO_FLUJO_DAFP_VISUAL.md
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
@@ -38,8 +38,12 @@ import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 import { TooltipGuia } from './TooltipGuia';
 // ✅ HOOKS DE INTEGRACIÓN CON BACKEND (reemplazan datos mock)
 import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
-import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI } from './hooks/useProgramaAnualData';
+import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI, type AuditoriaCreateData } from './hooks/useProgramaAnualData';
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
+// ✅ SERVICIO DE EXPORTACIÓN PDF
+import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
+// ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
+import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -64,6 +68,7 @@ interface UniversoAuditableUnificadoProps {
 
 export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: UniversoAuditableUnificadoProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>('universo');
+  const [mostrarMenuExportar, setMostrarMenuExportar] = useState(false);
   const [filtroNivelRiesgo, setFiltroNivelRiesgo] = useState<NivelRiesgo | 'TODOS'>('TODOS');
   const [filtroTipoProceso, setFiltroTipoProceso] = useState<TipoProceso | 'TODOS'>('TODOS');
   const [busqueda, setBusqueda] = useState('');
@@ -87,6 +92,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
     loading: loadingAuditorias,
     error: errorAuditorias,
     isOnline: isOnlineAuditorias,
+    agregarAuditoria,
     refetch: refetchAuditorias,
   } = useProgramaAnualData({ vigencia, procesos });
 
@@ -160,13 +166,85 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => toast.success('Exportando universo auditable...')}
-                className="px-4 py-2 bg-white border-2 border-gray-300 hover:border-blue-600 text-gray-700 rounded-lg font-semibold flex items-center gap-2 transition-all"
-              >
-                <Download className="w-4 h-4" />
-                Exportar
-              </button>
+              {/* Dropdown de Exportación */}
+              <div className="relative">
+                <button
+                  onClick={() => setMostrarMenuExportar(!mostrarMenuExportar)}
+                  onBlur={() => setTimeout(() => setMostrarMenuExportar(false), 150)}
+                  className="px-4 py-2 bg-white border-2 border-gray-300 hover:border-blue-600 text-gray-700 rounded-lg font-semibold flex items-center gap-2 transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar
+                  <ChevronDown className={`w-4 h-4 transition-transform ${mostrarMenuExportar ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {mostrarMenuExportar && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={async () => {
+                        setMostrarMenuExportar(false);
+                        try {
+                          const resultado = await exportarUniversoAuditablePDF(
+                            procesos,
+                            {
+                              totalProcesos: estadisticas.totalProcesos,
+                              procesosAuditables: estadisticas.procesosAuditables,
+                              procesosCriticos: estadisticas.procesosCriticos,
+                              procesosAltos: estadisticas.procesosAltos,
+                              procesosMedios: estadisticas.procesosMedios,
+                              procesosBajos: estadisticas.procesosBajos
+                            },
+                            { vigencia }
+                          );
+                          if (resultado.exito) {
+                            toast.success('PDF exportado exitosamente');
+                          } else {
+                            toast.error(resultado.error || 'Error al exportar');
+                          }
+                        } catch (error) {
+                          console.error('Error al exportar PDF:', error);
+                          toast.error('Error al exportar el PDF');
+                        }
+                      }}
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FileText className="w-4 h-4 text-red-600" />
+                      Exportar a PDF
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setMostrarMenuExportar(false);
+                        try {
+                          const resultado = await exportarUniversoAuditableExcel(
+                            procesos,
+                            {
+                              totalProcesos: estadisticas.totalProcesos,
+                              procesosAuditables: estadisticas.procesosAuditables,
+                              procesosCriticos: estadisticas.procesosCriticos,
+                              procesosAltos: estadisticas.procesosAltos,
+                              procesosMedios: estadisticas.procesosMedios,
+                              procesosBajos: estadisticas.procesosBajos
+                            },
+                            { vigencia }
+                          );
+                          if (resultado.exito) {
+                            toast.success('Excel exportado exitosamente');
+                          } else {
+                            toast.error(resultado.error || 'Error al exportar');
+                          }
+                        } catch (error) {
+                          console.error('Error al exportar Excel:', error);
+                          toast.error('Error al exportar el Excel');
+                        }
+                      }}
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-green-50 flex items-center gap-3 transition-colors"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                      Exportar a Excel
+                    </button>
+                  </div>
+                )}
+              </div>
               {onVolver && (
                 <button
                   onClick={onVolver}
@@ -295,10 +373,43 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
         <FormularioAuditoriaUnificado
           open={mostrarFormulario}
           onClose={() => setMostrarFormulario(false)}
-          onSubmit={(data: AuditoriaUnificadaFormData) => {
-            console.log('Nueva auditoría programada:', data);
-            toast.success('Auditoría programada exitosamente');
-            setMostrarFormulario(false);
+          onSubmit={async (data: AuditoriaUnificadaFormData) => {
+            // Convertir datos del formulario al formato del hook
+            const auditoriaData: AuditoriaCreateData = {
+              tipoAuditoria: data.tipoAuditoria,
+              titulo: data.titulo,
+              descripcion: data.descripcion,
+              territorial: data.territorial,
+              areaObjetivo: data.areaObjetivo,
+              procesoAuditado: data.procesoAuditado,
+              alcance: data.alcance,
+              auditorLider: data.auditorLider,
+              auditorAsignado: data.auditorAsignado,
+              equipoAuditores: data.equipoAuditores,
+              supervisorAsignado: data.supervisorAsignado,
+              fechaInicio: data.fechaInicio,
+              fechaFin: data.fechaFin,
+              periodicidad: data.periodicidad,
+              objetivos: data.objetivos,
+              criteriosAuditoria: data.criteriosAuditoria,
+              normatividadAplicable: data.normatividadAplicable,
+              nivelRiesgo: data.nivelRiesgo,
+              riesgosIdentificados: data.riesgosIdentificados,
+              controlesAplicar: data.controlesAplicar,
+              presupuestoEstimado: data.presupuestoEstimado,
+              recursos: data.recursos,
+              productosEsperados: data.productosEsperados,
+              hitos: data.hitos,
+              vinculadaPlanAnual: data.vinculadaPlanAnual,
+              planAnualId: data.planAnualId,
+              planAnualAño: data.planAnualAño,
+              rolDecretoAsociado: data.rolDecretoAsociado,
+            };
+            
+            const exito = await agregarAuditoria(auditoriaData);
+            if (exito) {
+              setMostrarFormulario(false);
+            }
           }}
           mode="create"
         />
@@ -321,7 +432,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
           }}
-          procesoInicial={procesoSeleccionado}
+          procesoInicial={convertirProcesoAFormulario(procesoSeleccionado)}
           mode={procesoSeleccionado ? 'edit' : 'create'}
         />
       )}
@@ -363,8 +474,8 @@ function TabUniversoAuditable({
   // ✅ DELEGAMOS TODO AL COMPONENTE RESPONSIVE WORLD-CLASS
   return (
     <TabUniversoAuditableResponsive
-      procesos={procesos}
-      estadisticas={estadisticas}
+      procesos={procesos as any}
+      estadisticas={estadisticas as any}
       busqueda={busqueda}
       filtroRiesgo={filtroRiesgo}
       filtroTipo={filtroTipo}
@@ -372,7 +483,7 @@ function TabUniversoAuditable({
       onFiltroRiesgoChange={onFiltroRiesgoChange}
       onFiltroTipoChange={onFiltroTipoChange}
       onAgregarProceso={onAgregarProceso}
-      onEditarProceso={onEditarProceso}
+      onEditarProceso={onEditarProceso as any}
       onEliminarProceso={onEliminarProceso}
     />
   );
@@ -520,7 +631,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
               className="p-6"
             >
               <CronogramaAuditoriasPremium 
-                auditorias={auditorias}
+                auditorias={auditorias as any}
                 vigencia={new Date().getFullYear()}
               />
             </motion.div>

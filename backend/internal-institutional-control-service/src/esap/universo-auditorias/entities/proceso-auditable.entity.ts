@@ -76,6 +76,15 @@ export class ProcesoAuditable {
       correctivos: number;
     };
     factoresRiesgo?: string[];
+    // Distribución de riesgos DAFP
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    // Requerimientos especiales
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
   };
 
   @Column({ name: 'frecuencia_auditoria', type: 'varchar', length: 255, nullable: false })
@@ -83,6 +92,9 @@ export class ProcesoAuditable {
 
   @Column({ name: 'ultima_auditoria', type: 'date', nullable: true })
   ultimaAuditoria?: Date;
+
+  @Column({ name: 'resultado_ultima_auditoria', type: 'varchar', length: 255, nullable: true })
+  resultadoUltimaAuditoria?: string;
 
   @Column({ name: 'proxima_auditoria', type: 'date', nullable: true })
   proximaAuditoria?: Date;
