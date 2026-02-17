@@ -1249,18 +1249,55 @@ export function PlanAnualAuditoriaDefinitivo() {
           actividades: rol.actividades.map(act => {
             // Cast a any para acceder campos extendidos que vienen del backend
             const actExtendido = act as any;
-            
+
+            // Formatear fechas (backend puede devolver Date o string)
+            const formatearFecha = (fecha: any): string => {
+              if (!fecha) return '';
+              if (typeof fecha === 'string') return fecha.split('T')[0];
+              if (fecha instanceof Date) return fecha.toISOString().split('T')[0];
+              return '';
+            };
+
+            // Mapear estado del backend al frontend (en-progreso → EN_EJECUCION, no EN-PROGRESO)
+            const estadoBackend = (act.estado || 'pendiente').toLowerCase();
+            const estadoFront: EstadoActividad =
+              estadoBackend === 'completada' ? 'COMPLETADA' :
+              estadoBackend === 'en-progreso' ? 'EN_EJECUCION' :
+              estadoBackend === 'retrasada' ? 'RETRASADA' : 'PENDIENTE';
+
             // Obtener configuración de evidencias del backend y transformar al formato del frontend
             const configBackend = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;
-            
+
             // Transformar booleans del backend a strings del frontend
             let configEvidencias: ConfiguracionEvidencias;
             if (configBackend) {
+              // Determinar si los adjuntos son obligatorios basándose en minimoAdjuntos
+              const minimoAdjuntos = configBackend.minimoAdjuntos || 0;
+              const minObservacion = configBackend.longitudMinimaObservacion || 0;
+
+              let adjuntosRequeridos: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+              if (!configBackend.documentos) {
+                adjuntosRequeridos = 'NO_REQUERIDO';
+              } else if (minimoAdjuntos > 0) {
+                adjuntosRequeridos = 'OBLIGATORIO';
+              } else {
+                adjuntosRequeridos = 'OPCIONAL';
+              }
+
+              let observacionRequerida: 'OBLIGATORIO' | 'OPCIONAL' | 'NO_REQUERIDO';
+              if (!configBackend.observaciones) {
+                observacionRequerida = 'NO_REQUERIDO';
+              } else if (minObservacion > 0) {
+                observacionRequerida = 'OBLIGATORIO';
+              } else {
+                observacionRequerida = 'OPCIONAL';
+              }
+
               configEvidencias = {
-                adjuntosRequeridos: configBackend.documentos ? 'OBLIGATORIO' : 'NO_REQUERIDO',
-                observacionRequerida: configBackend.observaciones ? 'OBLIGATORIO' : 'NO_REQUERIDO',
-                minimoAdjuntos: configBackend.minimoAdjuntos || 1,
-                longitudMinimaObservacion: configBackend.longitudMinimaObservacion || 10
+                adjuntosRequeridos,
+                observacionRequerida,
+                minimoAdjuntos,
+                longitudMinimaObservacion: minObservacion
               };
             } else {
               // Fallback si no hay configuración
@@ -1271,25 +1308,36 @@ export function PlanAnualAuditoriaDefinitivo() {
                 longitudMinimaObservacion: 0
               };
             }
-            
+
             return {
               id: act.id, // UUID string desde el backend
               nombre: act.nombre,
               descripcion: act.descripcion || '',
-              fechaInicio: act.fecha_inicio,
-              fechaFin: act.fecha_fin,
+              fechaInicio: formatearFecha(act.fecha_inicio) || formatearFecha(act.fechaInicio),
+              fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
               responsable: auditores.find(a => a.nombre === act.responsable) || null,
-              porcentajeAvance: act.porcentaje_avance,
-              estado: act.estado.toUpperCase() as EstadoActividad,
+              porcentajeAvance: act.porcentaje_avance ?? 0,
+              estado: estadoFront,
               control: actExtendido.control || '',
               evaluacion: actExtendido.evaluacion || '',
-              seguimiento: actExtendido.seguimiento || act.observaciones || '',
+              seguimiento: actExtendido.seguimiento || '',
+              // Observaciones del modal de evidencias: backend las guarda en "observaciones"
+              observacionesCumplimiento: actExtendido.observaciones ?? act.observaciones ?? '',
               requiereVerificacionDirector: actExtendido.requiere_verificacion_director || actExtendido.requiereVerificacionDirector || false,
               verificadaPorDirector: actExtendido.verificada_por_director || actExtendido.verificadaPorDirector || false,
               fechaVerificacion: actExtendido.fecha_verificacion || actExtendido.fechaVerificacion,
               observacionesDirector: actExtendido.observaciones_director || actExtendido.observacionesDirector,
               configuracionEvidencias: configEvidencias,
-              adjuntos: actExtendido.adjuntos || [],
+              // Mapear adjuntos del backend al formato del frontend
+              adjuntos: (actExtendido.adjuntos || []).map((adj: any) => ({
+                id: adj.id,
+                nombre: adj.nombre,
+                tipo: adj.tipo || '',
+                tamaño: typeof adj.tamanio === 'string' ? parseInt(adj.tamanio, 10) : (adj.tamanio ?? adj.tamaño ?? 0),
+                fechaCarga: adj.fechaCarga || adj.fecha_carga || adj.createdAt || '',
+                cargadoPor: adj.cargadoPor || adj.cargado_por || 'Usuario',
+                url: adj.url
+              })),
               bitacoraObservaciones: actExtendido.bitacoraObservaciones || []
             };
           })
@@ -1339,21 +1387,45 @@ export function PlanAnualAuditoriaDefinitivo() {
             // ⚡ Convertir tipoEvidencia del Wizard a configuracionEvidencias del backend
             let configuracionEvidencias = act.configuracionEvidencias;
             if (!configuracionEvidencias && act.tipoEvidencia) {
-              // Mapear tipoEvidencia a configuracionEvidencias
+              // Mapear tipoEvidencia a configuracionEvidencias completa
               switch (act.tipoEvidencia) {
                 case 'SOLO_CHECK':
-                  configuracionEvidencias = { documentos: false, observaciones: false };
+                  configuracionEvidencias = { 
+                    documentos: false, observaciones: false,
+                    adjuntosRequeridos: 'NO_REQUERIDO', observacionRequerida: 'NO_REQUERIDO',
+                    minimoAdjuntos: 0, longitudMinimaObservacion: 0
+                  };
                   break;
                 case 'OBSERVACIONES':
-                  configuracionEvidencias = { documentos: false, observaciones: true };
+                  configuracionEvidencias = { 
+                    documentos: false, observaciones: true,
+                    adjuntosRequeridos: 'OPCIONAL', observacionRequerida: 'OBLIGATORIO',
+                    minimoAdjuntos: 0, longitudMinimaObservacion: 30
+                  };
                   break;
                 case 'ADJUNTOS':
-                  configuracionEvidencias = { documentos: true, observaciones: false };
+                  configuracionEvidencias = { 
+                    documentos: true, observaciones: false,
+                    adjuntosRequeridos: 'OBLIGATORIO', observacionRequerida: 'OPCIONAL',
+                    minimoAdjuntos: 1, longitudMinimaObservacion: 0
+                  };
                   break;
                 case 'COMPLETO':
-                  configuracionEvidencias = { documentos: true, observaciones: true };
+                  configuracionEvidencias = { 
+                    documentos: true, observaciones: true,
+                    adjuntosRequeridos: 'OBLIGATORIO', observacionRequerida: 'OBLIGATORIO',
+                    minimoAdjuntos: 1, longitudMinimaObservacion: 30
+                  };
                   break;
               }
+            }
+            // Asegurar defaults si no tiene configuración
+            if (!configuracionEvidencias) {
+              configuracionEvidencias = {
+                documentos: false, observaciones: false,
+                adjuntosRequeridos: 'NO_REQUERIDO', observacionRequerida: 'NO_REQUERIDO',
+                minimoAdjuntos: 0, longitudMinimaObservacion: 0
+              };
             }
 
             await actividadesApi.create(rolBackend.id, {
@@ -1474,6 +1546,7 @@ export function PlanAnualAuditoriaDefinitivo() {
             key="dashboard"
             plan={planActual}
             onActualizar={setPlanActual}
+            onRefetchPlan={recargarPlan}
             onVolver={() => setVista('inicio')}
             onAbrirRol4={() => setVista('rol4-integrado')}
             onCrearNuevo={() => setVista('wizard')}

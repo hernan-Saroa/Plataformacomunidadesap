@@ -144,6 +144,43 @@ export const planAnualApi = {
   getRoles: async (planId: string): Promise<ApiResponse<Rol[]>> => {
     return apiRequest<Rol[]>(`${PLAN_ANUAL_ENDPOINT}/${planId}/roles`);
   },
+
+  /**
+   * Exportar plan a Excel (descarga archivo .xlsx)
+   */
+  exportExcel: async (planId: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/${planId}/export/excel`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+        return { success: false, error: data?.message || `Error ${response.status}` };
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition');
+      const match = disposition?.match(/filename="?([^";]+)"?/);
+      const nombre = match ? match[1] : `plan-anual-${planId}.xlsx`;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : 'Error al exportar' };
+    }
+  },
+
+  /**
+   * Obtener datos del plan para exportar a PDF (el front puede abrir vista de impresión)
+   */
+  exportPdfData: async (planId: string): Promise<ApiResponse<PlanAnual>> => {
+    return apiRequest<PlanAnual>(`${PLAN_ANUAL_ENDPOINT}/${planId}/export/pdf`);
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -216,9 +253,10 @@ export const auditoresApi = {
     
     if (response.success && response.data) {
       // Transformar al formato Auditor del frontend
+      // El backend devuelve: { id, nombre, cargo, email, ... }
       const auditores: Auditor[] = response.data.map(persona => ({
-        id: persona.id || persona.documento,
-        nombre: persona.nombre_completo || `${persona.nombres || ''} ${persona.apellidos || ''}`.trim(),
+        id: String(persona.id || persona.idPersona || persona.documento),
+        nombre: persona.nombre || persona.nombre_completo || `${persona.nombres || ''} ${persona.apellidos || ''}`.trim() || 'Sin nombre',
         cargo: persona.cargo || 'Auditor',
         email: persona.email || '',
       }));
@@ -236,8 +274,8 @@ export const auditoresApi = {
     
     if (response.success && response.data) {
       const auditores: Auditor[] = response.data.map(persona => ({
-        id: persona.id || persona.documento,
-        nombre: persona.nombre_completo || `${persona.nombres || ''} ${persona.apellidos || ''}`.trim(),
+        id: String(persona.id || persona.idPersona || persona.documento),
+        nombre: persona.nombre || persona.nombre_completo || `${persona.nombres || ''} ${persona.apellidos || ''}`.trim() || 'Sin nombre',
         cargo: persona.cargo || 'Auditor',
         email: persona.email || '',
       }));

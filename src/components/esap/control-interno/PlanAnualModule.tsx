@@ -43,6 +43,8 @@ import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
+import headerImg from '../../../assets/graduation-certificates/img_primera.png';
+import footerImg from '../../../assets/graduation-certificates/img_segunda.png';
 
 // Notificaciones
 import { useCrearNotificacion } from './hooks/useCrearNotificacion';
@@ -853,93 +855,30 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
         format: 'a4'
       });
 
-      // Función helper para cargar imagen del logo
-      const loadLogoImage = async (): Promise<string | null> => {
-        try {
-          // Intentar cargar desde diferentes ubicaciones posibles
-          const possiblePaths = [
-            '/src/assets/esap-logo.png',
-            '/src/assets/esap-logo.jpg',
-            '/assets/esap-logo.png',
-            '/assets/esap-logo.jpg',
-            './assets/esap-logo.png',
-            './assets/esap-logo.jpg'
-          ];
-          
-          // Por ahora retornamos null para usar el logo dibujado
-          // Si tienes la imagen, puedes agregarla aquí
-          return null;
-        } catch (error) {
-          return null;
-        }
-      };
-
       // Configuración de colores
       const colorAzul = [0, 61, 165]; // #003DA5
       const colorGris = [128, 128, 128];
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 10;
 
-      // ============ HEADER ============
-      // Logo ESAP: Intentar cargar imagen, si no, dibujar manualmente
-      const logoX = 15;
-      const logoY = 10;
-      const logoWidth = 25;
-      const logoHeight = 15;
-      
-      const logoImage = await loadLogoImage();
-      
-      if (logoImage) {
-        // Si tenemos la imagen, usarla
-        doc.addImage(logoImage, 'PNG', logoX, logoY, logoWidth, logoHeight);
-      } else {
-        // Dibujar logo manualmente: Triángulo de 10 círculos (1, 2, 3, 4) con letras "esap" en la base
-        const circleRadius = 2.3;
-        
-        // Establecer color azul para todos los círculos
+      // ============ HEADER INSTITUCIONAL ESAP ============
+      try {
+        // Usar imagen institucional del encabezado
+        doc.addImage(headerImg, 'PNG', margin, 10, pageWidth * 0.6, 20);
+      } catch (error) {
+        console.warn('No se pudo cargar encabezado institucional, usando fallback');
+        // Fallback: Logo dibujado
+        const logoX = 15;
+        const logoY = 10;
         doc.setFillColor(...colorAzul);
         doc.setDrawColor(...colorAzul);
-        
-        // Fila 1 (arriba): 1 círculo
-        doc.circle(logoX + 11, logoY + 2, circleRadius, 'FD');
-        
-        // Fila 2: 2 círculos
-        doc.circle(logoX + 8.5, logoY + 5.5, circleRadius, 'FD');
-        doc.circle(logoX + 13.5, logoY + 5.5, circleRadius, 'FD');
-        
-        // Fila 3: 3 círculos
-        doc.circle(logoX + 6, logoY + 9, circleRadius, 'FD');
-        doc.circle(logoX + 11, logoY + 9, circleRadius, 'FD');
-        doc.circle(logoX + 16, logoY + 9, circleRadius, 'FD');
-        
-        // Fila 4 (base): 4 círculos con letras "esap" en minúsculas en blanco
-        const baseY = logoY + 12.5;
-        const baseCircles = [
-          { x: logoX + 3.5, letter: 'e' },
-          { x: logoX + 9, letter: 's' },
-          { x: logoX + 14.5, letter: 'a' },
-          { x: logoX + 20, letter: 'p' }
-        ];
-        
-        baseCircles.forEach((circle) => {
-          // Asegurar que el círculo se dibuje completamente
-          doc.setFillColor(...colorAzul);
-          doc.setDrawColor(...colorAzul);
-          doc.circle(circle.x, baseY, circleRadius, 'FD');
-          
-          // Agregar letra en blanco dentro del círculo
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(6);
-          doc.setFont(undefined, 'bold');
-          doc.text(circle.letter, circle.x, baseY + 1.3, { align: 'center' });
-        });
+        doc.circle(logoX + 11, logoY + 2, 2.3, 'FD');
+        doc.setFontSize(7);
+        doc.setTextColor(...colorAzul);
+        doc.setFont(undefined, 'bold');
+        doc.text('Escuela Superior de', logoX, logoY + 16.5);
+        doc.text('Administración Pública', logoX, logoY + 19.5);
       }
-      
-      // Texto ESAP debajo del logo
-      const textY = logoY + 16.5;
-      doc.setFontSize(7);
-      doc.setTextColor(...colorAzul);
-      doc.setFont(undefined, 'bold');
-      doc.text('Escuela Superior de', logoX, textY);
-      doc.text('Administración Pública', logoX, textY + 3);
       
       // Título principal (centrado)
       doc.setFontSize(14);

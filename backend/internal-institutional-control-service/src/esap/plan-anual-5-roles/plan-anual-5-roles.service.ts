@@ -42,6 +42,7 @@ export class PlanAnual5RolesService {
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
+      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .orderBy('plan.año', 'DESC');
 
     if (year) {
@@ -54,7 +55,7 @@ export class PlanAnual5RolesService {
   async findOne(id: string): Promise<PlanAnual5Roles> {
     const plan = await this.planRepository.findOne({
       where: { id },
-      relations: ['roles', 'roles.actividades'],
+      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
     });
 
     if (!plan) {
@@ -67,7 +68,7 @@ export class PlanAnual5RolesService {
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
     return this.planRepository.findOne({
       where: { año: year },
-      relations: ['roles', 'roles.actividades'],
+      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
     });
   }
 
@@ -350,6 +351,56 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Actividad con ID ${actividadId} no encontrada`);
     }
 
+    // ========================================
+    // VALIDACIÓN DE EVIDENCIAS REQUERIDAS
+    // ========================================
+    // Si se intenta completar la actividad (100% o estado='completada'),
+    // verificar que se cumplan los requisitos de evidencia
+    const intentaCompletar = 
+      (updateDto.porcentaje_avance !== undefined && updateDto.porcentaje_avance === 100) ||
+      (updateDto.estado !== undefined && updateDto.estado === 'completada');
+
+    if (intentaCompletar && actividad.configuracionEvidencias) {
+      const config = typeof actividad.configuracionEvidencias === 'string' 
+        ? JSON.parse(actividad.configuracionEvidencias) 
+        : actividad.configuracionEvidencias;
+      
+      console.log('🔍 [updateActividad] Validando evidencias para completar:', JSON.stringify(config));
+      
+      // Verificar si se requieren documentos/adjuntos
+      if (config.documentos === true) {
+        const adjuntosCount = await this.adjuntoRepository.count({
+          where: { actividadId: actividadId }
+        });
+        console.log(`📎 Adjuntos encontrados: ${adjuntosCount}, requeridos: ${config.minimoAdjuntos || 1}`);
+        
+        const minimoRequerido = config.minimoAdjuntos || 1;
+        if (adjuntosCount < minimoRequerido) {
+          throw new BadRequestException(
+            `No puede completar esta actividad. Se requiere${minimoRequerido > 1 ? 'n' : ''} al menos ${minimoRequerido} adjunto${minimoRequerido > 1 ? 's' : ''}, pero solo hay ${adjuntosCount}.`
+          );
+        }
+      }
+      
+      // Verificar si se requieren observaciones
+      if (config.observaciones === true) {
+        // La observación puede venir en el updateDto o ya estar en la actividad
+        const observacionActual = updateDto.observaciones ?? actividad.observaciones;
+        const longitudMinima = config.longitudMinimaObservacion || 10;
+        
+        console.log(`📝 Observación actual: "${observacionActual}", longitud mínima: ${longitudMinima}`);
+        
+        if (!observacionActual || observacionActual.trim().length < longitudMinima) {
+          throw new BadRequestException(
+            `No puede completar esta actividad. Se requiere una observación con al menos ${longitudMinima} caracteres.`
+          );
+        }
+      }
+      
+      console.log('✅ Validación de evidencias completada exitosamente');
+    }
+    // ========================================
+
     // Construir query de actualización con fechas como strings
     const updates: string[] = [];
     const values: any[] = [];
@@ -414,6 +465,35 @@ export class PlanAnual5RolesService {
       updates.push(`prioridad = $${paramIndex++}`);
       values.push(updateDto.prioridad);
       cambios.push({ campo: 'prioridad', valorAnterior: actividad.prioridad || '', valorNuevo: updateDto.prioridad });
+    }
+    if (updateDto.control !== undefined && updateDto.control !== actividad.control) {
+      updates.push(`control = $${paramIndex++}`);
+      values.push(updateDto.control);
+      cambios.push({ campo: 'control', valorAnterior: actividad.control || '', valorNuevo: updateDto.control });
+    }
+    if (updateDto.evaluacion !== undefined && updateDto.evaluacion !== actividad.evaluacion) {
+      updates.push(`evaluacion = $${paramIndex++}`);
+      values.push(updateDto.evaluacion);
+      cambios.push({ campo: 'evaluacion', valorAnterior: actividad.evaluacion || '', valorNuevo: updateDto.evaluacion });
+    }
+    if (updateDto.seguimiento !== undefined && updateDto.seguimiento !== actividad.seguimiento) {
+      updates.push(`seguimiento = $${paramIndex++}`);
+      values.push(updateDto.seguimiento);
+      cambios.push({ campo: 'seguimiento', valorAnterior: actividad.seguimiento || '', valorNuevo: updateDto.seguimiento });
+    }
+    if (updateDto.configuracionEvidencias !== undefined) {
+      const configStr = JSON.stringify(updateDto.configuracionEvidencias);
+      const activConfigStr = actividad.configuracionEvidencias ? JSON.stringify(actividad.configuracionEvidencias) : null;
+      if (configStr !== activConfigStr) {
+        updates.push(`configuracion_evidencias = $${paramIndex++}::jsonb`);
+        values.push(configStr);
+        cambios.push({ campo: 'configuracion_evidencias', valorAnterior: activConfigStr || '', valorNuevo: configStr });
+      }
+    }
+    if (updateDto.requiereVerificacionDirector !== undefined && updateDto.requiereVerificacionDirector !== actividad.requiereVerificacionDirector) {
+      updates.push(`requiere_verificacion_director = $${paramIndex++}`);
+      values.push(updateDto.requiereVerificacionDirector);
+      cambios.push({ campo: 'requiere_verificacion_director', valorAnterior: String(actividad.requiereVerificacionDirector), valorNuevo: String(updateDto.requiereVerificacionDirector) });
     }
 
     if (updates.length === 0) {
@@ -912,6 +992,57 @@ export class PlanAnual5RolesService {
     }
 
     await this.adjuntoRepository.remove(adjunto);
+  }
+
+  /**
+   * Exportar plan anual a Excel (xlsx)
+   * Encabezado: institución y vigencia. Cuerpo: roles y actividades.
+   */
+  async exportExcel(planId: string): Promise<{ buffer: Buffer; nombre: string }> {
+    const plan = await this.findOne(planId);
+    const XLSX = await import('xlsx');
+
+    const año = plan.año ?? new Date().getFullYear();
+    const nombre = `plan-anual-auditoria-${año}.xlsx`;
+
+    const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance', 'Observaciones', 'Control', 'Evaluación', 'Seguimiento'];
+    const rows: unknown[][] = [
+      ['Plan Anual de Auditoría - ESAP'],
+      [`Vigencia ${año}`, '', '', '', '', '', '', `Estado: ${plan.estado ?? 'N/A'}`],
+      [],
+      headers,
+    ];
+
+    const roles = plan.roles ?? [];
+    for (const rol of roles) {
+      const actividades = Array.isArray(rol.actividades) ? rol.actividades : [];
+      for (let i = 0; i < actividades.length; i++) {
+        const a = actividades[i];
+        const fechaInicio = a.fecha_inicio != null ? new Date(a.fecha_inicio).toISOString().split('T')[0] : '';
+        const fechaFin = a.fecha_fin != null ? new Date(a.fecha_fin).toISOString().split('T')[0] : '';
+        rows.push([
+          rol.nombre ?? '',
+          i + 1,
+          a.nombre ?? '',
+          a.descripcion ?? '',
+          a.responsable ?? '',
+          fechaInicio,
+          fechaFin,
+          a.estado ?? '',
+          a.porcentaje_avance ?? 0,
+          a.observaciones ?? '',
+          a.control ?? '',
+          a.evaluacion ?? '',
+          a.seguimiento ?? '',
+        ]);
+      }
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+    return { buffer, nombre };
   }
 }
 

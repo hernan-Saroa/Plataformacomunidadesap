@@ -48,6 +48,8 @@ interface Actividad {
   adjuntos?: ArchivoAdjunto[];
   // Acepta string o array de objetos con texto
   observacionesCumplimiento?: string | ObservacionCumplimientoObj[];
+  // Campo del backend (singular)
+  observaciones?: string;
   configuracionEvidencias?: ConfiguracionEvidencias;
 }
 
@@ -60,19 +62,31 @@ interface ModalGestionAdjuntosProps {
 export function ModalGestionAdjuntos({ actividad, onCerrar, onActualizar }: ModalGestionAdjuntosProps) {
   const [adjuntos, setAdjuntos] = useState<ArchivoAdjunto[]>(actividad.adjuntos || []);
   
-  // Extraer texto de observaciones, manejando tanto string como array
-  const obtenerTextoObservaciones = (): string => {
-    const obs = actividad.observacionesCumplimiento;
-    if (!obs) return '';
-    if (typeof obs === 'string') return obs;
-    if (Array.isArray(obs) && obs.length > 0) {
-      // Si es array, concatenar los textos o tomar el último
-      return obs.map(o => o.texto || '').join('\n');
+  // ✅ CORRECCIÓN: Extraer observaciones existentes del backend o frontend
+  const obtenerObservacionesIniciales = (): string => {
+    // 1. Intentar desde campo del backend (singular)
+    if (actividad.observaciones && typeof actividad.observaciones === 'string') {
+      return actividad.observaciones;
     }
+    
+    // 2. Intentar desde campo del frontend (puede ser string o array)
+    if (actividad.observacionesCumplimiento) {
+      if (typeof actividad.observacionesCumplimiento === 'string') {
+        return actividad.observacionesCumplimiento;
+      }
+      // Si es array, extraer el texto de los objetos
+      if (Array.isArray(actividad.observacionesCumplimiento)) {
+        return actividad.observacionesCumplimiento
+          .map(obs => obs.texto || '')
+          .filter(texto => texto.trim().length > 0)
+          .join('\n');
+      }
+    }
+    
     return '';
   };
   
-  const [observaciones, setObservaciones] = useState<string>(obtenerTextoObservaciones());
+  const [observaciones, setObservaciones] = useState<string>(obtenerObservacionesIniciales());
   const [cargando, setCargando] = useState(false);
   let fileInputRef: HTMLInputElement | null = null;
 

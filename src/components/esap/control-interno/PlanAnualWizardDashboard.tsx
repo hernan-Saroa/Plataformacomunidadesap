@@ -4,12 +4,12 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
-  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock
+  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, ChevronDown, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -20,8 +20,16 @@ import {
   type PuntoControl, 
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
-// Hook para sincronizar evidencias con backend
-import { useSaveEvidencias, actividadesApi } from './services/plan-anual';
+// Hook para sincronizar evidencias con backend y API de auditores
+import { useSaveEvidencias, actividadesApi, auditoresApi, planAnualApi } from './services/plan-anual';
+import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+import { cargarConfiguracionPDF } from './utils/configuracionHelper';
+import { 
+  dibujarEncabezadoInstitucional, 
+  dibujarPieInstitucional, 
+  DOCUMENTOS_PREDEFINIDOS 
+} from './services/pdfESAPHeader';
+import logoESAP from '../../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
@@ -89,6 +97,38 @@ interface ObservacionCumplimiento {
   registradoPor: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FUNCIONES HELPER - Manejar diferentes formatos de datos
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Obtiene el conteo correcto de observaciones
+ * Maneja tanto string (del backend) como array (del frontend)
+ */
+function escapeHtml(s: string): string {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function contarObservaciones(obs: ObservacionCumplimiento[] | string | undefined): number {
+  if (!obs) return 0;
+  if (Array.isArray(obs)) return obs.length;
+  // Es string: cuenta como 1 si tiene contenido
+  return typeof obs === 'string' && obs.trim().length > 0 ? 1 : 0;
+}
+
+/**
+ * Verifica si hay observaciones
+ */
+function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined): boolean {
+  return contarObservaciones(obs) > 0;
+}
+
 interface Rol {
   numero: number;
   nombre: string;
@@ -110,13 +150,9 @@ interface PlanAnual {
   roles: Rol[];
 }
 
-// Auditores (debe coincidir con el principal)
-const AUDITORES: Auditor[] = [
-  { id: '1', nombre: 'Mario Oswaldo Bernal', cargo: 'Jefe de Control Interno', email: 'mario.bernal@esap.edu.co' },
-  { id: '2', nombre: 'Ana María López', cargo: 'Auditora sénior', email: 'ana.lopez@esap.edu.co' },
-  { id: '3', nombre: 'Carlos Mendoza', cargo: 'Auditor', email: 'carlos.mendoza@esap.edu.co' },
-  { id: '4', nombre: 'Laura Rodríguez', cargo: 'Auditora', email: 'laura.rodriguez@esap.edu.co' },
-  { id: '5', nombre: 'Juan Pablo García', cargo: 'Auditor júnior', email: 'juan.garcia@esap.edu.co' }
+// Auditores - Valor por defecto mientras se cargan del backend
+const AUDITORES_DEFAULT: Auditor[] = [
+  { id: '1', nombre: 'Cargando...', cargo: 'Auditor', email: '' }
 ];
 
 // Roles (debe coincidir con el principal)
@@ -221,9 +257,40 @@ interface WizardCreacionProps {
 export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [paso, setPaso] = useState(1);
   const [vigencia, setVigencia] = useState(new Date().getFullYear());
-  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor>(AUDITORES[0]);
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
   const [fechaFin, setFechaFin] = useState(`${new Date().getFullYear()}-12-31`);
+  
+  // Estado para auditores cargados desde backend
+  const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
+  const [cargandoAuditores, setCargandoAuditores] = useState(true);
+  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
+  
+  // Cargar auditores desde backend al montar el componente
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      setCargandoAuditores(true);
+      try {
+        const response = await auditoresApi.getAll();
+        if (response.success && response.data && response.data.length > 0) {
+          setAuditores(response.data);
+          // Seleccionar el primer auditor como jefe por defecto
+          setJefeSeleccionado(response.data[0]);
+        } else {
+          console.warn('No se pudieron cargar auditores del backend');
+          toast.error('No se pudieron cargar los auditores', {
+            description: 'Verifica la conexión con el servidor'
+          });
+        }
+      } catch (error) {
+        console.error('Error cargando auditores:', error);
+        toast.error('Error al cargar auditores');
+      } finally {
+        setCargandoAuditores(false);
+      }
+    };
+    
+    cargarAuditores();
+  }, []);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
     ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
@@ -356,9 +423,11 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
                 onFechaFinChange={setFechaFin}
+                auditores={auditores}
+                cargandoAuditores={cargandoAuditores}
               />
             )}
-            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} />}
+            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} />}
             {paso === 3 && <Paso3 key="paso3" vigencia={vigencia} jefeOCI={jefeSeleccionado} rolesConfig={rolesConfig} />}
           </AnimatePresence>
         </div>
@@ -391,7 +460,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange }: any) {
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores }: any) {
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
@@ -435,15 +504,22 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
 
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Jefe de Control Interno</label>
-          <select 
-            value={jefeOCI.id} 
-            onChange={(e) => onJefeChange(AUDITORES.find(a => a.id === e.target.value))} 
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-          >
-            {AUDITORES.map((a) => (
-              <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
-            ))}
-          </select>
+          {cargandoAuditores ? (
+            <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
+              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+              <span className="text-gray-600">Cargando auditores...</span>
+            </div>
+          ) : (
+            <select 
+              value={jefeOCI?.id || ''} 
+              onChange={(e) => onJefeChange(auditores.find((a: any) => a.id === e.target.value))} 
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            >
+              {auditores.map((a: any) => (
+                <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
     </motion.div>
@@ -455,12 +531,14 @@ function Paso2({
   rolesConfig, 
   onRolesChange,
   fechaInicio,
-  fechaFin
+  fechaFin,
+  auditores
 }: { 
   rolesConfig: RolConfig[]; 
   onRolesChange: (config: RolConfig[]) => void;
   fechaInicio: string;
   fechaFin: string;
+  auditores: Auditor[];
 }) {
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
@@ -822,7 +900,7 @@ function Paso2({
                             <select
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  const auditor = AUDITORES.find(a => a.id === e.target.value);
+                                  const auditor = auditores.find(a => a.id === e.target.value);
                                   if (auditor) {
                                     const yaAsignado = rol.responsables?.some((r: any) => r.id === auditor.id);
                                     if (yaAsignado) {
@@ -849,7 +927,7 @@ function Paso2({
                               defaultValue=""
                             >
                               <option value="" disabled>Seleccionar auditor...</option>
-                              {AUDITORES.map((auditor) => (
+                              {auditores.map((auditor) => (
                                 <option key={auditor.id} value={auditor.id}>
                                   {auditor.nombre} - {auditor.cargo}
                                 </option>
@@ -1420,14 +1498,43 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
 interface DashboardPlanProps {
   plan: PlanAnual;
   onActualizar: (plan: PlanAnual) => void;
+  onRefetchPlan?: () => Promise<void>; // Recargar plan desde backend tras guardar (para reflejar datos y adjuntos)
   onVolver: () => void;
   onAbrirRol4?: () => void;
   onCrearNuevo?: () => void; // Nueva prop para crear un nuevo plan
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
 }
 
-export function DashboardPlan({ plan, onActualizar, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
+  
+  // Estado para auditores cargados desde backend
+  const [auditores, setAuditores] = useState<Auditor[]>([]);
+  const [cargandoAuditores, setCargandoAuditores] = useState(true);
+  
+  const { puedeRealizar } = useControlInternoPermissions();
+  const puedeAprobarPlan = puedeRealizar('planificacion', 'approve');
+
+  // Cargar auditores desde backend al montar el componente
+  useEffect(() => {
+    const cargarAuditores = async () => {
+      setCargandoAuditores(true);
+      try {
+        const response = await auditoresApi.getAll();
+        if (response.success && response.data) {
+          setAuditores(response.data);
+        }
+      } catch (error) {
+        console.error('Error cargando auditores:', error);
+      } finally {
+        setCargandoAuditores(false);
+      }
+    };
+    
+    cargarAuditores();
+  }, []);
 
   // Estadísticas
   const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
@@ -1465,10 +1572,231 @@ export function DashboardPlan({ plan, onActualizar, onVolver, onAbrirRol4, onCre
               </button>
             )}
 
-            <button className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Exportar PDF
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportOpen((o) => !o)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Exportar
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} aria-hidden="true" />
+                  <div className="absolute right-0 top-full mt-1 z-20 w-48 py-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setExportando('excel');
+                        setExportOpen(false);
+                        const res = await planAnualApi.exportExcel(plan.id);
+                        if (res.success) {
+                          toast.success('Exportado', { description: 'Excel descargado correctamente' });
+                          setExportando(null);
+                          return;
+                        }
+                        try {
+                          const XLSX = await import('xlsx');
+                          const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
+                          const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
+                          const rows: unknown[][] = [
+                            ['Plan Anual de Auditoría - ESAP'],
+                            [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
+                            [],
+                            headers,
+                          ];
+                          (plan.roles ?? []).forEach((rol) => {
+                            (rol.actividades ?? []).forEach((a, i) => {
+                              rows.push([
+                                rol.nombre,
+                                i + 1,
+                                a.nombre,
+                                a.descripcion ?? '',
+                                a.responsable?.nombre ?? '',
+                                a.fechaInicio ?? '',
+                                a.fechaFin ?? '',
+                                a.estado ?? '',
+                                a.porcentajeAvance ?? 0,
+                              ]);
+                            });
+                          });
+                          const ws = XLSX.utils.aoa_to_sheet(rows);
+                          const wb = XLSX.utils.book_new();
+                          XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
+                          XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
+                          toast.success('Exportado', { description: 'Excel generado correctamente' });
+                        } catch (e) {
+                          toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
+                        }
+                        setExportando(null);
+                      }}
+                      disabled={!!exportando}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {exportando === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                      Excel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setExportando('pdf');
+                        setExportOpen(false);
+                        try {
+                          const jsPDF = (await import('jspdf')).default;
+                          const autoTable = (await import('jspdf-autotable')).default;
+                          const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
+                          
+                          // Crear documento PDF con jsPDF
+                          const doc = new jsPDF({
+                            orientation: 'portrait',
+                            unit: 'mm',
+                            format: 'letter'
+                          });
+
+                          const pageWidth = doc.internal.pageSize.getWidth();
+                          const pageHeight = doc.internal.pageSize.getHeight();
+                          const margin = 20;
+
+                          // ============================================
+                          // HEADER INSTITUCIONAL ESTANDARIZADO (EM-PT-004)
+                          // ============================================
+                          
+                          const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+                            ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
+                            logoImg: logoESAP
+                          });
+                          
+                          let currentY = alturaEncabezado + 5;
+
+                          // Vigencia
+                          doc.setTextColor(0, 61, 165);
+                          doc.setFontSize(14);
+                          doc.setFont('helvetica', 'bold');
+                          doc.text(`Vigencia ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
+                          currentY += 10;
+
+                          // ============================================
+                          // INFORMACIÓN GENERAL
+                          // ============================================
+
+                          doc.setTextColor(0, 0, 0);
+                          doc.setFontSize(11);
+                          doc.setFont('helvetica', 'bold');
+                          doc.text('INFORMACIÓN GENERAL', margin, currentY);
+                          currentY += 8;
+
+                          const estadoLabel = plan.estado === 'BORRADOR' ? 'Borrador' : 
+                                              plan.estado === 'EN_REVISION' ? 'En revisión' : 
+                                              plan.estado === 'APROBADO' ? 'Aprobado' : 
+                                              plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado';
+
+                          const infoData = [
+                            ['Vigencia', vigencia.toString()],
+                            ['Estado', estadoLabel],
+                            ['Jefe OCI', plan.jefeOCI?.nombre || ''],
+                            ['Cargo', plan.jefeOCI?.cargo || ''],
+                            ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')]
+                          ];
+
+                          autoTable(doc, {
+                            startY: currentY,
+                            head: [],
+                            body: infoData,
+                            theme: 'grid',
+                            styles: { fontSize: 9, cellPadding: 3 },
+                            columnStyles: {
+                              0: { fontStyle: 'bold', cellWidth: 40 },
+                              1: { cellWidth: 'auto' }
+                            },
+                            margin: { left: margin, right: margin }
+                          });
+
+                          currentY = (doc as any).lastAutoTable.finalY + 10;
+
+                          // ============================================
+                          // ACTIVIDADES POR ROL
+                          // ============================================
+
+                          plan.roles.forEach((rol, rolIdx) => {
+                            // Título del rol
+                            doc.setFontSize(11);
+                            doc.setFont('helvetica', 'bold');
+                            doc.setTextColor(0, 61, 165);
+                            doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
+                            currentY += 7;
+
+                            // Tabla de actividades
+                            const actividadesData = rol.actividades.map((act, idx) => [
+                              (idx + 1).toString(),
+                              act.nombre,
+                              act.responsable?.nombre || 'Sin asignar',
+                              act.estado === 'COMPLETADA' ? 'Completada' : 
+                              act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
+                              `${act.porcentajeAvance}%`
+                            ]);
+
+                            autoTable(doc, {
+                              startY: currentY,
+                              head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
+                              body: actividadesData,
+                              theme: 'striped',
+                              headStyles: {
+                                fillColor: [0, 61, 165],
+                                textColor: [255, 255, 255],
+                                fontStyle: 'bold',
+                                fontSize: 9
+                              },
+                              styles: { fontSize: 8, cellPadding: 2 },
+                              columnStyles: {
+                                0: { cellWidth: 10, halign: 'center' },
+                                1: { cellWidth: 'auto' },
+                                2: { cellWidth: 40 },
+                                3: { cellWidth: 30, halign: 'center' },
+                                4: { cellWidth: 20, halign: 'center' }
+                              },
+                              margin: { left: margin, right: margin }
+                            });
+
+                            currentY = (doc as any).lastAutoTable.finalY + 8;
+
+                            // Nueva página si es necesario
+                            if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
+                              doc.addPage();
+                              currentY = margin;
+                            }
+                          });
+
+                          // ============================================
+                          // FOOTER INSTITUCIONAL ESTANDARIZADO
+                          // ============================================
+
+                          const totalPages = doc.getNumberOfPages();
+                          for (let i = 1; i <= totalPages; i++) {
+                            doc.setPage(i);
+                            dibujarPieInstitucional(doc, i, true);
+                          }
+
+                          // Guardar PDF
+                          doc.save(`Plan-Anual-Auditoria-${vigencia}.pdf`);
+                          toast.success('PDF generado exitosamente', { description: 'Document con formato institucional oficial ESAP' });
+                        } catch (error) {
+                          console.error('Error generando PDF:', error);
+                          toast.error('Error al generar PDF', { description: 'Intente nuevamente' });
+                        }
+                        setExportando(null);
+                      }}
+                      disabled={!!exportando}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {exportando === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                      PDF
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1539,9 +1867,9 @@ export function DashboardPlan({ plan, onActualizar, onVolver, onAbrirRol4, onCre
       <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onAbrirRol4={onAbrirRol4} />}
-            {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} />}
-            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} />}
+            {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} auditores={auditores} cargandoAuditores={cargandoAuditores} />}
+            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} />}
           </AnimatePresence>
         </div>
       </div>
@@ -1559,12 +1887,16 @@ function SeccionGestionYSeguimiento({
   plan, 
   planesAnteriores = [], 
   onActualizar, 
-  onAbrirRol4 
+  onRefetchPlan,
+  onAbrirRol4,
+  auditores
 }: { 
   plan: PlanAnual; 
   planesAnteriores?: PlanAnual[]; 
   onActualizar: (plan: PlanAnual) => void; 
+  onRefetchPlan?: () => Promise<void>;
   onAbrirRol4?: () => void;
+  auditores: Auditor[];
 }) {
   // Estados para el seguimiento
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
@@ -1613,9 +1945,7 @@ function SeccionGestionYSeguimiento({
       porcentajeAvance: actividad.porcentajeAvance,
       configuracionEvidencias: actividad.configuracionEvidencias,
       adjuntos: actividad.adjuntos?.length || 0,
-      observaciones: Array.isArray(actividad.observacionesCumplimiento) 
-        ? actividad.observacionesCumplimiento.length 
-        : (actividad.observacionesCumplimiento ? 1 : 0),
+      observaciones: contarObservaciones(actividad.observacionesCumplimiento),
       actividadCompleta: actividad
     });
     
@@ -1805,25 +2135,41 @@ function SeccionGestionYSeguimiento({
     setGuardando(true);
     
     try {
-      // Intentar guardar en backend
-      console.log('[GUARDAR] Intentando guardar seguimiento:', { rolNumero, actividadId, formulario, nuevoEstado, estadoBackend });
-      
-      const response = await actividadesApi.update(String(actividadId), {
-        estado: estadoBackend as any, // El tipo del backend es diferente
+      // Preparar payload - Backend espera estos campos exactos
+      const payload = {
+        estado: estadoBackend,
         porcentaje_avance: formulario.porcentaje,
-        observaciones: formulario.seguimiento
-      });
+        control: formulario.control,
+        evaluacion: formulario.evaluacion,
+        seguimiento: formulario.seguimiento
+      };
+      
+      console.log('[GUARDAR] Payload:', payload);
+      
+      const response = await actividadesApi.update(String(actividadId), payload);
       
       console.log('[GUARDAR] Respuesta backend:', response);
       
       if (!response.success) {
-        console.warn('[GUARDAR] Backend falló, solo actualizando estado local');
+        const errorMsg = response.error || 'No se pudo actualizar la actividad';
+        toast.error('No se puede completar', { 
+          description: errorMsg,
+          duration: 6000 
+        });
+        setGuardando(false);
+        return;
       }
-    } catch (error) {
-      console.warn('[GUARDAR] Error al guardar en backend:', error);
+    } catch (error: any) {
+      console.error('[GUARDAR] Error al guardar en backend:', error);
+      const errorMsg = error?.response?.data?.message || error?.message || 'Error al guardar el seguimiento';
+      toast.error('Error al guardar', { 
+        description: errorMsg,
+        duration: 6000 
+      });
+      setGuardando(false);
+      return;
     }
 
-    // Actualizar estado local siempre
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -1855,6 +2201,12 @@ function SeccionGestionYSeguimiento({
     setActividadExpandida(null);
     setNuevaObservacion('');
     setMostrarSelectorApoyo(false);
+    // Recargar plan desde backend para que adjuntos y datos queden sincronizados
+    try {
+      await onRefetchPlan?.();
+    } catch (e) {
+      console.warn('[SeccionGestionYSeguimiento] Error al recargar plan tras guardar:', e);
+    }
   };
   return (
     <motion.div
@@ -2283,11 +2635,11 @@ function SeccionGestionYSeguimiento({
 
                   {/* Contador de observaciones y adjuntos */}
                   <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
-                    {actividad.observacionesCumplimiento && actividad.observacionesCumplimiento.length > 0 && (
+                    {tieneObservaciones(actividad.observacionesCumplimiento) && (
                       <div className="flex items-center gap-1.5 text-blue-700 text-xs">
                         <FileText className="w-3.5 h-3.5" />
-                        <span className="font-semibold">{actividad.observacionesCumplimiento.length}</span>
-                        <span>observación{actividad.observacionesCumplimiento.length !== 1 ? 'es' : ''}</span>
+                        <span className="font-semibold">{contarObservaciones(actividad.observacionesCumplimiento)}</span>
+                        <span>observación{contarObservaciones(actividad.observacionesCumplimiento) !== 1 ? 'es' : ''}</span>
                       </div>
                     )}
                     {actividad.adjuntos && actividad.adjuntos.length > 0 && (
@@ -2297,7 +2649,7 @@ function SeccionGestionYSeguimiento({
                         <span>adjunto{actividad.adjuntos.length !== 1 ? 's' : ''}</span>
                       </div>
                     )}
-                    {(!actividad.observacionesCumplimiento || actividad.observacionesCumplimiento.length === 0) && 
+                    {!tieneObservaciones(actividad.observacionesCumplimiento) && 
                      (!actividad.adjuntos || actividad.adjuntos.length === 0) && (
                       <span className="text-xs text-gray-400 italic">Sin evidencias registradas</span>
                     )}
@@ -2423,14 +2775,20 @@ function SeccionGestionYSeguimiento({
 
                           {/* Seguimiento */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2">✅ Seguimiento</label>
+                            <label className="block text-sm font-semibold mb-2 flex items-center gap-2">
+                              ✅ Seguimiento
+                              <span className="text-xs text-gray-500 font-normal">(Acciones ejecutadas en esta actividad)</span>
+                            </label>
                             <textarea
                               value={formulario.seguimiento}
                               onChange={(e) => setFormulario({ ...formulario, seguimiento: e.target.value })}
                               className="w-full px-4 py-3 border-2 rounded-lg"
-                              placeholder="Acciones realizadas y evidencias..."
+                              placeholder="Ejemplo: Se completó la auditoría al proceso X, se identificaron 3 hallazgos menores, se emitió informe el día DD/MM/AAAA..."
                               rows={4}
                             />
+                            <p className="text-xs text-gray-500 mt-2">
+                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
+                            </p>
                           </div>
 
                           {/* Botón gestionar evidencias */}
@@ -2494,9 +2852,9 @@ function SeccionGestionYSeguimiento({
                                   ✓ {actividad.adjuntos.length} archivo(s) adjunto(s)
                                 </span>
                               )}
-                              {actividad.observacionesCumplimiento && actividad.observacionesCumplimiento.length > 0 && (
+                              {tieneObservaciones(actividad.observacionesCumplimiento) && (
                                 <span className="text-blue-700 font-semibold ml-4">
-                                  📝 {actividad.observacionesCumplimiento.length} observación(es)
+                                  📝 {contarObservaciones(actividad.observacionesCumplimiento)} observación(es)
                                 </span>
                               )}
                             </div>
@@ -2566,19 +2924,19 @@ function SeccionGestionYSeguimiento({
             const actividad = plan.roles
               .find(r => r.numero === modalAdjuntos.rolNumero)
               ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
-            
+
             const adjuntosOriginales = actividad?.adjuntos || [];
-            
+
             // Intentar sincronizar con backend
             const actividadIdStr = String(modalAdjuntos.actividadId);
-            
-            await guardarEvidencias(
+
+            const guardadoOk = await guardarEvidencias(
               actividadIdStr,
               adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
               adjuntosOriginales,
               observaciones
             );
-            
+
             // Actualizar estado local
             const planActualizado = {
               ...plan,
@@ -2598,6 +2956,14 @@ function SeccionGestionYSeguimiento({
               })
             };
             onActualizar(planActualizado);
+            // Recargar plan desde backend para reflejar adjuntos guardados (IDs y lista actual)
+            if (guardadoOk) {
+              try {
+                await onRefetchPlan?.();
+              } catch (e) {
+                console.warn('[Modal adjuntos] Error al recargar plan:', e);
+              }
+            }
           }}
         />
       )}
@@ -2609,9 +2975,10 @@ function SeccionGestionYSeguimiento({
 // SECCIÓN 2: ASIGNAR RESPONSABLES
 // ════════════════════════════════════════════════════════════════════════════
 
-function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void }) {
+function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargandoAuditores }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; auditores: Auditor[]; cargandoAuditores: boolean }) {
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(null);
   const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | string | null>(null);
+  const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
   const [nuevaActividad, setNuevaActividad] = useState({
     nombre: '',
     descripcion: '',
@@ -2619,7 +2986,8 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
     fechaFin: new Date().toISOString().split('T')[0]
   });
 
-  const asignarResponsable = (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
+  const asignarResponsable = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
+    setAsignandoId(actividadId);
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -2638,7 +3006,21 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
       })
     };
     onActualizar(planActualizado);
-    toast.success('Responsable asignado', { description: `${auditor.nombre} asignado a la actividad` });
+    try {
+      const res = await actividadesApi.update(String(actividadId), { responsable: auditor.nombre });
+      if (res.success) {
+        toast.success('Responsable asignado', { description: `${auditor.nombre} asignado a la actividad` });
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al guardar', { description: res.error });
+        onRefetchPlan?.();
+      }
+    } catch (e) {
+      toast.error('Error', { description: 'No se pudo guardar en el servidor' });
+      onRefetchPlan?.();
+    } finally {
+      setAsignandoId(null);
+    }
   };
 
   const agregarActividad = (rolNumero: number) => {
@@ -2789,14 +3171,15 @@ function SeccionAsignar({ plan, onActualizar }: { plan: PlanAnual; onActualizar:
                             <select
                               value={actividad.responsable?.id || ''}
                               onChange={(e) => {
-                                const auditor = AUDITORES.find(a => a.id === e.target.value);
+                                const auditor = auditores.find(a => a.id === e.target.value);
                                 if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
                               }}
                               className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
                               onClick={(e) => e.stopPropagation()}
+                              disabled={cargandoAuditores || asignandoId === actividad.id}
                             >
                               <option value="">🔹 Sin asignar</option>
-                              {AUDITORES.map((auditor) => (
+                              {auditores.map((auditor) => (
                                 <option key={auditor.id} value={auditor.id}>
                                   👤 {auditor.nombre} - {auditor.cargo}
                                 </option>
@@ -3144,7 +3527,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     toast.success('Responsable de apoyo eliminado');
   };
 
-  const guardarSeguimiento = (rolNumero: number, actividadId: number | string) => {
+  const guardarSeguimiento = async (rolNumero: number, actividadId: number | string) => {
     // Validar si la actividad requiere autorización y está al 100%
     const actividadActual = plan.roles
       .find(r => r.numero === rolNumero)
@@ -3165,6 +3548,48 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
       formulario.porcentaje === 100 ? 'COMPLETADA' :
       formulario.porcentaje > 0 ? 'EN_EJECUCION' :
       'PENDIENTE';
+
+    // Mapear estado del frontend al formato del backend
+    const estadoBackend = 
+      nuevoEstado === 'COMPLETADA' ? 'completada' :
+      nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+      'pendiente';
+
+    setGuardando(true);
+    
+    try {
+      // Preparar payload - Backend espera estos campos exactos
+      const payload = {
+        estado: estadoBackend,
+        porcentaje_avance: formulario.porcentaje,
+        control: formulario.control,
+        evaluacion: formulario.evaluacion,
+        seguimiento: formulario.seguimiento
+      };
+      
+      console.log('[GUARDAR] Payload:', payload);
+      const response = await actividadesApi.update(String(actividadId), payload);
+      console.log('[GUARDAR] Respuesta backend:', response);
+      
+      if (!response.success) {
+        const errorMsg = response.error || 'No se pudo actualizar la actividad';
+        toast.error('No se puede completar', { 
+          description: errorMsg,
+          duration: 6000 
+        });
+        setGuardando(false);
+        return;
+      }
+    } catch (error: any) {
+      console.error('[GUARDAR] Error al guardar en backend:', error);
+      const errorMsg = error?.response?.data?.message || error?.message || 'Error al guardar el seguimiento';
+      toast.error('Error al guardar', { 
+        description: errorMsg,
+        duration: 6000 
+      });
+      setGuardando(false);
+      return;
+    }
 
     const planActualizado = {
       ...plan,
@@ -3191,6 +3616,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
       })
     };
     onActualizar(planActualizado);
+    setGuardando(false);
     toast.success('Seguimiento registrado', { description: 'Información actualizada correctamente' });
     setActividadExpandida(null);
     setNuevaObservacion('');
@@ -3360,11 +3786,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
 
                   {/* Contador de observaciones y adjuntos */}
                   <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
-                    {actividad.observacionesCumplimiento && actividad.observacionesCumplimiento.length > 0 && (
+                    {tieneObservaciones(actividad.observacionesCumplimiento) && (
                       <div className="flex items-center gap-1.5 text-blue-700 text-xs">
                         <FileText className="w-3.5 h-3.5" />
-                        <span className="font-semibold">{actividad.observacionesCumplimiento.length}</span>
-                        <span>observación{actividad.observacionesCumplimiento.length !== 1 ? 'es' : ''}</span>
+                        <span className="font-semibold">{contarObservaciones(actividad.observacionesCumplimiento)}</span>
+                        <span>observación{contarObservaciones(actividad.observacionesCumplimiento) !== 1 ? 'es' : ''}</span>
                       </div>
                     )}
                     {actividad.adjuntos && actividad.adjuntos.length > 0 && (
@@ -3374,7 +3800,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                         <span>adjunto{actividad.adjuntos.length !== 1 ? 's' : ''}</span>
                       </div>
                     )}
-                    {(!actividad.observacionesCumplimiento || actividad.observacionesCumplimiento.length === 0) && 
+                    {!tieneObservaciones(actividad.observacionesCumplimiento) && 
                      (!actividad.adjuntos || actividad.adjuntos.length === 0) && (
                       <span className="text-xs text-gray-400 italic">Sin evidencias registradas</span>
                     )}
@@ -3502,14 +3928,20 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
 
                           {/* Seguimiento */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2">✅ Seguimiento</label>
+                            <label className="block text-sm font-semibold mb-2 flex items-center gap-2">
+                              ✅ Seguimiento
+                              <span className="text-xs text-gray-500 font-normal">(Acciones ejecutadas en esta actividad)</span>
+                            </label>
                             <textarea
                               value={formulario.seguimiento}
                               onChange={(e) => setFormulario({ ...formulario, seguimiento: e.target.value })}
                               className="w-full px-4 py-3 border-2 rounded-lg"
-                              placeholder="Acciones realizadas y evidencias..."
+                              placeholder="Ejemplo: Se completó la auditoría al proceso X, se identificaron 3 hallazgos menores, se emitió informe el día DD/MM/AAAA..."
                               rows={4}
                             />
+                            <p className="text-xs text-gray-500 mt-2">
+                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
+                            </p>
                           </div>
 
                           {/* GESTIÓN DE RESPONSABLES - Principal y Apoyo */}
@@ -3580,7 +4012,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                                 <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-3">
                                   <p className="text-xs font-semibold text-purple-900 mb-2">Seleccionar auditor de apoyo:</p>
                                   <div className="grid grid-cols-2 gap-2">
-                                    {AUDITORES.filter(aud => aud.id !== actividad.responsable?.id).map((auditor) => (
+                                    {auditores.filter(aud => aud.id !== actividad.responsable?.id).map((auditor) => (
                                       <button
                                         key={auditor.id}
                                         onClick={() => agregarResponsableApoyo(rol.numero, actividad.id, auditor)}
@@ -3635,7 +4067,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                               </label>
 
                               {/* Historial de observaciones */}
-                              {Array.isArray(actividad.observacionesCumplimiento) && actividad.observacionesCumplimiento.length > 0 && (
+                              {Array.isArray(actividad.observacionesCumplimiento) && tieneObservaciones(actividad.observacionesCumplimiento) && (
                                 <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
                                   {actividad.observacionesCumplimiento.map((obs: ObservacionCumplimiento) => (
                                     <div key={obs.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3 relative group">
@@ -3688,7 +4120,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                                 </button>
                               </div>
 
-                              {actividad.observacionesCumplimiento && actividad.observacionesCumplimiento.length === 0 && (
+                              {!tieneObservaciones(actividad.observacionesCumplimiento) && (
                                 <p className="text-xs text-gray-500 italic mt-2">No hay observaciones registradas</p>
                               )}
                             </div>
@@ -3973,15 +4405,41 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
 // SECCIÓN 3: APROBACIÓN (antes Sección 4)
 // ════════════════════════════════════════════════════════════════════════════
 
-function SeccionAprobacion({ plan, onActualizar }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void }) {
-  const cambiarEstado = (nuevoEstado: EstadoPlan) => {
+const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
+  BORRADOR: 'borrador',
+  EN_REVISION: 'en-revision',
+  APROBADO: 'aprobado',
+  VIGENTE: 'en-ejecucion',
+  CERRADO: 'completado',
+};
+
+function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean }) {
+  const [guardando, setGuardando] = useState(false);
+
+  const cambiarEstado = async (nuevoEstado: EstadoPlan) => {
     const planActualizado = {
       ...plan,
       estado: nuevoEstado,
       fechaAprobacion: nuevoEstado === 'APROBADO' ? new Date().toISOString() : plan.fechaAprobacion
     };
     onActualizar(planActualizado);
-    toast.success('Estado actualizado', { description: `El plan ahora está en estado: ${nuevoEstado}` });
+    setGuardando(true);
+    try {
+      const estadoBackend = ESTADO_PLAN_A_BACKEND[nuevoEstado];
+      const res = await planAnualApi.update(plan.id, { estado: estadoBackend as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' });
+      if (res.success) {
+        toast.success('Estado actualizado', { description: `El plan ahora está en estado: ${nuevoEstado === 'EN_REVISION' ? 'En revisión' : nuevoEstado === 'APROBADO' ? 'Aprobado' : nuevoEstado === 'VIGENTE' ? 'Vigente' : nuevoEstado}` });
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al guardar', { description: res.error });
+        onRefetchPlan?.();
+      }
+    } catch (e) {
+      toast.error('Error', { description: 'No se pudo guardar el estado en el servidor' });
+      onRefetchPlan?.();
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
@@ -4064,16 +4522,17 @@ function SeccionAprobacion({ plan, onActualizar }: { plan: PlanAnual; onActualiz
         <div className="space-y-3">
           <button
             onClick={() => cambiarEstado('EN_REVISION')}
-            disabled={!puedeEnviarRevision || plan.estado !== 'BORRADOR'}
+            disabled={!puedeEnviarRevision || plan.estado !== 'BORRADOR' || guardando}
             className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <FileCheck className="w-5 h-5" />
+            {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileCheck className="w-5 h-5" />}
             Enviar a revisión
           </button>
 
           <button
             onClick={() => cambiarEstado('APROBADO')}
-            disabled={!puedeAprobar}
+            disabled={!puedeAprobar || !puedeAprobarPlan || guardando}
+            title={!puedeAprobarPlan ? 'Solo el Jefe OCI puede aprobar el plan' : undefined}
             className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Check className="w-5 h-5" />
@@ -4082,7 +4541,8 @@ function SeccionAprobacion({ plan, onActualizar }: { plan: PlanAnual; onActualiz
 
           <button
             onClick={() => cambiarEstado('VIGENTE')}
-            disabled={!puedeActivar}
+            disabled={!puedeActivar || !puedeAprobarPlan || guardando}
+            title={!puedeAprobarPlan ? 'Solo el Jefe OCI puede activar el plan' : undefined}
             className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-5 h-5" />

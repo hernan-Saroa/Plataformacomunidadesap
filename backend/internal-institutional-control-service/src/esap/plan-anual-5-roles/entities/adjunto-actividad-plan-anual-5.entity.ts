@@ -19,7 +19,7 @@ export class AdjuntoActividadPlanAnual5 {
   @Index()
   actividadId!: string;
 
-  @ManyToOne(() => ActividadPlanAnual5, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ActividadPlanAnual5, (actividad) => actividad.adjuntos, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'actividad_id' })
   actividad!: ActividadPlanAnual5;
 

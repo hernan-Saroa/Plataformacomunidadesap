@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
@@ -10,6 +11,7 @@ import {
 } from 'typeorm';
 import { RolPlanAnual5 } from './rol-plan-anual-5.entity';
 import { PlanAnual5Roles } from './plan-anual-5-roles.entity';
+import { AdjuntoActividadPlanAnual5 } from './adjunto-actividad-plan-anual-5.entity';
 
 @Entity('actividad_plan_anual_5', { schema: 'control_interno' })
 export class ActividadPlanAnual5 {
@@ -101,6 +103,10 @@ export class ActividadPlanAnual5 {
     tiposAdjuntosPermitidos?: string[];
     longitudMinimaObservacion?: number;
   };
+
+  // Relación con adjuntos
+  @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
+  adjuntos: AdjuntoActividadPlanAnual5[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

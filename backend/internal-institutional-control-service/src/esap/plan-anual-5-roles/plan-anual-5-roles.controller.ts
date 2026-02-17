@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Res,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -14,6 +15,7 @@ import {
   Req,
   ForbiddenException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
@@ -45,6 +47,25 @@ export class PlanAnual5RolesController {
       throw new BadRequestException('planId es requerido');
     }
     return this.service.getRoles(planId);
+  }
+
+  @Get(':id/export/excel')
+  async exportExcel(@Param('id') id: string, @Res() res: Response) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    const { buffer, nombre } = await this.service.exportExcel(id);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.send(buffer);
+  }
+
+  @Get(':id/export/pdf')
+  async exportPdf(@Param('id') id: string) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    return this.service.findOne(id);
   }
 
   @Get(':id')

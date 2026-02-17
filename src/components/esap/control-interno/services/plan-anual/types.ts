@@ -136,6 +136,12 @@ export interface UpdateActividadDto {
   porcentaje_avance?: number;
   prioridad?: PrioridadActividad;
   observaciones?: string;
+  // Campos extendidos migración 129
+  control?: string;
+  evaluacion?: string;
+  seguimiento?: string;
+  requiereVerificacionDirector?: boolean;
+  configuracionEvidencias?: ConfiguracionEvidencias;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
