@@ -715,8 +715,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
             <button
               onClick={() => setVistaActual('crear')}
               className={`px-4 py-2 rounded-t-lg font-bold text-sm ${vistaActual === 'crear'
-                  ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-purple-100 text-purple-700 border-b-2 border-purple-600'
+                : 'text-gray-600 hover:bg-gray-100'
                 }`}
             >
               <Plus className="w-4 h-4 inline mr-2" />
@@ -745,8 +745,8 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
                         key={plantilla.id}
                         onClick={() => seleccionarPlantilla(plantilla)}
                         className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${plantillaSeleccionada?.id === plantilla.id
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-blue-300'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-blue-300'
                           }`}
                       >
                         <div className="flex items-center gap-3">
@@ -1839,7 +1839,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!processId || !evidenciaParaEliminar) return;
     setEliminandoEvidencia(true);
     try {
-      await disciplinaryService.deleteEvidenciaReal(evidenciaParaEliminar.id); // Assuming this is added to service
+      await disciplinaryService.deleteEvidenciaReal(evidenciaParaEliminar.id, processId);
       await cargarEvidencias(processId);
       toast.success('Evidencia eliminada');
     } catch (error) {
@@ -3136,8 +3136,8 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                   <label htmlFor="file-upload-acta">
                     <Card
                       className={`p-8 border-2 border-dashed cursor-pointer transition-all ${archivoSeleccionado
-                          ? 'border-green-500 bg-green-50'
-                          : 'hover:bg-gray-50 border-gray-300'
+                        ? 'border-green-500 bg-green-50'
+                        : 'hover:bg-gray-50 border-gray-300'
                         }`}
                     >
                       <div className="text-center">
