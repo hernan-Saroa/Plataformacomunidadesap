@@ -1191,10 +1191,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   
   // ═══════════════════════════════════════════════════════════════════════
-  // SELECTOR DE AÑO
+  // AÑO ACTIVO (siempre el actual)
   // ═══════════════════════════════════════════════════════════════════════
   const añoActual = new Date().getFullYear();
-  const [añoSeleccionado, setAñoSeleccionado] = useState(añoActual);
   
   // ═══════════════════════════════════════════════════════════════════════
   // CARGA DESDE BACKEND - Plan Anual y Auditores
@@ -1210,7 +1209,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     updateActividad,
     deleteActividad,
     updateEstado,
-  } = usePlanAnualCompleto(añoSeleccionado);
+  } = usePlanAnualCompleto(añoActual);
 
   console.log('🔄 [HOOK] usePlanAnualCompleto resultado:', { 
     planDesdeBackend, 
@@ -1528,34 +1527,24 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
-      {/* Selector de Año */}
+      {/* Año Activo */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-medium text-gray-700">Año del Plan:</span>
-            <select
-              value={añoSeleccionado}
-              onChange={(e) => {
-                setAñoSeleccionado(parseInt(e.target.value));
-                setPlanActual(null); // Resetear plan al cambiar año
-                setVista('inicio');
-              }}
-              className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {[2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028].map(año => (
-                <option key={año} value={año}>{año}</option>
-              ))}
-            </select>
+            <span className="text-sm font-medium text-gray-700">Plan Anual de Auditoría</span>
+            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
+              {añoActual}
+            </span>
           </div>
           {planDesdeBackend && (
             <span className="text-sm text-green-600 font-medium">
-              ✓ Plan {añoSeleccionado} encontrado
+              ✓ Plan activo
             </span>
           )}
           {!planDesdeBackend && !cargandoDatos && (
             <span className="text-sm text-amber-600 font-medium">
-              No existe plan para {añoSeleccionado}
+              Sin plan creado
             </span>
           )}
         </div>
