@@ -11,6 +11,7 @@ export interface EmailFilters {
     leido?: boolean;
     urgente?: boolean;
     archivado?: boolean;
+    direccion?: string;
     search?: string;
 }
 
@@ -204,6 +205,10 @@ export class CorreosJuridicosService {
             where.archivado = filters.archivado;
         }
 
+        if (filters?.direccion) {
+            where.direccion = filters.direccion;
+        }
+
         const correos = await this.correoRepo.find({
             where,
             order: { fechaRecepcion: 'DESC' },
@@ -283,10 +288,58 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Send an email via Graph API
+     * Unarchive email - restores it to its original location
      */
-    async sendEmail(dto: SendEmailDto): Promise<boolean> {
-        return this.graphService.sendEmail(dto.to, dto.subject, dto.body, dto.cc, dto.attachments);
+    async unarchive(id: string): Promise<CorreoJuridico> {
+        const correo = await this.correoRepo.findOne({ where: { id } });
+
+        if (!correo) {
+            throw new NotFoundException(`Correo ${id} not found`);
+        }
+
+        correo.archivado = false;
+        return this.correoRepo.save(correo);
+    }
+
+    /**
+     * Send an email via Graph API and save record in DB
+     */
+    async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const sent = await this.graphService.sendEmail(dto.to, dto.subject, dto.body, dto.cc, dto.attachments);
+
+        if (!sent) {
+            return { success: false };
+        }
+
+        // Save sent email record in DB
+        try {
+            const newCorreo = this.correoRepo.create({
+                graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                asunto: dto.subject || '(Sin asunto)',
+                remitenteEmail: 'oficina.juridica@esap.edu.co',
+                remitenteNombre: 'Oficina Jurídica ESAP',
+                destinatariosTo: dto.to,
+                destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
+                fechaRecepcion: new Date(),
+                cuerpoHtml: dto.body,
+                cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
+                tieneAdjuntos: !!(dto.attachments && dto.attachments.length > 0),
+                leido: true,
+                archivado: false,
+                urgente: false,
+                tipo: 'CORREO',
+                direccion: 'ENVIADO',
+                categoria: 'ENVIADO',
+                expedienteId: undefined,
+            });
+
+            const savedCorreo = await this.correoRepo.save(newCorreo);
+            this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${dto.to}`);
+            return { success: true, correo: savedCorreo };
+        } catch (dbError) {
+            this.logger.error('Error saving sent email to DB (email was sent successfully):', dbError);
+            return { success: true };
+        }
     }
 
     /**
