@@ -92,7 +92,7 @@ export const certificadosService = {
       page?: number;
       limit?: number;
     }): Promise<any> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, { params });
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, params);
     },
 
     /**

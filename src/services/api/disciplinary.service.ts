@@ -652,29 +652,60 @@ class DisciplinaryService {
     }
 
     // --- EVIDENCIAS ---
-    // Nota: Estos endpoints pertenecen al microservicio legal-management
-    // Prefix: /legal/api/v1 -> api-gateway:3000/legal/api/v1/* -> legal-management-service:3008/*
-    async getEvidencias(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal/api/v1/evidencias/expediente/${expedienteId}`);
+    // ✅ Redirigido al servicio disciplinario (port 3005) en vez de legal-management (port 3008)
+    // Los documentos de tipo EVIDENCIA se gestionan via los endpoints de documents del proceso
+    async getEvidencias(processId: string): Promise<any[]> {
+        try {
+            const response = await apiClient.get<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+            const documentos = response.documentos || [];
+            // Filtrar solo los documentos de tipo evidencia y mapear al formato esperado
+            return documentos
+                .filter((doc: any) => doc.tipo === 'evidencia' || doc.tipo === 'otro')
+                .map((doc: any) => ({
+                    id: doc.id,
+                    archivoNombre: doc.archivoNombre || doc.nombre || 'Evidencia',
+                    tipo: doc.tipo || 'evidencia',
+                    categoria: doc.etapa || null,
+                    fechaPresentacion: doc.fechaCarga,
+                    archivoTamano: doc.fileSize || 0,
+                    archivoUrl: doc.downloadUrl || doc.url || null,
+                    tipoArchivo: doc.fileType || '',
+                    descripcion: doc.descripcion || '',
+                    estado: 'Pendiente',
+                    processId: doc.processId || processId,
+                }));
+        } catch (error) {
+            console.error('Error cargando evidencias:', error);
+            return [];
+        }
     }
 
-    async createEvidencia(expedienteId: string, data: any, file: File): Promise<any> {
+    async createEvidencia(processId: string, data: any, file: File): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('tipo', 'EVIDENCIA');
         formData.append('descripcion', data.descripcion || '');
-        formData.append('aportadoPor', data.aportadoPor || 'Sistema');
-        formData.append('tipo', data.tipo || 'Documental');
-        formData.append('prioridad', data.prioridad || 'Media');
+        formData.append('nombre', file.name);
+        formData.append('etapa', data.tipo || 'Evidencia');
+        formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
 
-        return apiClient.upload<any>(`/legal/api/v1/evidencias/${expedienteId}`, formData);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
     async updateEvidenciaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal/api/v1/evidencias/${id}/estado`, { estado });
+        // No hay endpoint directo para actualizar estado de evidencia en el servicio disciplinario
+        // Se actualiza localmente en el frontend por ahora
+        console.warn('updateEvidenciaEstado: no hay endpoint disponible en port 3005, operación local');
+        return { id, estado };
     }
 
-    async deleteEvidenciaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal/api/v1/evidencias/${id}`);
+    async deleteEvidenciaReal(evidenciaId: string, processId?: string): Promise<void> {
+        if (processId) {
+            return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents/${evidenciaId}`);
+        }
+        // Fallback: intentar eliminar sin processId (puede fallar si la ruta lo requiere)
+        console.warn('deleteEvidenciaReal: processId no proporcionado, intentando ruta alternativa');
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-processes/documents/${evidenciaId}`);
     }
 
     // --- ACTAS ---

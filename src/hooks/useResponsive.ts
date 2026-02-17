@@ -179,6 +179,14 @@ export function useResponsive(): UseResponsiveReturn {
 }
 
 /**
+ * Helper para consumir solo el breakpoint actual
+ */
+export function useBreakpoint(): Breakpoint {
+  const { breakpoint } = useResponsive();
+  return breakpoint;
+}
+
+/**
  * NOTAS DE IMPLEMENTACIÓN:
  * 
  * 1. CASOS DE USO PRINCIPALES:

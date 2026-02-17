@@ -17,7 +17,6 @@ import {
   Copy,
   Activity
 } from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
@@ -631,7 +630,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Ubicación */}
+                    {/* Fecha Vinculación y Grado */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -644,23 +643,22 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Ubicación
+                          Grado
                         </label>
                         <p className="text-sm text-gray-900">
-                          {ubicacionCargo}
+                          {certificado.empleado.grado || certificado.cod_grade || 'No definido'}
                         </p>
                       </div>
                     </div>
 
-                    {/* Correo y Salario */}
+                    {/* Dependencia y Salario */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Correo Electrónico
+                          Dependencia
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-gray-400" />
-                          {certificado.empleado.email}
+                          {certificado.empleado.dependencia || ubicacionCargo || 'No disponible'}
                         </p>
                       </div>
                       <div>
@@ -672,6 +670,17 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           ${certificado.empleado.salario.toLocaleString('es-CO')} COP
                         </p>
                       </div>
+                    </div>
+
+                    {/* Correo */}
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
+                        Correo Electrónico
+                      </label>
+                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-gray-400" />
+                        {certificado.empleado.email}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -746,24 +755,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                            <QRCodeCanvas
-                              value={verificationUrl}
-                              size={79}
-                              level="H"
-                              includeMargin
-                              className="block"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
-                              <QrCode className="w-3.5 h-3.5" />
-                              {certificado.qrCode}
-                            </p>
-                            <span className="text-xs text-gray-500">Escanea para verificar este certificado</span>
-                          </div>
-                        </div>
+                        <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
+                          <QrCode className="w-3.5 h-3.5" />
+                          QR-{certificado.qrCode.slice(-6)}
+                        </p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">

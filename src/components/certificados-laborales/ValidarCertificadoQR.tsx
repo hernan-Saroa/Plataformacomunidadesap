@@ -23,7 +23,6 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
-import { FooterWorldClass } from '../FooterWorldClass';
 import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface ValidacionResult {
@@ -859,10 +858,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           </Card>
         </motion.div>
       </div>
-      
-      {/* Footer WorldClass - Consistencia con Landing Page */}
-      {/* <FooterWorldClass /> */}
-      
       <QRScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
@@ -871,4 +866,3 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
     </div>
   );
 }
-

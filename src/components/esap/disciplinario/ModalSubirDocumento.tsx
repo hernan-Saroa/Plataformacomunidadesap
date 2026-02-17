@@ -13,6 +13,7 @@ import { Badge } from '../../ui/badge';
 import { toast } from 'sonner@2.0.3';
 
 interface ModalSubirDocumentoProps {
+  isOpen?: boolean;
   proceso: any;
   onClose: () => void;
   onConfirm: (documentos: DocumentoNuevo[]) => void;
@@ -49,7 +50,7 @@ const TIPOS_DOCUMENTO = [
   'Otro'
 ];
 
-export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirDocumentoProps) {
+export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm }: ModalSubirDocumentoProps) {
   const [archivos, setArchivos] = useState<File[]>([]);
   const [etapaSeleccionada, setEtapaSeleccionada] = useState(proceso.etapaActual || 'Valoración');
   const [tipoDocumento, setTipoDocumento] = useState('Auto');
@@ -149,6 +150,10 @@ export function ModalSubirDocumento({ proceso, onClose, onConfirm }: ModalSubirD
     if (tipo.includes('image')) return <Image className="w-5 h-5" style={{ color: '#8B5CF6' }} />;
     return <File className="w-5 h-5" style={{ color: '#6B7280' }} />;
   };
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <motion.div

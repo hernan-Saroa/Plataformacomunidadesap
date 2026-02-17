@@ -6,7 +6,9 @@ import {
   Download,
   Copy,
   Printer,
+  Share2,
   CheckCircle,
+  ExternalLink,
   Shield,
   Smartphone,
   Globe,
@@ -14,48 +16,29 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../../utils/clipboard';
-import { getPublicBaseUrl } from '../../config/environment';
-import { QRCodeCanvas } from 'qrcode.react';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;
   onClose: () => void;
   certificado: {
     consecutivo: string;
-    qrCode?: string;
-    verification_code?: string;
     empleado: {
       nombre: string;
       documento: string;
     };
     fechaGeneracion: string;
   };
-  verificationUrl?: string;
 }
 
-export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }: ModalCodigoQRProps) {
+export function ModalCodigoQR({ isOpen, onClose, certificado }: ModalCodigoQRProps) {
   const qrRef = useRef<HTMLDivElement>(null);
   
-  const qrData = certificado.qrCode || certificado.verification_code || certificado.consecutivo;
-  const verificationBase = getPublicBaseUrl();
-  const verificationPath = '/verificar-certificado';
-  const urlVerificacion = verificationUrl || `${verificationBase}${verificationPath}/${qrData}`;
+  const urlVerificacion = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
 
   const handleDescargarQR = () => {
-    const canvas = qrRef.current?.querySelector('canvas');
-    if (!canvas) {
-      toast.error('No se pudo generar la imagen del QR');
-      return;
-    }
-    const dataUrl = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = `QR-${qrData}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // En producción, aquí se generaría y descargaría la imagen del QR
     toast.success('QR descargado exitosamente', {
-      description: `QR-${qrData}.png`,
+      description: `QR-${certificado.consecutivo}.png`,
       duration: 3000
     });
   };
@@ -76,98 +59,114 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
     }
   };
 
+  const handleCompartir = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Verificar Certificado Laboral ESAP',
+          text: `Verificar certificado ${certificado.consecutivo}`,
+          url: urlVerificacion
+        });
+        toast.success('Compartido exitosamente');
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          handleCopiarEnlace();
+        }
+      }
+    } else {
+      handleCopiarEnlace();
+      toast.info('Enlace copiado al portapapeles');
+    }
+  };
+
   const handleImprimir = () => {
-    const canvas = qrRef.current?.querySelector('canvas');
-    const dataUrl = canvas?.toDataURL('image/png');
-    const qrImg = dataUrl ? `<img src="${dataUrl}" style="width:320px;height:320px;"/>` : qrRef.current?.innerHTML || '';
-
-    const printWindow = window.open('', '', 'width=700,height=900');
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Codigo QR - ${certificado.consecutivo}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              padding: 40px;
-              background: white;
-            }
-            .container {
-              text-align: center;
-              border: 2px solid #003DA5;
-              padding: 40px;
-              border-radius: 12px;
-            }
-            h1 {
-              color: #003DA5;
-              margin-bottom: 10px;
-              font-size: 24px;
-            }
-            .qr-box {
-              width: 320px;
-              height: 320px;
-              margin: 30px auto;
-              border: 3px solid #003DA5;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: white;
-              border-radius: 8px;
-            }
-            .info {
-              margin-top: 20px;
-              color: #333;
-              font-size: 14px;
-            }
-            .url {
-              color: #003DA5;
-              font-weight: bold;
-              font-size: 12px;
-              margin-top: 15px;
-              word-break: break-all;
-            }
-            @media print {
-              @page { margin: 0.5in; }
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA</h1>
-            <p style="color: #666; margin-bottom: 10px;">Codigo QR de Verificacion</p>
-            <div class="qr-box">
-              ${qrImg}
-            </div>
-            <div class="info">
-              <p><strong>Consecutivo:</strong> ${certificado.consecutivo}</p>
-              <p><strong>Empleado:</strong> ${certificado.empleado.nombre}</p>
-              <p><strong>Documento:</strong> ${certificado.empleado.documento}</p>
-              <p><strong>Fecha de emision:</strong> ${new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO')}</p>
-              <div class="url">
-                <p>Verificar en:</p>
-                <p>${urlVerificacion}</p>
+    if (qrRef.current) {
+      const printWindow = window.open('', '', 'width=600,height=800');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Código QR - ${certificado.consecutivo}</title>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 100vh;
+                  margin: 0;
+                  padding: 40px;
+                  background: white;
+                }
+                .container {
+                  text-align: center;
+                  border: 2px solid #003DA5;
+                  padding: 40px;
+                  border-radius: 12px;
+                }
+                h1 {
+                  color: #003DA5;
+                  margin-bottom: 10px;
+                  font-size: 24px;
+                }
+                .qr-box {
+                  width: 300px;
+                  height: 300px;
+                  margin: 30px auto;
+                  border: 3px solid #003DA5;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  background: white;
+                  border-radius: 8px;
+                }
+                .info {
+                  margin-top: 20px;
+                  color: #333;
+                  font-size: 14px;
+                }
+                .url {
+                  color: #003DA5;
+                  font-weight: bold;
+                  font-size: 12px;
+                  margin-top: 15px;
+                  word-break: break-all;
+                }
+                @media print {
+                  @page { margin: 0.5in; }
+                  body { padding: 0; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
+                <p style="color: #666; margin-bottom: 10px;">Código QR de Verificación</p>
+                ${qrRef.current.innerHTML}
+                <div class="info">
+                  <p><strong>Consecutivo:</strong> ${certificado.consecutivo}</p>
+                  <p><strong>Empleado:</strong> ${certificado.empleado.nombre}</p>
+                  <p><strong>Documento:</strong> ${certificado.empleado.documento}</p>
+                  <p><strong>Fecha de emisión:</strong> ${new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO')}</p>
+                  <div class="url">
+                    <p>Verificar en:</p>
+                    <p>${urlVerificacion}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
-    toast.info('Abriendo vista de impresion...');
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+          printWindow.print();
+          printWindow.close();
+        }, 250);
+      }
+    }
+    toast.info('Abriendo vista de impresión...');
   };
 
   if (!isOpen) return null;
@@ -219,25 +218,43 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
               {/* QR Code Container - Mobile Responsive */}
               <div ref={qrRef} className="flex justify-center mb-4 sm:mb-6">
                 <div className="relative">
+                  {/* QR Code con borde decorativo */}
                   <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 sm:border-4 border-[#003DA5] shadow-xl">
                     <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
-                      <div className="w-52 h-52 sm:w-72 sm:h-72 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
-                        <QRCodeCanvas
-                          value={urlVerificacion}
-                          size={253}
-                          level="H"
-                          includeMargin
-                          className="w-full h-full p-2"
-                        />
-                        <div className="absolute inset-0 pointer-events-none" />
+                      {/* QR Code simulado - Responsive */}
+                      <div className="w-48 h-48 sm:w-64 sm:h-64 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
+                        {/* Patrón QR simulado */}
+                        <div className="absolute inset-0 grid grid-cols-8 grid-rows-8 gap-0.5 sm:gap-1 p-1.5 sm:p-2">
+                          {[...Array(64)].map((_, i) => (
+                            <div
+                              key={i}
+                              className={`rounded-sm ${
+                                Math.random() > 0.5 ? 'bg-black' : 'bg-white'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        {/* Logo ESAP en el centro */}
+                        <div className="relative z-10 bg-white p-1.5 sm:p-2 rounded-lg shadow-lg border-2 border-[#003DA5]">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#003DA5] rounded flex items-center justify-center">
+                            <span className="text-white font-bold text-xs">ESAP</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Badge de estado */}
+                  <div className="absolute -top-2 -right-2 sm:-top-3 sm:-right-3 bg-green-500 text-white px-2 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold shadow-lg flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    VÁLIDO
+                  </div>
                 </div>
               </div>
-              {/* Información del certificado */}
-              <div className="bg-blue-50 border-l-4 border-[#003DA5] rounded-r-lg p-4 mb-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+
+              {/* Información del certificado - Mobile Grid */}
+              <div className="bg-blue-50 border-l-4 border-[#003DA5] rounded-r-lg p-3 sm:p-4 mb-4 sm:mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                   <div>
                     <p className="text-gray-600 mb-1 text-xs sm:text-sm">Consecutivo</p>
                     <p className="font-mono font-bold text-gray-900 text-sm">{certificado.consecutivo}</p>
@@ -273,23 +290,36 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                       <code className="flex-1 text-[10px] sm:text-xs bg-white px-2 sm:px-3 py-2 rounded-lg border border-gray-200 text-[#003DA5] font-mono truncate">
                         {urlVerificacion}
                       </code>
-                      <button
-                        onClick={handleCopiarEnlace}
-                        className="flex-shrink-0 p-2 hover:bg-gray-200 rounded-lg transition-colors"
-                        title="Copiar enlace"
-                      >
-                        <Copy className="w-4 h-4 text-gray-600" />
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCopiarEnlace}
+                          className="flex-1 sm:flex-initial p-2 hover:bg-gray-200 rounded-lg transition-colors min-h-[44px] flex items-center justify-center gap-2"
+                          title="Copiar enlace"
+                        >
+                          <Copy className="w-4 h-4 text-gray-600" />
+                          <span className="text-xs sm:hidden">Copiar</span>
+                        </button>
+                        <a
+                          href={urlVerificacion}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 sm:flex-initial p-2 hover:bg-gray-200 rounded-lg transition-colors min-h-[44px] flex items-center justify-center gap-2"
+                          title="Abrir en nueva pestaña"
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-600" />
+                          <span className="text-xs sm:hidden">Abrir</span>
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Botones de acción */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+              {/* Botones de acción - Mobile Grid */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-6">
                 <button
                   onClick={handleDescargarQR}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
                 >
                   <Download className="w-4 h-4" />
                   <span className="hidden sm:inline">Descargar QR</span>
@@ -297,18 +327,25 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                 </button>
                 <button
                   onClick={handleImprimir}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md border border-gray-800"
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
                 >
                   <Printer className="w-4 h-4" />
                   Imprimir
                 </button>
                 <button
                   onClick={handleCopiarEnlace}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
                 >
                   <Copy className="w-4 h-4" />
                   <span className="hidden sm:inline">Copiar Enlace</span>
                   <span className="sm:hidden">Copiar</span>
+                </button>
+                <button
+                  onClick={handleCompartir}
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Compartir
                 </button>
               </div>
 

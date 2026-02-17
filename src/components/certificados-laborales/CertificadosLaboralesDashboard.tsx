@@ -20,20 +20,18 @@ import {
   RefreshCw,
   Briefcase,
   Settings,
-  Mail,
-  History
+  Mail
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
-import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
-import { EMPLEADOS_ELEGIBLES, DATOS_LABORALES } from '../../data/empleadosElegiblesCertificados';
 import { certificadosService } from '../../services/api/certificados.service';
 
 // Tipo de certificado laboral - Solo autoservicio
@@ -323,6 +321,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   };
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [cargoFilter, setCargoFilter] = useState<string>('');
   const [tipoVinculacionFilter, setTipoVinculacionFilter] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -339,7 +338,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
-  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
   // Estado para certificados y loading
@@ -362,7 +360,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       setError(null);
 
       console.log('🔄 Cargando certificados desde el backend...');
-      const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+      const filtrosGlobalesActivos = Boolean(statusFilter !== 'all' || cargoFilter.trim() || tipoVinculacionFilter.trim());
       const baseParams: Record<string, any> = {
         page: currentPage,
         limit: itemsPerPage,
@@ -519,12 +517,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   // Cargar certificados al cambiar filtros/paginacion
   useEffect(() => {
-    const filtrosGlobalesActivos = Boolean(cargoFilter.trim() || tipoVinculacionFilter.trim());
+    const filtrosGlobalesActivos = Boolean(statusFilter !== 'all' || cargoFilter.trim() || tipoVinculacionFilter.trim());
     if (filtrosGlobalesActivos && currentPage !== 1) {
       return;
     }
     fetchCertificados();
-  }, [currentPage, searchQuery, cargoFilter, tipoVinculacionFilter]);
+  }, [currentPage, searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
   useEffect(() => {
     fetchCertificadosMetricas();
@@ -532,22 +530,23 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, cargoFilter, tipoVinculacionFilter]);
+  }, [searchQuery, statusFilter, cargoFilter, tipoVinculacionFilter]);
 
   useEffect(() => {
     const cargoNeedle = normalizarFiltro(cargoFilter);
     const tipoNeedle = normalizarFiltro(tipoVinculacionFilter);
-    const certificadosFiltrados = (cargoNeedle || tipoNeedle)
+    const certificadosFiltrados = (statusFilter !== 'all' || cargoNeedle || tipoNeedle)
       ? certificadosRaw.filter((cert) => {
+        const statusOk = statusFilter === 'all' || cert.estado === statusFilter;
         const cargoTexto = normalizarFiltro(cert.empleado.cargo_calculado || cert.empleado.cargo);
         const tipoTexto = normalizarFiltro(cert.empleado.tipoVinculacion);
         const cargoOk = !cargoNeedle || cargoTexto.includes(cargoNeedle);
         const tipoOk = !tipoNeedle || tipoTexto.includes(tipoNeedle);
-        return cargoOk && tipoOk;
+        return statusOk && cargoOk && tipoOk;
       })
       : certificadosRaw;
 
-    if (cargoNeedle || tipoNeedle) {
+    if (statusFilter !== 'all' || cargoNeedle || tipoNeedle) {
       setTotalItems(certificadosFiltrados.length);
       const start = (currentPage - 1) * itemsPerPage;
       const end = start + itemsPerPage;
@@ -555,7 +554,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     } else {
       setCertificados(certificadosRaw);
     }
-  }, [certificadosRaw, cargoFilter, tipoVinculacionFilter, currentPage]);
+  }, [certificadosRaw, statusFilter, cargoFilter, tipoVinculacionFilter, currentPage]);
 
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const paginatedCertificados = certificados;
@@ -586,11 +585,29 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const docentesActivos = empleadosUnicos.filter((cert) => cert.templateType === 'docente' && cert.estadoLaboral === 'activo').length;
   const administrativosActivos = empleadosUnicos.filter((cert) => cert.templateType === 'administrador' && cert.estadoLaboral === 'activo').length;
 
-  const hasActiveFilters = Boolean(searchQuery.trim() || cargoFilter.trim() || tipoVinculacionFilter.trim());
+  const cargosDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    certificadosMetricas.forEach((cert) => {
+      const cargo = cert.empleado.cargo_calculado || cert.empleado.cargo;
+      if (cargo) set.add(cargo);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [certificadosMetricas]);
+
+  const tiposVinculacionDisponibles = useMemo(() => {
+    const set = new Set<string>();
+    certificadosMetricas.forEach((cert) => {
+      if (cert.empleado.tipoVinculacion) set.add(cert.empleado.tipoVinculacion);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [certificadosMetricas]);
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || statusFilter !== 'all' || cargoFilter.trim() || tipoVinculacionFilter.trim());
   const puedeConfigurarPlantilla = Boolean(canManageTemplates);
 
   const clearAllFilters = () => {
     setSearchQuery('');
+    setStatusFilter('all');
     setCargoFilter('');
     setTipoVinculacionFilter('');
   };
@@ -724,41 +741,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           </button>
           
           <button
-            onClick={() => fetchCertificados(true)}
-            disabled={isRefreshing}
-            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: '#FFFFFF',
-              color: '#10B981',
-              border: '2px solid #10B981',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
-              opacity: isRefreshing ? 0.6 : 1
-            }}
-            onMouseEnter={(e) => {
-              if (!isRefreshing) {
-                e.currentTarget.style.background = '#F0FDF4';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <motion.div
-              animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
-              transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
-            >
-              <RefreshCw className="w-5 h-5" strokeWidth={2} />
-            </motion.div>
-            <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
-          </button>
-
-          <button
             onClick={() => setIsGenerarOpen(true)}
             className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
             style={{
@@ -783,32 +765,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
-          </button>
-
-          <button
-            onClick={() => setIsHistorialOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: '#FFFFFF',
-              color: '#F97316',
-              border: '2px solid #F97316',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#FFF7ED';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <History className="w-5 h-5" strokeWidth={2} />
-            <span>Ver historial</span>
           </button>
         </div>
       </motion.div>
@@ -891,11 +847,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         className="bg-white rounded-xl border border-[#E5E7EB] p-3 sm:p-4"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Búsqueda - Siempre full width en mobile */}
-          <div className="flex-1 relative">
+        <div className="space-y-3">
+          <div className="relative">
             <Search 
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+              className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5"
               style={{ color: '#9CA3AF' }}
             />
             <input
@@ -928,120 +883,96 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             )}
           </div>
 
-          {/* Filtro Cargo */}
-          <div className="relative" style={{ minWidth: '220px' }}>
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-              style={{ color: '#9CA3AF' }}
-            />
-            <input
-              type="text"
-              placeholder="Buscar cargo..."
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              style={{
+                fontSize: '14px',
+                color: '#1F2937',
+                borderColor: '#D1D5DB',
+                height: '48px',
+                outline: 'none'
+              }}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="activo">Activo</option>
+              <option value="inactivo">Inactivo</option>
+              <option value="revocado">Revocado</option>
+              <option value="expirado">Expirado</option>
+            </select>
+
+            <select
               value={cargoFilter}
               onChange={(e) => setCargoFilter(e.target.value)}
-              aria-label="Buscar cargo"
-              className="w-full border-2 rounded-lg transition-all"
+              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
               style={{
-                paddingLeft: '40px',
-                paddingRight: cargoFilter ? '40px' : '16px',
-                paddingTop: '12px',
-                paddingBottom: '12px',
                 fontSize: '14px',
-                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '44px',
+                height: '48px',
                 outline: 'none'
               }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
-            {cargoFilter && (
-              <button
-                onClick={() => setCargoFilter('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Limpiar filtro de cargo"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+            >
+              <option value="">Todos los cargos</option>
+              {cargosDisponibles.map((cargo) => (
+                <option key={cargo} value={cargo}>
+                  {cargo}
+                </option>
+              ))}
+            </select>
 
-          {/* Filtro Tipo Vinculación */}
-          <div className="relative" style={{ minWidth: '240px' }}>
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-              style={{ color: '#9CA3AF' }}
-            />
-            <input
-              type="text"
-              placeholder="Buscar tipo de vinculación..."
+            <select
               value={tipoVinculacionFilter}
               onChange={(e) => setTipoVinculacionFilter(e.target.value)}
-              aria-label="Buscar tipo de vinculación"
-              className="w-full border-2 rounded-lg transition-all"
+              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
               style={{
-                paddingLeft: '40px',
-                paddingRight: tipoVinculacionFilter ? '40px' : '16px',
-                paddingTop: '12px',
-                paddingBottom: '12px',
                 fontSize: '14px',
-                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '44px',
+                height: '48px',
                 outline: 'none'
               }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#003DA5';
-                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#D1D5DB';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
-            {tipoVinculacionFilter && (
-              <button
-                onClick={() => setTipoVinculacionFilter('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Limpiar filtro de tipo de vinculación"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            >
+              <option value="">Tipo vinculación</option>
+              {tiposVinculacionDisponibles.map((tipo) => (
+                <option key={tipo} value={tipo}>
+                  {tipo}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         {/* Active Filters */}
         {hasActiveFilters && (
-          <div className="mt-4 flex items-center gap-2">
-            <span className="text-sm text-gray-600">Filtros activos:</span>
+          <div className="mt-3 sm:mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs sm:text-sm text-gray-600">Filtros activos:</span>
             {searchQuery.trim() && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                Búsqueda: {searchQuery.trim()}
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                Búsqueda: {searchQuery.substring(0, 15)}{searchQuery.length > 15 ? '...' : ''}
+              </Badge>
+            )}
+            {statusFilter !== 'all' && (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                Estado: {statusFilter}
               </Badge>
             )}
             {cargoFilter.trim() && (
-              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
                 Cargo: {cargoFilter.trim()}
               </Badge>
             )}
             {tipoVinculacionFilter.trim() && (
-              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
                 Tipo Vinculación: {tipoVinculacionFilter.trim()}
               </Badge>
             )}
@@ -1128,7 +1059,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                     </th>
                     <th className="px-4 py-4 text-left">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        UBICACIÓN
+                        DEPENDENCIA
+                      </span>
+                    </th>
+                    <th className="px-4 py-4 text-left">
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        GRADO
                       </span>
                     </th>
                     <th className="px-4 py-4 text-left">
@@ -1172,9 +1108,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                             </Avatar>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{cert.empleado.nombre}</p>
-                              <p className="text-xs text-blue-600 flex items-center gap-1 truncate">
+                              <p
+                                className="text-xs text-blue-600 flex items-center gap-1 break-all"
+                                title={cert.empleado.email || 'N/A'}
+                              >
                                 <Mail className="w-3 h-3 flex-shrink-0" />
-                                {cert.empleado.email.split('@')[0]}
+                                {cert.empleado.email || 'N/A'}
                               </p>
                             </div>
                           </div>
@@ -1199,9 +1138,14 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                           </p>
                         </td>
 
-                        {/* Ubicación */}
+                        {/* Dependencia */}
                         <td className="px-4 py-4">
-                          <p className="text-sm text-gray-900">{cert.department || cert.position_location || ''}</p>
+                          <p className="text-sm text-gray-900">{cert.empleado.dependencia || cert.department || cert.position_location || ''}</p>
+                        </td>
+
+                        {/* Grado */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <p className="text-sm text-gray-900">{cert.empleado.grado || cert.cod_grade || ''}</p>
                         </td>
 
                         {/* Fecha Solicitud */}
@@ -1234,16 +1178,38 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                             >
                               <Eye className="w-5 h-5 text-gray-600" />
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                              }}
-                              className="p-2 rounded-lg text-gray-400 cursor-not-allowed"
-                              title="Acciones deshabilitadas temporalmente"
-                              disabled
-                            >
-                              <MoreVertical className="w-5 h-5" />
-                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                  <MoreVertical className="w-5 h-5 text-gray-600" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onClick={() => toast.info('Descargar PDF')}>
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Descargar PDF
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => toast.info('Ver QR')}>
+                                  <QrCode className="w-4 h-4 mr-2" />
+                                  Ver código QR
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => toast.info('Reenviar email')}>
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  Reenviar email
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => toast.warning('Revocar certificado')}
+                                  className="text-red-600"
+                                >
+                                  <XCircle className="w-4 h-4 mr-2" />
+                                  Revocar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
 
                           </div>
                         </td>
@@ -1252,7 +1218,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
                         <tr>
-                          <td colSpan={11} className="p-0 bg-gray-50">
+                          <td colSpan={10} className="p-0 bg-gray-50">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}
@@ -1322,11 +1288,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           setIsGenerarOpen(false);
         }}
         certificados={certificados}
-      />
-
-      <ModalHistorialCertificados
-        isOpen={isHistorialOpen}
-        onClose={() => setIsHistorialOpen(false)}
       />
     </div>
   );

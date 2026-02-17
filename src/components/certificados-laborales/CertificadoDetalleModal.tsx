@@ -32,15 +32,6 @@ interface CertificadoDetalleModalProps {
 
 export function CertificadoDetalleModal({ certificado, isOpen, onClose }: CertificadoDetalleModalProps) {
   if (!isOpen) return null;
-  const normalizarDependencia = (value?: string | null) => {
-    const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
-    if (!cleaned) return '';
-    const lower = cleaned.toLowerCase();
-    if (lower === 'registro padre' || lower === 'registro hijo') return '';
-    return cleaned;
-  };
-  const dependenciaPadre = normalizarDependencia(certificado?.empleado?.dependenciaPadre);
-  const dependenciaHijo = normalizarDependencia(certificado?.empleado?.dependencia);
 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
@@ -120,32 +111,6 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
     }
   };
 
-  const parseDateOnly = (fechaStr: string) => {
-    if (!fechaStr) return null;
-    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) {
-      const year = Number(isoMatch[1]);
-      const month = Number(isoMatch[2]) - 1;
-      const day = Number(isoMatch[3]);
-      return new Date(year, month, day, 12, 0, 0);
-    }
-    const parsed = new Date(fechaStr);
-    if (isNaN(parsed.getTime())) return null;
-    return parsed;
-  };
-
-  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
-    const fecha = parseDateOnly(fechaStr);
-    if (!fecha) {
-      return 'Fecha no disponible';
-    }
-    return fecha.toLocaleDateString('es-CO', opciones || {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -156,7 +121,8 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            className="fixed inset-0 backdrop-blur-sm"
             onClick={onClose}
           />
 
@@ -296,7 +262,11 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Calendar className="w-4 h-4 text-gray-400" />
-                            {formatearFecha(certificado.empleado.fechaVinculacion)}
+                            {new Date(certificado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
                           </p>
                         </div>
                         <div>
@@ -313,26 +283,13 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Dependencia Padre
+                            Dependencia
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Building2 className="w-4 h-4 text-gray-400" />
-                            {dependenciaPadre || ''}
+                            {certificado.empleado.dependencia}
                           </p>
                         </div>
-                        <div>
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Dependencia Hijo
-                          </label>
-                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
-                            <Building2 className="w-4 h-4 text-gray-400" />
-                            {dependenciaHijo || ''}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Fila 5 */}
-                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                             Salario
@@ -340,15 +297,6 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           <p className="text-gray-900 mt-1.5 font-bold flex items-center gap-1.5">
                             <DollarSign className="w-4 h-4 text-green-600" />
                             ${certificado.empleado.salario.toLocaleString('es-CO')} COP
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                            Correo Electrónico
-                          </label>
-                          <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.email}
                           </p>
                         </div>
                       </div>
@@ -407,7 +355,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Clock className="w-4 h-4 text-gray-400" />
-                            {formatearFecha(certificado.fechaSolicitud, {
+                            {new Date(certificado.fechaSolicitud).toLocaleDateString('es-CO', {
                               year: 'numeric',
                               month: 'long',
                               day: 'numeric',
@@ -423,7 +371,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                             </label>
                             <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                              {formatearFecha(certificado.fechaGeneracion, {
+                              {new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',

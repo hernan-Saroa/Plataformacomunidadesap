@@ -102,11 +102,14 @@ interface BackofficeAppProps {
     module?: string;
     hasBothSystemsAccess?: boolean;
     restrictedAccess?: boolean;
+    roles?: string[];
+    modules?: string[];
   };
   userRoles?: string[];
 }
 
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
+  console.log('BackofficeApp', userData, userRoles)
   const currentUser = userData || {
     name: usuario?.nombre || 'Administrador ESAP',
     email: usuario?.email || 'admin@esap.edu.co',
@@ -362,7 +365,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'certificados-laborales':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <CertificadosLaboralesRouter />
+            <CertificadosLaboralesRouter 
+              userRoles={userRoles || []}
+              userEmail={currentUser.email}
+            />
           </Suspense>
         );
 
@@ -433,29 +439,27 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 currentModule={currentModule}
                 currentSidebarModule={currentSidebarModule}
                 onModuleChange={(sidebarModule) => {
-                  console.log('🔍 Sidebar module clicked:', sidebarModule);
                   const mappedModule = mapSidebarToModule(sidebarModule);
-                  console.log('📍 Mapped to:', mappedModule);
                   setCurrentSidebarModule(sidebarModule);
                   setCurrentModule(mappedModule);
                   setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
                 }}
                 userEmail={currentUser.email}
                 certificatesPendingCount={certificatesPendingCount}
+                assignedModules={userData?.modules}
                 restrictedMode={
                   userData?.module === 'control-interno'
                     ? 'control-interno'
                     : userData?.module === 'control-disciplinario'
-                      ? 'control-disciplinario'
-                      : userData?.module === 'registro-academico'
-                        ? 'registro-academico'
-                        : userData?.module === 'certificados-laborales'
-                          ? 'certificados-laborales'
-                          : userData?.module === 'gestion-legal'
-                            ? 'gestion-legal'
-                            : undefined
+                    ? 'control-disciplinario'
+                    : userData?.module === 'registro-academico'
+                    ? 'registro-academico'
+                    : userData?.module === 'certificados-laborales' 
+                    ? 'certificados-laborales' 
+                    : userData?.module === 'gestion-legal'
+                    ? 'gestion-legal'
+                    : undefined
                 }
-                assignedModules={['all']}
               />
             </>
           )}

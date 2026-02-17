@@ -19,7 +19,7 @@
  * @date 10 de Febrero de 2026
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ResponsiveModal } from '@/components/ui/ResponsiveModal';
 import { ModalButtonPrimary, ModalButtonCancel, ModalButtonGroup } from '@/components/ui/ModalButtons';
 import {
@@ -32,6 +32,7 @@ import { Button } from '../../ui/button';
 import { toast } from 'sonner@2.0.3';
 import { BadgeNomenclatura } from './components/BadgeNomenclatura';
 import { previsualizarNomenclatura } from './utils/nomenclaturaDocumentos';
+import { disciplinaryService, AutoConfiguration } from '../../../services/api/disciplinary.service';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -134,6 +135,78 @@ export function ModalGestionAutosWorldClass({
     documento: null
   });
   const [autos] = useState<Auto[]>(AUTOS_MOCK);
+  const [tiposAuto, setTiposAuto] = useState<TipoAuto[]>([]);
+  const [loadingTiposAuto, setLoadingTiposAuto] = useState(false);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EFECTO PARA CARGAR TIPOS DE AUTO DESDE EL BACKEND
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (isOpen) {
+      cargarTiposAuto();
+    }
+  }, [isOpen]);
+
+  const cargarTiposAuto = async () => {
+    setLoadingTiposAuto(true);
+    try {
+      // Cargar autos parametrizados desde el backend
+      const autosConfig = await disciplinaryService.getAutosConfigurationActive();
+      
+      // Verificar que hay datos
+      if (autosConfig && Array.isArray(autosConfig) && autosConfig.length > 0) {
+        // Mapear los datos del backend al formato del componente
+        const tiposMapeados: TipoAuto[] = autosConfig.map((config) => ({
+          id: config.tipo || config.id,
+          nombre: config.nombre,
+          icon: getIconForTipoAuto(config.tipo),
+          color: getColorForTipoAuto(config.tipo)
+        }));
+        
+        setTiposAuto(tiposMapeados);
+      } else {
+        // No hay datos en el backend, usar fallback
+        console.log('No hay autos configurados en el backend, usando datos por defecto');
+        setTiposAuto(TIPOS_AUTO);
+      }
+    } catch (error) {
+      console.error('Error cargando tipos de auto:', error);
+      // Si falla, usar los tipos por defecto
+      setTiposAuto(TIPOS_AUTO);
+      toast.error('No se pudieron cargar los tipos de auto parametrizados');
+    } finally {
+      setLoadingTiposAuto(false);
+    }
+  };
+
+  // Función para obtener el icono según el tipo de auto
+  const getIconForTipoAuto = (tipo: string) => {
+    const tipoLower = tipo?.toLowerCase() || '';
+    if (tipoLower.includes('apertura')) return Scale;
+    if (tipoLower.includes('indagacion') || tipoLower.includes('indagación')) return Search;
+    if (tipoLower.includes('investigacion') || tipoLower.includes('investigación')) return FileText;
+    if (tipoLower.includes('pliego') || tipoLower.includes('cargo')) return FileCheck;
+    if (tipoLower.includes('cierre')) return CheckCircle;
+    if (tipoLower.includes('archivo')) return Archive;
+    if (tipoLower.includes('sancion') || tipoLower.includes('sanción') || tipoLower.includes('fallo')) return AlertTriangle;
+    if (tipoLower.includes('absolutorio')) return CheckCircle;
+    return FileText; // Default
+  };
+
+  // Función para obtener el color según el tipo de auto
+  const getColorForTipoAuto = (tipo: string) => {
+    const tipoLower = tipo?.toLowerCase() || '';
+    if (tipoLower.includes('apertura')) return '#8B5CF6';
+    if (tipoLower.includes('indagacion') || tipoLower.includes('indagación')) return '#06B6D4';
+    if (tipoLower.includes('investigacion') || tipoLower.includes('investigación')) return '#10B981';
+    if (tipoLower.includes('pliego') || tipoLower.includes('cargo')) return '#F59E0B';
+    if (tipoLower.includes('cierre')) return '#22C55E';
+    if (tipoLower.includes('archivo')) return '#6B7280';
+    if (tipoLower.includes('sancion') || tipoLower.includes('sanción') || tipoLower.includes('fallo')) return '#DC2626';
+    if (tipoLower.includes('absolutorio')) return '#10B981';
+    return '#8B5CF6'; // Default purple
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // HANDLERS
@@ -356,23 +429,38 @@ export function ModalGestionAutosWorldClass({
 
               {/* Grid de Tipos de Auto */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {TIPOS_AUTO.map((tipo) => {
-                  const IconComponent = tipo.icon;
-                  return (
-                    <button
-                      key={tipo.id}
-                      onClick={() => handleCrearAuto(tipo)}
-                      className="p-4 border-2 rounded-xl hover:shadow-md transition-all text-left group hover:scale-105"
-                      style={{ borderColor: tipo.color + '40' }}
-                    >
-                      <IconComponent
-                        className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform"
-                        style={{ color: tipo.color }}
-                      />
-                      <p className="font-bold text-sm text-gray-900">{tipo.nombre}</p>
-                    </button>
-                  );
-                })}
+                {loadingTiposAuto ? (
+                  <div className="col-span-full text-center py-8">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                    <p className="text-sm text-gray-500 mt-2">Cargando tipos de auto...</p>
+                  </div>
+                ) : (tiposAuto.length > 0 ? (
+                  tiposAuto.map((tipo) => {
+                    const IconComponent = tipo.icon;
+                    return (
+                      <button
+                        key={tipo.id}
+                        onClick={() => handleCrearAuto(tipo)}
+                        className="p-4 border-2 rounded-xl hover:shadow-md transition-all text-left group hover:scale-105"
+                        style={{ borderColor: tipo.color + '40' }}
+                      >
+                        <IconComponent
+                          className="w-8 h-8 mb-2 group-hover:scale-110 transition-transform"
+                          style={{ color: tipo.color }}
+                        />
+                        <p className="font-bold text-sm text-gray-900">{tipo.nombre}</p>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="col-span-full text-center py-8">
+                    <Scale className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                    <p className="text-gray-600 font-semibold">No hay tipos de auto configurados</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Configure los tipos de auto en la sección de configuración
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           )}

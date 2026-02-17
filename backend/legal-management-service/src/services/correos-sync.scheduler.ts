@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { CorreosJuridicosService } from './correos-juridicos.service';
 
 @Injectable()
@@ -10,13 +10,14 @@ export class CorreosSyncScheduler {
     constructor(private readonly correosService: CorreosJuridicosService) { }
 
     /**
-     * Sync emails every 5 minutes
+     * Sync emails every 2 minutes
+     * Runs in all environments (dev + prod) as long as AZURE_TENANT_ID is configured
      */
-    @Cron(CronExpression.EVERY_5_MINUTES)
+    @Cron('0 */2 * * * *')
     async handleCron() {
-        // Skip sync in development mode or when Microsoft Graph is disabled
-        if (process.env.NODE_ENV === 'development' || process.env.AZURE_TENANT_ID === 'development-disabled') {
-            this.logger.log('Skipping scheduled sync in development mode');
+        // Only skip if Graph is explicitly disabled
+        if (process.env.AZURE_TENANT_ID === 'development-disabled') {
+            this.logger.log('Skipping scheduled sync — Graph disabled');
             return;
         }
 

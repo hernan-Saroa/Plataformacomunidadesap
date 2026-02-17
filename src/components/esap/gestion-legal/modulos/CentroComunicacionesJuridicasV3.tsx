@@ -321,122 +321,7 @@ const comunicacionesUnificadas: ComunicacionUnificada[] = [
     documentosAdjuntos: ['oficio_mineducacion.pdf']
   },
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📤 COMUNICACIONES ENVIADAS
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: 'ENV-2025-001',
-    tipo: 'ENVIADO',
-    asunto: 'Respuesta a derecho de petición - Certificado laboral',
-    descripcion: 'Se da respuesta a solicitud de certificado laboral remitiendo documento solicitado.',
-    remitente: 'Oficina Jurídica ESAP',
-    destinatario: 'Juan Carlos Rodríguez',
-    fechaRadicacion: new Date('2025-01-29'),
-    urgente: false,
-    leida: true,
-    estado: 'ENVIADA',
-    documentosAdjuntos: ['respuesta_peticion.pdf', 'certificado_laboral.pdf']
-  },
-  {
-    id: 'ENV-2025-002',
-    tipo: 'ENVIADO',
-    asunto: 'Contestación de tutela - Derecho a la educación',
-    descripcion: 'Se presenta contestación a acción de tutela radicada bajo número 25000-33-10-001-2025-00045-00.',
-    remitente: 'Oficina Jurídica ESAP',
-    destinatario: 'Juzgado 33 Administrativo de Bogotá',
-    fechaRadicacion: new Date('2025-01-28'),
-    urgente: false,
-    leida: true,
-    estado: 'ENVIADA',
-    documentosAdjuntos: ['contestacion_tutela.pdf', 'pruebas.pdf']
-  },
-  {
-    id: 'ENV-2025-003',
-    tipo: 'ENVIADO',
-    asunto: 'Concepto jurídico sobre contratación',
-    descripcion: 'Se emite concepto jurídico favorable sobre modificación de contrato 045-2024.',
-    remitente: 'Oficina Jurídica ESAP',
-    destinatario: 'Subdirección Financiera',
-    fechaRadicacion: new Date('2025-01-27'),
-    urgente: false,
-    leida: true,
-    estado: 'ENVIADA',
-    documentosAdjuntos: ['concepto_juridico_045.pdf']
-  },
-  {
-    id: 'ENV-2025-004',
-    tipo: 'ENVIADO',
-    asunto: 'Respuesta a requerimiento de Contraloría',
-    descripcion: 'Se da respuesta al requerimiento de información presupuestal con anexos solicitados.',
-    remitente: 'Oficina Jurídica ESAP',
-    destinatario: 'Contraloría General de la República',
-    fechaRadicacion: new Date('2025-01-26'),
-    urgente: false,
-    leida: true,
-    estado: 'ENVIADA',
-    documentosAdjuntos: ['respuesta_contraloria.pdf', 'anexo_presupuestal.xlsx']
-  },
-  {
-    id: 'ENV-2025-005',
-    tipo: 'ENVIADO',
-    asunto: 'Notificación de decisión disciplinaria',
-    descripcion: 'Se notifica decisión de archivo de investigación disciplinaria por atipicidad.',
-    remitente: 'Control Interno Disciplinario',
-    destinatario: 'Funcionario Investigado',
-    fechaRadicacion: new Date('2025-01-25'),
-    urgente: false,
-    leida: true,
-    estado: 'ENVIADA',
-    documentosAdjuntos: ['auto_archivo.pdf']
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📦 COMUNICACIONES ARCHIVADAS
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: 'ARCH-2025-001',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción de Tutela',
-    asunto: 'Notificación de fallo de tutela (ARCHIVADA)',
-    descripcion: 'Fallo favorable a ESAP en acción de tutela. Caso cerrado.',
-    remitente: 'Juzgado 10 Administrativo',
-    despachoOrigen: 'Juzgado 10 Administrativo',
-    radicadoExterno: '25000-10-10-001-2024-00789-00',
-    fechaRadicacion: new Date('2024-12-15'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['fallo.pdf']
-  },
-  {
-    id: 'ARCH-2025-002',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de información resuelta (ARCHIVADA)',
-    descripcion: 'Petición de información sobre concursos docentes - Respondida y archivada.',
-    remitente: 'ciudadano123@gmail.com',
-    fechaRadicacion: new Date('2024-12-10'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['respuesta.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'Derecho de Petición',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.89
-    }
-  },
-  {
-    id: 'ARCH-2025-003',
-    tipo: 'OFICIO',
-    asunto: 'Concepto jurídico emitido (ARCHIVADO)',
-    descripcion: 'Concepto sobre validez de acto administrativo - Emitido y archivado.',
-    remitente: 'Dirección Administrativa',
-    fechaRadicacion: new Date('2024-12-05'),
-    urgente: false,
-    leida: true,
-    estado: 'ARCHIVADA',
-    documentosAdjuntos: ['concepto.pdf']
-  }
+  // (Mock data for archivados removed — now served from API)
 ];
 
 type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'urgentes' | 'archivadas';
@@ -444,10 +329,10 @@ type VistaModulo = 'inbox' | 'lista';
 
 export function ModuloCentroComunicacionesJuridicasV3() {
   console.log('🔄 ModuloCentroComunicacionesJuridicasV3 renderizado');
-  
+
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   const [tabActiva, setTabActiva] = useState<TabUnificadaType>('judiciales');
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
@@ -478,23 +363,28 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   }, [modalExpedienteOpen, comunicacionParaExpediente]);
 
   // Función para mapear correos de API a formato UI
-  const mapCorreoToUI = (correo: CorreoJuridico): ComunicacionUnificada => ({
-    id: correo.id,
-    tipo: correo.tipo as TipoComunicacion,
-    asunto: correo.asunto,
-    descripcion: correo.cuerpoTexto || '',
-    remitente: correo.remitenteNombre || correo.remitenteEmail,
-    fechaRadicacion: new Date(correo.fechaRecepcion),
-    urgente: correo.urgente,
-    leida: correo.leido,
-    estado: correo.archivado ? 'ARCHIVADA' : (correo.leido ? 'LEIDA' : 'PENDIENTE'),
-    documentosAdjuntos: correo.tieneAdjuntos ? ['adjunto'] : [],
-    clasificacionIA: correo.moduloSugerido ? {
-      tipoDetectado: correo.categoria || 'Correo',
-      moduloSugerido: correo.moduloSugerido,
-      confianza: correo.confianzaClasificacion || 70
-    } : undefined
-  });
+  const mapCorreoToUI = (correo: CorreoJuridico): ComunicacionUnificada => {
+    // Sent emails: map direccion='ENVIADO' to tipo='ENVIADO'
+    const isSent = correo.direccion === 'ENVIADO';
+    return {
+      id: correo.id,
+      tipo: isSent ? 'ENVIADO' : (correo.tipo as TipoComunicacion),
+      asunto: correo.asunto,
+      descripcion: correo.cuerpoTexto || '',
+      remitente: correo.remitenteNombre || correo.remitenteEmail,
+      destinatario: isSent ? (correo.destinatariosTo || '') : undefined,
+      fechaRadicacion: new Date(correo.fechaRecepcion),
+      urgente: correo.urgente,
+      leida: correo.leido,
+      estado: correo.archivado ? 'ARCHIVADA' : (isSent ? 'ENVIADA' : (correo.leido ? 'LEIDA' : 'PENDIENTE')),
+      documentosAdjuntos: correo.tieneAdjuntos ? ['adjunto'] : [],
+      clasificacionIA: correo.moduloSugerido ? {
+        tipoDetectado: correo.categoria || 'Correo',
+        moduloSugerido: correo.moduloSugerido,
+        confianza: correo.confianzaClasificacion || 70
+      } : undefined
+    };
+  };
 
   // Cargar correos desde API
   const loadCorreosFromAPI = async () => {
@@ -566,9 +456,24 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
   };
 
-  // Cargar datos al montar
+  // Cargar datos al montar + auto-polling cada 2 minutos
   useEffect(() => {
     loadCorreosFromAPI();
+
+    // Auto-polling: refresca la lista silenciosamente cada 2 minutos
+    const pollInterval = setInterval(async () => {
+      try {
+        const correos = await correosJuridicosService.getCorreos();
+        if (correos && correos.length > 0) {
+          setComunicaciones(correos.map(mapCorreoToUI));
+        }
+      } catch (error) {
+        // Silent fail — don't disrupt user experience
+        console.warn('Auto-poll failed:', error);
+      }
+    }, 2 * 60 * 1000); // Every 2 minutes
+
+    return () => clearInterval(pollInterval);
   }, []);
 
 
@@ -698,6 +603,30 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     }
 
     toast.success('Comunicación archivada correctamente', {
+      icon: <Archive className="w-4 h-4" />
+    });
+  };
+
+  const handleDesarchivar = async (id: string) => {
+    console.log('📤 Desarchivando comunicación:', id);
+
+    // Actualizar estado local inmediatamente
+    setComunicaciones(prevComs =>
+      prevComs.map(com =>
+        com.id === id
+          ? { ...com, estado: (com.tipo === 'ENVIADO' ? 'ENVIADA' : 'LEIDA') as EstadoComunicacion }
+          : com
+      )
+    );
+
+    // Llamar API
+    try {
+      await correosJuridicosService.unarchive(id);
+    } catch (error) {
+      console.error('Error desarchivando en API:', error);
+    }
+
+    toast.success('Comunicación restaurada correctamente', {
       icon: <Archive className="w-4 h-4" />
     });
   };
@@ -984,6 +913,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           onSeleccionarTodas={handleSeleccionarTodas}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
+          onDesarchivar={handleDesarchivar}
           onVerExpediente={handleVerExpediente}
         />
       )}
@@ -994,6 +924,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
           comunicaciones={comunicacionesPaginadas}
           onMarcarLeida={handleMarcarLeida}
           onArchivar={handleArchivar}
+          onDesarchivar={handleDesarchivar}
         />
       )}
 
@@ -1061,10 +992,12 @@ export function ModuloCentroComunicacionesJuridicasV3() {
       <ModalNuevaComunicacion
         isOpen={modalNuevaComunicacionOpen}
         onClose={() => setModalNuevaComunicacionOpen(false)}
-        onSubmit={(data) => {
-          console.log('Nueva comunicación:', data);
+        onSubmit={async (data) => {
+          console.log('Nueva comunicación enviada:', data);
           toast.success('Comunicación registrada exitosamente');
           setModalNuevaComunicacionOpen(false);
+          // Refrescar la lista inmediatamente para mostrar el correo enviado
+          await loadCorreosFromAPI();
         }}
       />
 
@@ -1132,6 +1065,7 @@ interface VistaInboxProps {
   onSeleccionarTodas: () => void;
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
+  onDesarchivar: (id: string) => void;
   onVerExpediente: (com: ComunicacionUnificada) => void;
 }
 
@@ -1144,6 +1078,7 @@ function VistaInbox({
   onSeleccionarTodas,
   onMarcarLeida,
   onArchivar,
+  onDesarchivar,
   onVerExpediente
 }: VistaInboxProps) {
   return (
@@ -1196,6 +1131,7 @@ function VistaInbox({
                 comunicacion={comunicacionSeleccionada}
                 onMarcarLeida={onMarcarLeida}
                 onArchivar={onArchivar}
+                onDesarchivar={onDesarchivar}
                 onVerExpediente={onVerExpediente}
               />
             ) : (
@@ -1316,6 +1252,7 @@ interface VistaPreviaComunicacionProps {
   comunicacion: ComunicacionUnificada;
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
+  onDesarchivar: (id: string) => void;
   onVerExpediente: (com: ComunicacionUnificada) => void;
 }
 
@@ -1323,6 +1260,7 @@ function VistaPreviaComunicacion({
   comunicacion,
   onMarcarLeida,
   onArchivar,
+  onDesarchivar,
   onVerExpediente
 }: VistaPreviaComunicacionProps) {
   const badgeTipo = {
@@ -1449,7 +1387,17 @@ function VistaPreviaComunicacion({
             Marcar como Leída
           </Button>
         )}
-        {authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
+        {comunicacion.estado === 'ARCHIVADA' && authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => onDesarchivar(comunicacion.id)}
+          >
+            <Archive className="w-4 h-4 mr-2" />
+            Desarchivar
+          </Button>
+        )}
+        {comunicacion.estado !== 'ARCHIVADA' && authService.hasPermission(Permissions.GESTION_LEGAL_COMUNICACIONES_ARCHIVAR) && (
           <Button
             variant="outline"
             className="w-full"
@@ -1469,9 +1417,10 @@ interface VistaListaProps {
   comunicaciones: ComunicacionUnificada[];
   onMarcarLeida: (id: string) => void;
   onArchivar: (id: string) => void;
+  onDesarchivar: (id: string) => void;
 }
 
-function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaProps) {
+function VistaLista({ comunicaciones, onMarcarLeida, onArchivar, onDesarchivar }: VistaListaProps) {
   const badgeTipo = {
     JUDICIAL: { label: 'Judicial', color: 'bg-blue-100 text-blue-700' },
     CORREO: { label: 'Correo', color: 'bg-gray-100 text-gray-700' },
@@ -1543,14 +1492,27 @@ function VistaLista({ comunicaciones, onMarcarLeida, onArchivar }: VistaListaPro
                         <CheckCircle className="w-4 h-4" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => onArchivar(com.id)}
-                    >
-                      <Archive className="w-4 h-4" />
-                    </Button>
+                    {com.estado === 'ARCHIVADA' ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => onDesarchivar(com.id)}
+                        title="Desarchivar"
+                      >
+                        <Archive className="w-4 h-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => onArchivar(com.id)}
+                        title="Archivar"
+                      >
+                        <Archive className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
