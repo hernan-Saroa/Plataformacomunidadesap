@@ -446,22 +446,24 @@ export class LaborCertificatePdfService {
       return html;
     }
 
-    let result = html.replace(/\r\n?/g, '\n');
-    result = result.replace(/<div\b[^>]*>/gi, '<p>');
-    result = result.replace(/<\/div>/gi, '</p>');
-    result = result.replace(/(?:<br\s*\/?>\s*){2,}/gi, '</p><p>');
-    result = result.replace(/<p>\s*<\/p>/gi, '');
+    let result = html.replace(/\r\n?/g, '\n').replace(/&nbsp;/g, ' ');
+    result = result.replace(
+      /<(\/)?(p|div|li|ul|ol|section|article|blockquote)\b[^>]*>/gi,
+      '\n',
+    );
+    result = result.replace(/<br\s*\/?>/gi, '\n');
+    result = result.replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n');
 
-    if (!/<p[\s>]/i.test(result)) {
-      result = `<p>${result}</p>`;
+    const paragraphs = result
+      .split(/\n+/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    if (!paragraphs.length) {
+      return '';
     }
 
-    result = result.replace(/<p>\s*(?:<br\s*\/?>\s*)+/gi, '<p>');
-    result = result.replace(/(?:<br\s*\/?>\s*)+\s*<\/p>/gi, '</p>');
-    result = result.replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*<\/p>/gi, '');
-    result = result.replace(/<\/p>\s*<p>/gi, '</p><p>');
-
-    return result.trim();
+    return paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join('');
   }
 
   private stripSalarySections(html: string): string {

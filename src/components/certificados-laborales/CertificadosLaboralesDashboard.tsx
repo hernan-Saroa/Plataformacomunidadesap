@@ -1172,9 +1172,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                             </Avatar>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{cert.empleado.nombre}</p>
-                              <p className="text-xs text-blue-600 flex items-center gap-1 truncate">
+                              <p
+                                className="text-xs text-blue-600 flex items-center gap-1 break-all"
+                                title={cert.empleado.email || 'N/A'}
+                              >
                                 <Mail className="w-3 h-3 flex-shrink-0" />
-                                {cert.empleado.email.split('@')[0]}
+                                {cert.empleado.email || 'N/A'}
                               </p>
                             </div>
                           </div>

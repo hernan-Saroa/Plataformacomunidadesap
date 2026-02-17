@@ -84,21 +84,26 @@ export class CertificatesController {
     const realIp = req.headers?.['x-real-ip'];
     const cfConnectingIp = req.headers?.['cf-connecting-ip'];
     const clientIpHeader = req.headers?.['x-client-ip'];
-    const forwardedIp = Array.isArray(forwarded)
-      ? forwarded[0]
-      : typeof forwarded === 'string'
-        ? forwarded.split(',')[0]
-        : '';
-    const realIpValue = Array.isArray(realIp) ? realIp[0] : realIp;
-    const cfIpValue = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
-    const clientIpValue = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
-    const ip =
-      forwardedIp?.trim() ||
-      (typeof cfIpValue === 'string' ? cfIpValue.trim() : '') ||
-      (typeof realIpValue === 'string' ? realIpValue.trim() : '') ||
-      (typeof clientIpValue === 'string' ? clientIpValue.trim() : '') ||
-      req.ip ||
-      req.connection?.remoteAddress;
+    const parseIpHeader = (value?: string | string[]) => {
+      const raw = Array.isArray(value) ? value.join(',') : value || '';
+      return String(raw)
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
+
+    const ipCandidates = [
+      ...parseIpHeader(forwarded),
+      ...parseIpHeader(cfConnectingIp),
+      ...parseIpHeader(realIp),
+      ...parseIpHeader(clientIpHeader),
+      ...(Array.isArray(req.ips) ? req.ips.map((item: any) => String(item || '').trim()) : []),
+      typeof req.ip === 'string' ? req.ip.trim() : '',
+      typeof req.connection?.remoteAddress === 'string' ? req.connection.remoteAddress.trim() : '',
+      typeof req.socket?.remoteAddress === 'string' ? req.socket.remoteAddress.trim() : '',
+    ].filter(Boolean);
+
+    const ip = ipCandidates.join(',');
     const userAgent = req.get('user-agent');
     return await this.certificatesService.registrarValidacion(codigo, ip, userAgent);
   }
