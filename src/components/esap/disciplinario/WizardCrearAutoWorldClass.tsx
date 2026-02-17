@@ -212,7 +212,8 @@ export function WizardCrearAutoWorldClass({
           activo: config?.estado === 'activo',
           orden: config?.orden || index,
           fechaCreacion: config?.createdAt || new Date().toISOString(),
-          fechaModificacion: config?.updatedAt || new Date().toISOString()
+          fechaModificacion: config?.updatedAt || new Date().toISOString(),
+          tipo: config?.tipo || undefined // ✅ Incluir el tipo del backend para crear autos
         }));
         
         // Ordenar por orden
@@ -317,7 +318,7 @@ export function WizardCrearAutoWorldClass({
     try {
       setGuardando(true);
 
-      // ✅ Mapear nombre legible → AutoType del backend
+      // ✅ Función auxiliar para mapear nombre a tipo de auto del backend
       const mapNombreToAutoType = (nombre: string): string => {
         const n = nombre.toUpperCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -340,6 +341,11 @@ export function WizardCrearAutoWorldClass({
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       };
 
+      // ✅Obtener el tipo de auto del backend directamente
+      // Si el tipo viene del backend (con campo 'tipo'), usarlo directamente
+      // Sino, usar la función de mapeo por nombre
+      const tipoAutoValue = tipoSeleccionado.tipo || mapNombreToAutoType(tipoSeleccionado.nombre);
+
       // ✅ PASO 1: Subir el archivo primero para obtener documentUrl
       // El backend necesita el archivo en disco para estampar el consecutivo en el PDF
       let documentUrl: string | undefined;
@@ -353,7 +359,7 @@ export function WizardCrearAutoWorldClass({
       // ✅ PASO 2: Crear el auto con el documentUrl para que el backend pueda estampar el consecutivo
       const autoCreado = await disciplinaryService.crearAuto({
         processId: proceso.id,
-        tipoAuto: mapNombreToAutoType(tipoSeleccionado.nombre),
+        tipoAuto: tipoAutoValue,
         contenidoHtml: `<p>${observaciones || 'Auto generado desde wizard'}</p>`,
         comentarios: observacionesAdjunto || observaciones,
         documentUrl: documentUrl,
