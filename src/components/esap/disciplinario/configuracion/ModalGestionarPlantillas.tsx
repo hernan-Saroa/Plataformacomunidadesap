@@ -7,14 +7,14 @@
  * ✅ Diseño corporativo ESAP Desktop-First
  */
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Upload, File, Download, Trash2, Edit2, Plus, AlertCircle, 
   CheckCircle, Info, Save, Loader, Files, Clock, Eye, ToggleLeft, ToggleRight
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import { type TipoAuto, type PlantillaArchivo } from './SeccionAutosProvidencias';
+import { toast } from 'sonner';
+import { type TipoAuto, type PlantillaArchivo } from './SeccionPlantillasAutosUnificada';
 
 interface ModalGestionarPlantillasProps {
   isOpen: boolean;
@@ -29,17 +29,25 @@ export function ModalGestionarPlantillas({
   tipoAuto,
   onActualizarPlantillas
 }: ModalGestionarPlantillasProps) {
-  const [plantillas, setPlantillas] = useState<PlantillaArchivo[]>(tipoAuto?.plantillas || []);
+  // Inicializar plantillas desde tipoAuto.plantilla (singular, no plural)
+  const [plantillas, setPlantillas] = useState<PlantillaArchivo[]>(() => {
+    if (tipoAuto?.plantilla) {
+      return [tipoAuto.plantilla];
+    }
+    return [];
+  });
   const [modalAgregarPlantilla, setModalAgregarPlantilla] = useState(false);
   const [plantillaEditando, setPlantillaEditando] = useState<PlantillaArchivo | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Actualizar plantillas cuando cambie tipoAuto
-  useState(() => {
-    if (tipoAuto) {
-      setPlantillas(tipoAuto.plantillas);
+  useEffect(() => {
+    if (tipoAuto?.plantilla) {
+      setPlantillas([tipoAuto.plantilla]);
+    } else {
+      setPlantillas([]);
     }
-  });
+  }, [tipoAuto]);
 
   const handleToggleActivoPlantilla = (plantillaId: string) => {
     setPlantillas(prev => prev.map(p => 

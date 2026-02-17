@@ -149,4 +149,13 @@ export class AutosConfigurationService {
     autoConfig.estado = autoConfig.estado === 'activo' ? 'inactivo' : 'activo';
     return await this.autoConfigRepository.save(autoConfig);
   }
+
+  /**
+   * Actualizar la plantilla de un auto (URL del archivo subido)
+   */
+  async updatePlantilla(id: string, plantillaUrl: string): Promise<AutoConfiguration> {
+    const autoConfig = await this.findById(id);
+    autoConfig.plantilla = plantillaUrl;
+    return await this.autoConfigRepository.save(autoConfig);
+  }
 }

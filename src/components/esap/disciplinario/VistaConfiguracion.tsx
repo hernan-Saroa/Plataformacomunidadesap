@@ -4,13 +4,15 @@
  * Diseño corporativo ESAP (SIGL v5.0)
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Settings, Bell, Calendar, Plus, Edit2, Trash2, Save, X,
   Mail, Eye, Clock, CheckCircle, AlertCircle, Zap, Target
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import terminosAlertasService from '../../../services/api/terminosAlertas.service';
+import type { DiaFestivo as DiaFestivoAPI, ReglaAlerta as ReglaAlertaAPI } from '../../../services/api/terminosAlertas.service';
 
 interface ReglaAlerta {
   id: string;
@@ -20,7 +22,7 @@ interface ReglaAlerta {
   enviarEmail: boolean;
   mostrarPanel: boolean;
   descripcion: string;
-  color: string;
+  color?: string;
 }
 
 interface DiaFestivo {
@@ -32,22 +34,23 @@ interface DiaFestivo {
 }
 
 interface VistaConfiguracionProps {
-  reglasAlerta: ReglaAlerta[];
-  diasFestivos: DiaFestivo[];
-  onActualizarReglas: (reglas: ReglaAlerta[]) => void;
-  onActualizarFestivos: (festivos: DiaFestivo[]) => void;
+  reglasAlerta?: ReglaAlerta[];
+  diasFestivos?: DiaFestivo[];
+  onActualizarReglas?: (reglas: ReglaAlerta[]) => void;
+  onActualizarFestivos?: (festivos: DiaFestivo[]) => void;
 }
 
 export function VistaConfiguracion({
-  reglasAlerta: reglasInicial,
-  diasFestivos: festivosInicial,
+  reglasAlerta: reglasInicial = [],
+  diasFestivos: festivosInicial = [],
   onActualizarReglas,
   onActualizarFestivos
 }: VistaConfiguracionProps) {
   const [seccionActiva, setSeccionActiva] = useState<'reglas' | 'festivos'>('reglas');
-  const [reglas, setReglas] = useState<ReglaAlerta[]>(reglasInicial);
-  const [festivos, setFestivos] = useState<DiaFestivo[]>(festivosInicial);
-  
+  const [reglas, setReglas] = useState<ReglaAlerta[]>([]);
+  const [festivos, setFestivos] = useState<DiaFestivo[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [editandoRegla, setEditandoRegla] = useState<ReglaAlerta | null>(null);
   const [mostrarModalRegla, setMostrarModalRegla] = useState(false);
   const [mostrarModalFestivo, setMostrarModalFestivo] = useState(false);
@@ -66,6 +69,38 @@ export function VistaConfiguracion({
   const [descripcionFestivo, setDescripcionFestivo] = useState('');
   const [tipoFestivo, setTipoFestivo] = useState<'nacional' | 'regional' | 'institucional'>('nacional');
   const [territorioFestivo, setTerritorioFestivo] = useState('');
+
+  // Cargar datos del backend al montar el componente
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  const cargarDatos = async () => {
+    try {
+      setLoading(true);
+
+      // Cargar reglas de alerta
+      const reglasResponse = await terminosAlertasService.listarReglasAlerta();
+      const reglasApi = reglasResponse.reglas || [];
+      setReglas(reglasApi.map(r => ({
+        ...r,
+        color: '#F59E0B' // Color por defecto si no viene del backend
+      })));
+
+      // Cargar días festivos
+      const festivosResponse = await terminosAlertasService.listarFestivos();
+      const festivosApi = (festivosResponse.festivos || []).filter(f => f.activo !== false);
+      setFestivos(festivosApi);
+
+    } catch (error: any) {
+      console.error('Error cargando configuración:', error);
+      toast.error('Error al cargar configuración', {
+        description: error.message || 'No se pudieron cargar los datos'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ============================================================================
   // HANDLERS - REGLAS
@@ -89,77 +124,103 @@ export function VistaConfiguracion({
     setEnviarEmail(regla.enviarEmail);
     setMostrarPanel(regla.mostrarPanel);
     setDescripcionRegla(regla.descripcion);
-    setColorRegla(regla.color);
+    setColorRegla(regla.color || '#F59E0B');
     setMostrarModalRegla(true);
   };
 
-  const handleGuardarRegla = () => {
+  const handleGuardarRegla = async () => {
     if (!nombreRegla.trim()) {
       toast.error('El nombre es requerido');
       return;
     }
 
-    if (editandoRegla) {
-      // Editar existente
-      const nuevasReglas = reglas.map(r =>
-        r.id === editandoRegla.id
-          ? {
-              ...r,
-              nombre: nombreRegla,
-              diasAnticipacion,
-              enviarEmail,
-              mostrarPanel,
-              descripcion: descripcionRegla,
-              color: colorRegla
-            }
-          : r
-      );
-      setReglas(nuevasReglas);
-      onActualizarReglas(nuevasReglas);
-      toast.success('Regla actualizada', {
-        description: 'Los cambios han sido guardados'
-      });
-    } else {
-      // Crear nueva
-      const nuevaRegla: ReglaAlerta = {
-        id: 'r' + Date.now(),
-        nombre: nombreRegla,
-        diasAnticipacion,
-        activa: true,
-        enviarEmail,
-        mostrarPanel,
-        descripcion: descripcionRegla,
-        color: colorRegla
-      };
-      const nuevasReglas = [...reglas, nuevaRegla];
-      setReglas(nuevasReglas);
-      onActualizarReglas(nuevasReglas);
-      toast.success('Regla creada', {
-        description: 'La nueva regla ha sido agregada'
+    try {
+      if (editandoRegla) {
+        // Editar existente
+        const reglaActualizada = await terminosAlertasService.actualizarReglaAlerta(
+          editandoRegla.id,
+          {
+            nombre: nombreRegla,
+            diasAnticipacion,
+            enviarEmail,
+            mostrarPanel,
+            descripcion: descripcionRegla,
+            activa: editandoRegla.activa
+          }
+        );
+
+        const nuevasReglas = reglas.map(r =>
+          r.id === editandoRegla.id
+            ? { ...reglaActualizada, color: colorRegla }
+            : r
+        );
+        setReglas(nuevasReglas);
+        onActualizarReglas?.(nuevasReglas);
+        toast.success('Regla actualizada', {
+          description: 'Los cambios han sido guardados en el servidor'
+        });
+      } else {
+        // Crear nueva
+        const nuevaRegla = await terminosAlertasService.crearReglaAlerta({
+          nombre: nombreRegla,
+          diasAnticipacion,
+          activa: true,
+          enviarEmail,
+          mostrarPanel,
+          descripcion: descripcionRegla
+        });
+
+        const nuevasReglas = [...reglas, { ...nuevaRegla, color: colorRegla }];
+        setReglas(nuevasReglas);
+        onActualizarReglas?.(nuevasReglas);
+        toast.success('Regla creada', {
+          description: 'La nueva regla ha sido guardada en el servidor'
+        });
+      }
+
+      setMostrarModalRegla(false);
+    } catch (error: any) {
+      console.error('Error al guardar regla:', error);
+      toast.error('Error al guardar', {
+        description: error.message || 'No se pudo guardar la regla'
       });
     }
-
-    setMostrarModalRegla(false);
   };
 
-  const handleEliminarRegla = (id: string) => {
-    const nuevasReglas = reglas.filter(r => r.id !== id);
-    setReglas(nuevasReglas);
-    onActualizarReglas(nuevasReglas);
-    toast.success('Regla eliminada', {
-      description: 'La regla ha sido eliminada del sistema'
-    });
+  const handleEliminarRegla = async (id: string) => {
+    try {
+      await terminosAlertasService.eliminarReglaAlerta(id);
+      const nuevasReglas = reglas.filter(r => r.id !== id);
+      setReglas(nuevasReglas);
+      onActualizarReglas?.(nuevasReglas);
+      toast.success('Regla eliminada', {
+        description: 'La regla ha sido eliminada del servidor'
+      });
+    } catch (error: any) {
+      console.error('Error al eliminar regla:', error);
+      toast.error('Error al eliminar', {
+        description: error.message || 'No se pudo eliminar la regla'
+      });
+    }
   };
 
-  const handleToggleRegla = (id: string) => {
-    const nuevasReglas = reglas.map(r =>
-      r.id === id ? { ...r, activa: !r.activa } : r
-    );
-    setReglas(nuevasReglas);
-    onActualizarReglas(nuevasReglas);
-    
-    const regla = nuevasReglas.find(r => r.id === id);
-    toast.success(regla?.activa ? 'Regla activada' : 'Regla desactivada');
+  const handleToggleRegla = async (id: string) => {
+    try {
+      const reglaActualizada = await terminosAlertasService.toggleReglaAlerta(id);
+      const nuevasReglas = reglas.map(r =>
+        r.id === id ? { ...r, activa: reglaActualizada.activa } : r
+      );
+      setReglas(nuevasReglas);
+      onActualizarReglas?.(nuevasReglas);
+
+      const regla = nuevasReglas.find(r => r.id === id);
+      toast.success(regla?.activa ? 'Regla activada' : 'Regla desactivada');
+    } catch (error: any) {
+      console.error('Error al cambiar estado de regla:', error);
+      toast.error('Error', {
+        description: error.message || 'No se pudo cambiar el estado'
+      });
+    }
   };
 
   // ============================================================================
@@ -184,7 +245,7 @@ export function VistaConfiguracion({
     setMostrarModalFestivo(true);
   };
 
-  const handleGuardarFestivo = () => {
+  const handleGuardarFestivo = async () => {
     if (!fechaFestivo) {
       toast.error('La fecha es requerida');
       return;
@@ -194,48 +255,76 @@ export function VistaConfiguracion({
       return;
     }
 
-    if (editandoFestivo) {
-      // Editar existente
-      const nuevosFestivos = festivos.map(f =>
-        f.id === editandoFestivo.id
-          ? {
-              ...f,
-              fecha: fechaFestivo,
-              descripcion: descripcionFestivo,
-              tipo: tipoFestivo,
-              territorio: territorioFestivo || undefined
-            }
-          : f
-      );
-      setFestivos(nuevosFestivos);
-      onActualizarFestivos(nuevosFestivos);
-      toast.success('Festivo actualizado');
-    } else {
-      // Crear nuevo
-      const nuevoFestivo: DiaFestivo = {
-        id: 'f' + Date.now(),
-        fecha: fechaFestivo,
-        descripcion: descripcionFestivo,
-        tipo: tipoFestivo,
-        territorio: territorioFestivo || undefined
-      };
-      const nuevosFestivos = [...festivos, nuevoFestivo].sort((a, b) => 
-        a.fecha.localeCompare(b.fecha)
-      );
-      setFestivos(nuevosFestivos);
-      onActualizarFestivos(nuevosFestivos);
-      toast.success('Festivo creado');
+    try {
+      if (editandoFestivo) {
+        // Editar existente
+        const festivoActualizado = await terminosAlertasService.actualizarFestivo(
+          editandoFestivo.id,
+          {
+            fecha: fechaFestivo,
+            descripcion: descripcionFestivo,
+            tipo: tipoFestivo,
+            territorio: territorioFestivo || undefined
+          }
+        );
+
+        const nuevosFestivos = festivos.map(f =>
+          f.id === editandoFestivo.id ? festivoActualizado : f
+        );
+        setFestivos(nuevosFestivos);
+        onActualizarFestivos?.(nuevosFestivos);
+        toast.success('Festivo actualizado en el servidor');
+      } else {
+        // Crear nuevo
+        const nuevoFestivo = await terminosAlertasService.crearFestivo({
+          fecha: fechaFestivo,
+          descripcion: descripcionFestivo,
+          tipo: tipoFestivo,
+          territorio: territorioFestivo || undefined
+        });
+
+        const nuevosFestivos = [...festivos, nuevoFestivo].sort((a, b) =>
+          a.fecha.localeCompare(b.fecha)
+        );
+        setFestivos(nuevosFestivos);
+        onActualizarFestivos?.(nuevosFestivos);
+        toast.success('Festivo creado en el servidor');
+      }
+
+      setMostrarModalFestivo(false);
+    } catch (error: any) {
+      console.error('Error al guardar festivo:', error);
+      toast.error('Error al guardar', {
+        description: error.message || 'No se pudo guardar el festivo'
+      });
     }
-
-    setMostrarModalFestivo(false);
   };
 
-  const handleEliminarFestivo = (id: string) => {
-    const nuevosFestivos = festivos.filter(f => f.id !== id);
-    setFestivos(nuevosFestivos);
-    onActualizarFestivos(nuevosFestivos);
-    toast.success('Festivo eliminado');
+  const handleEliminarFestivo = async (id: string) => {
+    try {
+      await terminosAlertasService.eliminarFestivo(id);
+      const nuevosFestivos = festivos.filter(f => f.id !== id);
+      setFestivos(nuevosFestivos);
+      onActualizarFestivos?.(nuevosFestivos);
+      toast.success('Festivo eliminado del servidor');
+    } catch (error: any) {
+      console.error('Error al eliminar festivo:', error);
+      toast.error('Error al eliminar', {
+        description: error.message || 'No se pudo eliminar el festivo'
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -319,8 +408,8 @@ export function VistaConfiguracion({
                   key={regla.id}
                   className="p-4 rounded-xl border-2"
                   style={{
-                    borderColor: regla.activa ? regla.color : '#E5E7EB',
-                    background: regla.activa ? `${regla.color}10` : '#F9FAFB'
+                    borderColor: regla.activa ? (regla.color || '#F59E0B') : '#E5E7EB',
+                    background: regla.activa ? `${regla.color || '#F59E0B'}10` : '#F9FAFB'
                   }}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -328,7 +417,7 @@ export function VistaConfiguracion({
                       <div className="flex items-center gap-2 mb-2">
                         <div
                           className="w-3 h-3 rounded-full"
-                          style={{ background: regla.color }}
+                          style={{ background: regla.color || '#F59E0B' }}
                         />
                         <h4 className="font-bold text-sm" style={{ color: '#1F2937' }}>
                           {regla.nombre}

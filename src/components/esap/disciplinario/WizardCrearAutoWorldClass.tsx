@@ -152,8 +152,12 @@ export function WizardCrearAutoWorldClass({
   const [autosGenerados, setAutosGenerados] = useState<AutoGenerado[]>([]);
   const [cargandoAutos, setCargandoAutos] = useState(false);
 
-  // Datos mock
-  const tiposAutos = TIPOS_AUTOS_MOCK;
+  // Estados de Tipos de Auto desde el backend
+  const [loadingTiposAuto, setLoadingTiposAuto] = useState(false);
+  const [tiposAuto, setTiposAuto] = useState<TipoAuto[]>(TIPOS_AUTOS_MOCK);
+
+  // Referencia a los tipos de auto (usa el estado o fallback)
+  const tiposAutos = tiposAuto;
 
   // ==================== FUNCIONES AUXILIARES ====================
   const cargarAutosGenerados = async () => {
@@ -402,8 +406,8 @@ export function WizardCrearAutoWorldClass({
     const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
-    const tienePlantilla = tipo.plantilla !== null;
-    return cumpleFiltroEtapa && cumpleBusqueda && tienePlantilla;
+    // Permitir autos con o sin plantilla (los del backend pueden no tener plantilla)
+    return cumpleFiltroEtapa && cumpleBusqueda;
   });
 
   // ==================== RENDER ====================
@@ -720,8 +724,7 @@ export function WizardCrearAutoWorldClass({
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {tiposFiltrados.map((tipo) => {
-                          const etapa = ETAPAS_PROCESO[tipo.etapa];
-                          if (!etapa || !tipo.plantilla) return null;
+                          const etapa = ETAPAS_PROCESO[tipo.etapa] || { nombre: 'Etapa Desconocida', color: '#6B7280', icon: FileText };
 
                           const Icon = etapa.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;
@@ -785,13 +788,17 @@ export function WizardCrearAutoWorldClass({
                                     <div className="flex items-center gap-2">
                                       <span
                                         className="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm"
-                                        style={{ backgroundColor: etapaInfo.color }}
+                                        style={{ backgroundColor: etapa.color }}
                                       >
-                                        {etapaInfo.nombre}
+                                        {etapa.nombre}
                                       </span>
-                                      {tipo.plantilla && (
+                                      {tipo.plantilla ? (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
                                           v{tipo.plantilla.version}
+                                        </span>
+                                      ) : (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600">
+                                          Sin plantilla
                                         </span>
                                       )}
                                     </div>
@@ -800,7 +807,7 @@ export function WizardCrearAutoWorldClass({
                               </div>
 
                               {/* Sección de Descarga de Plantilla */}
-                              {seleccionado && tipo.plantilla && (
+                              {seleccionado && (
                                 <motion.div
                                   initial={{ opacity: 0, height: 0 }}
                                   animate={{ opacity: 1, height: 'auto' }}
@@ -815,10 +822,10 @@ export function WizardCrearAutoWorldClass({
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <p className="text-xs font-bold text-gray-900 truncate">
-                                          {tipo.plantilla.nombreArchivo}
+                                          {tipo.plantilla?.nombreArchivo || 'Sin archivo adjunto'}
                                         </p>
                                         <p className="text-xs text-gray-600">
-                                          {tipo.plantilla.descripcion}
+                                          {tipo.plantilla?.descripcion || 'El archivo se adjuntará en el siguiente paso'}
                                         </p>
                                       </div>
                                     </div>
