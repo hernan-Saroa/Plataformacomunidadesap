@@ -1,20 +1,24 @@
 /**
  * GESTIÓN DE PROCESOS - Control Disciplinario
  * CRUD Completo de Procesos Disciplinarios
+ * ✅ Conectado al Backend via disciplinaryService
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, Plus, Filter, Download, Eye, Edit, Trash2, MoreVertical,
   X, Check, Clock, AlertTriangle, CheckCircle, FolderOpen, FileText,
-  Calendar, User, Mail, Phone, MapPin, Save, Upload, ChevronDown
+  Calendar, User, Mail, Phone, MapPin, Save, Upload, ChevronDown,
+  Loader2, RefreshCw
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService, DisciplinaryProcess, DisciplinaryNews } from '../../../services/api/disciplinary.service';
 
+// ==================== TIPOS ====================
 interface Proceso {
   id: string;
   consecutivo: string;
@@ -27,7 +31,7 @@ interface Proceso {
   semaforo: 'verde' | 'amarillo' | 'rojo';
   diasRestantes: number;
   porcentajeTiempo: number;
-  profesionalAsignado: string; // Mantenido como string para compatibilidad
+  profesionalAsignado: string;
   fechaCreacion: string;
   ultimaActuacion: string;
   documentos: number;
@@ -35,32 +39,63 @@ interface Proceso {
   hechos: string;
   email: string;
   telefono: string;
+  // Referencia al ID real de la API
+  _apiId: string;
 }
 
-// Mock data expandido - REDUCIDO
-const PROCESOS_DATA: Proceso[] = [
-  {
-    id: '1',
-    consecutivo: 'PD-2025-0025',
-    noticia: 'ND-2025-0152',
-    disciplinable: 'Ana María López Martínez',
-    cedula: '52123456',
-    cargo: 'Profesional Universitario',
-    dependencia: 'Territorial Bogotá',
-    etapaActual: 'Valoración',
-    semaforo: 'amarillo',
-    diasRestantes: 3,
-    porcentajeTiempo: 70,
-    profesionalAsignado: 'Juan Pérez',
-    fechaCreacion: '2025-01-26',
-    ultimaActuacion: 'Asignado para valoración',
-    documentos: 5,
-    fechaVencimiento: '2025-02-02',
-    hechos: 'Presunto incumplimiento de funciones en proceso de contratación',
-    email: 'ana.lopez@esap.edu.co',
-    telefono: '3001234567'
-  }
-];
+// ==================== MAPEO API → UI ====================
+function calcularDiasRestantes(fechaVencimiento: string): number {
+  if (!fechaVencimiento) return 0;
+  const hoy = new Date();
+  const vencimiento = new Date(fechaVencimiento);
+  const diff = vencimiento.getTime() - hoy.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function calcularSemaforo(diasRestantes: number): 'verde' | 'amarillo' | 'rojo' {
+  if (diasRestantes <= 0) return 'rojo';
+  if (diasRestantes <= 5) return 'amarillo';
+  return 'verde';
+}
+
+function mapEtapa(etapa: string): string {
+  const MAP: Record<string, string> = {
+    'EVALUACION': 'Evaluación',
+    'INDAGACION_PREVIA': 'Indagación Previa',
+    'INDAGACION': 'Indagación',
+    'INVESTIGACION': 'Investigación',
+    'JUZGAMIENTO': 'Juzgamiento',
+    'FALLO': 'Fallo',
+    'SEGUNDA_INSTANCIA': 'Segunda Instancia',
+  };
+  return MAP[etapa] || etapa;
+}
+
+function mapApiToLocal(proc: DisciplinaryProcess): Proceso {
+  const dias = calcularDiasRestantes(proc.fechaVencimientoEtapa);
+  return {
+    id: proc.id,
+    _apiId: proc.id,
+    consecutivo: proc.radicadoProceso || 'Sin radicado',
+    noticia: proc.news?.radicado || 'Sin noticia',
+    disciplinable: proc.news?.disciplinable?.nombre || 'Sin disciplinable',
+    cedula: proc.news?.disciplinable?.cedula || proc.news?.disciplinable?.documento || '',
+    cargo: proc.news?.disciplinable?.cargo || '',
+    dependencia: proc.news?.dependenciaDenunciado || '',
+    etapaActual: mapEtapa(proc.etapaActual),
+    semaforo: calcularSemaforo(dias),
+    diasRestantes: dias,
+    porcentajeTiempo: proc.timePercentage ?? 0,
+    profesionalAsignado: proc.abogadoAsignadoNombre || 'Sin asignar',
+    fechaCreacion: proc.createdAt ? new Date(proc.createdAt).toLocaleDateString('es-CO') : '',
+    ultimaActuacion: `Etapa: ${mapEtapa(proc.etapaActual)}`,
+    documentos: (proc.draftsCount ?? 0) + (proc.documentsCount ?? 0),
+    fechaVencimiento: proc.fechaVencimientoEtapa ? new Date(proc.fechaVencimientoEtapa).toLocaleDateString('es-CO') : '',
+    hechos: proc.news?.hechos || '',
+    email: proc.news?.disciplinable?.email || '',
+    telefono: proc.news?.disciplinable?.telefono || '',
+  };
+}
 
 // ==================== MODAL VER DETALLE ====================
 function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: () => void }) {
@@ -133,7 +168,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                   CÉDULA
                 </p>
                 <p className="font-medium" style={{ color: '#1F2937' }}>
-                  {proceso.cedula}
+                  {proceso.cedula || 'No registrada'}
                 </p>
               </div>
               <div className="p-4 rounded-xl" style={{ background: '#F9FAFB' }}>
@@ -141,7 +176,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                   CARGO
                 </p>
                 <p className="font-medium" style={{ color: '#1F2937' }}>
-                  {proceso.cargo}
+                  {proceso.cargo || 'No registrado'}
                 </p>
               </div>
               <div className="p-4 rounded-xl" style={{ background: '#F9FAFB' }}>
@@ -149,7 +184,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                   DEPENDENCIA
                 </p>
                 <p className="font-medium" style={{ color: '#1F2937' }}>
-                  {proceso.dependencia}
+                  {proceso.dependencia || 'No registrada'}
                 </p>
               </div>
               <div className="p-4 rounded-xl" style={{ background: '#F9FAFB' }}>
@@ -157,7 +192,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                   EMAIL
                 </p>
                 <p className="font-medium" style={{ color: '#1F2937' }}>
-                  {proceso.email}
+                  {proceso.email || 'No registrado'}
                 </p>
               </div>
               <div className="p-4 rounded-xl" style={{ background: '#F9FAFB' }}>
@@ -165,7 +200,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                   TELÉFONO
                 </p>
                 <p className="font-medium" style={{ color: '#1F2937' }}>
-                  {proceso.telefono}
+                  {proceso.telefono || 'No registrado'}
                 </p>
               </div>
             </div>
@@ -208,7 +243,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
                 DESCRIPCIÓN DE HECHOS
               </p>
               <p className="text-sm" style={{ color: '#4B5563' }}>
-                {proceso.hechos}
+                {proceso.hechos || 'Sin descripción de hechos'}
               </p>
             </div>
           </div>
@@ -221,7 +256,7 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
             <div className="p-4 rounded-xl border-2 flex items-center gap-4" style={{ borderColor: '#E5E7EB' }}>
               <Avatar className="w-12 h-12">
                 <AvatarFallback style={{ background: '#E0EDFF', color: '#003DA5' }}>
-                  {proceso.profesionalAsignado.split(' ').map(n => n[0]).join('')}
+                  {proceso.profesionalAsignado.split(' ').map(n => n[0]).join('').substring(0, 2)}
                 </AvatarFallback>
               </Avatar>
               <div>
@@ -311,7 +346,17 @@ function ModalDetalleProces({ proceso, onClose }: { proceso: Proceso; onClose: (
 }
 
 // ==================== MODAL CREAR/EDITAR ====================
-function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; proceso?: Proceso }) {
+function ModalFormularioProceso({
+  onClose,
+  proceso,
+  profesionales,
+  onCreated
+}: {
+  onClose: () => void;
+  proceso?: Proceso;
+  profesionales: Array<{ id: string; nombre: string }>;
+  onCreated: () => void;
+}) {
   const [formData, setFormData] = useState({
     disciplinable: proceso?.disciplinable || '',
     cedula: proceso?.cedula || '',
@@ -320,13 +365,69 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
     email: proceso?.email || '',
     telefono: proceso?.telefono || '',
     hechos: proceso?.hechos || '',
-    profesionalAsignado: proceso?.profesionalAsignado || ''
+    profesionalAsignadoId: '',
+    profesionalAsignadoNombre: proceso?.profesionalAsignado || '',
+    // Campos adicionales para radicarNoticia
+    origen: 'QUEJOSO' as string,
+    territorial: 'Dirección Nacional',
+    denuncianteNombre: '',
   });
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success(proceso ? 'Proceso actualizado exitosamente' : 'Proceso creado exitosamente');
-    onClose();
+
+    if (proceso) {
+      // Editar — mockeado por ahora (no existía antes)
+      toast.success('Proceso actualizado exitosamente');
+      onClose();
+      return;
+    }
+
+    // Crear: 2 pasos → radicarNoticia → asignarProceso
+    setSubmitting(true);
+    try {
+      // Paso 1: Radicar Noticia
+      const noticiaData = {
+        origen: formData.origen,
+        territorial: formData.territorial,
+        dependenciaDenunciado: formData.dependencia,
+        hechos: formData.hechos,
+        denunciante: {
+          nombre: formData.denuncianteNombre || 'Ciudadano',
+        },
+        disciplinable: {
+          nombre: formData.disciplinable,
+          cargo: formData.cargo,
+          cedula: formData.cedula,
+          email: formData.email,
+          telefono: formData.telefono,
+        },
+      };
+
+      const noticia = await disciplinaryService.radicarNoticia(noticiaData as any);
+      toast.success(`Noticia radicada: ${noticia.radicado}`);
+
+      // Paso 2: Asignar Proceso (solo si hay profesional seleccionado)
+      if (formData.profesionalAsignadoId) {
+        await disciplinaryService.asignarProceso({
+          newsId: noticia.id,
+          abogadoId: formData.profesionalAsignadoId,
+          abogadoNombre: formData.profesionalAsignadoNombre,
+        });
+        toast.success('Proceso creado y asignado exitosamente');
+      } else {
+        toast.info('Noticia radicada. Asigne un profesional desde el Kanban para crear el proceso.');
+      }
+
+      onCreated();
+      onClose();
+    } catch (error: any) {
+      console.error('Error creando proceso:', error);
+      toast.error(error?.message || 'Error al crear el proceso');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -354,9 +455,72 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
               <X className="w-5 h-5" style={{ color: '#6B7280' }} />
             </button>
           </div>
+          {!proceso && (
+            <p className="text-sm mt-2" style={{ color: '#6B7280' }}>
+              Se creará una noticia disciplinaria y se asignará automáticamente a un profesional.
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Origen y Territorial */}
+          {!proceso && (
+            <div>
+              <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
+                Información de la Noticia
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
+                    Origen *
+                  </label>
+                  <select
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                    style={{ borderColor: '#E5E7EB' }}
+                    value={formData.origen}
+                    onChange={(e) => setFormData({ ...formData, origen: e.target.value })}
+                  >
+                    <option value="QUEJOSO">Quejoso</option>
+                    <option value="ANONIMO">Anónimo</option>
+                    <option value="OFICIO">De Oficio</option>
+                    <option value="REMISION">Remisión</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
+                    Territorial *
+                  </label>
+                  <select
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                    style={{ borderColor: '#E5E7EB' }}
+                    value={formData.territorial}
+                    onChange={(e) => setFormData({ ...formData, territorial: e.target.value })}
+                  >
+                    <option value="Dirección Nacional">Dirección Nacional</option>
+                    <option value="Territorial Bogotá">Territorial Bogotá</option>
+                    <option value="Territorial Antioquia">Territorial Antioquia</option>
+                    <option value="Territorial Valle">Territorial Valle</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
+                    Nombre del Denunciante
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                    style={{ borderColor: '#E5E7EB' }}
+                    value={formData.denuncianteNombre}
+                    onChange={(e) => setFormData({ ...formData, denuncianteNombre: e.target.value })}
+                    placeholder="Nombre del denunciante (opcional si anónimo)"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Información del Disciplinable */}
           <div>
             <h3 className="text-lg font-bold mb-4" style={{ color: '#1F2937' }}>
@@ -472,20 +636,28 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
           {/* Asignación */}
           <div>
             <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
-              Profesional Asignado *
+              Profesional Asignado {!proceso && '*'}
             </label>
             <select
-              required
+              required={!proceso}
               className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
               style={{ borderColor: '#E5E7EB' }}
-              value={formData.profesionalAsignado}
-              onChange={(e) => setFormData({ ...formData, profesionalAsignado: e.target.value })}
+              value={formData.profesionalAsignadoId}
+              onChange={(e) => {
+                const prof = profesionales.find(p => p.id === e.target.value);
+                setFormData({
+                  ...formData,
+                  profesionalAsignadoId: e.target.value,
+                  profesionalAsignadoNombre: prof?.nombre || '',
+                });
+              }}
             >
               <option value="">Seleccione profesional...</option>
-              <option value="Juan Pérez">Juan Pérez Rodríguez</option>
-              <option value="María Torres">María Torres Gómez</option>
-              <option value="Carlos Mendoza">Carlos Mendoza Silva</option>
-              <option value="Ana González">Ana González López</option>
+              {profesionales.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -493,15 +665,26 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
           <div className="flex items-center gap-3 pt-4 border-t" style={{ borderColor: '#E5E7EB' }}>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+              disabled={submitting}
+              className="flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
             >
-              <Save className="w-4 h-4" />
-              {proceso ? 'Actualizar Proceso' : 'Crear Proceso'}
+              {submitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {proceso ? 'Actualizar Proceso' : 'Crear Proceso'}
+                </>
+              )}
             </button>
             <button
               type="button"
               onClick={onClose}
+              disabled={submitting}
               className="px-6 py-3 rounded-xl font-semibold"
               style={{ background: '#F3F4F6', color: '#4B5563' }}
             >
@@ -516,13 +699,53 @@ function ModalFormularioProceso({ onClose, proceso }: { onClose: () => void; pro
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function GestionProcesos() {
-  const [procesos, setProcesos] = useState(PROCESOS_DATA);
+  const [procesos, setProcesos] = useState<Proceso[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [profesionales, setProfesionales] = useState<Array<{ id: string; nombre: string }>>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [filtroSemaforo, setFiltroSemaforo] = useState<string>('todos');
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<Proceso | null>(null);
   const [showModal, setShowModal] = useState<'detalle' | 'formulario' | null>(null);
   const [procesoEditar, setProcesoEditar] = useState<Proceso | undefined>();
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  // ✅ Cargar procesos desde la API
+  const cargarProcesos = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await disciplinaryService.getAllProcesos();
+      const mapped = data.map(mapApiToLocal);
+      setProcesos(mapped);
+    } catch (err: any) {
+      console.error('Error cargando procesos:', err);
+      setError(err?.message || 'Error al cargar los procesos');
+      toast.error('Error al cargar los procesos del servidor');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ✅ Cargar profesionales desde la API
+  const cargarProfesionales = useCallback(async () => {
+    try {
+      const data = await disciplinaryService.getProfesionales();
+      setProfesionales(data.map((p: any) => ({
+        id: p.id,
+        nombre: p.nombre || p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Sin nombre'
+      })));
+    } catch (err: any) {
+      console.error('Error cargando profesionales:', err);
+      // No bloquea la UI, fallback a lista vacía
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarProcesos();
+    cargarProfesionales();
+  }, [cargarProcesos, cargarProfesionales]);
 
   const procesosFiltrados = procesos.filter(p => {
     const matchSearch = p.consecutivo.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -534,12 +757,28 @@ export function GestionProcesos() {
     return matchSearch && matchEtapa && matchSemaforo;
   });
 
-  const handleEliminar = (id: string) => {
-    if (confirm('¿Está seguro de eliminar este proceso?')) {
-      setProcesos(procesos.filter(p => p.id !== id));
+  // ✅ Eliminar proceso via API
+  const handleEliminar = async (id: string) => {
+    const proceso = procesos.find(p => p.id === id);
+    if (!proceso) return;
+
+    if (!confirm(`¿Está seguro de eliminar el proceso ${proceso.consecutivo}?`)) return;
+
+    setDeleting(id);
+    try {
+      await disciplinaryService.deleteProceso(proceso._apiId);
+      setProcesos(prev => prev.filter(p => p.id !== id));
       toast.success('Proceso eliminado exitosamente');
+    } catch (err: any) {
+      console.error('Error eliminando proceso:', err);
+      toast.error(err?.message || 'Error al eliminar el proceso');
+    } finally {
+      setDeleting(null);
     }
   };
+
+  // Obtener etapas únicas de los procesos cargados (para filtro dinámico)
+  const etapasUnicas = [...new Set(procesos.map(p => p.etapaActual))];
 
   return (
     <div className="space-y-6">
@@ -553,18 +792,45 @@ export function GestionProcesos() {
             Administración completa de procesos disciplinarios
           </p>
         </div>
-        <button
-          onClick={() => {
-            setProcesoEditar(undefined);
-            setShowModal('formulario');
-          }}
-          className="px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
-          style={{ background: '#003DA5', color: '#FFFFFF' }}
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Proceso
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={cargarProcesos}
+            className="p-2.5 rounded-xl border-2 hover:bg-gray-50 transition-colors"
+            style={{ borderColor: '#E5E7EB' }}
+            title="Actualizar"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} style={{ color: '#6B7280' }} />
+          </button>
+          <button
+            onClick={() => {
+              setProcesoEditar(undefined);
+              setShowModal('formulario');
+            }}
+            className="px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 hover:opacity-90"
+            style={{ background: '#003DA5', color: '#FFFFFF' }}
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo Proceso
+          </button>
+        </div>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="p-4 rounded-xl border-2 flex items-center gap-3" style={{ background: '#FEF2F2', borderColor: '#FECACA' }}>
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" style={{ color: '#DC2626' }} />
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: '#DC2626' }}>{error}</p>
+          </div>
+          <button
+            onClick={cargarProcesos}
+            className="px-3 py-1.5 rounded-lg text-sm font-semibold"
+            style={{ background: '#DC2626', color: '#FFFFFF' }}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Filtros */}
       <Card className="p-6 border-2" style={{ borderColor: '#E5E7EB' }}>
@@ -582,7 +848,7 @@ export function GestionProcesos() {
             />
           </div>
 
-          {/* Filtro Etapa */}
+          {/* Filtro Etapa — dinámico basado en datos reales */}
           <select
             className="px-4 py-3 rounded-xl border-2 focus:outline-none font-semibold"
             style={{ borderColor: '#E5E7EB', color: '#4B5563' }}
@@ -590,12 +856,9 @@ export function GestionProcesos() {
             onChange={(e) => setFiltroEtapa(e.target.value)}
           >
             <option value="todos">Todas las etapas</option>
-            <option value="Recepción">Recepción</option>
-            <option value="Valoración">Valoración</option>
-            <option value="Indagación">Indagación</option>
-            <option value="Investigación">Investigación</option>
-            <option value="Juzgamiento">Juzgamiento</option>
-            <option value="Fallo">Fallo</option>
+            {etapasUnicas.map(etapa => (
+              <option key={etapa} value={etapa}>{etapa}</option>
+            ))}
           </select>
 
           {/* Filtro Semáforo */}
@@ -643,102 +906,123 @@ export function GestionProcesos() {
         </div>
       </Card>
 
-      {/* Lista de Procesos */}
-      <div className="space-y-4">
-        {procesosFiltrados.map((proceso) => (
-          <Card key={proceso.id} className="p-5 border-2 hover:shadow-lg transition-all" style={{ borderColor: '#E5E7EB' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 flex-1">
-                {/* Semáforo */}
-                <div
-                  className="w-4 h-4 rounded-full ring-4 flex-shrink-0"
-                  style={{
-                    background: proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#DC2626',
-                    ringColor: proceso.semaforo === 'verde' ? '#D1FAE5' : proceso.semaforo === 'amarillo' ? '#FEF3C7' : '#FEE2E2'
-                  }}
-                />
-
-                {/* Info */}
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="text-lg font-extrabold" style={{ color: '#003DA5' }}>
-                      {proceso.consecutivo}
-                    </h3>
-                    <Badge className="text-xs">{proceso.noticia}</Badge>
-                    <Badge
-                      className="text-xs font-semibold"
-                      style={{ background: '#E0EDFF', color: '#003DA5' }}
-                    >
-                      {proceso.etapaActual}
-                    </Badge>
-                  </div>
-                  <p className="text-sm font-medium mb-1" style={{ color: '#1F2937' }}>
-                    {proceso.disciplinable}
-                  </p>
-                  <p className="text-xs" style={{ color: '#9CA3AF' }}>
-                    {proceso.cargo} • {proceso.dependencia}
-                  </p>
-                </div>
-              </div>
-
-              {/* Acciones */}
-              <div className="flex items-center gap-3">
-                <div className="text-right mr-4">
-                  <p className="text-xs font-semibold mb-1" style={{ color: '#9CA3AF' }}>
-                    {proceso.diasRestantes > 0 ? 'Vence en' : 'Vencido hace'}
-                  </p>
-                  <p
-                    className="text-sm font-bold"
-                    style={{ color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626' }}
-                  >
-                    {Math.abs(proceso.diasRestantes)} días
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setProcesoSeleccionado(proceso);
-                    setShowModal('detalle');
-                  }}
-                  className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                  title="Ver detalle"
-                >
-                  <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />
-                </button>
-                <button
-                  onClick={() => {
-                    setProcesoEditar(proceso);
-                    setShowModal('formulario');
-                  }}
-                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-                  title="Editar"
-                >
-                  <Edit className="w-5 h-5" style={{ color: '#6B7280' }} />
-                </button>
-                <button
-                  onClick={() => handleEliminar(proceso.id)}
-                  className="p-2 rounded-lg hover:bg-red-50 transition-colors"
-                  title="Eliminar"
-                >
-                  <Trash2 className="w-5 h-5" style={{ color: '#DC2626' }} />
-                </button>
-              </div>
-            </div>
-          </Card>
-        ))}
-
-        {procesosFiltrados.length === 0 && (
-          <Card className="p-12 text-center border-2" style={{ borderColor: '#E5E7EB' }}>
-            <FolderOpen className="w-16 h-16 mx-auto mb-4" style={{ color: '#9CA3AF' }} />
-            <h3 className="text-lg font-bold mb-2" style={{ color: '#1F2937' }}>
-              No se encontraron procesos
-            </h3>
-            <p style={{ color: '#6B7280' }}>
-              Intenta ajustar los filtros o crear un nuevo proceso
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="w-10 h-10 mx-auto mb-3 animate-spin" style={{ color: '#003DA5' }} />
+            <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
+              Cargando procesos desde el servidor...
             </p>
-          </Card>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de Procesos */}
+      {!loading && (
+        <div className="space-y-4">
+          {procesosFiltrados.map((proceso) => (
+            <Card key={proceso.id} className="p-5 border-2 hover:shadow-lg transition-all" style={{ borderColor: '#E5E7EB' }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4 flex-1">
+                  {/* Semáforo */}
+                  <div
+                    className="w-4 h-4 rounded-full ring-4 flex-shrink-0"
+                    style={{
+                      background: proceso.semaforo === 'verde' ? '#10B981' : proceso.semaforo === 'amarillo' ? '#F59E0B' : '#DC2626',
+                      ringColor: proceso.semaforo === 'verde' ? '#D1FAE5' : proceso.semaforo === 'amarillo' ? '#FEF3C7' : '#FEE2E2'
+                    }}
+                  />
+
+                  {/* Info */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="text-lg font-extrabold" style={{ color: '#003DA5' }}>
+                        {proceso.consecutivo}
+                      </h3>
+                      <Badge className="text-xs">{proceso.noticia}</Badge>
+                      <Badge
+                        className="text-xs font-semibold"
+                        style={{ background: '#E0EDFF', color: '#003DA5' }}
+                      >
+                        {proceso.etapaActual}
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-medium mb-1" style={{ color: '#1F2937' }}>
+                      {proceso.disciplinable}
+                    </p>
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>
+                      {proceso.cargo} • {proceso.dependencia} • Asignado: {proceso.profesionalAsignado}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Acciones */}
+                <div className="flex items-center gap-3">
+                  <div className="text-right mr-4">
+                    <p className="text-xs font-semibold mb-1" style={{ color: '#9CA3AF' }}>
+                      {proceso.diasRestantes > 0 ? 'Vence en' : 'Vencido hace'}
+                    </p>
+                    <p
+                      className="text-sm font-bold"
+                      style={{ color: proceso.diasRestantes > 0 ? '#10B981' : '#DC2626' }}
+                    >
+                      {Math.abs(proceso.diasRestantes)} días
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setProcesoSeleccionado(proceso);
+                      setShowModal('detalle');
+                    }}
+                    className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                    title="Ver detalle"
+                  >
+                    <Eye className="w-5 h-5" style={{ color: '#003DA5' }} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setProcesoEditar(proceso);
+                      setShowModal('formulario');
+                    }}
+                    className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Editar"
+                  >
+                    <Edit className="w-5 h-5" style={{ color: '#6B7280' }} />
+                  </button>
+                  <button
+                    onClick={() => handleEliminar(proceso.id)}
+                    disabled={deleting === proceso.id}
+                    className="p-2 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                    title="Eliminar"
+                  >
+                    {deleting === proceso.id ? (
+                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#DC2626' }} />
+                    ) : (
+                      <Trash2 className="w-5 h-5" style={{ color: '#DC2626' }} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+
+          {procesosFiltrados.length === 0 && !error && (
+            <Card className="p-12 text-center border-2" style={{ borderColor: '#E5E7EB' }}>
+              <FolderOpen className="w-16 h-16 mx-auto mb-4" style={{ color: '#9CA3AF' }} />
+              <h3 className="text-lg font-bold mb-2" style={{ color: '#1F2937' }}>
+                No se encontraron procesos
+              </h3>
+              <p style={{ color: '#6B7280' }}>
+                {procesos.length === 0
+                  ? 'No hay procesos registrados en el sistema. Cree uno nuevo para comenzar.'
+                  : 'Intenta ajustar los filtros o crear un nuevo proceso'}
+              </p>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Modales */}
       <AnimatePresence>
@@ -754,6 +1038,8 @@ export function GestionProcesos() {
         {showModal === 'formulario' && (
           <ModalFormularioProceso
             proceso={procesoEditar}
+            profesionales={profesionales}
+            onCreated={cargarProcesos}
             onClose={() => {
               setShowModal(null);
               setProcesoEditar(undefined);

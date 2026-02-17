@@ -149,16 +149,44 @@ export function WizardCrearAutoWorldClass({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados de Autos Generados
-  const [autosGenerados] = useState<AutoGenerado[]>([]);
+  const [autosGenerados, setAutosGenerados] = useState<AutoGenerado[]>([]);
+  const [cargandoAutos, setCargandoAutos] = useState(false);
 
   // Datos mock
   const tiposAutos = TIPOS_AUTOS_MOCK;
+
+  // ==================== FUNCIONES AUXILIARES ====================
+  const cargarAutosGenerados = async () => {
+    if (!proceso?.id) return;
+    setCargandoAutos(true);
+    try {
+      const autos = await disciplinaryService.getAutosByProceso(proceso.id);
+      const mapped: AutoGenerado[] = (autos || []).map((auto: any) => ({
+        id: auto.id,
+        numero: auto.numero || 'Sin número',
+        tipo: auto.tipo || 'AUTO',
+        fecha: auto.createdAt ? new Date(auto.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        estado: auto.estado || 'BORRADOR',
+        etapa: auto.process?.currentKanbanStage || '',
+        profesional: auto.process?.abogadoAsignadoNombre || '',
+        observaciones: auto.comentarios || '',
+        archivoAdjunto: auto.documentName ? { nombre: auto.documentName, tamano: auto.documentSize ? `${(auto.documentSize / 1024).toFixed(0)} KB` : '' } : undefined,
+      }));
+      setAutosGenerados(mapped);
+    } catch (error) {
+      console.error('Error cargando autos generados:', error);
+    } finally {
+      setCargandoAutos(false);
+    }
+  };
 
   // ==================== EFECTOS ====================
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setFechaAuto(today);
-  }, []);
+    // Cargar autos existentes del proceso
+    cargarAutosGenerados();
+  }, [proceso?.id]);
 
   // ==================== FUNCIONES ====================
   const handleSeleccionarTipo = (tipo: TipoAuto) => {
@@ -170,15 +198,15 @@ export function WizardCrearAutoWorldClass({
     if (!tipoSeleccionado?.plantilla) return;
 
     setDescargando(true);
-    
+
     // Simular descarga
     await new Promise(resolve => setTimeout(resolve, 800));
-    
+
     toast.success('Plantilla descargada correctamente', {
       description: tipoSeleccionado.plantilla.nombreArchivo,
       duration: 3000,
     });
-    
+
     setPlantillaDescargada(true);
     setDescargando(false);
   };
@@ -237,11 +265,47 @@ export function WizardCrearAutoWorldClass({
 
     try {
       setGuardando(true);
+
+      // ✅ Mapear nombre legible → AutoType del backend
+      const mapNombreToAutoType = (nombre: string): string => {
+        const n = nombre.toUpperCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .trim();
+
+        // Mapeo directo por coincidencia parcial
+        if (n.includes('APERTURA') && n.includes('INVESTIGACION')) return 'AUTO_APERTURA_INVESTIGACION';
+        if (n.includes('APERTURA') && n.includes('INDAGACION')) return 'AUTO_APERTURA_INDAGACION';
+        if (n.includes('INDAGACION') && n.includes('PRELIMINAR')) return 'AUTO_INDAGACION_PRELIMINAR';
+        if (n.includes('APERTURA')) return 'AUTO_APERTURA';
+        if (n.includes('FORMULACION') && n.includes('PLIEGO')) return 'AUTO_FORMULACION_PLIEGO';
+        if (n.includes('PLIEGO') && n.includes('CARGOS')) return 'PLIEGO_CARGOS';
+        if (n.includes('CIERRE')) return 'AUTO_CIERRE';
+        if (n.includes('ARCHIVO')) return 'AUTO_ARCHIVO';
+        if (n.includes('FALLO') && n.includes('SANCION')) return 'FALLO_SANCION';
+        if (n.includes('FALLO') && n.includes('ABSOLUTORIO')) return 'FALLO_ABSOLUTORIO';
+        if (n.includes('RESOLUCION')) return 'RESOLUCION';
+        // Fallback: intentar convertir a snake_case
+        return nombre.toUpperCase().replace(/\s+/g, '_')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      };
+
+      // ✅ PASO 1: Subir el archivo primero para obtener documentUrl
+      // El backend necesita el archivo en disco para estampar el consecutivo en el PDF
+      let documentUrl: string | undefined;
+      if (archivoAdjunto) {
+        toast.info('Subiendo archivo...', { duration: 2000 });
+        const uploadResult = await disciplinaryService.uploadFile(archivoAdjunto);
+        documentUrl = uploadResult.url || uploadResult.filename;
+        console.log('✅ Archivo subido, documentUrl:', documentUrl);
+      }
+
+      // ✅ PASO 2: Crear el auto con el documentUrl para que el backend pueda estampar el consecutivo
       const autoCreado = await disciplinaryService.crearAuto({
         processId: proceso.id,
-        tipoAuto: tipoSeleccionado.nombre,
+        tipoAuto: mapNombreToAutoType(tipoSeleccionado.nombre),
         contenidoHtml: `<p>${observaciones || 'Auto generado desde wizard'}</p>`,
         comentarios: observacionesAdjunto || observaciones,
+        documentUrl: documentUrl,
         documentName: archivoAdjunto.name,
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size
@@ -256,7 +320,9 @@ export function WizardCrearAutoWorldClass({
         onAutoCreado(autoCreado);
       }
 
-      onClose();
+      // ✅ Recargar la lista de autos y cambiar a vista lista
+      await cargarAutosGenerados();
+      setVistaActual('lista');
     } catch (error) {
       console.error('Error al crear auto:', error);
       toast.error('No se pudo crear el auto', {
@@ -288,7 +354,7 @@ export function WizardCrearAutoWorldClass({
   const tiposFiltrados = tiposAutos.filter(tipo => {
     const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                           tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+      tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     const tienePlantilla = tipo.plantilla !== null;
     return cumpleFiltroEtapa && cumpleBusqueda && tienePlantilla;
   });
@@ -316,23 +382,23 @@ export function WizardCrearAutoWorldClass({
         {/* ==================== HEADER PREMIUM ==================== */}
         <div className="relative overflow-hidden">
           {/* Gradient Background */}
-          <div 
+          <div
             className="absolute inset-0"
             style={{
               background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 50%, #001E5C 100%)'
             }}
           />
-          
+
           {/* Decorative Elements */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-white opacity-5 rounded-full translate-y-1/2 -translate-x-1/2" />
-          
+
           {/* Content */}
           <div className="relative px-6 sm:px-8 py-5 sm:py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 {/* Icon Container con Glassmorphism */}
-                <div 
+                <div
                   className="p-3 rounded-2xl backdrop-blur-xl"
                   style={{
                     background: 'rgba(255, 255, 255, 0.15)',
@@ -342,7 +408,7 @@ export function WizardCrearAutoWorldClass({
                 >
                   <Scale className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                 </div>
-                
+
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                     Gestión de Autos y Providencias
@@ -358,9 +424,9 @@ export function WizardCrearAutoWorldClass({
                   </div>
                 </div>
               </div>
-              
-              <button 
-                onClick={onClose} 
+
+              <button
+                onClick={onClose}
                 className="p-2.5 hover:bg-white/10 rounded-xl transition-all duration-200 group"
               >
                 <X className="w-5 h-5 sm:w-6 sm:h-6 text-white group-hover:rotate-90 transition-transform duration-200" />
@@ -375,11 +441,10 @@ export function WizardCrearAutoWorldClass({
             <div className="flex gap-2">
               <button
                 onClick={handleNuevoAuto}
-                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
-                  vistaActual === 'wizard'
-                    ? 'text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
-                }`}
+                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${vistaActual === 'wizard'
+                  ? 'text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Sparkles className={`w-4 h-4 ${vistaActual === 'wizard' ? 'animate-pulse' : ''}`} />
@@ -395,24 +460,22 @@ export function WizardCrearAutoWorldClass({
                   />
                 )}
               </button>
-              
+
               <button
                 onClick={() => setVistaActual('lista')}
-                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${
-                  vistaActual === 'lista'
-                    ? 'text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
-                }`}
+                className={`relative px-5 py-3 rounded-t-2xl font-bold text-sm transition-all duration-300 ${vistaActual === 'lista'
+                  ? 'text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   <span className="hidden sm:inline">Autos Generados</span>
                   <span className="sm:hidden">Lista</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                    vistaActual === 'lista' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-gray-200 text-gray-600'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${vistaActual === 'lista'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-200 text-gray-600'
+                    }`}>
                     {autosGenerados.length}
                   </span>
                 </div>
@@ -459,20 +522,19 @@ export function WizardCrearAutoWorldClass({
                                 rotate: isCompleted ? 360 : 0
                               }}
                               transition={{ duration: 0.5 }}
-                              className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center font-bold text-sm transition-all duration-500 ${
-                                isCompleted
-                                  ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30'
-                                  : isCurrent
+                              className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center font-bold text-sm transition-all duration-500 ${isCompleted
+                                ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/30'
+                                : isCurrent
                                   ? 'bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-xl shadow-blue-500/40'
                                   : 'bg-gray-100 text-gray-400 border-2 border-gray-200'
-                              }`}
+                                }`}
                             >
                               {isCompleted ? (
                                 <Check className="w-5 h-5 sm:w-6 sm:h-6" />
                               ) : (
                                 <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
                               )}
-                              
+
                               {/* Pulse Ring para paso actual */}
                               {isCurrent && (
                                 <motion.div
@@ -483,23 +545,21 @@ export function WizardCrearAutoWorldClass({
                                 />
                               )}
                             </motion.div>
-                            
+
                             {/* Label */}
-                            <p className={`text-xs sm:text-sm font-bold mt-2.5 text-center transition-colors duration-300 hidden sm:block ${
-                              isCurrent ? 'text-blue-700' : isPending ? 'text-gray-400' : 'text-gray-700'
-                            }`}>
+                            <p className={`text-xs sm:text-sm font-bold mt-2.5 text-center transition-colors duration-300 hidden sm:block ${isCurrent ? 'text-blue-700' : isPending ? 'text-gray-400' : 'text-gray-700'
+                              }`}>
                               {step.label}
                             </p>
                           </div>
-                          
+
                           {/* Connector Line */}
                           {idx < 3 && (
                             <div className="relative flex-1 h-1 mx-2 sm:mx-3">
                               <div className="absolute inset-0 bg-gray-200 rounded-full" />
                               <motion.div
-                                className={`absolute inset-0 rounded-full ${
-                                  isCompleted ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gray-200'
-                                }`}
+                                className={`absolute inset-0 rounded-full ${isCompleted ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gray-200'
+                                  }`}
                                 initial={{ scaleX: 0 }}
                                 animate={{ scaleX: isCompleted ? 1 : 0 }}
                                 transition={{ duration: 0.5 }}
@@ -526,7 +586,7 @@ export function WizardCrearAutoWorldClass({
                     className="max-w-6xl mx-auto space-y-6"
                   >
                     {/* Info Box Premium */}
-                    <div 
+                    <div
                       className="relative overflow-hidden rounded-2xl p-5"
                       style={{
                         background: 'linear-gradient(135deg, #EBF4FF 0%, #E0EFFF 100%)',
@@ -603,7 +663,7 @@ export function WizardCrearAutoWorldClass({
                         {tiposFiltrados.map((tipo) => {
                           const etapa = ETAPAS_PROCESO[tipo.etapa];
                           if (!etapa || !tipo.plantilla) return null;
-                          
+
                           const Icon = etapa.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;
 
@@ -614,29 +674,27 @@ export function WizardCrearAutoWorldClass({
                               initial={{ opacity: 0, scale: 0.95 }}
                               animate={{ opacity: 1, scale: 1 }}
                               whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                              className={`group relative rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${
-                                seleccionado
-                                  ? 'shadow-2xl shadow-blue-500/20 ring-2 ring-blue-600'
-                                  : 'shadow-md hover:shadow-xl border-2 border-gray-200 hover:border-gray-300'
-                              }`}
+                              className={`group relative rounded-2xl overflow-hidden transition-all duration-300 cursor-pointer ${seleccionado
+                                ? 'shadow-2xl shadow-blue-500/20 ring-2 ring-blue-600'
+                                : 'shadow-md hover:shadow-xl border-2 border-gray-200 hover:border-gray-300'
+                                }`}
                               style={{
-                                background: seleccionado 
+                                background: seleccionado
                                   ? 'linear-gradient(135deg, #EBF4FF 0%, #FFFFFF 100%)'
                                   : '#FFFFFF'
                               }}
                             >
                               {/* Contenido Principal */}
-                              <div 
+                              <div
                                 onClick={() => handleSeleccionarTipo(tipo)}
                                 className="p-5"
                               >
                                 <div className="flex items-start gap-4">
                                   {/* Icon Badge */}
                                   <div
-                                    className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-transform duration-300 ${
-                                      seleccionado ? 'scale-110' : 'group-hover:scale-105'
-                                    }`}
-                                    style={{ 
+                                    className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-transform duration-300 ${seleccionado ? 'scale-110' : 'group-hover:scale-105'
+                                      }`}
+                                    style={{
                                       background: `linear-gradient(135deg, ${etapa.color} 0%, ${etapa.color}DD 100%)`,
                                       boxShadow: `0 8px 16px ${etapa.color}40`
                                     }}
@@ -660,11 +718,11 @@ export function WizardCrearAutoWorldClass({
                                         </motion.div>
                                       )}
                                     </div>
-                                    
+
                                     <p className="text-xs text-gray-600 leading-relaxed mb-3 line-clamp-2">
                                       {tipo.descripcion}
                                     </p>
-                                    
+
                                     <div className="flex items-center gap-2">
                                       <span
                                         className="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm"
@@ -712,11 +770,10 @@ export function WizardCrearAutoWorldClass({
                                         handleDescargarPlantilla();
                                       }}
                                       disabled={descargando}
-                                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ${
-                                        plantillaDescargada
-                                          ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700'
-                                          : 'bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'
-                                      }`}
+                                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ${plantillaDescargada
+                                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700'
+                                        : 'bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'
+                                        }`}
                                     >
                                       {descargando ? (
                                         <>
@@ -779,7 +836,7 @@ export function WizardCrearAutoWorldClass({
                     className="max-w-3xl mx-auto space-y-6"
                   >
                     {/* Tipo Seleccionado */}
-                    <div 
+                    <div
                       className="rounded-2xl p-5"
                       style={{
                         background: 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%)',
@@ -851,9 +908,8 @@ export function WizardCrearAutoWorldClass({
                           className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all text-sm font-medium resize-none shadow-sm"
                         />
                         <div className="flex items-center justify-between mt-2">
-                          <p className={`text-xs font-semibold ${
-                            observaciones.length < 10 ? 'text-gray-400' : 'text-green-600'
-                          }`}>
+                          <p className={`text-xs font-semibold ${observaciones.length < 10 ? 'text-gray-400' : 'text-green-600'
+                            }`}>
                             {observaciones.length} caracteres {observaciones.length < 10 && '(mínimo 10)'}
                           </p>
                           {observaciones.length >= 10 && (
@@ -880,7 +936,7 @@ export function WizardCrearAutoWorldClass({
                   >
                     {/* Alerta de Descarga */}
                     {!plantillaDescargada && (
-                      <div 
+                      <div
                         className="rounded-2xl p-5"
                         style={{
                           background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
@@ -1001,7 +1057,7 @@ export function WizardCrearAutoWorldClass({
                     className="max-w-4xl mx-auto space-y-6"
                   >
                     {/* Success Header */}
-                    <div 
+                    <div
                       className="rounded-2xl p-6"
                       style={{
                         background: 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%)',
@@ -1031,7 +1087,7 @@ export function WizardCrearAutoWorldClass({
                           Resumen del Auto
                         </h3>
                       </div>
-                      
+
                       <div className="p-6 space-y-6">
                         {/* Info Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1108,7 +1164,14 @@ export function WizardCrearAutoWorldClass({
           ) : (
             /* ==================== VISTA LISTA ==================== */
             <div className="px-6 sm:px-8 py-6 sm:py-8">
-              {autosGenerados.length === 0 ? (
+              {cargandoAutos ? (
+                <div className="text-center py-20">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center animate-pulse">
+                    <FileText className="w-8 h-8 text-blue-300" />
+                  </div>
+                  <p className="text-sm text-gray-500">Cargando autos...</p>
+                </div>
+              ) : autosGenerados.length === 0 ? (
                 <div className="text-center py-20">
                   <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gray-100 flex items-center justify-center">
                     <FileText className="w-12 h-12 text-gray-300" />
@@ -1128,7 +1191,73 @@ export function WizardCrearAutoWorldClass({
                     Crear Primer Auto
                   </button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="space-y-3">
+                  {/* Botón Crear Nuevo */}
+                  <div className="flex justify-end mb-4">
+                    <button
+                      onClick={handleNuevoAuto}
+                      className="px-5 py-2.5 rounded-xl font-bold text-sm text-white shadow-md hover:shadow-lg transition-all inline-flex items-center gap-2"
+                      style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Crear Nuevo Auto
+                    </button>
+                  </div>
+
+                  {/* Lista de Autos */}
+                  {autosGenerados.map((auto) => {
+                    const estadoColors: Record<string, { bg: string; text: string; border: string }> = {
+                      'BORRADOR': { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D' },
+                      'REVISION_JEFE': { bg: '#DBEAFE', text: '#1E40AF', border: '#93C5FD' },
+                      'APROBADO': { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7' },
+                      'FIRMADO': { bg: '#EDE9FE', text: '#5B21B6', border: '#C4B5FD' },
+                      'NOTIFICADO': { bg: '#DCFCE7', text: '#166534', border: '#86EFAC' },
+                      'DEVUELTO': { bg: '#FEE2E2', text: '#991B1B', border: '#FCA5A5' },
+                    };
+                    const colors = estadoColors[auto.estado] || { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB' };
+
+                    return (
+                      <div
+                        key={auto.id}
+                        className="bg-white border-2 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer"
+                        style={{ borderColor: colors.border + '80' }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl" style={{ background: colors.bg }}>
+                              <FileText className="w-5 h-5" style={{ color: colors.text }} />
+                            </div>
+                            <div>
+                              <p className="font-black text-gray-900 text-sm">{auto.numero}</p>
+                              <p className="text-xs text-gray-500">{auto.tipo?.replace(/_/g, ' ')}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-500">{auto.fecha}</span>
+                            <span
+                              className="px-3 py-1 rounded-full text-xs font-bold"
+                              style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+                            >
+                              {auto.estado?.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                        </div>
+                        {auto.archivoAdjunto && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                            <Paperclip className="w-3 h-3" />
+                            <span>{auto.archivoAdjunto.nombre}</span>
+                            {auto.archivoAdjunto.tamano && <span>({auto.archivoAdjunto.tamano})</span>}
+                          </div>
+                        )}
+                        {auto.observaciones && (
+                          <p className="mt-2 text-xs text-gray-500 italic truncate">{auto.observaciones}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1158,7 +1287,7 @@ export function WizardCrearAutoWorldClass({
                 >
                   Cancelar
                 </button>
-                
+
                 {paso < 4 ? (
                   <button
                     onClick={handleSiguiente}
