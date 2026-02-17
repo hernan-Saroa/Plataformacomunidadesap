@@ -89,11 +89,11 @@ function ControlInternoContent({
       color: "#2962FF", // Azul corporativo
     },
     
-    // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 2. PROGRAMA DE AUDITORÍA ━━━━━━━━━━━
     {
       id: "universo-auditable",
-      label: "Universo Auditable",
-      subtitle: "DÓNDE auditar • Programa Anual",
+      label: "Programa de Auditoría",
+      subtitle: "DÓNDE auditar • Universo Auditable • Programa Anual",
       icon: <Layers className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
     },
