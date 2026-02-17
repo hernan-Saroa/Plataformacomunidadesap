@@ -127,6 +127,7 @@ export interface TipoAuto {
   orden: number;
   fechaCreacion: string;
   fechaModificacion: string;
+  tipo?: string; // ✅ Tipo de auto del backend (ej: AUTO_APERTURA_INVESTIGACION)
 }
 
 interface SeccionPlantillasAutosUnificadaProps {
