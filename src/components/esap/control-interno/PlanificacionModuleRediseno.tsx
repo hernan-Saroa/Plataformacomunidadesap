@@ -46,6 +46,7 @@ type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'PUBLICADO';
 
 interface PlanificacionModuleProps {
   vista?: VistaModulo; // 'universo-programa' o 'plan-operativo'
+  onNavegarModulo?: (seccion: string) => void; // Callback para navegar entre módulos del sidebar
 }
 
 interface FiltrosAvanzados {
@@ -85,7 +86,7 @@ const ESTADISTICAS_MOCK: EstadisticasGlobales = {
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-export function PlanificacionModuleRediseno({ vista = 'universo-programa' }: PlanificacionModuleProps) {
+export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNavegarModulo }: PlanificacionModuleProps) {
   // Determinar tab inicial según la vista
   const tabInicial: TabActiva = vista === 'plan-operativo' ? 'plan-anual' : 'universo';
   
@@ -341,7 +342,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa' }: Pla
             transition={{ duration: 0.2 }}
             className="h-full"
           >
-            {tabActiva === 'plan-anual' && <PlanAnualOperativo />}
+            {tabActiva === 'plan-anual' && <PlanAnualOperativo onNavegarModulo={onNavegarModulo} />}
             {tabActiva === 'universo' && <UniversoAuditorias />}
             {tabActiva === 'programa' && <ProgramaAnualCIG />}
           </motion.div>

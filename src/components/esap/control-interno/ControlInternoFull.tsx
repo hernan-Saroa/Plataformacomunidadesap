@@ -154,7 +154,7 @@ function ControlInternoContent({
         return <UniversoAuditableUnificado vigencia={new Date().getFullYear()} />;
       
       case "plan-operativo":
-        return <PlanificacionModuleRediseno vista="plan-operativo" />;
+        return <PlanificacionModuleRediseno vista="plan-operativo" onNavegarModulo={(seccion) => setSeccionActiva(seccion as SeccionActiva)} />;
       
       case "listas-chequeo":
         return <ListasChequeoModule />;

@@ -21,7 +21,7 @@ import {
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
 // Hook para sincronizar evidencias con backend y API de auditores
-import { useSaveEvidencias, actividadesApi, auditoresApi, planAnualApi } from './services/plan-anual';
+import { useSaveEvidencias, actividadesApi, auditoresApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
@@ -130,6 +130,7 @@ function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined)
 }
 
 interface Rol {
+  id?: string; // ID del rol desde el backend (requerido para crear actividades)
   numero: number;
   nombre: string;
   color: string;
@@ -192,7 +193,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
   // Esta es la lista base del Decreto 648/2017
   const actividadesPorRol: Record<number, ActividadBase[]> = {
     1: [
-      { nombre: 'Establecer canales de comunicación directa con el director nacional', descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '50% avance', seguimiento: 'Publicar informes de gestión en la página web y enviar al director' },
+    
       { nombre: 'Verificar cumplimiento de metas e indicadores estratégicos', descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento cuatrimestral', evaluacion: '50% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño' },
       { nombre: 'Establecer periodicidad de informes estratégicos', descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento anual', evaluacion: '10% avance', seguimiento: 'Socializar plan anual de auditoría en el comité institucional' },
       { nombre: 'Presentar resultados de evaluación de líneas de defensa', descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Elaborar informe de evaluación independiente del sistema de control interno' },
@@ -353,20 +354,18 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return false;
     }
     
-    // Validar que los roles con actividades tienen responsables
+    // ℹ️ Los responsables son opcionales:
+    // - Roles CON responsables → actividades se asignarán automáticamente
+    // - Roles SIN responsables → actividades quedarán "Por asignar"
     const rolesConActividades = rolesConfig.filter(rol => 
       (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
     );
+    const rolesConResponsables = rolesConActividades.filter(rol => (rol.responsables?.length || 0) > 0);
     
-    const rolesConResponsables = rolesConActividades.filter(rol => 
-      (rol.responsables?.length || 0) > 0
-    );
-
-    if (rolesConResponsables.length === 0) {
-      toast.error('Debe asignar al menos un responsable a algún rol con actividades');
-      return false;
-    }
-
+    console.log(`✅ [validarPaso2] ${rolesConActividades.length} roles con actividades:`);
+    console.log(`   - ${rolesConResponsables.length} roles CON responsables (actividades se asignarán automáticamente)`);
+    console.log(`   - ${rolesConActividades.length - rolesConResponsables.length} roles SIN responsables (actividades quedarán "Por asignar")`);
+    
     return true;
   };
 
@@ -850,15 +849,24 @@ function Paso2({
                     <div className="px-5 pb-5 space-y-4 border-t-2 border-gray-200">
                       {/* Sección de responsables */}
                       <div className="pt-4">
+                        {/* Mensaje informativo */}
+                        <div className="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded text-sm text-blue-800">
+                          <p className="font-semibold mb-1">💡 ¿Cómo funciona la asignación?</p>
+                          <p className="text-xs">
+                            <strong>Si asignas responsables aquí:</strong> Las actividades de este rol se distribuirán automáticamente entre ellos.<br/>
+                            <strong>Si no asignas responsables:</strong> Las actividades quedarán sin asignar y podrás hacerlo manualmente después.
+                          </p>
+                        </div>
+                        
                         <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
                               <Users className="w-5 h-5 text-blue-600" />
                               <div>
-                                <p className="font-semibold text-gray-900 text-sm">Responsables del rol</p>
+                                <p className="font-semibold text-gray-900 text-sm">Responsables del rol (opcional)</p>
                                 <p className="text-xs text-gray-600 mt-0.5">
                                   {(rol.responsables?.length || 0) === 0 
-                                    ? 'Asigna auditores responsables de este rol' 
+                                    ? 'Puedes asignar responsables ahora o después' 
                                     : `${rol.responsables.length} auditor${rol.responsables.length !== 1 ? 'es' : ''} asignado${rol.responsables.length !== 1 ? 's' : ''}`
                                   }
                                 </p>
@@ -2976,6 +2984,10 @@ function SeccionGestionYSeguimiento({
 // ════════════════════════════════════════════════════════════════════════════
 
 function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargandoAuditores }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; auditores: Auditor[]; cargandoAuditores: boolean }) {
+  console.log('📋 [SeccionAsignar] Plan recibido:', plan);
+  console.log('📋 [SeccionAsignar] Roles con IDs:', plan.roles.map(r => ({ numero: r.numero, id: r.id, nombre: r.nombre, actividades: r.actividades.length })));
+  console.log('📋 [SeccionAsignar] Auditores disponibles:', auditores.length);
+  
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(null);
   const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | string | null>(null);
   const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
@@ -2987,6 +2999,8 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
   });
 
   const asignarResponsable = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
+    console.log('👤 [asignarResponsable] Asignando:', { rolNumero, actividadId, auditor: auditor.nombre });
+    
     setAsignandoId(actividadId);
     const planActualizado = {
       ...plan,
@@ -3007,7 +3021,10 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
     };
     onActualizar(planActualizado);
     try {
+      console.log('👤 [asignarResponsable] Enviando al backend:', { actividadId, responsable: auditor.nombre });
       const res = await actividadesApi.update(String(actividadId), { responsable: auditor.nombre });
+      console.log('👤 [asignarResponsable] Respuesta del backend:', res);
+      
       if (res.success) {
         toast.success('Responsable asignado', { description: `${auditor.nombre} asignado a la actividad` });
         onRefetchPlan?.();
@@ -3023,71 +3040,129 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
     }
   };
 
-  const agregarActividad = (rolNumero: number) => {
+  const agregarActividad = async (rolNumero: number) => {
     if (!nuevaActividad.nombre.trim()) {
       toast.error('Error', { description: 'El nombre de la actividad es obligatorio' });
       return;
     }
 
-    // Generar UUID para nueva actividad (compatible con backend)
-    const nuevoId = crypto.randomUUID();
-
-    const actividadNueva: Actividad = {
-      id: nuevoId,
-      nombre: nuevaActividad.nombre,
-      descripcion: nuevaActividad.descripcion,
-      fechaInicio: nuevaActividad.fechaInicio,
-      fechaFin: nuevaActividad.fechaFin,
-      responsable: null,
-      porcentajeAvance: 0,
-      estado: 'PENDIENTE',
-      control: 'Seguimiento trimestral',
-      evaluacion: '0% avance',
-      seguimiento: 'Por definir',
-      requiereVerificacionDirector: false
-    };
-
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return {
-            ...rol,
-            actividades: [...rol.actividades, actividadNueva]
-          };
-        }
-        return rol;
-      })
-    };
-
-    onActualizar(planActualizado);
-    toast.success('Actividad agregada', { description: 'Nueva actividad creada exitosamente' });
+    // Buscar el rol para obtener su ID del backend
+    const rol = plan.roles.find(r => r.numero === rolNumero);
+    console.log('➕ [agregarActividad] Rol encontrado:', { numero: rolNumero, rol: rol, id: rol?.id });
     
-    // Resetear formulario
-    setNuevaActividad({
-      nombre: '',
-      descripcion: '',
-      fechaInicio: new Date().toISOString().split('T')[0],
-      fechaFin: new Date().toISOString().split('T')[0]
-    });
-    setMostrarFormNuevaActividad(null);
+    if (!rol?.id) {
+      console.error('❌ [agregarActividad] Rol sin ID del backend');
+      toast.error('Error', { description: 'No se pudo identificar el rol en el backend' });
+      return;
+    }
+
+    try {
+      // Crear actividad en el backend
+      const dataParaBackend: CreateActividadDto = {
+        nombre: nuevaActividad.nombre,
+        descripcion: nuevaActividad.descripcion || '',
+        responsable: 'Por asignar',
+        fecha_inicio: nuevaActividad.fechaInicio,
+        fecha_fin: nuevaActividad.fechaFin,
+        prioridad: 'Media',
+        control: 'Seguimiento trimestral',
+        evaluacion: '0% avance',
+        seguimiento: 'Por definir',
+        requiereVerificacionDirector: false
+      };
+
+      console.log('➕ [agregarActividad] Enviando al backend:', { rolId: rol.id, data: dataParaBackend });
+      const res = await actividadesApi.create(rol.id, dataParaBackend);
+      console.log('➕ [agregarActividad] Respuesta del backend:', res);
+
+      if (res.success && res.data) {
+        // Actualizar estado local con la actividad del backend
+        const actividadDesdeBackend = res.data;
+        const actividadFront: Actividad = {
+          id: actividadDesdeBackend.id,
+          nombre: actividadDesdeBackend.nombre,
+          descripcion: actividadDesdeBackend.descripcion || '',
+          fechaInicio: actividadDesdeBackend.fecha_inicio.split('T')[0],
+          fechaFin: actividadDesdeBackend.fecha_fin.split('T')[0],
+          responsable: null,
+          porcentajeAvance: 0,
+          estado: 'PENDIENTE',
+          control: actividadDesdeBackend.control || 'Seguimiento trimestral',
+          evaluacion: actividadDesdeBackend.evaluacion || '0% avance',
+          seguimiento: actividadDesdeBackend.seguimiento || 'Por definir',
+          requiereVerificacionDirector: actividadDesdeBackend.requiereVerificacionDirector || false
+        };
+
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(r => {
+            if (r.numero === rolNumero) {
+              return {
+                ...r,
+                actividades: [...r.actividades, actividadFront]
+              };
+            }
+            return r;
+          })
+        };
+
+        onActualizar(planActualizado);
+        toast.success('Actividad creada', { description: 'Nueva actividad creada en el backend' });
+        
+        // Resetear formulario
+        setNuevaActividad({
+          nombre: '',
+          descripcion: '',
+          fechaInicio: new Date().toISOString().split('T')[0],
+          fechaFin: new Date().toISOString().split('T')[0]
+        });
+        setMostrarFormNuevaActividad(null);
+
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al crear actividad', { description: res.error || 'No se pudo guardar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error creando actividad:', error);
+      toast.error('Error', { description: 'No se pudo crear la actividad' });
+    }
   };
 
-  const eliminarActividad = (rolNumero: number, actividadId: number | string) => {
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return {
-            ...rol,
-            actividades: rol.actividades.filter(act => act.id !== actividadId)
-          };
-        }
-        return rol;
-      })
-    };
-    onActualizar(planActualizado);
-    toast.success('Actividad eliminada', { description: 'La actividad ha sido eliminada' });
+  const eliminarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('🗑️ [eliminarActividad] Eliminando actividad:', { rolNumero, actividadId });
+    
+    try {
+      // Eliminar del backend
+      const res = await actividadesApi.delete(String(actividadId));
+      console.log('🗑️ [eliminarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.filter(act => act.id !== actividadId)
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad eliminada', { description: 'La actividad ha sido eliminada del backend' });
+        
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar del servidor' });
+      }
+    } catch (error) {
+      console.error('Error eliminando actividad:', error);
+      toast.error('Error', { description: 'No se pudo eliminar la actividad' });
+    }
   };
 
   return (

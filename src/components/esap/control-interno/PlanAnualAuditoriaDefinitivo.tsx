@@ -1187,7 +1187,7 @@ FIN MOCK crearPlanConDatosMock */
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
-export function PlanAnualAuditoriaDefinitivo() {
+export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarModulo?: (seccion: string) => void }) {
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   
   // ═══════════════════════════════════════════════════════════════════════
@@ -1212,6 +1212,13 @@ export function PlanAnualAuditoriaDefinitivo() {
     updateEstado,
   } = usePlanAnualCompleto(añoSeleccionado);
 
+  console.log('🔄 [HOOK] usePlanAnualCompleto resultado:', { 
+    planDesdeBackend, 
+    auditores: auditores?.length, 
+    cargandoDatos, 
+    errorCarga 
+  });
+
   // Estado local para el plan (sincronizado con backend)
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
 
@@ -1230,6 +1237,12 @@ export function PlanAnualAuditoriaDefinitivo() {
   // Sincronizar plan del backend con estado local
   useEffect(() => {
     if (planDesdeBackend) {
+      console.log('🔍 [DEBUG] Plan recibido del backend:', planDesdeBackend);
+      console.log('🔍 [DEBUG] Cantidad de roles:', planDesdeBackend.roles?.length);
+      planDesdeBackend.roles?.forEach(rol => {
+        console.log(`🔍 [DEBUG] Rol ${rol.rol_numero}: ${rol.nombre}, ID: ${rol.id}, Actividades: ${rol.actividades?.length}`);
+      });
+      
       // Transformar datos del backend al formato del frontend
       const planTransformado: PlanAnual = {
         id: planDesdeBackend.id,
@@ -1241,6 +1254,7 @@ export function PlanAnualAuditoriaDefinitivo() {
         fechaAprobacion: null,
         actaCICC: null,
         roles: planDesdeBackend.roles.map(rol => ({
+          id: rol.id, // ID del rol desde el backend (requerido para crear actividades)
           numero: rol.rol_numero,
           nombre: rol.nombre,
           color: rol.color,
@@ -1315,7 +1329,10 @@ export function PlanAnualAuditoriaDefinitivo() {
               descripcion: act.descripcion || '',
               fechaInicio: formatearFecha(act.fecha_inicio) || formatearFecha(act.fechaInicio),
               fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
-              responsable: auditores.find(a => a.nombre === act.responsable) || null,
+              // Responsable: solo buscar en auditores si no es "Por asignar" o está vacío
+              responsable: (act.responsable && act.responsable !== 'Por asignar') 
+                ? auditores.find(a => a.nombre === act.responsable) || null
+                : null,
               porcentajeAvance: act.porcentaje_avance ?? 0,
               estado: estadoFront,
               control: actExtendido.control || '',
@@ -1343,6 +1360,10 @@ export function PlanAnualAuditoriaDefinitivo() {
           })
         }))
       };
+      
+      console.log('✅ [DEBUG] Plan transformado para frontend:', planTransformado);
+      console.log('✅ [DEBUG] Roles transformados con IDs:', planTransformado.roles.map(r => ({ numero: r.numero, id: r.id, actividades: r.actividades.length })));
+      
       setPlanActual(planTransformado);
       setVista('dashboard'); // Cambiar a dashboard cuando hay datos
     }
@@ -1375,14 +1396,35 @@ export function PlanAnualAuditoriaDefinitivo() {
             ...(rolConfig.actividadesCustom || [])
           ];
 
+          const responsablesDelRol = rolConfig.responsables || [];
+          console.log(`\n📋 [Rol ${rolConfig.numero}: ${rolConfig.nombre}]`);
+          console.log(`   Total actividades: ${todasActividades.length}`);
+          console.log(`   Responsables asignados: ${responsablesDelRol.length}`, responsablesDelRol.map((r: any) => r.nombre));
+          if (responsablesDelRol.length > 0) {
+            console.log(`   ✅ Las actividades se distribuirán entre los responsables`);
+          } else {
+            console.log(`   ⚠️ Las actividades quedarán "Por asignar"`);
+          }
+
           // Crear cada actividad en el backend
           for (let i = 0; i < todasActividades.length; i++) {
             const act = todasActividades[i];
-            // Asignar responsable rotativo de los responsables del rol
-            const responsables = rolConfig.responsables || [];
-            const responsable = responsables.length > 0 
-              ? responsables[i % responsables.length]?.nombre 
-              : jefeOCI.nombre;
+            
+            // ⚡ LÓGICA ACTUALIZADA: 
+            // - Si el ROL tiene responsables asignados → asignar rotativamente a las actividades
+            // - Si el ROL NO tiene responsables → dejar como "Por asignar"
+            const responsablesDelRol = rolConfig.responsables || [];
+            let responsable: string;
+            
+            if (responsablesDelRol.length > 0) {
+              // Asignar responsable rotativo de los asignados al rol
+              responsable = responsablesDelRol[i % responsablesDelRol.length]?.nombre || 'Por asignar';
+              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Responsable: ${responsable}`);
+            } else {
+              // Rol sin responsables asignados → actividad queda "Por asignar"
+              responsable = 'Por asignar';
+              console.log(`🆕 [handleCrearPlan] Actividad "${act.nombre}" → Sin asignar (rol sin responsables)`);
+            }
 
             // ⚡ Convertir tipoEvidencia del Wizard a configuracionEvidencias del backend
             let configuracionEvidencias = act.configuracionEvidencias;
@@ -1548,7 +1590,13 @@ export function PlanAnualAuditoriaDefinitivo() {
             onActualizar={setPlanActual}
             onRefetchPlan={recargarPlan}
             onVolver={() => setVista('inicio')}
-            onAbrirRol4={() => setVista('rol4-integrado')}
+            onAbrirRol4={() => {
+              if (onNavegarModulo) {
+                onNavegarModulo('universo-auditable');
+              } else {
+                setVista('rol4-integrado');
+              }
+            }}
             onCrearNuevo={() => setVista('wizard')}
             planesAnteriores={planesAnteriores}
           />
