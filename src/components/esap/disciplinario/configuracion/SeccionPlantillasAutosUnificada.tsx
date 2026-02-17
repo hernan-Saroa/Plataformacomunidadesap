@@ -5,25 +5,41 @@
  * ✅ Flujo simplificado: 1 Tipo = 1 Plantilla
  */
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Edit2, Trash2, Download, Upload, X, FileText, AlertCircle, 
   Info, HelpCircle, CheckCircle, Archive, Scale, FileCheck, Gavel,
-  File, Folder, Eye, Clock
+  File, Folder, Eye, Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ============ ETAPAS DEL PROCESO DISCIPLINARIO ============
 
 export const ETAPAS_PROCESO = {
-  INDAGACION: {
-    id: 'INDAGACION',
-    nombre: 'Indagación Preliminar',
-    descripcion: 'Se investiga si hay mérito para abrir proceso',
-    color: '#3B82F6',
+  RECEPCION: {
+    id: 'RECEPCION',
+    nombre: 'Recepción',
+    descripcion: 'Recepción de la queja o noticia',
+    color: '#6B7280',
+    icon: FileText,
+    orden: 0
+  },
+  INDAGACION_PREVIA: {
+    id: 'INDAGACION_PREVIA',
+    nombre: 'Indagación Previa',
+    descripcion: 'Verificación preliminar de los hechos',
+    color: '#8B5CF6',
     icon: Info,
     orden: 1
+  },
+  INDAGACION: {
+    id: 'INDAGACION',
+    nombre: 'Indagación',
+    descripcion: 'Indagación preliminar para determinar si hay mérito para abrir proceso',
+    color: '#3B82F6',
+    icon: Info,
+    orden: 2
   },
   INVESTIGACION: {
     id: 'INVESTIGACION',
@@ -31,15 +47,31 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se recopilan pruebas y testimonios',
     color: '#2962FF',
     icon: FileCheck,
-    orden: 2
+    orden: 3
+  },
+  EVALUACION: {
+    id: 'EVALUACION',
+    nombre: 'Evaluación y Análisis',
+    descripcion: 'Evaluación de la investigación',
+    color: '#F59E0B',
+    icon: Scale,
+    orden: 4
   },
   CARGOS: {
     id: 'CARGOS',
     nombre: 'Formulación de Cargos',
     descripcion: 'Se formula el pliego de cargos al investigado',
-    color: '#F59E0B',
+    color: '#F97316',
     icon: Scale,
-    orden: 3
+    orden: 5
+  },
+  JUZGAMIENTO: {
+    id: 'JUZGAMIENTO',
+    nombre: 'Juzgamiento',
+    descripcion: 'Diligencias de descargos y práctica de pruebas',
+    color: '#DC2626',
+    icon: Gavel,
+    orden: 6
   },
   FALLO: {
     id: 'FALLO',
@@ -47,7 +79,15 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se emite la decisión final del proceso',
     color: '#10B981',
     icon: Gavel,
-    orden: 4
+    orden: 7
+  },
+  SEGUNDA_INSTANCIA: {
+    id: 'SEGUNDA_INSTANCIA',
+    nombre: 'Segunda Instancia',
+    descripcion: 'Recurso de apelación',
+    color: '#059669',
+    icon: FileCheck,
+    orden: 8
   },
   ARCHIVO: {
     id: 'ARCHIVO',
@@ -55,7 +95,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Archivos en cualquier etapa del proceso',
     color: '#DC2626',
     icon: Archive,
-    orden: 5
+    orden: 9
   }
 } as const;
 
@@ -103,9 +143,11 @@ export function SeccionPlantillasAutosUnificada({
   onToggleActivoTipo,
   onGestionarPlantilla
 }: SeccionPlantillasAutosUnificadaProps) {
-  const [filtroEtapa, setFiltroEtapa] = useState<EtapaProcesoId | 'todas'>('todas');
+  const [filtroEtapa, setFiltroEtapa] = useState<string | 'todas'>('todas');
   const [mostrarGuia, setMostrarGuia] = useState(false);
   const [vistaDetalles, setVistaDetalles] = useState<TipoAuto | null>(null);
+  const [paginaActual, setPaginaActual] = useState(1);
+  const ITEMS_POR_PAGINA = 10;
 
   // Validación defensiva
   const tiposAutosValidos = tiposAutos || [];
@@ -113,6 +155,24 @@ export function SeccionPlantillasAutosUnificada({
   const tiposFiltrados = filtroEtapa === 'todas' 
     ? tiposAutosValidos 
     : tiposAutosValidos.filter(t => t.etapa === filtroEtapa);
+
+  // Paginación
+  const totalPaginas = Math.ceil(tiposFiltrados.length / ITEMS_POR_PAGINA);
+  const tiposPaginados = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_POR_PAGINA;
+    return tiposFiltrados.slice(inicio, inicio + ITEMS_POR_PAGINA);
+  }, [tiposFiltrados, paginaActual]);
+
+  // Resetear página cuando cambia el filtro
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [filtroEtapa]);
+
+  // Función helper para obtener nombre de etapa
+  const getEtapaNombre = (etapaId: string): string => {
+    const etapa = ETAPAS_PROCESO[etapaId as keyof typeof ETAPAS_PROCESO];
+    return etapa ? etapa.nombre : etapaId;
+  };
 
   const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
     toast.success('Plantilla descargada', {
@@ -234,7 +294,7 @@ export function SeccionPlantillasAutosUnificada({
               <p className="text-sm text-gray-600 mb-2">
                 {filtroEtapa === 'todas' 
                   ? 'No hay tipos de autos configurados'
-                  : `No hay tipos de autos para "${ETAPAS_PROCESO[filtroEtapa].nombre}"`
+                  : `No hay tipos de autos para "${getEtapaNombre(filtroEtapa)}"`
                 }
               </p>
               <button
@@ -246,7 +306,7 @@ export function SeccionPlantillasAutosUnificada({
             </div>
           ) : (
             <div className="space-y-3">
-              {tiposFiltrados
+              {tiposPaginados
                 .sort((a, b) => {
                   const etapaA = ETAPAS_PROCESO[a.etapa];
                   const etapaB = ETAPAS_PROCESO[b.etapa];
@@ -394,7 +454,58 @@ export function SeccionPlantillasAutosUnificada({
                       </div>
                     </div>
                   );
-                })}</div>
+                })}
+            </div>
+          )}
+
+          {/* Controles de Paginación */}
+          {totalPaginas > 1 && (
+            <div className="mt-4 flex items-center justify-between pt-4 border-t border-gray-200">
+              <div className="text-sm text-gray-600">
+                Mostrando <span className="font-semibold">{(paginaActual - 1) * ITEMS_POR_PAGINA + 1}</span> a{' '}
+                <span className="font-semibold">{Math.min(paginaActual * ITEMS_POR_PAGINA, tiposFiltrados.length)}</span> de{' '}
+                <span className="font-semibold">{tiposFiltrados.length}</span> resultados
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPaginaActual(p => Math.max(1, p - 1))}
+                  disabled={paginaActual === 1}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-2 border-gray-300 text-gray-700 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPaginas }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPaginas || Math.abs(p - paginaActual) <= 1)
+                    .map((p, idx, arr) => (
+                      <span key={p}>
+                        {idx > 0 && arr[idx - 1] !== p - 1 && (
+                          <span className="px-1 text-gray-400">...</span>
+                        )}
+                        <button
+                          onClick={() => setPaginaActual(p)}
+                          className={`w-8 h-8 rounded-lg font-semibold text-sm transition-colors ${
+                            p === paginaActual
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </span>
+                    ))}
+                </div>
+                <button
+                  onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))}
+                  disabled={paginaActual === totalPaginas}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg border-2 border-gray-300 text-gray-700 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+                >
+                  Siguiente
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

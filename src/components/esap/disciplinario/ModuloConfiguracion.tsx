@@ -35,6 +35,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { SeccionAutosParametrizados } from './configuracion/SeccionAutosParametrizados';
 
 // ============ INTERFACES ============
 
@@ -826,6 +827,9 @@ export function ModuloConfiguracion() {
               </DndContext>
             </div>
           </div>
+
+          {/* 2. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
+          <SeccionAutosParametrizados />
 
           {/* 3. CAPACIDAD POR CARGO */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">

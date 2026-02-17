@@ -789,6 +789,15 @@ class DisciplinaryService {
     async toggleAutosConfigurationEstado(id: string): Promise<AutoConfiguration> {
         return apiClient.patch<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/toggle-estado`, {});
     }
+
+    /**
+     * Subir plantilla Word para un auto
+     */
+    async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+    }
 }
 
 const disciplinaryService = new DisciplinaryService();

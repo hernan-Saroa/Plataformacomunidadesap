@@ -2,364 +2,100 @@
  * CONFIGURACIÓN DE PLANTILLAS DE AUTOS
  * Componente modular standalone para gestionar plantillas de autos
  * Control Interno Disciplinario
+ * 
+ * DATOS CARGADOS DESDE LA BD (autos_configuration)
  */
 
-import { useState } from 'react';
-import { Plus, AlertCircle, Save, RotateCcw } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import { SeccionPlantillasAutosUnificada, type TipoAuto, type PlantillaArchivo } from './SeccionPlantillasAutosUnificada';
+import { useState, useEffect } from 'react';
+import { Plus, AlertCircle, Save, RotateCcw, Edit2, Trash2, FileText } from 'lucide-react';
+import { toast } from 'sonner';
+import { SeccionPlantillasAutosUnificada, type TipoAuto } from './SeccionPlantillasAutosUnificada';
 import { ModalNuevoTipoAuto } from './ModalNuevoTipoAuto';
 import { ModalGestionarPlantillas } from './ModalGestionarPlantillas';
+import { disciplinaryService, AutoConfiguration } from '../../../../services/api/disciplinary.service';
 
-// Tipos de autos por defecto con múltiples plantillas
-const TIPOS_AUTOS_DEFECTO: TipoAuto[] = [
+// Tipos de autos por defecto (solo se usa si no hay datos en BD)
+const TIPOS_AUTOS_DEFECTO: any[] = [
   {
     id: 'auto-apertura-indagacion',
     nombre: 'Auto de Apertura de Indagación',
     descripcion: 'Inicia la indagación preliminar para determinar si hay mérito para abrir investigación formal',
-    etapa: 'INDAGACION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-1',
-        nombre: 'Auto Apertura Indagación - Formato Estándar',
-        nombreArchivo: 'auto_apertura_indagacion_estandar.docx',
-        descripcion: 'Plantilla estándar para iniciar indagación preliminar',
-        url: '/plantillas/auto_apertura_indagacion_estandar.docx',
-        tamano: 45000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-2',
-        nombre: 'Auto Apertura Indagación - Formato Simplificado',
-        nombreArchivo: 'auto_apertura_indagacion_simplificado.docx',
-        descripcion: 'Plantilla simplificada para casos menos complejos',
-        url: '/plantillas/auto_apertura_indagacion_simplificado.docx',
-        tamano: 38000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
+    etapa: 'INDAGACION',
+    plantilla: null,
     activo: true,
     orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-archivo-indagacion',
-    nombre: 'Auto de Archivo de Indagación',
-    descripcion: 'Archiva la indagación preliminar cuando no hay mérito para continuar',
-    etapa: 'INDAGACION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-ind-1',
-        nombre: 'Auto Archivo Indagación - Por Falta de Mérito',
-        nombreArchivo: 'auto_archivo_indagacion.docx',
-        descripcion: 'Cuando no se configuran elementos para continuar',
-        url: '/plantillas/auto_archivo_indagacion.docx',
-        tamano: 42000,
-        version: '1.2',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 2,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-apertura-investigacion',
-    nombre: 'Auto de Apertura de Investigación',
-    descripcion: 'Inicia formalmente la investigación disciplinaria contra el servidor público',
-    etapa: 'INVESTIGACION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-3',
-        nombre: 'Auto Apertura Investigación - Completo',
-        nombreArchivo: 'auto_apertura_investigacion.docx',
-        descripcion: 'Plantilla completa con todos los fundamentos legales',
-        url: '/plantillas/auto_apertura_investigacion.docx',
-        tamano: 52000,
-        version: '2.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-3b',
-        nombre: 'Auto Apertura Investigación - Falta Gravísima',
-        nombreArchivo: 'auto_apertura_investigacion_gravisima.docx',
-        descripcion: 'Para faltas gravísimas con considerandos especiales',
-        url: '/plantillas/auto_apertura_investigacion_gravisima.docx',
-        tamano: 58000,
-        version: '1.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-practica-pruebas',
-    nombre: 'Auto de Práctica de Pruebas',
-    descripcion: 'Ordena la práctica de pruebas específicas para el esclarecimiento de los hechos',
-    etapa: 'INVESTIGACION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-4',
-        nombre: 'Auto Práctica Pruebas - General',
-        nombreArchivo: 'auto_practica_pruebas.docx',
-        descripcion: 'Para solicitar práctica de pruebas testimoniales y documentales',
-        url: '/plantillas/auto_practica_pruebas.docx',
-        tamano: 48000,
-        version: '1.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-4b',
-        nombre: 'Auto Práctica Pruebas - Testimonial',
-        nombreArchivo: 'auto_practica_pruebas_testimonial.docx',
-        descripcion: 'Específico para testimonios',
-        url: '/plantillas/auto_practica_pruebas_testimonial.docx',
-        tamano: 44000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 2,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-cierre-investigacion',
-    nombre: 'Auto de Cierre de Investigación',
-    descripcion: 'Cierra la investigación y ordena archivar o formular cargos',
-    etapa: 'INVESTIGACION' as const,
-    plantillas: [
-      {
-        id: 'plantilla-cierre-1',
-        nombre: 'Auto Cierre - Archivo por Falta de Pruebas',
-        nombreArchivo: 'auto_cierre_archivo.docx',
-        descripcion: 'Cuando no hay pruebas suficientes para formular cargos',
-        url: '/plantillas/auto_cierre_archivo.docx',
-        tamano: 46000,
-        version: '1.3',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-cierre-2',
-        nombre: 'Auto Cierre - Traslado a Cargos',
-        nombreArchivo: 'auto_cierre_traslado_cargos.docx',
-        descripcion: 'Cuando hay mérito para formular pliego de cargos',
-        url: '/plantillas/auto_cierre_traslado_cargos.docx',
-        tamano: 49000,
-        version: '1.8',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 3,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'pliego-cargos',
-    nombre: 'Pliego de Cargos',
-    descripcion: 'Formula el pliego de cargos al investigado con los fundamentos de hecho y derecho',
-    etapa: 'CARGOS' as const,
-    plantillas: [
-      {
-        id: 'plantilla-5',
-        nombre: 'Pliego de Cargos - Formato Oficial',
-        nombreArchivo: 'pliego_cargos_oficial.docx',
-        descripcion: 'Formato oficial según normatividad vigente',
-        url: '/plantillas/pliego_cargos_oficial.docx',
-        tamano: 65000,
-        version: '3.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-5b',
-        nombre: 'Pliego de Cargos - Falta Leve',
-        nombreArchivo: 'pliego_cargos_leve.docx',
-        descripcion: 'Para faltas leves con trámite simplificado',
-        url: '/plantillas/pliego_cargos_leve.docx',
-        tamano: 58000,
-        version: '2.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-5c',
-        nombre: 'Pliego de Cargos - Falta Gravísima',
-        nombreArchivo: 'pliego_cargos_gravisima.docx',
-        descripcion: 'Para faltas gravísimas con destitución',
-        url: '/plantillas/pliego_cargos_gravisima.docx',
-        tamano: 72000,
-        version: '2.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-descargos',
-    nombre: 'Auto que Ordena Descargos',
-    descripcion: 'Ordena presentar descargos al pliego de cargos formulado',
-    etapa: 'CARGOS' as const,
-    plantillas: [
-      {
-        id: 'plantilla-desc-1',
-        nombre: 'Auto Descargos - Notificación Personal',
-        nombreArchivo: 'auto_descargos_personal.docx',
-        descripcion: 'Para notificación personal del derecho a descargos',
-        url: '/plantillas/auto_descargos_personal.docx',
-        tamano: 41000,
-        version: '1.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 2,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'fallo-sancionatorio',
-    nombre: 'Fallo Sancionatorio',
-    descripcion: 'Fallo disciplinario que declara la responsabilidad e impone sanción al investigado',
-    etapa: 'FALLO' as const,
-    plantillas: [
-      {
-        id: 'plantilla-6',
-        nombre: 'Fallo Sancionatorio - Completo',
-        nombreArchivo: 'fallo_sancionatorio.docx',
-        descripcion: 'Fallo con todos los fundamentos legales y de hecho',
-        url: '/plantillas/fallo_sancionatorio.docx',
-        tamano: 72000,
-        version: '2.1',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-7',
-        nombre: 'Fallo Absolutorio',
-        nombreArchivo: 'fallo_absolutorio.docx',
-        descripcion: 'Para fallos que absuelven al investigado',
-        url: '/plantillas/fallo_absolutorio.docx',
-        tamano: 68000,
-        version: '1.8',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-8',
-        nombre: 'Fallo - Suspensión Temporal',
-        nombreArchivo: 'fallo_suspension_temporal.docx',
-        descripcion: 'Fallo con sanción de suspensión sin goce de salario',
-        url: '/plantillas/fallo_suspension_temporal.docx',
-        tamano: 70000,
-        version: '2.0',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-9',
-        nombre: 'Fallo - Destitución',
-        nombreArchivo: 'fallo_destitucion.docx',
-        descripcion: 'Fallo con sanción de destitución del cargo',
-        url: '/plantillas/fallo_destitucion.docx',
-        tamano: 75000,
-        version: '2.2',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 1,
-    fechaCreacion: new Date().toISOString(),
-    fechaModificacion: new Date().toISOString()
-  },
-  {
-    id: 'auto-segunda-instancia',
-    nombre: 'Auto de Segunda Instancia',
-    descripcion: 'Auto que resuelve recurso de apelación contra el fallo',
-    etapa: 'FALLO' as const,
-    plantillas: [
-      {
-        id: 'plantilla-2da-1',
-        nombre: 'Auto Segunda Instancia - Confirma',
-        nombreArchivo: 'auto_segunda_instancia_confirma.docx',
-        descripcion: 'Confirma el fallo de primera instancia',
-        url: '/plantillas/auto_segunda_instancia_confirma.docx',
-        tamano: 64000,
-        version: '1.5',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      },
-      {
-        id: 'plantilla-2da-2',
-        nombre: 'Auto Segunda Instancia - Revoca',
-        nombreArchivo: 'auto_segunda_instancia_revoca.docx',
-        descripcion: 'Revoca el fallo de primera instancia',
-        url: '/plantillas/auto_segunda_instancia_revoca.docx',
-        tamano: 66000,
-        version: '1.3',
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString(),
-        activo: true
-      }
-    ],
-    activo: true,
-    orden: 2,
     fechaCreacion: new Date().toISOString(),
     fechaModificacion: new Date().toISOString()
   }
 ];
 
+// Etapas del proceso
+const ETAPAS_PROCESO = [
+  { value: 'RECEPCION', label: 'Recepción' },
+  { value: 'INDAGACION_PREVIA', label: 'Indagación Previa' },
+  { value: 'INDAGACION', label: 'Indagación' },
+  { value: 'INVESTIGACION', label: 'Investigación' },
+  { value: 'EVALUACION', label: 'Evaluación' },
+  { value: 'JUZGAMIENTO', label: 'Juzgamiento' },
+  { value: 'FALLO', label: 'Fallo' },
+  { value: 'SEGUNDA_INSTANCIA', label: 'Segunda Instancia' },
+];
+
 export function ConfiguracionPlantillasAutos() {
-  const [tiposAutos, setTiposAutos] = useState<TipoAuto[]>(TIPOS_AUTOS_DEFECTO);
+  const [tiposAutos, setTiposAutos] = useState<any[]>([]);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Estados para modales
   const [mostrarModalTipoAuto, setMostrarModalTipoAuto] = useState(false);
   const [tipoAutoEdicion, setTipoAutoEdicion] = useState<TipoAuto | null>(null);
-  const [tipoAutoGestionando, setTipoAutoGestionando] = useState<TipoAuto | null>(null);
+  const [tipoAutoGestionando, setTipoAutoGestionando] = useState<any>(null);
   const [mostrarModalGestionarPlantillas, setMostrarModalGestionarPlantillas] = useState(false);
+
+  // Cargar datos al iniciar
+  useEffect(() => {
+    loadDatos();
+  }, []);
+
+  const loadDatos = async () => {
+    try {
+      setLoading(true);
+      
+      // Cargar autos desde la BD
+      const autosFromBD = await disciplinaryService.getAutosConfiguration();
+      
+      // Mapear autos de BD al formato del componente
+      const tiposFromBD: any[] = autosFromBD.map(auto => ({
+        id: auto.id,
+        nombre: auto.nombre,
+        descripcion: `Auto: ${auto.tipo}`,
+        etapa: auto.stage || 'INDAGACION',
+        plantilla: auto.plantilla ? {
+          id: `plt-${auto.id}`,
+          nombre: 'Plantilla configurada',
+          nombreArchivo: 'plantilla.docx',
+          descripcion: 'Plantilla almacenada en BD',
+          tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          url: auto.plantilla,
+          version: '1.0',
+          fechaCreacion: auto.createdAt,
+          activo: true
+        } : null,
+        activo: auto.estado === 'activo',
+        orden: auto.orden,
+        fechaCreacion: auto.createdAt,
+        fechaModificacion: auto.updatedAt
+      }));
+      
+      setTiposAutos(tiposFromBD);
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+      setTiposAutos(TIPOS_AUTOS_DEFECTO);
+      toast.error('Error al cargar datos, usando configuración por defecto');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const abrirModalNuevoTipoAuto = () => {
     setTipoAutoEdicion(null);
@@ -371,26 +107,58 @@ export function ConfiguracionPlantillasAutos() {
     setMostrarModalTipoAuto(true);
   };
 
-  const guardarTipoAuto = (nuevoTipo: Omit<TipoAuto, 'id' | 'plantillas' | 'fechaCreacion' | 'fechaModificacion'>) => {
+  const guardarTipoAuto = async (nuevoTipo: any) => {
+    // Si hay un tipo en edición, actualizar en BD
     if (tipoAutoEdicion) {
-      // Editar existente (preserva plantillas)
-      setTiposAutos(tiposAutos.map(t => 
-        t.id === tipoAutoEdicion.id 
-          ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-          : t
-      ));
-      toast.success('Tipo de auto actualizado correctamente');
+      try {
+        const autoActual = tiposAutos.find(t => t.id === tipoAutoEdicion.id);
+        if (autoActual && autoActual.id.startsWith('auto-')) {
+          // Es un tipo local, guardar en localStorage
+          setTiposAutos(tiposAutos.map(t => 
+            t.id === tipoAutoEdicion.id 
+              ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
+              : t
+          ));
+        } else {
+          // Es un auto de la BD, actualizar en BD
+          await disciplinaryService.updateAutosConfiguration(tipoAutoEdicion.id, {
+            nombre: nuevoTipo.nombre,
+            stage: nuevoTipo.etapa,
+            estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+            orden: nuevoTipo.orden
+          });
+          await loadDatos(); // Recargar datos
+        }
+        toast.success('Tipo de auto actualizado correctamente');
+      } catch (error) {
+        console.error('Error actualizando:', error);
+        toast.error('Error al actualizar');
+      }
     } else {
-      // Crear nuevo tipo (con array vacío de plantillas)
-      const tipoCompleto: TipoAuto = {
-        id: `tipo-auto-${Date.now()}`,
-        ...nuevoTipo,
-        plantillas: [],
-        fechaCreacion: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString()
-      };
-      setTiposAutos([...tiposAutos, tipoCompleto]);
-      toast.success('Tipo de auto creado correctamente');
+      // Crear nuevo tipo
+      try {
+        await disciplinaryService.createAutosConfiguration({
+          tipo: nuevoTipo.nombre.toUpperCase().replace(/ /g, '_'),
+          nombre: nuevoTipo.nombre,
+          estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+          stage: nuevoTipo.etapa,
+          orden: nuevoTipo.orden || 1
+        });
+        await loadDatos(); // Recargar datos
+        toast.success('Tipo de auto creado correctamente');
+      } catch (error) {
+        console.error('Error creando:', error);
+        // Guardar localmente si falla
+        const tipoCompleto: any = {
+          id: `tipo-auto-${Date.now()}`,
+          ...nuevoTipo,
+          plantilla: null,
+          fechaCreacion: new Date().toISOString(),
+          fechaModificacion: new Date().toISOString()
+        };
+        setTiposAutos([...tiposAutos, tipoCompleto]);
+        toast.success('Tipo de auto creado (local)');
+      }
     }
     
     setCambiosPendientes(true);
@@ -398,36 +166,68 @@ export function ConfiguracionPlantillasAutos() {
     setTipoAutoEdicion(null);
   };
 
-  const eliminarTipoAuto = (tipoId: string) => {
-    if (window.confirm('¿Está seguro de eliminar este tipo de auto y todas sus plantillas?')) {
+  const eliminarTipoAuto = async (tipoId: string) => {
+    if (!window.confirm('¿Está seguro de eliminar este tipo de auto y todas sus plantillas?')) return;
+    
+    // Verificar si es un auto de la BD
+    const auto = tiposAutos.find(t => t.id === tipoId);
+    if (auto && !tipoId.startsWith('tipo-auto-')) {
+      // Es un auto de la BD
+      try {
+        await disciplinaryService.deleteAutosConfiguration(tipoId);
+        await loadDatos();
+        toast.success('Auto eliminado correctamente');
+      } catch (error) {
+        console.error('Error eliminando:', error);
+        toast.error('Error al eliminar');
+      }
+    } else {
+      // Es local
       setTiposAutos(tiposAutos.filter(t => t.id !== tipoId));
       setCambiosPendientes(true);
       toast.success('Tipo de auto eliminado correctamente');
     }
   };
 
-  const toggleActivoTipoAuto = (tipoId: string, activo: boolean) => {
-    setTiposAutos(tiposAutos.map(t => 
-      t.id === tipoId ? { ...t, activo } : t
-    ));
-    setCambiosPendientes(true);
-    toast.success(activo ? 'Tipo de auto activado' : 'Tipo de auto desactivado');
+  const toggleActivoTipoAuto = async (tipoId: string, activo: boolean) => {
+    // Verificar si es un auto de la BD
+    const auto = tiposAutos.find(t => t.id === tipoId);
+    if (auto && !tipoId.startsWith('tipo-auto-')) {
+      // Es un auto de la BD
+      try {
+        await disciplinaryService.toggleAutosConfigurationEstado(tipoId);
+        await loadDatos();
+        toast.success(activo ? 'Auto activado' : 'Auto desactivado');
+      } catch (error) {
+        console.error('Error toggling:', error);
+        toast.error('Error al cambiar estado');
+      }
+    } else {
+      // Es local
+      setTiposAutos(tiposAutos.map(t => 
+        t.id === tipoId ? { ...t, activo } : t
+      ));
+      setCambiosPendientes(true);
+      toast.success(activo ? 'Tipo de auto activado' : 'Tipo de auto desactivado');
+    }
   };
 
-  const abrirGestionPlantillas = (tipo: TipoAuto) => {
+  const abrirGestionPlantillas = (tipo: any) => {
     setTipoAutoGestionando(tipo);
     setMostrarModalGestionarPlantillas(true);
   };
 
-  const actualizarPlantillasTipoAuto = (tipoAutoId: string, plantillas: PlantillaArchivo[]) => {
+  const actualizarPlantillasTipoAuto = (tipoAutoId: string, plantillas: any) => {
+    // Actualizar localmente
     setTiposAutos(tiposAutos.map(t => 
       t.id === tipoAutoId 
-        ? { ...t, plantillas, fechaModificacion: new Date().toISOString() } 
+        ? { ...t, plantilla: plantillas[0] || null, fechaModificacion: new Date().toISOString() } 
         : t
     ));
     setCambiosPendientes(true);
     setMostrarModalGestionarPlantillas(false);
     setTipoAutoGestionando(null);
+    toast.success('Plantillas actualizadas');
   };
 
   const guardarConfiguraciones = () => {
@@ -448,6 +248,17 @@ export function ConfiguracionPlantillasAutos() {
       toast.success('Configuraciones restablecidas');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">
@@ -487,22 +298,23 @@ export function ConfiguracionPlantillasAutos() {
         </div>
       </div>
 
-      {/* Componente de gestión unificada */}
+      {/* Componente de gestión unificada - recibe los datos de la BD */}
       <SeccionPlantillasAutosUnificada
         tiposAutos={tiposAutos}
         onAgregarTipo={abrirModalNuevoTipoAuto}
         onEditarTipo={abrirModalEditarTipoAuto}
         onEliminarTipo={eliminarTipoAuto}
         onToggleActivoTipo={toggleActivoTipoAuto}
-        onGestionarPlantillas={abrirGestionPlantillas}
+        onGestionarPlantilla={abrirGestionPlantillas}
       />
 
       {/* Modal para crear/editar tipo de auto */}
       {mostrarModalTipoAuto && (
         <ModalNuevoTipoAuto
-          tipoAutoEdicion={tipoAutoEdicion}
+          isOpen={mostrarModalTipoAuto}
+          tipoEdicion={tipoAutoEdicion}
           onGuardar={guardarTipoAuto}
-          onCerrar={() => {
+          onClose={() => {
             setMostrarModalTipoAuto(false);
             setTipoAutoEdicion(null);
           }}
@@ -512,9 +324,10 @@ export function ConfiguracionPlantillasAutos() {
       {/* Modal para gestionar plantillas */}
       {mostrarModalGestionarPlantillas && tipoAutoGestionando && (
         <ModalGestionarPlantillas
+          isOpen={mostrarModalGestionarPlantillas}
           tipoAuto={tipoAutoGestionando}
-          onGuardar={(plantillas) => actualizarPlantillasTipoAuto(tipoAutoGestionando.id, plantillas)}
-          onCerrar={() => {
+          onActualizarPlantillas={actualizarPlantillasTipoAuto}
+          onClose={() => {
             setMostrarModalGestionarPlantillas(false);
             setTipoAutoGestionando(null);
           }}
