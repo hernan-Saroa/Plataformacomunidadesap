@@ -65,13 +65,6 @@ export function HistorialVerificacionesQR({
   });
 
   // Estadísticas
-  const normalizarPais = (pais: string) => pais.trim().toUpperCase();
-  const paisesDiferentes = new Set(
-    verificaciones
-      .map(v => v.ubicacion.pais || '')
-      .map(normalizarPais)
-      .filter(pais => pais && pais !== 'DESCONOCIDO' && pais !== 'N/A' && pais !== 'COLOMBIA')
-  );
   const stats = {
     exitosas: verificaciones.filter(v => v.resultado === 'exitosa').length,
     fallidas: verificaciones.filter(v => v.resultado === 'fallida').length,
@@ -79,13 +72,8 @@ export function HistorialVerificacionesQR({
     desktop: verificaciones.filter(v => v.dispositivo.tipo === 'desktop').length,
     mobile: verificaciones.filter(v => v.dispositivo.tipo === 'mobile').length,
     tablet: verificaciones.filter(v => v.dispositivo.tipo === 'tablet').length,
-    paises: paisesDiferentes.size
+    paises: new Set(verificaciones.map(v => v.ubicacion.pais)).size
   };
-
-  const totalVerificacionesReales = totalVerificaciones > 0 ? totalVerificaciones : verificaciones.length;
-  const tasaExito = totalVerificacionesReales > 0
-    ? Math.round((stats.exitosas / totalVerificacionesReales) * 100)
-    : 0;
 
   const getDispositivoIcon = (tipo: string) => {
     switch (tipo) {
@@ -136,50 +124,29 @@ export function HistorialVerificacionesQR({
   };
 
   const exportarHistorial = () => {
-    // En produccion, esto generaria un CSV o Excel
-    const delimiter = ';';
-    const escapeCSV = (value: string) => {
-      const raw = value ?? '';
-      const needsQuotes = raw.includes('"') || raw.includes('\n') || raw.includes('\r') || raw.includes(delimiter);
-      const escaped = raw.replace(/"/g, '""');
-      return needsQuotes ? `"${escaped}"` : escaped;
-    };
-
-    const headers = [
-      'Fecha y Hora',
-      'Resultado',
-      'Tipo Dispositivo',
-      'Sistema Operativo',
-      'Navegador',
-      'IP',
-      'Pa\u00eds',
-      'Ciudad'
-    ];
-
-    const rows = verificaciones.map(v => [
-      new Date(v.timestamp).toLocaleString('es-CO'),
-      v.resultado,
-      v.dispositivo.tipo,
-      v.dispositivo.sistemaOperativo,
-      v.dispositivo.navegador,
-      v.ubicacion.ip,
-      v.ubicacion.pais,
-      v.ubicacion.ciudad
-    ]);
-
+    // En producción, esto generaría un CSV o Excel
     const csvContent = [
-      headers.map(escapeCSV).join(delimiter),
-      ...rows.map(row => row.map(value => escapeCSV(String(value ?? ''))).join(delimiter))
-    ].join('\r\n');
+      ['Fecha y Hora', 'Resultado', 'Tipo Dispositivo', 'Sistema Operativo', 'Navegador', 'IP', 'País', 'Ciudad'].join(','),
+      ...verificaciones.map(v => [
+        new Date(v.timestamp).toLocaleString('es-CO'),
+        v.resultado,
+        v.dispositivo.tipo,
+        v.dispositivo.sistemaOperativo,
+        v.dispositivo.navegador,
+        v.ubicacion.ip,
+        v.ubicacion.pais,
+        v.ubicacion.ciudad
+      ].join(','))
+    ].join('\n');
 
-    // BOM para que Excel detecte UTF-8 (tildes y caracteres especiales)
-    const blob = new Blob(['\ufeff', csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `verificaciones-qr-${consecutivo}-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
+
   return (
     <div className="space-y-6">
       {/* Header con estadísticas generales */}
@@ -215,7 +182,7 @@ export function HistorialVerificacionesQR({
             <Eye className="w-5 h-5 text-blue-600" />
             <TrendingUp className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-3xl font-bold text-blue-900 mb-1">{totalVerificacionesReales}</p>
+          <p className="text-3xl font-bold text-blue-900 mb-1">{totalVerificaciones}</p>
           <p className="text-xs text-blue-700 font-medium">Total Verificaciones</p>
         </motion.div>
 
@@ -226,7 +193,7 @@ export function HistorialVerificacionesQR({
           <div className="flex items-center justify-between mb-2">
             <CheckCircle className="w-5 h-5 text-green-600" />
             <span className="text-xs font-semibold text-green-700">
-              {tasaExito}%
+              {stats.exitosas > 0 ? Math.round((stats.exitosas / totalVerificaciones) * 100) : 0}%
             </span>
           </div>
           <p className="text-3xl font-bold text-green-900 mb-1">{stats.exitosas}</p>

@@ -61,31 +61,6 @@ export function ValidarCertificadoPublico() {
   const [certificadoValidado, setCertificadoValidado] = useState<CertificadoValidado | null>(null);
   const [showScanner, setShowScanner] = useState(false);
 
-  const parseDateOnly = (fechaStr: string) => {
-    if (!fechaStr) return null;
-    const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) {
-      const year = Number(isoMatch[1]);
-      const month = Number(isoMatch[2]) - 1;
-      const day = Number(isoMatch[3]);
-      return new Date(year, month, day, 12, 0, 0);
-    }
-    const parsed = new Date(fechaStr);
-    if (isNaN(parsed.getTime())) return null;
-    return parsed;
-  };
-
-  const formatearFecha = (fechaStr: string, opciones?: Intl.DateTimeFormatOptions) => {
-    const fecha = parseDateOnly(fechaStr);
-    if (!fecha) return 'Fecha no disponible';
-    return fecha.toLocaleDateString('es-CO', opciones || {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
-
-
   // Mock de validación
   const mockCertificado: CertificadoValidado = {
     id: 'CERT-LAB-001',
@@ -444,7 +419,7 @@ export function ValidarCertificadoPublico() {
                       Fecha de Vinculación
                     </label>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
-                      {formatearFecha(certificadoValidado.empleado.fechaVinculacion, {
+                      {new Date(certificadoValidado.empleado.fechaVinculacion).toLocaleDateString('es-CO', {
                         day: '2-digit',
                         month: 'long',
                         year: 'numeric'
@@ -486,7 +461,7 @@ export function ValidarCertificadoPublico() {
                     Fecha de Emisión
                   </label>
                   <p className="text-lg font-semibold text-gray-900 mt-1">
-                    {formatearFecha(certificadoValidado.fechaGeneracion, {
+                    {new Date(certificadoValidado.fechaGeneracion).toLocaleDateString('es-CO', {
                       day: '2-digit',
                       month: 'long',
                       year: 'numeric'

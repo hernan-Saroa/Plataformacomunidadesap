@@ -1178,6 +1178,21 @@ export function VisorPDFCertificado({
           www.esap.edu.co
         </p>
       </div>
+
+      {/* Footer legal */}
+      <div style={{
+        position: 'absolute',
+        left: '72px',
+        right: '72px',
+        bottom: '10px',
+        textAlign: 'center',
+        fontSize: '7pt',
+        color: '#6b7280',
+        lineHeight: '1.3',
+        fontFamily: typographyFont
+      }}>
+        Este documento es válido sin necesidad de firma autógrafa según el Decreto 2150 de 1995 y la Ley 527 de 1999
+      </div>
     </div>
   );
 
