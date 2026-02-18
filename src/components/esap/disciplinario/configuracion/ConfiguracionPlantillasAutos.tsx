@@ -65,28 +65,40 @@ export function ConfiguracionPlantillasAutos() {
       const autosFromBD = await disciplinaryService.getAutosConfiguration();
       
       // Mapear autos de BD al formato del componente
-      const tiposFromBD: any[] = autosFromBD.map(auto => ({
-        id: auto.id,
-        nombre: auto.nombre,
-        descripcion: `Auto: ${auto.tipo}`,
-        etapa: auto.stage || 'INDAGACION',
-        plantilla: auto.plantilla ? {
-          id: `plt-${auto.id}`,
-          nombre: 'Plantilla configurada',
-          nombreArchivo: 'plantilla.docx',
-          descripcion: 'Plantilla almacenada en BD',
-          tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          url: auto.plantilla || '',
-          tamano: 0,
-          version: '1.0',
+      const tiposFromBD: any[] = autosFromBD.map(auto => {
+        // Construir URL completa para la plantilla si existe
+        const plantillaUrl = auto.plantilla 
+          ? disciplinaryService.getFileUrl(auto.plantilla) 
+          : '';
+        
+        return {
+          id: auto.id,
+          nombre: auto.nombre,
+          descripcion: `Auto: ${auto.tipo}`,
+          etapa: auto.stage || 'INDAGACION',
+          plantilla: auto.plantilla || auto.nombre_plantilla ? {
+            id: `plt-${auto.id}`,
+            nombre: auto.nombre_plantilla || 'Plantilla configurada',
+            nombreArchivo: 'plantilla.docx',
+            descripcion: auto.descripcion_plantilla || 'Plantilla almacenada en BD',
+            tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            url: plantillaUrl,
+            tamano: 0,
+            version: auto.version_plantilla || '1.0',
+            fechaCreacion: auto.createdAt,
+            activo: auto.estado_plantilla === 'activo'
+          } : null,
+          activo: auto.estado === 'activo',
+          orden: auto.orden,
           fechaCreacion: auto.createdAt,
-          activo: true
-        } : null,
-        activo: auto.estado === 'activo',
-        orden: auto.orden,
-        fechaCreacion: auto.createdAt,
-        fechaModificacion: auto.updatedAt
-      }));
+          fechaModificacion: auto.updatedAt,
+          // Campos adicionales para la plantilla
+          nombre_plantilla: auto.nombre_plantilla,
+          descripcion_plantilla: auto.descripcion_plantilla,
+          version_plantilla: auto.version_plantilla,
+          estado_plantilla: auto.estado_plantilla
+        };
+      });
       
       setTiposAutos(tiposFromBD);
     } catch (error) {
@@ -218,13 +230,45 @@ export function ConfiguracionPlantillasAutos() {
     setMostrarModalGestionarPlantillas(true);
   };
 
-  const actualizarPlantillasTipoAuto = (tipoAutoId: string, plantillas: any) => {
-    // Actualizar localmente
-    setTiposAutos(tiposAutos.map(t => 
-      t.id === tipoAutoId 
-        ? { ...t, plantilla: plantillas[0] || null, fechaModificacion: new Date().toISOString() } 
-        : t
-    ));
+  const actualizarPlantillasTipoAuto = async (tipoAutoId: string, plantillas: any) => {
+    const plantilla = plantillas[0];
+    
+    // Verificar si es un auto de la BD
+    const auto = tiposAutos.find(t => t.id === tipoAutoId);
+    if (auto && !tipoAutoId.startsWith('tipo-auto-')) {
+      // Es un auto de la BD - actualizar en backend
+      try {
+        await disciplinaryService.updateAutosConfiguration(tipoAutoId, {
+          nombre: auto.nombre,
+          stage: auto.etapa,
+          estado: auto.activo ? 'activo' : 'inactivo',
+          orden: auto.orden,
+          // Guardar datos de la plantilla
+          nombre_plantilla: plantilla?.nombre || null,
+          descripcion_plantilla: plantilla?.descripcion || null,
+          version_plantilla: plantilla?.version || '1.0',
+          estado_plantilla: plantilla?.activo !== false ? 'activo' : 'inactivo'
+        });
+        await loadDatos();
+        toast.success('Plantillas actualizadas correctamente');
+      } catch (error) {
+        console.error('Error actualizando plantillas en BD:', error);
+        // Actualizar localmente si falla
+        setTiposAutos(tiposAutos.map(t => 
+          t.id === tipoAutoId 
+            ? { ...t, plantilla, fechaModificacion: new Date().toISOString() } 
+            : t
+        ));
+        toast.warning('Plantilla actualizada localmente');
+      }
+    } else {
+      // Es local - solo actualizar
+      setTiposAutos(tiposAutos.map(t => 
+        t.id === tipoAutoId 
+          ? { ...t, plantilla, fechaModificacion: new Date().toISOString() } 
+          : t
+      ));
+    }
     setCambiosPendientes(true);
     setMostrarModalGestionarPlantillas(false);
     setTipoAutoGestionando(null);

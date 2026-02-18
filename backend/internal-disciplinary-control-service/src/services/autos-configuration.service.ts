@@ -129,6 +129,12 @@ export class AutosConfigurationService {
     if (updateDto.plantilla !== undefined) autoConfig.plantilla = updateDto.plantilla;
     if (updateDto.stage !== undefined) autoConfig.stage = updateDto.stage;
     if (updateDto.orden !== undefined) autoConfig.orden = updateDto.orden;
+    
+    // Actualizar campos de plantilla
+    if (updateDto.nombre_plantilla !== undefined) autoConfig.nombre_plantilla = updateDto.nombre_plantilla;
+    if (updateDto.descripcion_plantilla !== undefined) autoConfig.descripcion_plantilla = updateDto.descripcion_plantilla;
+    if (updateDto.version_plantilla !== undefined) autoConfig.version_plantilla = updateDto.version_plantilla;
+    if (updateDto.estado_plantilla !== undefined) autoConfig.estado_plantilla = updateDto.estado_plantilla;
 
     return await this.autoConfigRepository.save(autoConfig);
   }
@@ -156,6 +162,9 @@ export class AutosConfigurationService {
   async updatePlantilla(id: string, plantillaUrl: string): Promise<AutoConfiguration> {
     const autoConfig = await this.findById(id);
     autoConfig.plantilla = plantillaUrl;
+    autoConfig.nombre_plantilla = `Plantilla_${Date.now()}`;
+    autoConfig.estado_plantilla = 'activo';
+    autoConfig.version_plantilla = '1.0';
     return await this.autoConfigRepository.save(autoConfig);
   }
 }

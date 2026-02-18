@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Briefcase,
   Settings,
-  Mail
+  Mail,
+  History
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -31,6 +32,7 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
 import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
+import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
 
@@ -338,6 +340,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
   const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
 
   // Estado para certificados y loading
@@ -739,6 +742,41 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
             <span className="sm:hidden">Plantilla</span>
           </button>
+
+          <button
+            onClick={() => fetchCertificados(true)}
+            disabled={isRefreshing}
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: '#FFFFFF',
+              color: '#10B981',
+              border: '2px solid #10B981',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+              opacity: isRefreshing ? 0.6 : 1
+            }}
+            onMouseEnter={(e) => {
+              if (!isRefreshing) {
+                e.currentTarget.style.background = '#F0FDF4';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <motion.div
+              animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+              transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+            >
+              <RefreshCw className="w-5 h-5" strokeWidth={2} />
+            </motion.div>
+            <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+          </button>
           
           <button
             onClick={() => setIsGenerarOpen(true)}
@@ -747,12 +785,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               background: '#FFFFFF',
               color: '#003DA5',
               border: '2px solid #003DA5',
-              borderRadius: '12px',
-              padding: '12px 20px',
-              fontSize: '14px',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
               fontWeight: 500,
-              cursor: 'pointer',
-              minHeight: '48px'
+              cursor: 'pointer'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#F0F6FF';
@@ -765,6 +802,32 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           >
             <Download className="w-5 h-5" strokeWidth={2} />
             <span>Exportar</span>
+          </button>
+
+          <button
+            onClick={() => setIsHistorialOpen(true)}
+            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+            style={{
+              background: '#FFFFFF',
+              color: '#F97316',
+              border: '2px solid #F97316',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#FFF7ED';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#FFFFFF';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <History className="w-5 h-5" strokeWidth={2} />
+            <span>Ver historial</span>
           </button>
         </div>
       </motion.div>
@@ -791,7 +854,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                 color: '#1E3A8A'
               }}
             >
-              📧 Certificados por Autoservicio
+              Certificados por Autoservicio
             </h3>
             <p 
               className="font-normal text-xs sm:text-sm mb-3"
@@ -847,10 +910,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         className="bg-white rounded-xl border border-[#E5E7EB] p-3 sm:p-4"
         style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)' }}
       >
-        <div className="space-y-3">
-          <div className="relative">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Búsqueda - Siempre full width en mobile */}
+          <div className="flex-1 relative">
             <Search 
-              className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
               style={{ color: '#9CA3AF' }}
             />
             <input
@@ -883,72 +947,101 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
-              style={{
-                fontSize: '14px',
-                color: '#1F2937',
-                borderColor: '#D1D5DB',
-                height: '48px',
-                outline: 'none'
-              }}
-            >
-              <option value="all">Todos los estados</option>
-              <option value="activo">Activo</option>
-              <option value="inactivo">Inactivo</option>
-              <option value="revocado">Revocado</option>
-              <option value="expirado">Expirado</option>
-            </select>
-
-            <select
+          {/* Filtro Cargo */}
+          <div className="relative" style={{ minWidth: '220px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar cargo..."
               value={cargoFilter}
               onChange={(e) => setCargoFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar cargo"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: cargoFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="">Todos los cargos</option>
-              {cargosDisponibles.map((cargo) => (
-                <option key={cargo} value={cargo}>
-                  {cargo}
-                </option>
-              ))}
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {cargoFilter && (
+              <button
+                onClick={() => setCargoFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de cargo"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
 
-            <select
+          {/* Filtro Tipo Vinculación */}
+          <div className="relative" style={{ minWidth: '240px' }}>
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: '#9CA3AF' }}
+            />
+            <input
+              type="text"
+              placeholder="Buscar tipo de vinculación..."
               value={tipoVinculacionFilter}
               onChange={(e) => setTipoVinculacionFilter(e.target.value)}
-              className="border-2 rounded-lg transition-all px-3 py-3 text-sm w-full"
+              aria-label="Buscar tipo de vinculación"
+              className="w-full border-2 rounded-lg transition-all"
               style={{
+                paddingLeft: '40px',
+                paddingRight: tipoVinculacionFilter ? '40px' : '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
                 fontSize: '14px',
+                lineHeight: '20px',
                 color: '#1F2937',
                 borderColor: '#D1D5DB',
-                height: '48px',
+                height: '44px',
                 outline: 'none'
               }}
-            >
-              <option value="">Tipo vinculación</option>
-              {tiposVinculacionDisponibles.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
+              onFocus={(e) => {
+                e.target.style.borderColor = '#003DA5';
+                e.target.style.boxShadow = '0 0 0 3px rgba(0, 61, 165, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#D1D5DB';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+            {tipoVinculacionFilter && (
+              <button
+                onClick={() => setTipoVinculacionFilter('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Limpiar filtro de tipo de vinculación"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1289,6 +1382,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         }}
         certificados={certificados}
       />
+
+      <ModalHistorialCertificados
+        isOpen={isHistorialOpen}
+        onClose={() => setIsHistorialOpen(false)}
+      />
+
     </div>
   );
 }

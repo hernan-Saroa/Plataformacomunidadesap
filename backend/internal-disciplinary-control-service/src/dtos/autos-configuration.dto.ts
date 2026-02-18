@@ -35,6 +35,28 @@ export class CreateAutosConfigurationDto {
   @Min(0)
   @Max(9999)
   orden?: number;
+
+  // Campos de plantilla
+  @ApiPropertyOptional({ description: 'Nombre de la plantilla' })
+  @IsOptional()
+  @IsString()
+  nombre_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Descripción de la plantilla' })
+  @IsOptional()
+  @IsString()
+  descripcion_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Versión de la plantilla', default: '1.0' })
+  @IsOptional()
+  @IsString()
+  version_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Estado de la plantilla (activo/inactivo)', default: 'activo' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['activo', 'inactivo'])
+  estado_plantilla?: string;
 }
 
 export class UpdateAutosConfigurationDto {
@@ -72,6 +94,28 @@ export class UpdateAutosConfigurationDto {
   @Min(0)
   @Max(9999)
   orden?: number;
+
+  // Campos de plantilla
+  @ApiPropertyOptional({ description: 'Nombre de la plantilla' })
+  @IsOptional()
+  @IsString()
+  nombre_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Descripción de la plantilla' })
+  @IsOptional()
+  @IsString()
+  descripcion_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Versión de la plantilla' })
+  @IsOptional()
+  @IsString()
+  version_plantilla?: string;
+
+  @ApiPropertyOptional({ description: 'Estado de la plantilla (activo/inactivo)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['activo', 'inactivo'])
+  estado_plantilla?: string;
 }
 
 export class AutosConfigurationResponseDto {
@@ -103,4 +147,17 @@ export class AutosConfigurationResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+
+  // Campos de plantilla
+  @ApiPropertyOptional()
+  nombre_plantilla?: string;
+
+  @ApiPropertyOptional()
+  descripcion_plantilla?: string;
+
+  @ApiPropertyOptional()
+  version_plantilla?: string;
+
+  @ApiPropertyOptional()
+  estado_plantilla?: string;
 }
