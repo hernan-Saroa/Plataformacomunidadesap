@@ -12,9 +12,10 @@
  */
 
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Download } from 'lucide-react';
 import { ESAP_COLORS, getKanbanColumnColor, type EstadoKanban } from '../utils/esapThemeOCIG';
 import { AuditoriaCard, type AuditoriaCardData } from './AuditoriaCard';
+import { toast } from 'sonner';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -28,6 +29,7 @@ interface KanbanColumnProps {
   onAgregarNueva?: () => void;
   onOpenAuditoria?: (id: string) => void;
   onDrop?: (auditoriaId: string, nuevoEstado: EstadoKanban) => void;
+  onExportar?: (estado: EstadoKanban) => void;
   className?: string;
 }
 
@@ -75,10 +77,22 @@ export function KanbanColumn({
   onAgregarNueva,
   onOpenAuditoria,
   onDrop,
+  onExportar,
   className = '',
 }: KanbanColumnProps) {
   
   const config = COLUMN_CONFIG[estado];
+
+  const handleExportarColumna = () => {
+    if (onExportar) {
+      onExportar(estado);
+    } else {
+      toast.success(`Exportando ${titulo}`, {
+        description: `${count} auditorías en esta columna`,
+        duration: 2000,
+      });
+    }
+  };
 
   // Handlers para drag & drop (simulado - implementar con react-dnd)
   const handleDragOver = (e: React.DragEvent) => {
@@ -115,18 +129,28 @@ export function KanbanColumn({
           borderColor: config.border,
         }}
       >
-        <h3 className="font-semibold text-sm uppercase tracking-wide" style={{ color: config.textColor }}>
-          {titulo}
-        </h3>
-        <span 
-          className="px-2 py-0.5 rounded-full text-xs font-bold"
-          style={{ 
-            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-            color: config.textColor,
-          }}
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm uppercase tracking-wide" style={{ color: config.textColor }}>
+            {titulo}
+          </h3>
+          <span 
+            className="px-2 py-0.5 rounded-full text-xs font-bold"
+            style={{ 
+              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              color: config.textColor,
+            }}
+          >
+            {count}
+          </span>
+        </div>
+        {/* Botón exportar columna */}
+        <button
+          onClick={handleExportarColumna}
+          className="p-1.5 rounded hover:bg-white/50 transition-colors"
+          title={`Exportar ${titulo}`}
         >
-          {count}
-        </span>
+          <Download className="w-4 h-4" style={{ color: config.textColor }} />
+        </button>
       </div>
 
       {/* ÁREA DE TARJETAS */}

@@ -20,7 +20,10 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
+// ✅ Servicio de exportación a PDF
+import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
 
 // ✅ Importar modales desde carpeta modales/
 import { 
@@ -2458,28 +2461,79 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Exportar individual
-  const handleExportar = (auditoria: Auditoria) => {
-    // Simular exportación a PDF
-    toast.success(`Exportando ${auditoria.codigo}...`, {
-      description: 'Generando informe PDF completo',
-      duration: 3000
-    });
-    
-    // En producción, esto haría una llamada al backend para generar el PDF
-    setTimeout(() => {
-      toast.success(`${auditoria.codigo} exportado`, {
-        description: 'El archivo PDF está listo para descargar'
+  const handleExportar = async (auditoria: Auditoria) => {
+    try {
+      toast.info(`Generando PDF de ${auditoria.codigo}...`, {
+        description: 'El documento se descargará en unos segundos',
+        duration: 3000
       });
-      
-      // Simular descarga
-      const blob = new Blob(['Informe de Auditoría'], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${auditoria.codigo}_Informe.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }, 2000);
+
+      // ✅ Extraer nombre del auditor líder (puede ser objeto o string)
+      let nombreAuditorLider = 'No asignado';
+      let cargoAuditorLider = '';
+      if (auditoria.auditorLider) {
+        if (typeof auditoria.auditorLider === 'object' && auditoria.auditorLider.nombre) {
+          nombreAuditorLider = auditoria.auditorLider.nombre;
+          cargoAuditorLider = auditoria.auditorLider.cargo || '';
+        } else if (typeof auditoria.auditorLider === 'string') {
+          nombreAuditorLider = auditoria.auditorLider;
+        }
+      }
+
+      // ✅ Extraer equipo auditores (puede ser array de strings o de objetos)
+      let equipoFormateado: Array<{ nombre: string; rol?: string }> = [];
+      if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
+        equipoFormateado = auditoria.equipoAuditores.map((auditor: any) => {
+          if (typeof auditor === 'string') {
+            return { nombre: auditor, rol: 'Auditor' };
+          } else if (typeof auditor === 'object' && auditor !== null) {
+            return { 
+              nombre: auditor.nombre || auditor.name || auditor.id || 'Auditor', 
+              rol: auditor.rol || auditor.cargo || 'Auditor' 
+            };
+          }
+          return { nombre: 'Auditor', rol: 'Auditor' };
+        });
+      }
+
+      // Preparar datos para el PDF (las fechas se pasan tal cual, el servicio las parsea)
+      const datosAuditoria: AuditoriaPDFData = {
+        id: auditoria.id,
+        codigo: auditoria.codigo,
+        nombre: auditoria.titulo,
+        tipo: auditoria.tipo,
+        estado: auditoria.estado,
+        areaObjetivo: auditoria.areaObjetivo,
+        procesoAuditado: auditoria.titulo,
+        auditorLider: {
+          nombre: nombreAuditorLider,
+          cargo: cargoAuditorLider,
+        },
+        equipoAuditores: equipoFormateado,
+        fechaInicio: auditoria.fechaInicio || '',
+        fechaFin: auditoria.fechaFin || '',
+        progreso: auditoria.progreso,
+        hallazgos: auditoria.hallazgos,
+      };
+
+      console.log('📄 Datos para PDF:', datosAuditoria);
+
+      // Generar PDF
+      const resultado = await exportarAuditoriaPDF(datosAuditoria);
+
+      if (resultado.exito) {
+        toast.success(`${auditoria.codigo} exportado`, {
+          description: resultado.nombreArchivo
+        });
+      } else {
+        throw new Error(resultado.error);
+      }
+    } catch (error: any) {
+      console.error('Error al exportar auditoría:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el PDF'
+      });
+    }
   };
 
   // Archivar individual - ACTUALIZADO
