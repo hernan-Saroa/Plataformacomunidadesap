@@ -33,7 +33,11 @@ import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
-import { Container4K, ResponsiveGrid } from '@/components/ui';
+import { Container4K } from '../../ui/container-4k';
+import { ResponsiveGrid } from '../../ui/responsive-grid';
+
+// ✅ Descarga de Expedientes en ZIP
+import { BotonDescargarExpedienteZip } from './DescargarExpedienteZip';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -69,8 +73,6 @@ interface Expediente {
   totalDocumentos: number;
   documentos: Documento[];
 }
-
-type VistaActual = 'expedientes' | 'estadisticas';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE FASES
@@ -161,8 +163,6 @@ const EXPEDIENTES_MOCK: Expediente[] = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ExpedientesModulePremium() {
-  const [vistaActiva, setVistaActiva] = useState<VistaActual>('expedientes');
-
   return (
     <div className="min-h-screen bg-gray-50">
       <HeaderModuloCIG
@@ -170,78 +170,9 @@ export function ExpedientesModulePremium() {
         subtitulo="Control Interno de Gestión"
       />
 
-      {/* Navegación */}
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="w-full px-8">
-          <div className="flex gap-1">
-            <TabButton
-              active={vistaActiva === 'expedientes'}
-              onClick={() => setVistaActiva('expedientes')}
-              icon={<Folder className="w-4 h-4" />}
-              label="Expedientes por Auditoría"
-              badge={EXPEDIENTES_MOCK.length.toString()}
-            />
-            <TabButton
-              active={vistaActiva === 'estadisticas'}
-              onClick={() => setVistaActiva('estadisticas')}
-              icon={<Archive className="w-4 h-4" />}
-              label="Estadísticas"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Contenido */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={vistaActiva}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.2 }}
-        >
-          {vistaActiva === 'expedientes' && <VistaExpedientes />}
-          {vistaActiva === 'estadisticas' && <VistaEstadisticas />}
-        </motion.div>
-      </AnimatePresence>
+      {/* Contenido directo sin navegación por tabs */}
+      <VistaExpedientes />
     </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// TAB BUTTON
-// ════════════════════════════════════════════════════════════════════════════
-
-interface TabButtonProps {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-}
-
-function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all
-        ${active 
-          ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50' 
-          : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-        }
-      `}
-    >
-      {icon}
-      {label}
-      {badge && (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-          active ? 'bg-[#1e5da8] text-white' : 'bg-gray-200 text-gray-700'
-        }`}>
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }
 
@@ -501,6 +432,7 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
                 <Upload className="w-4 h-4" />
                 Cargar
               </button>
+              <BotonDescargarExpedienteZip expediente={expediente} />
               <button
                 onClick={onToggleExpand}
                 className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
@@ -737,76 +669,6 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// VISTA: ESTADÍSTICAS
-// ════════════════════════════════════════════════════════════════════════════
-
-function VistaEstadisticas() {
-  const stats = useMemo(() => {
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
-    const docsPorFase: Record<FaseAuditoria, number> = {
-      PLANIFICACION: 0,
-      EJECUCION: 0,
-      HALLAZGOS: 0,
-      COMUNICACION_RESULTADOS: 0,
-      SEGUIMIENTO: 0,
-      CIERRE: 0
-    };
-
-    EXPEDIENTES_MOCK.forEach(exp => {
-      exp.documentos.forEach(doc => {
-        docsPorFase[doc.fase]++;
-      });
-    });
-
-    return { totalDocs, docsPorFase };
-  }, []);
-
-  return (
-    <Container4K className="py-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <h2 className="text-xl text-gray-900 font-medium mb-6">Estadísticas de Expedientes</h2>
-
-        <ResponsiveGrid cols="3" gap="4" className="mb-6">
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <div className="text-xs text-blue-700 mb-1">Total Documentos</div>
-            <div className="text-2xl font-semibold text-blue-900">{stats.totalDocs}</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
-            <div className="text-xs text-green-700 mb-1">Expedientes Activos</div>
-            <div className="text-2xl font-semibold text-green-900">{EXPEDIENTES_MOCK.filter(e => e.estado !== 'CERRADO').length}</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
-            <div className="text-xs text-purple-700 mb-1">Promedio Docs/Expediente</div>
-            <div className="text-2xl font-semibold text-purple-900">{Math.round(stats.totalDocs / EXPEDIENTES_MOCK.length)}</div>
-          </div>
-        </ResponsiveGrid>
-
-        <h3 className="text-sm font-medium text-gray-900 mb-4">Documentos por Fase</h3>
-        <div className="space-y-3">
-          {FASES_AUDITORIA.map(fase => {
-            const count = stats.docsPorFase[fase.id];
-            const porcentaje = stats.totalDocs > 0 ? Math.round((count / stats.totalDocs) * 100) : 0;
-
-            return (
-              <div key={fase.id} className="flex items-center gap-4">
-                <div className="w-48 text-sm text-gray-700">{fase.nombre}</div>
-                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] h-full transition-all"
-                    style={{ width: `${porcentaje}%` }}
-                  />
-                </div>
-                <div className="w-20 text-sm text-gray-900 text-right font-medium">{count} ({porcentaje}%)</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Container4K>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTES AUXILIARES
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1024,24 +886,24 @@ interface ModalVerDocumentoProps {
 
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
   return (
-    <div className="fixed inset-0 z-[10000] overflow-hidden flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-y-auto">
       <div 
         className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
         onClick={onClose}
       />
       
-      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10">
+      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl">
+        <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl flex-shrink-0">
           <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
           <p className="text-sm text-blue-100 mt-1">{documento.nombre}</p>
         </div>
 
-        {/* Contenido */}
-        <div className="px-6 py-6">
+        {/* Contenido con scroll */}
+        <div className="px-6 py-6 overflow-y-auto flex-1">
           <div className="space-y-4">
             {/* Información del Documento */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="text-xs text-blue-700 mb-1">Fase del Proceso</div>
                 <div className="text-sm text-blue-900 font-medium">{fase.nombre}</div>
@@ -1118,3 +980,8 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// BOTÓN DESCARGAR ZIP - Importado desde DescargarExpedienteZip.tsx
+// ════════════════════════════════════════════════════════════════════════════
+// El componente BotonDescargarExpedienteZip está importado arriba ↑

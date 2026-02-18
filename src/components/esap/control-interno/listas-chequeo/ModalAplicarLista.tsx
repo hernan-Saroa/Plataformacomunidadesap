@@ -98,7 +98,7 @@ export function ModalAplicarLista({
         auditoria.codigo
       );
 
-      toast.success("Lista aplicada correctamente", {
+      toast.success("Plantilla aplicada correctamente", {
         description: `Se creó la lista ${nuevaLista.id} para la auditoría ${auditoria.codigo}`,
       });
 
@@ -107,7 +107,7 @@ export function ModalAplicarLista({
       // TODO: Navegar al llenado de la lista
       console.log("Navegar a llenado de lista:", nuevaLista.id);
     } catch (error) {
-      toast.error("Error al aplicar la lista");
+      toast.error("Error al aplicar la plantilla");
       console.error(error);
     }
   };
@@ -135,9 +135,9 @@ export function ModalAplicarLista({
               <ClipboardCheck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Aplicar Lista de Chequeo</h2>
+              <h2 className="text-xl font-bold">Aplicar Plantilla de Biblioteca</h2>
               <p className="text-blue-100 text-sm mt-1">
-                Selecciona la auditoría donde aplicar esta plantilla
+                Selecciona la auditoría donde aplicar esta plantilla de biblioteca
               </p>
             </div>
           </div>

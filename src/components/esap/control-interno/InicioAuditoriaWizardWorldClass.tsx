@@ -3,27 +3,28 @@
  * WIZARD INICIO AUDITORÍA - WORLD CLASS
  * ============================================
  * 
- * Wizard de 4 pasos para inicio formal de auditorías
+ * Wizard de 5 pasos para inicio formal de auditorías
  * Usa ModalWorldClass como base
  * 
  * PASOS:
+ * 0. Listas de Chequeo - Planeación - Verificación preliminar
  * 1. Auditoría Seleccionada - Revisión de datos
  * 2. Proceso Auditado - Detalles del área
  * 3. Equipo Auditor - Auditor líder y equipo
  * 4. Cronograma Estimado - Fechas y plazos
  * 
- * ÚLTIMA ACTUALIZACIÓN: 22 Enero 2025
+ * ÚLTIMA ACTUALIZACIÓN: 13 Febrero 2026 - INTEGRACIÓN LISTAS DE CHEQUEO
  */
 
 import { useState } from 'react';
-import { FileText, Users, Calendar, CheckCircle, ChevronRight, ChevronLeft, Target, Clock, Building2, MapPin, Shield } from 'lucide-react';
+import { FileText, Users, Calendar, CheckCircle, ChevronRight, ChevronLeft, Target, Clock, Building2, MapPin, Shield, CheckSquare, AlertCircle } from 'lucide-react';
 import { ModalWorldClass } from './ModalWorldClass';
 import { toast } from 'sonner@2.0.3';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ============ TIPOS ============
 
-type PasoWizard = 1 | 2 | 3 | 4;
+type PasoWizard = 0 | 1 | 2 | 3 | 4;
 
 interface Auditoria {
   id: string;
@@ -70,7 +71,7 @@ export function InicioAuditoriaWizardWorldClass({
   auditoria,
   onIniciar
 }: InicioAuditoriaWizardProps) {
-  const [paso, setPaso] = useState<PasoWizard>(1);
+  const [paso, setPaso] = useState<PasoWizard>(0);
   const [loading, setLoading] = useState(false);
 
   if (!auditoria) return null;
@@ -100,7 +101,7 @@ export function InicioAuditoriaWizardWorldClass({
   };
 
   const handleAnterior = () => {
-    if (paso > 1) {
+    if (paso > 0) {
       setPaso((prev) => (prev - 1) as PasoWizard);
     }
   };
@@ -117,7 +118,7 @@ export function InicioAuditoriaWizardWorldClass({
     });
     
     setLoading(false);
-    setPaso(1);
+    setPaso(0);
     onClose();
   };
 
@@ -135,7 +136,7 @@ export function InicioAuditoriaWizardWorldClass({
         <div className="flex items-center justify-between">
           {/* Indicador de pasos */}
           <div className="flex items-center gap-2">
-            {[1, 2, 3, 4].map((num) => (
+            {[0, 1, 2, 3, 4].map((num) => (
               <div
                 key={num}
                 className={`
@@ -153,7 +154,7 @@ export function InicioAuditoriaWizardWorldClass({
 
           {/* Botones de navegación */}
           <div className="flex items-center gap-3">
-            {paso > 1 && (
+            {paso > 0 && (
               <button
                 onClick={handleAnterior}
                 disabled={loading}
@@ -188,12 +189,87 @@ export function InicioAuditoriaWizardWorldClass({
     >
       {/* Contenido según paso */}
       <AnimatePresence mode="wait">
+        {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
         {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}
         {paso === 2 && <Paso2ProcesoAuditado key="paso2" auditoria={auditoria} />}
         {paso === 3 && <Paso3EquipoAuditor key="paso3" auditoria={auditoria} />}
         {paso === 4 && <Paso4Cronograma key="paso4" auditoria={auditoria} />}
       </AnimatePresence>
     </ModalWorldClass>
+  );
+}
+
+// ============ PASO 0: LISTAS DE CHEQUEO ============
+
+function Paso0ListasChequeo({ auditoria }: { auditoria: Auditoria }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="space-y-6"
+    >
+      <div>
+        <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
+          <CheckSquare className="w-5 h-5 text-blue-600" />
+          Listas de Chequeo
+        </h3>
+        <p className="text-sm text-gray-600">
+          Verifique los elementos necesarios para la planeación y ejecución de la auditoría.
+        </p>
+      </div>
+
+      {/* Listas de chequeo */}
+      <div className="space-y-4">
+        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="w-5 h-5 text-blue-600" />
+            <h4 className="text-sm font-medium text-gray-900">Documentos de Apoyo</h4>
+          </div>
+          <ul className="list-disc list-inside mt-2">
+            <li>Oficio de Anuncio</li>
+            <li>Cartas de Compromiso</li>
+            <li>Programa Individual</li>
+          </ul>
+        </div>
+
+        <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="w-5 h-5 text-purple-600" />
+            <h4 className="text-sm font-medium text-gray-900">Recursos y Equipos</h4>
+          </div>
+          <ul className="list-disc list-inside mt-2">
+            <li>Software de Auditoría</li>
+            <li>Dispositivos de Medición</li>
+            <li>Documentación Técnica</li>
+          </ul>
+        </div>
+
+        <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <CheckSquare className="w-5 h-5 text-orange-600" />
+            <h4 className="text-sm font-medium text-gray-900">Personal y Roles</h4>
+          </div>
+          <ul className="list-disc list-inside mt-2">
+            <li>Auditor Líder</li>
+            <li>Equipo de Auditoría</li>
+            <li>Responsable del Área</li>
+          </ul>
+        </div>
+
+        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600" />
+            <h4 className="text-sm font-medium text-gray-900">Riesgos y Controles</h4>
+          </div>
+          <ul className="list-disc list-inside mt-2">
+            <li>Identificación de Riesgos</li>
+            <li>Plan de Mitigación</li>
+            <li>Controles Internos</li>
+          </ul>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 

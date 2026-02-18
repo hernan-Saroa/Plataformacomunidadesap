@@ -386,7 +386,7 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
 const normalizarEstado = (estado: string | undefined): EstadoKanban => {
   if (!estado) return 'planeacion';
   const estadoLower = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (estadoLower.includes('backlog') || estadoLower.includes('pendiente')) return 'backlog';
+  if (estadoLower.includes('backlog') || estadoLower.includes('pendiente') || estadoLower.includes('plan anual') || estadoLower.includes('plan-anual')) return 'backlog';
   if (estadoLower.includes('planeacion') || estadoLower.includes('planificacion')) return 'planeacion';
   if (estadoLower.includes('ejecucion')) return 'ejecucion';
   if (estadoLower.includes('comunicacion') || estadoLower.includes('informe')) return 'comunicacion';
