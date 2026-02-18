@@ -75,6 +75,7 @@ export class Hallazgo {
     nombre: string;
     tipo: string;
     fecha: string;
+    url?: string;
   }>;
 
   @Column({

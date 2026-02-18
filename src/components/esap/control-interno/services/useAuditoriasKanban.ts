@@ -86,6 +86,8 @@ export interface AuditoriaKanban {
   actividadesPendientes?: number;
   // Criterios de auditoría
   criterios?: CriterioAuditoria[];
+  // ID del auditor líder asignado
+  auditorLiderId?: string | number;
 }
 
 export interface CriterioAuditoria {
@@ -272,7 +274,12 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
     progreso,
-    hallazgos: auditoriaBackend.hallazgos || auditoriaBackend.hallazgosCount || 0,
+    // Asegurar que hallazgos sea un número
+    hallazgos: typeof auditoriaBackend.hallazgos === 'number' 
+      ? auditoriaBackend.hallazgos 
+      : (Array.isArray(auditoriaBackend.hallazgos) 
+          ? auditoriaBackend.hallazgos.length 
+          : (auditoriaBackend.hallazgosCount || 0)),
     diasRestantes: auditoriaBackend.diasRestantes || tiempos.diasRestantes,
     porcentajeTiempo: auditoriaBackend.porcentajeTiempo || tiempos.porcentajeTiempo,
     ultimaActuacion: auditoriaBackend.ultimaActuacion || 'Sin actuaciones registradas',
@@ -299,7 +306,8 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
       departamento: auditoriaBackend.territorial
     } : undefined,
     actividadesCompletas: true,
-    actividadesPendientes: 0
+    actividadesPendientes: 0,
+    auditorLiderId: auditoriaBackend.auditorLiderId
   };
 }
 
@@ -559,6 +567,54 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Obtener hallazgos de una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const getHallazgos = useCallback(async (auditoriaId: string): Promise<any[]> => {
+    try {
+      const hallazgos = await controlInternoService.getHallazgosByAuditoria(auditoriaId);
+      return Array.isArray(hallazgos) ? hallazgos : [];
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al obtener hallazgos:', err);
+      return [];
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Crear hallazgo para una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const crearHallazgo = useCallback(async (auditoriaId: string, data: {
+    titulo?: string;
+    categoria: string;
+    tipo?: string;
+    area: string;
+    descripcion: string;
+    criterioIncumplido: string;
+    fechaDeteccion: string;
+    responsable?: string;
+  }): Promise<boolean> => {
+    try {
+      // Obtener la auditoría para tener el nombre
+      const auditoriaData = auditorias.find(a => a.id === auditoriaId);
+      const auditoriaNombre = auditoriaData?.titulo || 'Auditoría';
+
+      await controlInternoService.createHallazgo({
+        ...data,
+        auditoriaId,
+        auditoria: auditoriaNombre,
+      });
+      toast.success('Hallazgo registrado exitosamente');
+      // Incrementar contador de hallazgos
+      await controlInternoService.incrementarHallazgosAuditoria(auditoriaId);
+      await fetchAuditorias();
+      return true;
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al crear hallazgo:', err);
+      toast.error('Error al registrar hallazgo');
+      return false;
+    }
+  }, [auditorias, fetchAuditorias]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Cargar datos al montar
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -581,7 +637,10 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     eliminarNota,
     getHistorial,
     aprobarAuditoria,
-    rechazarAuditoria
+    rechazarAuditoria,
+    // ✅ Métodos de hallazgos
+    getHallazgos,
+    crearHallazgo
   };
 }
 

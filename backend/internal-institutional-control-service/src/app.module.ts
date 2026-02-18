@@ -48,6 +48,7 @@ import { ListaChequeo } from './esap/listas-chequeo/entities/lista-chequeo.entit
 import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-chequeo.entity';
 import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.entity';
 import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
+import { TareaAuditoria } from './esap/tareas-auditoria/entities/tarea-auditoria.entity';
 
 @Module({
   imports: [
@@ -125,6 +126,7 @@ import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity
             ItemListaChequeo,
             TableroKanban,
             EtapaKanban,
+            TareaAuditoria,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

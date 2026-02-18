@@ -41,6 +41,12 @@ import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 // Integración
 import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesContext';
 
+// ✅ Hook de backend para planes de mejoramiento
+import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
+
+// ✅ FASE 1 DÍA 2: Componentes responsive
+import { useResponsive } from '@/hooks/useResponsive';
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -346,8 +352,60 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
-  const [planes, setPlanes] = useState<PlanMejoramiento[]>(PLANES_EJEMPLO);
+  // ✅ HOOK DE BACKEND - Planes de mejoramiento
+  const {
+    planes: planesBackend,
+    loading: cargandoBackend,
+    error: errorBackend,
+    fetchPlanes,
+    crearPlan: crearPlanBackend,
+    actualizarEstadoPlan,
+    aprobarPlan,
+    rechazarPlan
+  } = usePlanesMejoramiento();
+
+  // Estado local sincronizado con backend
+  const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+
+  // Sincronizar planes del backend con estado local
+  useEffect(() => {
+    if (!cargandoBackend && planesBackend.length > 0) {
+      // Transformar PlanMejoramientoKanban a PlanMejoramiento local
+      const planesLocales: PlanMejoramiento[] = planesBackend.map(p => ({
+        id: p.id,
+        codigo: p.codigo,
+        auditoria: p.auditoria,
+        area: p.area,
+        responsable: p.responsable,
+        cargoResponsable: p.cargoResponsable,
+        fechaCreacion: p.fechaCreacion,
+        fechaAprobacion: p.fechaAprobacion,
+        fechaInicio: p.fechaInicio,
+        fechaFin: p.fechaFin,
+        estado: p.estado,
+        semaforo: p.semaforo,
+        totalHallazgos: p.totalHallazgos,
+        totalAcciones: p.totalAcciones,
+        accionesCompletadas: p.accionesCompletadas,
+        accionesEnProceso: p.accionesEnProceso,
+        accionesPendientes: p.accionesPendientes,
+        porcentajeAvance: p.porcentajeAvance,
+        hallazgosCriticos: p.hallazgosCriticos,
+        hallazgosModerados: p.hallazgosModerados,
+        hallazgosLeves: p.hallazgosLeves,
+        ultimaActualizacion: p.ultimaActualizacion,
+        alertas: p.alertas,
+        diasRestantes: p.diasRestantes
+      }));
+      setPlanes(planesLocales);
+      console.log('✅ [PlanesMejoramiento] Sincronizados', planesLocales.length, 'planes del backend');
+    } else if (!cargandoBackend && planesBackend.length === 0) {
+      // Sin planes en backend - mostrar lista vacía
+      console.log('ℹ️ [PlanesMejoramiento] Sin planes en backend');
+      setPlanes([]);
+    }
+  }, [planesBackend, cargandoBackend]);
 
   // Integración con Auditorías
   const { 
@@ -356,7 +414,7 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriasConHallazgos,
     navegarAFormulacion,
     setNavegarAFormulacion,
-    crearPlan,
+    crearPlan: crearPlanContext,
     generarExpediente // ✅ NUEVO: Para generar expedientes
   } = useIntegracionAuditoriaPlanes();
 
@@ -368,53 +426,94 @@ export function PlanesMejoramientoModuleRediseno() {
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion]);
 
-  const handleCrearPlanDesdeAuditoria = (auditoria: any) => {
+  const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
 
-    const nuevoPlan: PlanMejoramiento = {
-      id: `plan-${Date.now()}`,
-      codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
-      auditoria: auditoria.nombre,
-      area: auditoria.areaResponsable,
-      responsable: auditoria.responsable,
-      cargoResponsable: auditoria.cargo,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
-      estado: 'FORMULACION',
-      semaforo: 'amarillo',
-      totalHallazgos: auditoria.hallazgos.length,
-      totalAcciones: 0,
-      accionesCompletadas: 0,
-      accionesEnProceso: 0,
-      accionesPendientes: 0,
-      porcentajeAvance: 0,
-      hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
-      hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
-      hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
-      ultimaActualizacion: new Date().toISOString().split('T')[0],
-      alertas: 0,
-      diasRestantes: 365
-    };
+    // ✅ Crear en backend con DTO correcto
+    const fechaLimite = auditoria.fechaLimitePlan || calcularFechaLimite();
+    // Asegurar formato ISO 8601
+    const fechaLimiteISO = fechaLimite.includes('/') 
+      ? (() => {
+          const [d, m, y] = fechaLimite.split('/');
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        })()
+      : fechaLimite;
 
-    setPlanes(prev => [nuevoPlan, ...prev]);
-
-    // Actualizar contexto
-    crearPlan({
+    const planCreado = await crearPlanBackend({
+      areaResponsable: auditoria.areaResponsable || auditoria.area || 'Sin área',
+      responsableImplementacion: auditoria.responsable || 'Sin responsable',
+      fechaLimite: fechaLimiteISO,
       auditoriaId: auditoria.id,
-      codigoAuditoria: auditoria.codigo,
-      fechaCreacion: nuevoPlan.fechaCreacion,
-      estado: 'EN_FORMULACION',
-      accionesCreadas: 0,
-      progresoGeneral: 0
+      titulo: `Plan de Mejoramiento - ${auditoria.codigo || 'Nuevo'}`,
+      descripcion: `Plan de mejoramiento derivado de la auditoría ${auditoria.nombre || auditoria.titulo || ''}`
     });
 
-    toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
+    if (planCreado) {
+      // Actualizar contexto de integración
+      crearPlanContext({
+        auditoriaId: auditoria.id,
+        codigoAuditoria: auditoria.codigo,
+        fechaCreacion: planCreado.fechaCreacion,
+        estado: 'EN_FORMULACION',
+        accionesCreadas: 0,
+        progresoGeneral: 0
+      });
+      
+      // ✅ Toast de éxito
+      toast.success(`Plan ${planCreado.codigo} creado exitosamente`);
+      setModalCrearPlanOpen(false);
+      limpiarSeleccion();
+      return;
+    }
+
+    // Fallback: crear localmente si falla el backend
+    if (!planCreado) {
+      const nuevoPlan: PlanMejoramiento = {
+        id: `plan-${Date.now()}`,
+        codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
+        auditoria: auditoria.nombre,
+        area: auditoria.areaResponsable,
+        responsable: auditoria.responsable,
+        cargoResponsable: auditoria.cargo,
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
+        estado: 'FORMULACION',
+        semaforo: 'amarillo',
+        totalHallazgos: auditoria.hallazgos.length,
+        totalAcciones: 0,
+        accionesCompletadas: 0,
+        accionesEnProceso: 0,
+        accionesPendientes: 0,
+        porcentajeAvance: 0,
+        hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
+        hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
+        hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
+        ultimaActualizacion: new Date().toISOString().split('T')[0],
+        alertas: 0,
+        diasRestantes: 365
+      };
+
+      setPlanes(prev => [nuevoPlan, ...prev]);
+
+      // Actualizar contexto
+      crearPlanContext({
+        auditoriaId: auditoria.id,
+        codigoAuditoria: auditoria.codigo,
+        fechaCreacion: nuevoPlan.fechaCreacion,
+        estado: 'EN_FORMULACION',
+        accionesCreadas: 0,
+        progresoGeneral: 0
+      });
+
+      toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
+    }
+
     setModalCrearPlanOpen(false);
     limpiarSeleccion();
   };
 
   // ✅ NUEVO: Handler para completar plan y generar expediente automáticamente
-  const handleCompletarPlan = (plan: PlanMejoramiento) => {
+  const handleCompletarPlan = async (plan: PlanMejoramiento) => {
     // 1. Validar que esté 100% completo
     if (plan.porcentajeAvance < 100) {
       toast.error('El plan debe estar completado al 100%', {
@@ -434,7 +533,14 @@ export function PlanesMejoramientoModuleRediseno() {
       return;
     }
 
-    // 3. Actualizar estado del plan
+    // 3. Actualizar estado del plan en backend
+    const actualizado = await actualizarEstadoPlan(plan.id, 'COMPLETADO' as EstadoPlan);
+    if (!actualizado) {
+      toast.error('Error al completar el plan en el servidor');
+      return;
+    }
+
+    // Actualizar localmente
     const planActualizado: PlanMejoramiento = {
       ...plan,
       estado: 'COMPLETADO',
@@ -632,11 +738,20 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
     };
   }, [planes]);
 
-  const handleMoverPlan = (planId: string, nuevoEstado: EstadoPlan) => {
+  const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan) => {
+    // Actualizar localmente primero (optimistic update)
     setPlanes(prev => prev.map(p => 
       p.id === planId ? { ...p, estado: nuevoEstado } : p
     ));
-    toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+    
+    // ✅ Sincronizar con backend
+    const actualizado = await actualizarEstadoPlan(planId, nuevoEstado);
+    if (!actualizado) {
+      // Revertir si falla
+      fetchPlanes();
+    } else {
+      toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+    }
   };
 
   const toggleColapsoColumna = (columnaId: string) => {
@@ -1637,7 +1752,7 @@ function ModalCrearPlanDesdeAuditoria({
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-[#1e5da8]">{aud.codigo}</span>
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">
-                              {aud.hallazgos.length} hallazgos
+                              {Array.isArray(aud.hallazgos) ? aud.hallazgos.length : (aud.hallazgos || 0)} hallazgos
                             </span>
                           </div>
                           <p className="text-sm text-gray-900 mb-1">{aud.nombre}</p>
@@ -1674,11 +1789,12 @@ function ModalCrearPlanDesdeAuditoria({
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Total Hallazgos</div>
-                    <div className="text-sm text-gray-900 font-medium">{auditoriaSeleccionada.hallazgos.length}</div>
+                    <div className="text-sm text-gray-900 font-medium">{Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)}</div>
                   </div>
                 </div>
 
-                {/* Distribución de Hallazgos */}
+                {/* Distribución de Hallazgos - Solo si es array */}
+                {Array.isArray(auditoriaSeleccionada.hallazgos) && (
                 <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
                   <span className="text-xs text-gray-600">Gravedad:</span>
                   {auditoriaSeleccionada.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length > 0 && (
@@ -1697,6 +1813,7 @@ function ModalCrearPlanDesdeAuditoria({
                     </span>
                   )}
                 </div>
+                )}
               </div>
             )}
 
@@ -1711,7 +1828,7 @@ function ModalCrearPlanDesdeAuditoria({
                     </h4>
                     <ul className="text-sm text-purple-700 space-y-1 list-disc list-inside">
                       <li>Se creará un plan de mejoramiento en estado Formulación</li>
-                      <li>Los {auditoriaSeleccionada.hallazgos.length} hallazgos quedarán vinculados al plan</li>
+                      <li>Los {Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)} hallazgos quedarán vinculados al plan</li>
                       <li>Deberás formular acciones correctivas para cada hallazgo</li>
                       <li>El plazo para formular es de 30 días desde la finalización de la auditoría</li>
                     </ul>
@@ -1733,14 +1850,8 @@ function ModalCrearPlanDesdeAuditoria({
           <button
             onClick={() => {
               if (auditoriaSeleccionada) {
-                // Ejecutar la creación del plan
+                // Ejecutar la creación del plan - el toast se muestra en handleCrearPlanDesdeAuditoria
                 onCrear(auditoriaSeleccionada);
-                
-                // Mostrar notificación de éxito
-                toast.success('Plan de Mejoramiento creado exitosamente', {
-                  description: `Se ha creado el plan PM-${auditoriaSeleccionada.codigo} con ${auditoriaSeleccionada.hallazgos.length} hallazgos vinculados.`,
-                  duration: 4000
-                });
                 
                 // Cerrar el modal
                 onCerrar();

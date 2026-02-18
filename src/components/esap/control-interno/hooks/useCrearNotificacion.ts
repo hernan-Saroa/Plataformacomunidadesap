@@ -8,6 +8,11 @@
 import { useCallback } from 'react';
 import { controlInternoApi } from '../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
+
+// URL base para el servicio de Control Interno
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // Re-exportar tipos del backend para uso en el frontend
 export enum TipoNotificacionEnum {
@@ -72,8 +77,7 @@ export function useCrearNotificacion() {
       
       // PETICIÓN DIRECTA SIN PASAR POR EL API WRAPPER
       const token = localStorage.getItem('esap_auth_token');
-      const baseURL = 'http://localhost:3007'; // URL directa del servicio
-      const url = `${baseURL}/notificaciones`;
+      const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/notificaciones`;
       
       const response = await fetch(url, {
         method: 'POST',

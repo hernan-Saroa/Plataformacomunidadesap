@@ -767,7 +767,7 @@ export class PlanAnual5RolesService {
     const usuariosNotificar: string[] = [];
     let titulo = '';
     let mensaje = '';
-    let prioridad = PrioridadNotificacion.MEDIA;
+    let prioridad = PrioridadNotificacion.NORMAL;
 
     switch (nuevoEstado) {
       case 'en-revision':

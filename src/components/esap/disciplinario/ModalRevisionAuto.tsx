@@ -789,12 +789,14 @@ export function ModalRevisionAuto({
       <AnimatePresence>
         {showModalAprobar && (
           <ModalAprobacion
+            key="modal-aprobacion"
             onConfirm={handleConfirmarAprobacion}
             onCancel={() => setShowModalAprobar(false)}
           />
         )}
         {showModalDevolver && (
           <ModalDevolucion
+            key="modal-devolucion"
             onConfirm={handleConfirmarDevolucion}
             onCancel={() => setShowModalDevolver(false)}
           />

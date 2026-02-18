@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
@@ -123,8 +124,24 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     return 'activo';
   };
 
+  const normalizarMonto = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  };
+
+  const formatearMonto = (value?: string | number | null) =>
+    normalizarMonto(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+
   const [step, setStep] = useState<'buscar' | 'validar'>('buscar');
   const [searchTerm, setSearchTerm] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [certificadoSeleccionado, setCertificadoSeleccionado] = useState<CertificadoLaboralListado | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [configuracion, setConfiguracion] = useState({
@@ -137,7 +154,10 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   const [modalTotal, setModalTotal] = useState(0);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
-  const itemsPerPage = 10;
+  const lastFiltersKeyRef = useRef('');
+  const requestSequenceRef = useRef(0);
+  const itemsPerPage = 5;
+  const modalTotalPages = Math.max(1, Math.ceil(modalTotal / itemsPerPage));
   const parseDateOnly = (fechaStr: string) => {
     if (!fechaStr) return null;
     const isoMatch = fechaStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -182,6 +202,15 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     return { fecha: fechaTexto, hora: horaTexto };
   };
 
+  const getCertSortTime = (cert: CertificadoLaboralListado): number => {
+    const preferred = cert.fechaGeneracion || cert.fechaSolicitud;
+    const preferredTime = preferred ? new Date(preferred).getTime() : NaN;
+    if (Number.isFinite(preferredTime)) return preferredTime;
+
+    const solicitudTime = cert.fechaSolicitud ? new Date(cert.fechaSolicitud).getTime() : NaN;
+    return Number.isFinite(solicitudTime) ? solicitudTime : 0;
+  };
+
   useEffect(() => {
     if (!isOpen) {
       handleReset();
@@ -190,10 +219,18 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
 
   const fetchCertificadosModal = async () => {
     if (!isOpen) return;
+    const requestId = ++requestSequenceRef.current;
     setModalLoading(true);
     setModalError(null);
 
     try {
+      if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
+        setModalError('La fecha inicial no puede ser mayor que la fecha final.');
+        setModalItems([]);
+        setModalTotal(0);
+        return;
+      }
+
       const params: Record<string, any> = {
         page: modalPage,
         limit: itemsPerPage
@@ -201,8 +238,15 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       if (searchTerm.trim()) {
         params.search = searchTerm.trim();
       }
+      if (fechaDesde) {
+        params.fechaDesde = fechaDesde;
+      }
+      if (fechaHasta) {
+        params.fechaHasta = fechaHasta;
+      }
 
       const response = await certificadosService.laborales.listar(params);
+      if (requestId !== requestSequenceRef.current) return;
       const items = Array.isArray(response) ? response : (response.items || []);
       const total = Array.isArray(response) ? items.length : (response.total || 0);
 
@@ -280,7 +324,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             fechaVinculacion: cert.hiring_date,
             grado: cert.department || '',
             ubicacion: normalizarTexto(ubicacionRaw),
-            salario: Number(cert.monthly_salary),
+            salario: normalizarMonto(cert.monthly_salary),
             email: cert.email || cert.request?.email || 'No disponible'
           },
           estado: certificadoEstado,
@@ -296,29 +340,46 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
         };
       });
 
-      setModalItems(transformados);
+      if (requestId !== requestSequenceRef.current) return;
+      const transformadosOrdenados = [...transformados].sort(
+        (a, b) => getCertSortTime(b) - getCertSortTime(a)
+      );
+      setModalItems(transformadosOrdenados);
       setModalTotal(total);
     } catch (error: any) {
+      if (requestId !== requestSequenceRef.current) return;
       console.error('Error al cargar certificados para exportar:', error);
       setModalError(error.message || 'No se pudieron cargar los certificados');
       setModalItems([]);
       setModalTotal(0);
     } finally {
-      setModalLoading(false);
+      if (requestId === requestSequenceRef.current) {
+        setModalLoading(false);
+      }
     }
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchCertificadosModal();
-    }
-  }, [isOpen, modalPage, searchTerm]);
+  const activeFiltersKey = `${searchTerm.trim().toLowerCase()}|${fechaDesde}|${fechaHasta}`;
 
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+
+    const filtersChanged = lastFiltersKeyRef.current !== activeFiltersKey;
+    if (filtersChanged && modalPage !== 1) {
+      lastFiltersKeyRef.current = activeFiltersKey;
       setModalPage(1);
+      return;
     }
-  }, [searchTerm, isOpen]);
+
+    lastFiltersKeyRef.current = activeFiltersKey;
+    fetchCertificadosModal();
+  }, [isOpen, modalPage, activeFiltersKey]);
+
+  useEffect(() => {
+    if (modalPage > modalTotalPages) {
+      setModalPage(modalTotalPages);
+    }
+  }, [modalPage, modalTotalPages]);
 
   const handleSelectCertificado = (cert: CertificadoLaboralListado) => {
     setCertificadoSeleccionado(cert);
@@ -369,6 +430,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   const handleReset = () => {
     setStep('buscar');
     setSearchTerm('');
+    setFechaDesde('');
+    setFechaHasta('');
     setCertificadoSeleccionado(null);
     setConfiguracion({
       incluyeSalario: true
@@ -377,11 +440,13 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     setModalItems([]);
     setModalTotal(0);
     setModalError(null);
+    lastFiltersKeyRef.current = '';
+    requestSequenceRef.current += 1;
   };
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-[9999] overflow-hidden">
       {/* Overlay */}
       <div
@@ -436,6 +501,44 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       className="pl-10"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-gray-700">Filtrar por fecha de generación</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="fecha-desde" className="text-xs text-gray-500">Desde</Label>
+                      <Input
+                        id="fecha-desde"
+                        type="date"
+                        value={fechaDesde}
+                        onChange={(e) => setFechaDesde(e.target.value)}
+                        max={fechaHasta || undefined}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="fecha-hasta" className="text-xs text-gray-500">Hasta</Label>
+                      <Input
+                        id="fecha-hasta"
+                        type="date"
+                        value={fechaHasta}
+                        onChange={(e) => setFechaHasta(e.target.value)}
+                        min={fechaDesde || undefined}
+                      />
+                    </div>
+                  </div>
+                  {(fechaDesde || fechaHasta) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFechaDesde('');
+                        setFechaHasta('');
+                      }}
+                      className="text-xs text-[#003DA5] hover:text-[#002873] font-medium"
+                    >
+                      Limpiar filtro de fecha
+                    </button>
+                  )}
                 </div>
 
 
@@ -523,7 +626,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                   <div className="pt-4 border-t border-gray-200">
                     <PaginationPremium
                       currentPage={modalPage}
-                      totalPages={Math.ceil(modalTotal / itemsPerPage)}
+                      totalPages={modalTotalPages}
                       onPageChange={setModalPage}
                       itemsPerPage={itemsPerPage}
                       totalItems={modalTotal}
@@ -579,7 +682,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                         {certificadoSeleccionado.empleado.salario > 0 ? (
                           <>
                             <DollarSign className="w-4 h-4 text-green-600" />
-                            ${certificadoSeleccionado.empleado.salario.toLocaleString('es-CO')} COP
+                            ${formatearMonto(certificadoSeleccionado.empleado.salario)} COP
                           </>
                         ) : (
                           <span className="text-yellow-600 flex items-center gap-1">
@@ -714,4 +817,10 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       )}
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 }

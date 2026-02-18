@@ -125,7 +125,9 @@ export function ConfiguracionPlantillasAutos() {
     if (tipoAutoEdicion) {
       try {
         const autoActual = tiposAutos.find(t => t.id === tipoAutoEdicion.id);
-        if (autoActual && autoActual.id.startsWith('auto-')) {
+        // Los autos locales tienen ID que startsWith('tipo-auto-') o son de TIPOS_AUTOS_DEFECTO
+        // Los autos del backend tienen IDs de UUID (no startsWith('tipo-auto-'))
+        if (autoActual && (autoActual.id.startsWith('tipo-auto-') || autoActual.id === 'auto-apertura-indagacion')) {
           // Es un tipo local, guardar en localStorage
           setTiposAutos(tiposAutos.map(t => 
             t.id === tipoAutoEdicion.id 

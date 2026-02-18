@@ -551,6 +551,7 @@ function ModalRevisionEdicion({
         <AnimatePresence>
           {showModalAprobar && (
             <ModalAprobar
+              key="modal-firmar"
               borrador={borrador}
               comentariosJefe={comentariosJefe}
               onClose={() => setShowModalAprobar(false)}
@@ -563,6 +564,7 @@ function ModalRevisionEdicion({
 
           {showConfirmAprobar && (
             <ModalConfirmarAprobacion
+              key="modal-confirmar-aprobacion"
               onClose={() => setShowConfirmAprobar(false)}
               onConfirm={() => {
                 onAprobar(comentariosJefe);
@@ -573,6 +575,7 @@ function ModalRevisionEdicion({
 
           {showModalDevolver && (
             <ModalDevolver
+              key="modal-devolver"
               borrador={borrador}
               onClose={() => setShowModalDevolver(false)}
               onConfirm={(motivo, comentarios, archivos) => {
@@ -584,6 +587,7 @@ function ModalRevisionEdicion({
 
           {showModalNotificar && (
             <ModalRegistrarNotificacion
+              key="modal-notificar"
               borrador={borrador}
               onClose={() => setShowModalNotificar(false)}
               onConfirm={(fecha, archivo) => {

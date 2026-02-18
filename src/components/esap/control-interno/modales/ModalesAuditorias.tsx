@@ -1033,6 +1033,245 @@ function KPICardAuditoria({ label, valor, color, icon }: { label: string; valor:
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+// MODAL DE REGISTRAR HALLAZGO - CONECTADO AL BACKEND
+// ═════════════════════════════════════════════════════════════════════════
+
+interface ModalRegistrarHallazgoProps {
+  isOpen: boolean;
+  onClose: () => void;
+  auditoriaId: string;
+  auditoriaNombre: string;
+  onCrearHallazgo: (auditoriaId: string, data: {
+    titulo?: string;
+    categoria: string;
+    tipo?: string;
+    area: string;
+    descripcion: string;
+    criterioIncumplido: string;
+    fechaDeteccion: string;
+    responsable?: string;
+  }) => Promise<boolean>;
+}
+
+export function ModalRegistrarHallazgo({ 
+  isOpen, 
+  onClose, 
+  auditoriaId, 
+  auditoriaNombre,
+  onCrearHallazgo 
+}: ModalRegistrarHallazgoProps) {
+  const [formData, setFormData] = React.useState({
+    titulo: '',
+    categoria: 'critico' as 'critico' | 'controversia' | 'borrador',
+    tipo: 'no-conformidad' as 'no-conformidad' | 'observacion' | 'oportunidad-mejora',
+    area: '',
+    descripcion: '',
+    criterioIncumplido: '',
+    fechaDeteccion: new Date().toISOString().split('T')[0],
+    responsable: '',
+  });
+  const [guardando, setGuardando] = React.useState(false);
+
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = async () => {
+    // Validaciones
+    if (!formData.area.trim()) {
+      toast.error('El área es requerida');
+      return;
+    }
+    if (!formData.descripcion.trim()) {
+      toast.error('La descripción es requerida');
+      return;
+    }
+    if (!formData.criterioIncumplido.trim()) {
+      toast.error('El criterio incumplido es requerido');
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const success = await onCrearHallazgo(auditoriaId, formData);
+      if (success) {
+        onClose();
+        // Reset form
+        setFormData({
+          titulo: '',
+          categoria: 'critico',
+          tipo: 'no-conformidad',
+          area: '',
+          descripcion: '',
+          criterioIncumplido: '',
+          fechaDeteccion: new Date().toISOString().split('T')[0],
+          responsable: '',
+        });
+      }
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const headerIcon = <AlertTriangle className="w-5 h-5 text-[#F57C00]" />;
+
+  return (
+    <ModalBaseWorldClass
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Registrar Hallazgo"
+      subtitle={`Auditoría: ${auditoriaNombre}`}
+      size="lg"
+      headerIcon={headerIcon}
+    >
+      <div className="space-y-6">
+        {/* Título (opcional) */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Título del Hallazgo (opcional)
+          </label>
+          <input
+            type="text"
+            value={formData.titulo}
+            onChange={(e) => handleChange('titulo', e.target.value)}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+            placeholder="Ej: Falta de segregación de funciones"
+          />
+        </div>
+
+        {/* Categoría y Tipo */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Categoría <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={formData.categoria}
+              onChange={(e) => handleChange('categoria', e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+            >
+              <option value="critico">Crítico</option>
+              <option value="controversia">Controversia</option>
+              <option value="borrador">Borrador</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tipo
+            </label>
+            <select
+              value={formData.tipo}
+              onChange={(e) => handleChange('tipo', e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+            >
+              <option value="no-conformidad">No Conformidad</option>
+              <option value="observacion">Observación</option>
+              <option value="oportunidad-mejora">Oportunidad de Mejora</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Área */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Área Afectada <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={formData.area}
+            onChange={(e) => handleChange('area', e.target.value)}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+            placeholder="Ej: Gestión Financiera, Talento Humano"
+          />
+        </div>
+
+        {/* Descripción */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Descripción del Hallazgo <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={formData.descripcion}
+            onChange={(e) => handleChange('descripcion', e.target.value)}
+            rows={4}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors resize-none"
+            placeholder="Describa detalladamente el hallazgo identificado..."
+          />
+        </div>
+
+        {/* Criterio Incumplido */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Criterio Incumplido <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={formData.criterioIncumplido}
+            onChange={(e) => handleChange('criterioIncumplido', e.target.value)}
+            rows={3}
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors resize-none"
+            placeholder="Ley, decreto o normativa incumplida..."
+          />
+        </div>
+
+        {/* Fecha y Responsable */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha de Detección <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={formData.fechaDeteccion}
+              onChange={(e) => handleChange('fechaDeteccion', e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Responsable (opcional)
+            </label>
+            <input
+              type="text"
+              value={formData.responsable}
+              onChange={(e) => handleChange('responsable', e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-0 transition-colors"
+              placeholder="Nombre del responsable"
+            />
+          </div>
+        </div>
+
+        {/* Botones */}
+        <div className="flex gap-3 pt-4 border-t border-gray-200">
+          <button
+            onClick={onClose}
+            className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={guardando}
+            className="flex-1 px-6 py-3 bg-[#F57C00] text-white rounded-xl font-medium hover:bg-[#E65100] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {guardando ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                Guardando...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="w-4 h-4" />
+                Registrar Hallazgo
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </ModalBaseWorldClass>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -1040,4 +1279,5 @@ export default {
   Formulario: ModalFormularioAuditoria,
   Detalle: ModalDetalleAuditoria,
   Historial: ModalHistorial,
+  RegistrarHallazgo: ModalRegistrarHallazgo,
 };

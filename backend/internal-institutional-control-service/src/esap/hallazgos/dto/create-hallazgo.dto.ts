@@ -22,6 +22,10 @@ class EvidenciaDto {
 
   @IsDateString()
   fecha: string;
+
+  @IsString()
+  @IsOptional()
+  url?: string;
 }
 
 export class CreateHallazgoDto {

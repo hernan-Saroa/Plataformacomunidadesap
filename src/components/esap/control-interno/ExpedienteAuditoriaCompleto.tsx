@@ -21,7 +21,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 17 Febrero 2026
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileText, Calendar, Users, Target, Clock, CheckCircle,
@@ -32,7 +32,7 @@ import {
   Upload, Archive, ExternalLink, Filter, Search, Tag,
   BarChart3, PieChart, LineChart, CheckSquare, Paperclip
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -60,9 +60,10 @@ import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TIPOS
-// ═══════════════════════════════════════════════════════════════════════════
+// Servicio API
+import { controlInternoService } from '../../../services/api/controlInternoService';
+
+// ============ TIPOS ============
 
 type EstadoAuditoria = 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento' | 'finalizada';
 type TipoAuditoria = 'Sede' | 'Territorial' | 'Especial';
@@ -137,6 +138,9 @@ interface Auditoria {
     modificadoPor: string;
     version: number;
   };
+  
+  // Estado de actividades del proceso (checklist)
+  checklistCompletados?: Record<string, boolean>;
 }
 
 interface DocumentoExpediente {
@@ -221,7 +225,10 @@ const AUDITORIA_EJEMPLO: Auditoria = {
     ultimaModificacion: new Date('2026-02-17'),
     modificadoPor: 'Carlos Rodríguez',
     version: 1
-  }
+  },
+  
+  // Checklist de actividades (vacío por defecto)
+  checklistCompletados: {}
 };
 
 const DOCUMENTOS_EJEMPLO: DocumentoExpediente[] = [
@@ -282,10 +289,175 @@ export function ExpedienteAuditoriaCompleto({
   onClose,
   tabInicial = 'general',
 }: ExpedienteAuditoriaCompletoProps) {
-  const [auditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
+  const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
   const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
   const [historial] = useState<EventoHistorial[]>(HISTORIAL_EJEMPLO);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
+  // ✅ Cargar datos del backend cuando se abre el modal
+  useEffect(() => {
+    const cargarAuditoria = async () => {
+      if (!isOpen || !auditoriaId) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const data = await controlInternoService.getAuditoriaById(auditoriaId);
+        
+        // Mapear datos del backend a la estructura del frontend
+        const auditoriaBackend: Auditoria = {
+          id: data.id,
+          codigo: data.codigo,
+          nombre: data.nombre,
+          tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' : 
+                data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
+          estado: mapearEstado(data.fase || data.estadoKanban),
+          areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
+          procesoNombre: data.procesoAuditado || data.nombre,
+          nivelRiesgo: (data.riesgoKanban || 'Medio') as NivelRiesgo,
+          
+          responsableArea: {
+            id: String(data.auditorLiderId || '1'),
+            nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
+            cargo: data.responsableAreaCargo || 'Responsable',
+            email: `responsable@esap.edu.co`,
+            telefono: undefined,
+          },
+          
+          auditorLider: {
+            id: String(data.auditorLiderId || '1'),
+            nombre: data.auditorLider?.nombre || 'Sin auditor líder',
+            email: 'auditor@esap.edu.co',
+            foto: undefined,
+          },
+          
+          equipoAuditores: Array.isArray(data.equipoAuditores) 
+            ? data.equipoAuditores.map((eq: any) => ({
+                id: eq.id || String(eq.personaId),
+                nombre: eq.nombreCompleto || eq.nombre || 'Auditor',
+                rol: eq.rol || 'Auditor',
+                email: 'auditor@esap.edu.co',
+                foto: undefined,
+              }))
+            : [],
+          
+          cronograma: {
+            fechaCreacion: new Date(data.createdAt || data.fechaInicio),
+            fechaInicio: new Date(data.fechaInicio),
+            fechaFin: new Date(data.fechaFin),
+            fechaFinReal: data.fechaFinReal ? new Date(data.fechaFinReal) : undefined,
+            duracionDias: calcularDiasDuracion(data.fechaInicio, data.fechaFin),
+            diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio),
+          },
+          
+          progreso: {
+            general: data.progreso || 0,
+            planeacion: data.fase === 'planeacion' ? Math.min(data.progreso || 0, 100) : 100,
+            ejecucion: ['en-curso', 'revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
+            comunicacion: ['revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
+          },
+          
+          estadisticas: {
+            totalHallazgos: data.hallazgos || 0,
+            hallazgosCriticos: 0,
+            hallazgosMayores: 0,
+            hallazgosMenores: data.hallazgos || 0,
+            documentosCargados: data.totalDocumentos || 0,
+            notificacionesEnviadas: 0,
+          },
+          
+          fechasClave: {
+            planeacionInicio: new Date(data.fechaInicio),
+            planeacionFin: undefined,
+            ejecucionInicio: undefined,
+            ejecucionFin: undefined,
+            comunicacionInicio: undefined,
+            comunicacionFin: undefined,
+            informePreliminar: undefined,
+            informeFinal: undefined,
+          },
+          
+          metadata: {
+            creadoPor: 'Sistema',
+            fechaCreacion: new Date(data.createdAt || data.fechaInicio),
+            ultimaModificacion: new Date(data.updatedAt || Date.now()),
+            modificadoPor: 'Sistema',
+            version: 1,
+          },
+          
+          // Checklist de actividades del proceso
+          checklistCompletados: data.checklistCompletados || {},
+        };
+        
+        setAuditoria(auditoriaBackend);
+      } catch (err: any) {
+        console.error('Error cargando auditoría:', err);
+        setError(err.message || 'Error desconocido');
+        // Mantener los datos de ejemplo en caso de error
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    cargarAuditoria();
+  }, [isOpen, auditoriaId]);
+  
+  // ✅ Función para actualizar checklist de actividades en el backend
+  const handleToggleChecklist = async (itemId: string, completado: boolean) => {
+    // Actualizar estado local inmediatamente (optimistic update)
+    const nuevoChecklist = {
+      ...auditoria.checklistCompletados,
+      [itemId]: completado,
+    };
+    setAuditoria(prev => ({
+      ...prev,
+      checklistCompletados: nuevoChecklist,
+    }));
+    
+    // Si es un UUID válido (auditoría real), guardar en backend
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(auditoria.id)) {
+      try {
+        await controlInternoService.updateAuditoria(auditoria.id, {
+          checklistCompletados: nuevoChecklist,
+        });
+      } catch (err) {
+        console.error('Error actualizando checklist:', err);
+      }
+    }
+  };
+  
+  // Funciones auxiliares para mapeo
+  function mapearEstado(fase: string): EstadoAuditoria {
+    const mapeo: Record<string, EstadoAuditoria> = {
+      'planeacion': 'planeacion',
+      'Planeación': 'planeacion',
+      'en-curso': 'ejecucion',
+      'Ejecución': 'ejecucion',
+      'revision': 'comunicacion',
+      'Comunicación': 'comunicacion',
+      'completada': 'finalizada',
+      'Seguimiento': 'seguimiento',
+      'Finalizada': 'finalizada',
+    };
+    return mapeo[fase] || 'planeacion';
+  }
+  
+  function calcularDiasDuracion(fechaInicio: string, fechaFin: string): number {
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+    return Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  
+  function calcularDiasTranscurridos(fechaInicio: string): number {
+    const inicio = new Date(fechaInicio);
+    const hoy = new Date();
+    return Math.max(0, Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
+  }
+  
+  // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
   const getTabAutomatico = () => {
     if (tabInicial !== 'general') return tabInicial as TabActiva;
     const estadoLower = auditoria.estado.toLowerCase();
@@ -945,7 +1117,14 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
   );
 }
 
-function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
+// TAB 2: PLANEACIÓN
+interface TabFaseProps {
+  auditoria: Auditoria;
+  checklistCompletados?: Record<string, boolean>;
+  onToggleChecklist?: (id: string, completado: boolean) => void;
+}
+
+function TabPlaneacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-purple-600 bg-purple-50">
@@ -966,12 +1145,15 @@ function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#9333ea"
         estadoRequerido="Planeación"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );
 }
 
-function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
+// TAB 3: EJECUCIÓN
+function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-amber-600 bg-amber-50">
@@ -986,8 +1168,10 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
       <div className="bg-white border-2 border-amber-200 rounded-lg p-4">
         <SeccionListasChequeoExpediente auditoriaId={auditoria.id} etapaActual="Ejecución" />
       </div>
-      <div className="bg-white border-2 border-red-200 rounded-lg p-4">
-        <SeccionHallazgosExpediente auditoriaId={auditoria.id} />
+
+      {/* SECCIÓN: HALLAZGOS */}
+      <div className="bg-white border-2 border-red-200 rounded-lg p-5">
+        <SeccionHallazgosExpediente auditoriaId={auditoria.id} auditoriaNombre={auditoria.nombre || auditoria.codigo} />
       </div>
       <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
         <SeccionTareasExpediente auditoriaId={auditoria.id} />
@@ -998,12 +1182,15 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#f59e0b"
         estadoRequerido="Ejecución"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );
 }
 
-function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
+// TAB 4: COMUNICACIÓN
+function TabComunicacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4">
       <Card className="p-3 border-l-4 border-l-green-600 bg-green-50">
@@ -1024,6 +1211,8 @@ function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#10b981"
         estadoRequerido="Comunicación"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );
