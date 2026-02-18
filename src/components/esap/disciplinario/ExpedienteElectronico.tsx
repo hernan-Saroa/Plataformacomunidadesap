@@ -11,7 +11,7 @@ import {
   AlertCircle, File, FileCheck, Search, Filter, X,
   ChevronDown, ChevronRight, Trash2, Edit2, ExternalLink,
   Archive, Folder, Shield, Key, Copy, Share2, FileSignature,
-  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale
+  BarChart3, ZoomIn, RefreshCw, Package, Printer, Mail, Info, HelpCircle, Scale, Play
 } from 'lucide-react';
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
@@ -180,6 +180,101 @@ interface Documento {
   tamaño: string;
   fechaCarga: string;
   usuario: string;
+}
+
+// Helper function to get file type from document name
+export type FileType = 'pdf' | 'word' | 'excel' | 'video' | 'audio' | 'image' | 'html' | 'other';
+
+export function getFileType(nombreArchivo: string): FileType {
+  const nombre = nombreArchivo.toLowerCase();
+  
+  // PDF files
+  if (nombre.endsWith('.pdf')) {
+    return 'pdf';
+  }
+  
+  // Word files
+  if (nombre.endsWith('.doc') || nombre.endsWith('.docx')) {
+    return 'word';
+  }
+  
+  // Excel files
+  if (nombre.endsWith('.xls') || nombre.endsWith('.xlsx') || nombre.endsWith('.xlsb')) {
+    return 'excel';
+  }
+  
+  // Video files
+  if (nombre.endsWith('.mp4') || nombre.endsWith('.webm') || nombre.endsWith('.mov') || 
+      nombre.endsWith('.avi') || nombre.endsWith('.mkv') || nombre.endsWith('.wmv')) {
+    return 'video';
+  }
+  
+  // Audio files
+  if (nombre.endsWith('.mp3') || nombre.endsWith('.wav') || nombre.endsWith('.ogg') || 
+      nombre.endsWith('.m4a') || nombre.endsWith('.flac')) {
+    return 'audio';
+  }
+  
+  // Image files
+  if (nombre.endsWith('.jpg') || nombre.endsWith('.jpeg') || nombre.endsWith('.png') || 
+      nombre.endsWith('.gif') || nombre.endsWith('.webp') || nombre.endsWith('.bmp')) {
+    return 'image';
+  }
+  
+  // HTML files
+  if (nombre.endsWith('.html') || nombre.endsWith('.htm')) {
+    return 'html';
+  }
+  
+  return 'other';
+}
+
+// Helper function to get icon color based on file type
+export function getFileTypeColor(nombreArchivo: string): { bg: string; icon: string } {
+  const fileType = getFileType(nombreArchivo);
+  
+  switch (fileType) {
+    case 'pdf':
+      return { bg: '#FEE2E2', icon: '#DC2626' }; // Red
+    case 'word':
+      return { bg: '#DBEAFE', icon: '#2563EB' }; // Blue darker
+    case 'excel':
+      return { bg: '#D1FAE5', icon: '#059669' }; // Green
+    case 'video':
+      return { bg: '#EDE9FE', icon: '#7C3AED' }; // Purple
+    case 'audio':
+      return { bg: '#FCE7F3', icon: '#DB2777' }; // Pink
+    case 'image':
+      return { bg: '#ECFCCB', icon: '#65A30D' }; // Lime
+    case 'html':
+      return { bg: '#CFFAFE', icon: '#0891B2' }; // Cyan
+    default:
+      return { bg: '#FEF3C7', icon: '#F59E0B' }; // Amber
+  }
+}
+
+// Helper function to get display name for file type
+export function getFileTypeDisplayName(nombreArchivo: string): string {
+  const fileType = getFileType(nombreArchivo);
+  
+  switch (fileType) {
+    case 'pdf':
+      return 'PDF';
+    case 'word':
+      return 'Word';
+    case 'excel':
+      return 'Excel';
+    case 'video':
+      return 'Video';
+    case 'audio':
+      return 'Audio';
+    case 'image':
+      return 'Imagen';
+    case 'html':
+      return 'HTML';
+    default:
+      return 'Documento';
+  }
 }
 
 interface Carpeta {
@@ -1149,8 +1244,9 @@ function ModalVisorDocumento({
           </div>
         </div >
 
-        {/* Footer */}
+        {/* Footer - Botones condicionales según tipo de archivo */}
         < div className="p-6 border-t bg-gray-50 flex gap-3" >
+          {/* Botón descargar siempre visible */}
           <Button
             onClick={handleDescargarVersion}
             style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -1158,17 +1254,39 @@ function ModalVisorDocumento({
             <Download className="w-4 h-4 mr-2" />
             Descargar Versión {versionSeleccionada}
           </Button>
-          {
-            (documento.urlExterna || (processId && documento.id)) && (
-              <Button
-                onClick={() => setViendoPDF(!viendoPDF)}
-                className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                {viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}
-              </Button>
-            )
-          }
+          {/* ✅ Botón ver/visualizar para TODOS los tipos de archivo con lógica condicional */}
+          {(documento.urlExterna || (processId && documento.id)) && (
+            <Button
+              onClick={() => {
+                const tipo = getFileType(documento.nombre);
+                if (tipo === 'video') {
+                  // Para videos, reproducir en el visor
+                  setViendoPDF(!viendoPDF);
+                } else if (tipo === 'pdf') {
+                  // Para PDF, mostrar en el visor
+                  setViendoPDF(!viendoPDF);
+                } else {
+                  // Para otros tipos (Word, Excel), descargar directamente o mostrar mensaje
+                  if (documento.downloadUrl) {
+                    // Descargar directamente
+                    window.open(documento.downloadUrl, '_blank');
+                  } else {
+                    // Intentar ver en el visor (puede mostrar mensaje de vista previa no disponible)
+                    setViendoPDF(!viendoPDF);
+                  }
+                }
+              }}
+              className={viendoPDF ? "bg-gray-600" : "bg-purple-600"}
+            >
+              {getFileType(documento.nombre) === 'video' ? (
+                <><Play className="w-4 h-4 mr-2" />{viendoPDF ? 'Ocultar Video' : 'Reproducir Video'}</>
+              ) : getFileType(documento.nombre) === 'pdf' ? (
+                <><Eye className="w-4 h-4 mr-2" />{viendoPDF ? 'Ocultar Documento' : 'Mostrar Documento'}</>
+              ) : (
+                <><Eye className="w-4 h-4 mr-2" />Ver {getFileTypeDisplayName(documento.nombre)}</>
+              )}
+            </Button>
+          )}
           <Button onClick={handleCerrarModal} className="bg-gray-500 ml-auto">
             Cerrar
           </Button>
@@ -2723,14 +2841,25 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {/* ✅ Botón Ver: para TODOS los tipos de archivo - abre modal con visor/reproductor */}
                             <button
                               onClick={() => handleVerDocumento(doc)}
                               className="px-3 py-1.5 text-xs font-medium rounded-lg hover:opacity-80 transition-opacity text-white"
-                              style={{ background: '#003DA5' }}
+                              style={{ background: getFileTypeColor(doc.nombre).icon }}
                             >
-                              <Eye className="w-3.5 h-3.5 inline mr-1" />
-                              Ver
+                              {getFileType(doc.nombre) === 'video' ? (
+                                <><Play className="w-3.5 h-3.5 inline mr-1" />Reproducir</>
+                              ) : getFileType(doc.nombre) === 'audio' ? (
+                                <><Play className="w-3.5 h-3.5 inline mr-1" />Reproducir</>
+                              ) : getFileType(doc.nombre) === 'image' ? (
+                                <><Eye className="w-3.5 h-3.5 inline mr-1" />Ver</>
+                              ) : getFileType(doc.nombre) === 'pdf' ? (
+                                <><Eye className="w-3.5 h-3.5 inline mr-1" />Ver</>
+                              ) : (
+                                <><Eye className="w-3.5 h-3.5 inline mr-1" />Ver</>
+                              )}
                             </button>
+                            {/* Botón Descargar: para todos los tipos */}
                             <button
                               onClick={() => handleDescargarDocumento(doc)}
                               className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:opacity-80 transition-opacity"
