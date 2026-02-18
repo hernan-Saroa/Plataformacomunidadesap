@@ -105,10 +105,13 @@ export function ModalAsignarAuditor({
       }))
     : AUDITORES_DEFAULT;
 
-  // Sincronizar cuando cambia el auditor actual
+  // Sincronizar cuando cambia el auditor actual o se abre el modal
   React.useEffect(() => {
-    setSelectedAuditor(auditorActualId != null ? String(auditorActualId) : '');
-  }, [auditorActualId]);
+    const idStr = auditorActualId != null ? String(auditorActualId) : '';
+    console.log('📌 Modal Asignar Auditor - ID actual:', auditorActualId, '-> String:', idStr);
+    console.log('📌 Auditores disponibles:', auditores.map(a => ({ id: a.id, nombre: a.nombre })));
+    setSelectedAuditor(idStr);
+  }, [auditorActualId, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +120,8 @@ export function ModalAsignarAuditor({
       return;
     }
     
-    const auditor = auditores.find(a => a.id === selectedAuditor);
+    // ✅ Comparar como strings
+    const auditor = auditores.find(a => String(a.id) === selectedAuditor);
     onAsignar(selectedAuditor);
     toast.success('Auditor asignado correctamente', {
       description: `${auditor?.nombre} ha sido asignado a esta auditoría`
@@ -160,8 +164,10 @@ export function ModalAsignarAuditor({
     >
       <div className="space-y-4">
         {auditores.map((auditor, index) => {
-          // Comparación flexible: puede ser '2' == 2 o 'aud-1' == 'aud-1'
-          const esAuditorActual = auditorActualIdStr && String(auditor.id) === auditorActualIdStr;
+          // ✅ Normalizar ID a string para comparaciones consistentes
+          const auditorIdStr = String(auditor.id);
+          const esAuditorActual = auditorActualIdStr && auditorIdStr === auditorActualIdStr;
+          const estaSeleccionado = selectedAuditor === auditorIdStr;
           return (
           <motion.label
             key={auditor.id}
@@ -169,7 +175,7 @@ export function ModalAsignarAuditor({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.1 }}
             className={`flex items-start gap-4 p-5 border-2 rounded-xl cursor-pointer transition-all ${
-              selectedAuditor === auditor.id
+              estaSeleccionado
                 ? 'border-[#003DA5] bg-[#E0EDFF] shadow-md'
                 : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
             } ${auditor.disponibilidad === 'Ocupado' ? 'opacity-60' : ''}`}
@@ -177,8 +183,8 @@ export function ModalAsignarAuditor({
             <input
               type="radio"
               name="auditor"
-              value={auditor.id}
-              checked={selectedAuditor === auditor.id}
+              value={auditorIdStr}
+              checked={estaSeleccionado}
               onChange={(e) => setSelectedAuditor(e.target.value)}
               className="mt-1 w-5 h-5 text-[#003DA5] focus:ring-[#003DA5] cursor-pointer"
               disabled={auditor.disponibilidad === 'Ocupado'}

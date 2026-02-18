@@ -53,6 +53,9 @@ import { useResponsive } from '@/hooks/useResponsive';
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
+// ✅ Servicio para crear planes de mejoramiento
+import controlInternoService from '../../../services/api/controlInternoService';
+
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
 import { useHallazgos } from './HallazgosContext';
 import { useTareas } from './TareasContext';
@@ -138,6 +141,9 @@ interface Auditoria {
   
   // Criterios de auditoría
   criterios?: { id: string; criterio: string }[];
+  
+  // ID del auditor líder asignado
+  auditorLiderId?: string | number;
 }
 
 // ============ DATOS DE PRUEBA ============
@@ -1777,7 +1783,8 @@ export function GestionAuditoriasKanbanSimple() {
     agregarNota: agregarNotaBackend,
     getHistorial: getHistorialBackend,
     aprobarAuditoria: aprobarAuditoriaBackend,
-    rechazarAuditoria: rechazarAuditoriaBackend
+    rechazarAuditoria: rechazarAuditoriaBackend,
+    getHallazgos
   } = useAuditoriasKanban();
 
   // Estado local para auditorías (sincronizado con backend)
@@ -1838,6 +1845,7 @@ export function GestionAuditoriasKanbanSimple() {
         territorial: aud.territorial,
         auditorLider: aud.auditorLider,
         auditorAsignado: aud.auditorAsignado,
+        auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
         fechaInicio: aud.fechaInicio,
         fechaFin: aud.fechaFin,
         progreso: aud.progreso,
@@ -1860,7 +1868,7 @@ export function GestionAuditoriasKanbanSimple() {
         especial: aud.especial,
         actividadesCompletas: aud.actividadesCompletas,
         actividadesPendientes: aud.actividadesPendientes
-      }));
+      } as Auditoria));
       setAuditorias(auditoriasTransformadas);
       console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
     }
@@ -2251,7 +2259,7 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
-    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
+    // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
@@ -2262,17 +2270,12 @@ export function GestionAuditoriasKanbanSimple() {
 
     const faseActual = estadoAFase[estadoAnterior];
     
-    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
-      const faseCompleta = verificarFaseCompleta(item.id, faseActual);
       const tareasPendientes = contarTareasPendientesPorFase(item.id, faseActual);
       
-      if (!faseCompleta) {
-        toast.error('⚠️ No se puede cambiar de estado', {
-          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
-          duration: 6000,
-        });
-        return;
+      if (tareasPendientes > 0) {
+        console.log(`⚠️ [handleDrop] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
     }
     
@@ -2362,8 +2365,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
-    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
-    // Mapeo de estados a fases de checklist
+    // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
@@ -2374,20 +2376,12 @@ export function GestionAuditoriasKanbanSimple() {
 
     const faseActual = estadoAFase[estadoAnterior];
     
-    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
-      const faseCompleta = verificarFaseCompleta(auditoriaId, faseActual);
       const tareasPendientes = contarTareasPendientesPorFase(auditoriaId, faseActual);
       
-      if (!faseCompleta) {
-        toast.error('⚠️ No se puede cambiar de estado', {
-          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
-          duration: 6000,
-        });
-        
-        setModalCambiarEstadoOpen(false);
-        setAuditoriaSeleccionada(null);
-        return;
+      if (tareasPendientes > 0) {
+        console.log(`⚠️ [handleGuardarCambioEstado] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
     }
 
@@ -2468,7 +2462,7 @@ export function GestionAuditoriasKanbanSimple() {
         duration: 3000
       });
 
-      // ✅ Extraer nombre del auditor líder (puede ser objeto o string)
+      // ✅ Extraer nombre del auditor líder (puede ser objeto, string ID, o string nombre)
       let nombreAuditorLider = 'No asignado';
       let cargoAuditorLider = '';
       if (auditoria.auditorLider) {
@@ -2476,7 +2470,27 @@ export function GestionAuditoriasKanbanSimple() {
           nombreAuditorLider = auditoria.auditorLider.nombre;
           cargoAuditorLider = auditoria.auditorLider.cargo || '';
         } else if (typeof auditoria.auditorLider === 'string') {
-          nombreAuditorLider = auditoria.auditorLider;
+          // Verificar si es un ID y buscar en la lista de auditores
+          const auditorEncontrado = auditoresBackend?.find(a => 
+            String(a.id) === auditoria.auditorLider || 
+            a.nombre === auditoria.auditorLider
+          );
+          if (auditorEncontrado) {
+            nombreAuditorLider = auditorEncontrado.nombre;
+            cargoAuditorLider = auditorEncontrado.cargo || '';
+          } else {
+            nombreAuditorLider = auditoria.auditorLider;
+          }
+        }
+      }
+      // También verificar si existe auditorLiderId y buscar por ese campo
+      if (nombreAuditorLider === 'No asignado' && (auditoria as any).auditorLiderId) {
+        const auditorPorId = auditoresBackend?.find(a => 
+          String(a.id) === String((auditoria as any).auditorLiderId)
+        );
+        if (auditorPorId) {
+          nombreAuditorLider = auditorPorId.nombre;
+          cargoAuditorLider = auditorPorId.cargo || '';
         }
       }
 
@@ -2485,7 +2499,14 @@ export function GestionAuditoriasKanbanSimple() {
       if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
         equipoFormateado = auditoria.equipoAuditores.map((auditor: any) => {
           if (typeof auditor === 'string') {
-            return { nombre: auditor, rol: 'Auditor' };
+            // Buscar en la lista de auditores si es un ID
+            const auditorEncontrado = auditoresBackend?.find(a => 
+              String(a.id) === auditor || a.nombre === auditor
+            );
+            return { 
+              nombre: auditorEncontrado?.nombre || auditor, 
+              rol: auditorEncontrado?.cargo || 'Auditor' 
+            };
           } else if (typeof auditor === 'object' && auditor !== null) {
             return { 
               nombre: auditor.nombre || auditor.name || auditor.id || 'Auditor', 
@@ -2536,6 +2557,65 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  // ✅ EXPORTAR TODAS LAS AUDITORÍAS A EXCEL
+  const handleExportarTodo = () => {
+    try {
+      toast.info('Generando reporte de auditorías...', { duration: 2000 });
+
+      // Filtrar auditorías según filtros activos
+      let auditoriasExportar = auditorias;
+      if (busqueda) {
+        auditoriasExportar = auditoriasExportar.filter(a => 
+          a.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
+          a.codigo.toLowerCase().includes(busqueda.toLowerCase())
+        );
+      }
+      if (filtroTerritorial !== 'Todas las Territoriales') {
+        auditoriasExportar = auditoriasExportar.filter(a => a.territorial === filtroTerritorial);
+      }
+
+      if (auditoriasExportar.length === 0) {
+        toast.warning('No hay auditorías para exportar');
+        return;
+      }
+
+      // Crear CSV
+      const headers = ['Código', 'Título', 'Tipo', 'Estado', 'Territorial', 'Auditor Líder', 'Fecha Inicio', 'Fecha Fin', 'Progreso', 'Hallazgos', 'Riesgo'];
+      
+      const rows = auditoriasExportar.map(a => [
+        a.codigo,
+        `"${a.titulo.replace(/"/g, '""')}"`,
+        a.tipo,
+        a.estado,
+        a.territorial,
+        a.auditorLider?.nombre || 'No asignado',
+        a.fechaInicio,
+        a.fechaFin,
+        `${a.progreso}%`,
+        a.hallazgos,
+        a.riesgo
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Auditorias_OCIG_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Reporte exportado', {
+        description: `${auditoriasExportar.length} auditorías exportadas a Excel`
+      });
+    } catch (error: any) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el reporte'
+      });
+    }
+  };
+
   // Archivar individual - ACTUALIZADO
   const handleArchivar = (auditoria: Auditoria) => {
     setAuditoriaSeleccionada(auditoria);
@@ -2552,44 +2632,74 @@ export function GestionAuditoriasKanbanSimple() {
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
   
-  const handleCrearPlan = (auditoria: Auditoria) => {
-    // 1. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
-    const auditoriaParaPlan: AuditoriaParaPlan = {
-      id: auditoria.id,
-      codigo: auditoria.codigo,
-      nombre: auditoria.titulo,
-      areaResponsable: auditoria.areaObjetivo,
-      responsable: auditoria.auditorLider.nombre,
-      cargo: auditoria.auditorLider.cargo,
-      fechaFinalizacion: auditoria.fechaFin,
-      estadoPlan: 'SIN_PLAN',
-      fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin), // 30 días después
-      plazoFormulacion: 30,
-      hallazgos: generarHallazgosEjemplo(auditoria.hallazgos, auditoria.codigo)
-    };
-    
-    // 2. Agregar al context
-    agregarAuditoriaConHallazgos(auditoriaParaPlan);
-    
-    // 3. Seleccionar para formulación
-    seleccionarAuditoria(auditoriaParaPlan);
-    
-    // 4. Notificación
-    toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
-      description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
-      duration: 5000
-    });
+  const handleCrearPlan = async (auditoria: Auditoria) => {
+    try {
+      // 1. Obtener hallazgos reales del backend si existen
+      let hallazgosReales: HallazgoAuditoria[] = [];
+      try {
+        const hallazgosBackend = await getHallazgos(auditoria.id);
+        if (hallazgosBackend && hallazgosBackend.length > 0) {
+          hallazgosReales = hallazgosBackend.map((h: any) => ({
+            id: h.id,
+            titulo: h.titulo || h.descripcion?.substring(0, 50) || 'Sin título',
+            gravedad: h.criticidad?.toUpperCase() || h.gravedad || 'MODERADO',
+            descripcion: h.descripcion || '',
+            causas: h.causas || [],
+            efectos: h.efectos || [],
+            recomendaciones: h.recomendaciones || []
+          }));
+        }
+      } catch (err) {
+        console.warn('No se pudieron cargar hallazgos del backend:', err);
+      }
+
+      // Usar solo hallazgos reales del backend (no generar ejemplos)
+      const hallazgos = hallazgosReales;
+
+      // NOTA: El plan se crea en el backend cuando el usuario confirma en el modal
+      // de PlanesMejoramientoModuleRediseno, NO aquí.
+
+      // 2. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
+      const auditoriaParaPlan: AuditoriaParaPlan = {
+        id: auditoria.id,
+        codigo: auditoria.codigo,
+        nombre: auditoria.titulo,
+        areaResponsable: auditoria.areaObjetivo,
+        responsable: auditoria.auditorLider.nombre,
+        cargo: auditoria.auditorLider.cargo,
+        fechaFinalizacion: auditoria.fechaFin,
+        estadoPlan: 'SIN_PLAN',
+        fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin), // 30 días después
+        plazoFormulacion: 30,
+        hallazgos: hallazgos
+      };
+      
+      // 4. Agregar al context
+      agregarAuditoriaConHallazgos(auditoriaParaPlan);
+      
+      // 5. Seleccionar para formulación
+      seleccionarAuditoria(auditoriaParaPlan);
+      
+      // 6. Notificación
+      toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: `${hallazgos.length} hallazgos detectados. Ahora puede formular acciones correctivas.`,
+        duration: 5000
+      });
+    } catch (err) {
+      console.error('Error en handleCrearPlan:', err);
+      toast.error('Error al crear plan de mejoramiento');
+    }
     
     // Nota: La navegación al módulo de Planes se hace desde ControlInternoFull
     // cuando detecta que hay una auditoría seleccionada
   };
   
-  // Función auxiliar: calcular fecha límite (30 días después de finalización)
+  // Función auxiliar: calcular fecha límite (30 días después de finalización) - ISO 8601
   const calcularFechaLimitePlan = (fechaFin: string): string => {
     const [dia, mes, anio] = fechaFin.split('/');
     const fecha = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
     fecha.setDate(fecha.getDate() + 30);
-    return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}/${fecha.getFullYear()}`;
+    return fecha.toISOString().split('T')[0]; // YYYY-MM-DD
   };
   
   // Función auxiliar: generar hallazgos de ejemplo basados en el número
@@ -2984,7 +3094,7 @@ export function GestionAuditoriasKanbanSimple() {
             <Button 
               variant="outline" 
               className="gap-2 border-2 border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00] hover:text-white font-bold transition-all"
-              onClick={() => toast.success('Exportando reporte...')}
+              onClick={handleExportarTodo}
             >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Exportar</span>
@@ -4029,7 +4139,7 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             auditoriaId={auditoriaSeleccionada.id}
-            auditorActualId={(auditoriaSeleccionada as any).auditorLiderId}
+            auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
               console.log('Auditor asignado:', auditorId);
               // Actualizar auditoría en el backend
@@ -4037,6 +4147,25 @@ export function GestionAuditoriasKanbanSimple() {
                 auditorLiderId: auditorId
               });
               if (exito) {
+                // ✅ Actualizar también el estado local con los datos del auditor
+                const auditorSeleccionado = auditoresBackend?.find(a => String(a.id) === String(auditorId));
+                if (auditorSeleccionado) {
+                  setAuditorias(prev => prev.map(aud => 
+                    aud.id === auditoriaSeleccionada.id 
+                      ? {
+                          ...aud,
+                          auditorLiderId: Number(auditorId), // ✅ Guardar también el ID
+                          auditorLider: {
+                            nombre: auditorSeleccionado.nombre,
+                            cargo: auditorSeleccionado.cargo || 'Auditor',
+                            iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                            tipoIdentificacion: 'CC' as const,
+                            numeroIdentificacion: ''
+                          }
+                        } as any
+                      : aud
+                  ));
+                }
                 setModalAsignarAuditorOpen(false);
                 setAuditoriaSeleccionada(null);
               }

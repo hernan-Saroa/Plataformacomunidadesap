@@ -85,6 +85,8 @@ export interface AuditoriaKanban {
   actividadesPendientes?: number;
   // Criterios de auditoría
   criterios?: CriterioAuditoria[];
+  // ID del auditor líder asignado
+  auditorLiderId?: string | number;
 }
 
 export interface CriterioAuditoria {
@@ -263,7 +265,12 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
     fechaInicio: formatearFecha(auditoriaBackend.fechaInicio),
     fechaFin: formatearFecha(auditoriaBackend.fechaFin),
     progreso,
-    hallazgos: auditoriaBackend.hallazgos || auditoriaBackend.hallazgosCount || 0,
+    // Asegurar que hallazgos sea un número
+    hallazgos: typeof auditoriaBackend.hallazgos === 'number' 
+      ? auditoriaBackend.hallazgos 
+      : (Array.isArray(auditoriaBackend.hallazgos) 
+          ? auditoriaBackend.hallazgos.length 
+          : (auditoriaBackend.hallazgosCount || 0)),
     diasRestantes: auditoriaBackend.diasRestantes || tiempos.diasRestantes,
     porcentajeTiempo: auditoriaBackend.porcentajeTiempo || tiempos.porcentajeTiempo,
     ultimaActuacion: auditoriaBackend.ultimaActuacion || 'Sin actuaciones registradas',
@@ -290,7 +297,8 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
       departamento: auditoriaBackend.territorial
     } : undefined,
     actividadesCompletas: true,
-    actividadesPendientes: 0
+    actividadesPendientes: 0,
+    auditorLiderId: auditoriaBackend.auditorLiderId
   };
 }
 
