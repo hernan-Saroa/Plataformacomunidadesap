@@ -586,7 +586,7 @@ const coloresDisponibles = [
 const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
   '[DOCUMENTO]': 'Numero de documento',
-  '[CARGO]': 'Cargo calculado (categoria + codigo + grado)',
+  '[CARGO]': 'Cargo calculado (categoria + palabra Codigo + codigo + grado)',
   '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia donde trabaja',
   '[DATO1]': 'Dato 1 (nombre empleado)',
@@ -2159,11 +2159,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.error('Archivo invAlido', {
+      toast.error('Archivo inválido', {
 
 
 
-        description: 'Por favor selecciona una imagen vAlida (PNG, JPG, etc.)'
+        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
 
 
 
@@ -2183,7 +2183,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Validar tamaAo (mAximo 2MB)
+    // Validar tamaño (máximo 2 MB)
 
 
 
@@ -2239,7 +2239,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar TODA la configuracion desde el servidor para obtener datos frescos
+      // Recargar TODA la configuración desde el servidor para obtener datos frescos
 
 
 
@@ -2275,7 +2275,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar historial despuAs de subir firma
+      // Recargar historial después de subir firma
 
 
 
@@ -2300,7 +2300,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'La imagen de la firma se subio correctamente'
+        description: 'La imagen de la firma se subió correctamente'
 
 
 
@@ -2368,11 +2368,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      toast.error('Archivo invAlido', {
+      toast.error('Archivo inválido', {
 
 
 
-        description: 'Por favor selecciona una imagen vAlida (PNG, JPG, etc.)'
+        description: 'Por favor selecciona una imagen válida (PNG, JPG, etc.)'
 
 
 
@@ -2392,7 +2392,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Validar tamaAo (mAximo 2MB)
+    // Validar tamaño (máximo 2 MB)
 
 
 
@@ -2448,7 +2448,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar TODA la configuracion desde el servidor para obtener datos frescos
+      // Recargar TODA la configuración desde el servidor para obtener datos frescos
 
 
 
@@ -2484,7 +2484,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      // Recargar historial despuAs de subir logo
+      // Recargar historial después de subir logo
 
 
 
@@ -2509,7 +2509,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-        description: 'El logo de la entidad se subio correctamente'
+        description: 'El logo de la entidad se subió correctamente'
 
 
 
@@ -4523,22 +4523,22 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <li>a Formato: PNG, JPG o JPEG</li>
+                    <li>- Formato: PNG, JPG o JPEG</li>
 
 
 
-                    <li>a TamaAo mAximo: 2 MB</li>
+                    <li>- Tamaño máximo: 2 MB</li>
 
 
 
-                    <li>a Fondo transparente recomendado</li>
+                    <li>- Fondo transparente recomendado</li>
 
 
 
-                    <li>a Resolucion mAnima: 300 DPI</li>
+                    <li>- Resolución mínima: 300 DPI</li>
 
 
-                    <li>a TamaAo recomendado: 400px de ancho x 120px de alto para que quede nAtida al mostrarse a 48px</li>
+                    <li>- Tamaño recomendado: 400px de ancho x 120px de alto para que quede nítida al mostrarse a 48px</li>
 
 
 
@@ -4582,7 +4582,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  {isResettingFirma ? 'Restableciendo...' : 'Quitar firma (dejar vacAa)'}
+                  {isResettingFirma ? 'Restableciendo...' : 'Quitar firma (dejar vacía)'}
 
 
 
@@ -4894,20 +4894,20 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                    <li>a Formato: PNG, JPG o JPEG</li>
+                    <li>- Formato: PNG, JPG o JPEG</li>
 
 
 
-                    <li>a TamaAo mAximo: 2 MB</li>
+                    <li>- Tamaño máximo: 2 MB</li>
 
 
 
-                    <li>a Fondo transparente recomendado</li>
+                    <li>- Fondo transparente recomendado</li>
 
 
 
-                    <li>a Resolucion mAnima: 300 DPI</li>
-                    <li>- Tama-o recomendado: 500px de ancho x 150px de alto para que se vea n-tido al mostrarse a ~100px de alto</li>
+                    <li>- Resolución mínima: 300 DPI</li>
+                    <li>- Tamaño recomendado: 500px de ancho x 150px de alto para que se vea nítido al mostrarse a ~100px de alto</li>
 
 
 

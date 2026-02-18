@@ -26,6 +26,7 @@ import { VisorPDFCertificado } from '../certificados-laborales/VisorPDFCertifica
 import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
 import { useIsMobile } from '../ui/use-mobile';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 // import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { PublicNavbar } from './PublicNavbar';
 // import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
@@ -260,6 +261,33 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
     return 'activo';
   };
 
+  const normalizarMonto = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  };
+
+  const formatearMonto = (value?: string | number | null) =>
+    normalizarMonto(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+
+  const construirCargoVisual = (
+    cargoFuente?: string | null,
+    codCargo?: string | number | null,
+    codGrade?: string | number | null,
+    templateType?: 'docente' | 'administrador',
+  ) =>
+    formatCargoDisplay({
+      cargoSource: cargoFuente,
+      codCargo,
+      codGrade,
+      templateType,
+    });
+
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
     const templateSnapshot = cert?.template_snapshot || cert?.templateSnapshot || null;
     const templateType =
@@ -268,14 +296,21 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
       templateSnapshot?.templateType ||
       templateSnapshot?.template_type ||
       resolverTemplateType(cert);
-    const salarioBase = cert.monthly_salary || 0;
+    const salarioBase = normalizarMonto(cert.monthly_salary);
     const salarioTextoBase = cert.salary_text;
-    const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
+    const bonusBase = normalizarMonto(cert.technical_bonus ?? salarioBase * 0.2);
+    const cargoFormateado = construirCargoVisual(
+      cert.career_category || cert.position_category,
+      cert.cod_cargo || cert.codCargo,
+      cert.cod_grade || cert.codGrade,
+      templateType,
+    );
+
     return {
       numero_radicado: cert.certificate_number || cert.verification_code || `CERT-${Date.now()}`,
       tipo_certificado: 'Certificado Laboral General',
       fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
-      cargo: cert.career_category || 'N/A',
+      cargo: cargoFormateado,
       dependencia: cert.department || 'N/A',
       dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
       fecha_vinculacion: cert.hiring_date?.split('T')[0] || 'N/A',
@@ -303,7 +338,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
             nombre: cert.full_name,
             documento: cert.id_number,
             email: cert.email || cert.certificate_email || 'N/A',
-            cargo: cert.career_category,
+            cargo: cargoFormateado,
             dependencia: cert.department || 'N/A',
             dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
             cod_cargo: cert.cod_cargo || cert.codCargo,
@@ -416,7 +451,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
   const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
 
-    const salarioBase = cert.salario_original ?? cert.salario_actual ?? 0;
+    const salarioBase = normalizarMonto(cert.salario_original ?? cert.salario_actual ?? 0);
     const salarioTextoBase =
       cert.salario_texto_original ||
       cert.certificado_completo?.empleado?.salarioTextoOriginal ||
@@ -425,7 +460,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
 
     const empleadoCertificado = cert.certificado_completo?.empleado;
 
-    const bonusBase = incluirPrima ? (cert.prima_tecnica ?? salarioBase * 0.2) : 0;
+    const bonusBase = incluirPrima
+      ? normalizarMonto(cert.prima_tecnica ?? salarioBase * 0.2)
+      : 0;
 
     const certificadoActualizado: CertificadoGenerado = {
       ...cert,
@@ -595,7 +632,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
       // Crear objeto empleado desde la respuesta del backend
       const solicitud = response.solicitud && typeof response.solicitud === 'object' ? response.solicitud : {};
       const templateType = resolverTemplateType(solicitud);
-      const cargoNormalizado = solicitud.position_category || solicitud.career_category || 'N/A';
+      const cargoNormalizado = construirCargoVisual(
+        solicitud.career_category || solicitud.position_category,
+        solicitud.cod_cargo || solicitud.codCargo,
+        solicitud.cod_grade || solicitud.codGrade,
+        templateType,
+      );
       const vinculoNormalizado =
         solicitud.position_category ||
         solicitud.career_category ||
@@ -613,7 +655,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
         estado: 'Activo',
         correo_institucional: emailDestino,
         correo_personal: '',
-        salario_actual: solicitud.monthly_salary || 0,
+        salario_actual: normalizarMonto(solicitud.monthly_salary),
         templateType,
       };
 
@@ -670,16 +712,22 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
           templateSnapshot?.templateType ||
           templateSnapshot?.template_type ||
           resolverTemplateType(cert);
-        const salarioBase = cert.monthly_salary || empleadoEncontrado?.salario_actual || 0;
+        const salarioBase = normalizarMonto(cert.monthly_salary ?? empleadoEncontrado?.salario_actual ?? 0);
         const salarioTextoBase = cert.salary_text;
-        const bonusBase = cert.technical_bonus ?? salarioBase * 0.2;
+        const bonusBase = normalizarMonto(cert.technical_bonus ?? salarioBase * 0.2);
+        const cargoFormateado = construirCargoVisual(
+          cert.career_category || cert.position_category || empleadoEncontrado?.cargo,
+          cert.cod_cargo || cert.codCargo,
+          cert.cod_grade || cert.codGrade,
+          templateType,
+        );
 
       // Construir objeto de certificado completo desde la respuesta del backend
       const certificado: CertificadoGenerado = {
         numero_radicado: cert.certificate_number || cert.verification_code || `CERT-${Date.now()}`,
         tipo_certificado: 'Certificado Laboral General',
         fecha_generacion: cert.issue_date?.split('T')[0] || new Date().toISOString().split('T')[0],
-        cargo: cert.career_category || empleadoEncontrado?.cargo || 'N/A',
+        cargo: cargoFormateado,
         dependencia: cert.department || empleadoEncontrado?.dependencia || 'N/A',
         dependenciaPadre: cert.cod_cargo || cert.codCargo || empleadoEncontrado?.dependenciaPadre || 'Registro padre',
         fecha_vinculacion: cert.hiring_date?.split('T')[0] || empleadoEncontrado?.fecha_vinculacion || 'N/A',
@@ -708,7 +756,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
           nombre: cert.full_name,
           documento: cert.id_number,
           email: empleadoEncontrado?.correo_institucional || 'N/A',
-          cargo: cert.career_category,
+          cargo: cargoFormateado,
           dependencia: cert.department || 'N/A',
           dependenciaPadre: cert.cod_cargo || cert.codCargo || 'Registro padre',
           cod_cargo: cert.cod_cargo || cert.codCargo,
@@ -1547,7 +1595,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
                             <div className="sm:col-span-2">
                               <p className="text-gray-600 mb-1">Salario Actual</p>
                               <p className="font-bold text-gray-900">
-                                ${certificadoGenerado.salario_actual.toLocaleString('es-CO')} COP
+                                ${formatearMonto(certificadoGenerado.salario_actual)} COP
                               </p>
                             </div>
                           ) : (

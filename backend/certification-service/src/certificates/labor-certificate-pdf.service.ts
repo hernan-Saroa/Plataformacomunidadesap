@@ -131,12 +131,44 @@ export class LaborCertificatePdfService {
     );
   }
 
+  private normalizeMoneyValue(value?: string | number | null): number {
+    if (value === null || value === undefined) return 0;
+    const raw =
+      typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : String(value);
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  }
+
+  private formatMoney(value?: string | number | null): string {
+    return this.normalizeMoneyValue(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+  }
+
   private normalizeCodeValue(value?: string | number | null): string {
     if (value === null || value === undefined) return '';
     const raw = String(value).trim();
     if (!raw) return '';
     const digits = raw.replace(/\D+/g, '');
     return digits || raw.replace(/\s+/g, '');
+  }
+
+  private normalizeSpaces(value?: string | null): string {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private normalizeSearchText(value?: string | null): string {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private isZeroValue(value: string): boolean {
@@ -147,10 +179,39 @@ export class LaborCertificatePdfService {
     careerCategory?: string | null,
     codCargo?: string | number | null,
     codGrade?: string | number | null,
+    options?: {
+      templateType?: TemplateType;
+      includeCodeLabel?: boolean;
+      codeLabel?: string;
+    },
   ): string {
-    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
-    const codCargoRaw = this.normalizeCodeValue(codCargo);
-    const codGradeRaw = this.normalizeCodeValue(codGrade);
+    const careerRaw = this.normalizeSpaces(careerCategory);
+    const leadingMatch = careerRaw.match(/^(\d+)\s+(.+)$/);
+    const leadingCode = this.normalizeCodeValue(leadingMatch?.[1]);
+    let baseText = this.normalizeSpaces(leadingMatch ? leadingMatch[2] : careerRaw);
+    const gradeMatch = careerRaw.match(/\bgrado\s*(\d{1,2})\b/i);
+    const gradeFromText = this.normalizeCodeValue(gradeMatch?.[1]);
+    baseText = this.normalizeSpaces(baseText.replace(/\bgrado\s*\d{1,2}\b/gi, ''));
+
+    let inferredCode = '';
+    let inferredGrade = '';
+    const compactAdminMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})(\d{2})$/);
+    if (compactAdminMatch && /[A-Za-z\u00C0-\u00FF]/.test(compactAdminMatch[1] || '')) {
+      inferredCode = compactAdminMatch[2];
+      inferredGrade = compactAdminMatch[3];
+      baseText = this.normalizeSpaces(compactAdminMatch[1]);
+    } else {
+      const trailingCodeMatch = baseText.match(/^(.*?)(?:\s+)?(\d{4})$/);
+      if (trailingCodeMatch && /[A-Za-z\u00C0-\u00FF]/.test(trailingCodeMatch[1] || '')) {
+        inferredCode = trailingCodeMatch[2];
+        baseText = this.normalizeSpaces(trailingCodeMatch[1]);
+      }
+    }
+
+    let codCargoRaw =
+      this.normalizeCodeValue(codCargo) || leadingCode || inferredCode;
+    let codGradeRaw =
+      this.normalizeCodeValue(codGrade) || gradeFromText || inferredGrade;
 
     const isNoDefinido = /no\s+definido/i.test(careerRaw);
     const cargoIsZero = this.isZeroValue(codCargoRaw);
@@ -160,34 +221,57 @@ export class LaborCertificatePdfService {
       return 'No Definido';
     }
 
-    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
-    let baseText = careerRaw;
-    if (hasLeadingCode) {
-      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
-    }
-    if (/grado/i.test(baseText)) {
-      const beforeGrado = baseText.split(/grado/i)[0].trim();
-      if (beforeGrado) {
-        baseText = beforeGrado;
+    const resolvedTemplate: TemplateType =
+      options?.templateType ||
+      (/\bdocen\w*\b|\bdoc\b/.test(
+        this.normalizeSearchText(`${careerRaw} ${baseText}`),
+      )
+        ? 'docente'
+        : 'administrador');
+
+    if (
+      codCargoRaw &&
+      codGradeRaw &&
+      codCargoRaw.length > codGradeRaw.length &&
+      codCargoRaw.endsWith(codGradeRaw)
+    ) {
+      const cargoSoloCodigo = codCargoRaw.slice(0, -codGradeRaw.length);
+      if (cargoSoloCodigo.length >= 3) {
+        codCargoRaw = cargoSoloCodigo;
       }
     }
-    if (!baseText) {
-      baseText = careerRaw;
+
+    if (
+      resolvedTemplate !== 'docente' &&
+      !codGradeRaw &&
+      /^\d{6}$/.test(codCargoRaw) &&
+      /[A-Za-z\u00C0-\u00FF]/.test(baseText || careerRaw)
+    ) {
+      codGradeRaw = codCargoRaw.slice(-2);
+      codCargoRaw = codCargoRaw.slice(0, -2);
     }
 
-    let cargoCode = codCargoRaw;
-    if (cargoCode.length > 4) {
-      cargoCode = cargoCode.slice(0, 4);
-    }
+    const baseFinal =
+      baseText ||
+      this.normalizeSpaces(
+        careerRaw
+          .replace(/^\d+\s+/, '')
+          .replace(/\bgrado\s*\d{1,2}\b/gi, ''),
+      ) ||
+      careerRaw;
 
+    const includeCodeLabel = options?.includeCodeLabel === true;
+    const codeLabel = options?.codeLabel || 'Codigo';
     const parts: string[] = [];
-    if (baseText) parts.push(baseText);
-    if (cargoCode) parts.push(cargoCode);
-    if (!hasLeadingCode && (codGradeRaw || gradeIsZero)) {
+    if (baseFinal) parts.push(baseFinal);
+    if (codCargoRaw && !new RegExp(`\\b${codCargoRaw}\\b`).test(baseFinal)) {
+      parts.push(includeCodeLabel ? `${codeLabel} ${codCargoRaw}` : codCargoRaw);
+    }
+    if (resolvedTemplate !== 'docente' && (codGradeRaw || gradeIsZero)) {
       parts.push(`Grado ${codGradeRaw || '0'}`);
     }
 
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
+    return this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A';
   }
 
   private async generateQrCodeDataUrl(value: string): Promise<string | null> {
@@ -294,7 +378,11 @@ export class LaborCertificatePdfService {
       (certificate as Certificate & { cod_grade?: string }).cod_grade ||
       '';
     const cargoVariable =
-      this.buildCargoVariable(cargoTexto, codCargoSource, codGradeSource) ||
+      this.buildCargoVariable(cargoTexto, codCargoSource, codGradeSource, {
+        templateType,
+        includeCodeLabel: true,
+        codeLabel: 'Codigo',
+      }) ||
       cargoTexto ||
       tipoVinculacion ||
       '';
@@ -331,7 +419,7 @@ export class LaborCertificatePdfService {
       '';
     const cargoDato6 = tipoVinculacion;
 
-    const salarioBase = Number(certificate.monthly_salary || 0);
+    const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
     const salarioTextoBase = certificate.salary_text || '';
     const salarioEnLetras =
       includeSalary && salarioBase ? this.numeroALetras(salarioBase) : '';
@@ -359,7 +447,7 @@ export class LaborCertificatePdfService {
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': includeSalary && salarioBase
-        ? `($${salarioBase.toLocaleString('es-CO')})`
+        ? `($${this.formatMoney(salarioBase)})`
         : '',
       '[SALARIO_LETRAS]': includeSalary ? salarioEnLetras : '',
       '[FECHA_EXPEDICION_COMPLETA]': fechaExpedicion,
@@ -376,7 +464,9 @@ export class LaborCertificatePdfService {
     }
 
     if (includeTechnicalBonus) {
-      const bonusBase = Number(certificate.technical_bonus || 0) || salarioBase * 0.2;
+      const bonusBase =
+        this.normalizeMoneyValue(certificate.technical_bonus) ||
+        this.normalizeMoneyValue(salarioBase * 0.2);
       if (bonusBase > 0) {
         result = this.insertTechnicalBonus(result, bonusBase);
       }
@@ -498,8 +588,8 @@ export class LaborCertificatePdfService {
   }
 
   private insertTechnicalBonus(html: string, bonusValue: number): string {
-    const bonusText = `<p>Percibe mensualmente una prima tecnica de ($${bonusValue.toLocaleString(
-      'es-CO',
+    const bonusText = `<p>Percibe mensualmente una prima tecnica de ($${this.formatMoney(
+      bonusValue,
     )}) adicional a su asignacion basica mensual.</p>`;
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;

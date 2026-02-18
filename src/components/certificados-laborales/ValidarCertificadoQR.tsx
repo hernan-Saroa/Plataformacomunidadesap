@@ -24,6 +24,7 @@ import { Badge } from '../ui/badge';
 import { QRScannerModal } from './QRScannerModal';
 import { certificadosService } from '../../services/api/certificados.service';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 
 interface ValidacionResult {
   isValid: boolean;
@@ -59,63 +60,6 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
       if (v !== undefined && v !== null && String(v).trim() !== '') return v;
     }
     return 'No disponible';
-  };
-
-  const normalizarCodigo = (value?: string | number | null) => {
-    if (value === null || value === undefined) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    const digits = raw.replace(/\D+/g, '');
-    return digits || raw.replace(/\s+/g, '');
-  };
-
-  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
-
-  const construirCargoVariable = (
-    careerCategory?: string | null,
-    codCargo?: string | number | null,
-    codGrade?: string | number | null,
-  ) => {
-    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
-    const codCargoRaw = normalizarCodigo(codCargo);
-    const codGradeRaw = normalizarCodigo(codGrade);
-
-    const esNoDefinido = /no\s+definido/i.test(careerRaw);
-    const cargoEsCero = esCodigoCero(codCargoRaw);
-    const gradoEsCero = esCodigoCero(codGradeRaw);
-
-    if (esNoDefinido && cargoEsCero && gradoEsCero) {
-      return 'No Definido';
-    }
-
-    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
-    let baseText = careerRaw;
-    if (hasLeadingCode) {
-      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
-    }
-    if (/grado/i.test(baseText)) {
-      const antesGrado = baseText.split(/grado/i)[0].trim();
-      if (antesGrado) {
-        baseText = antesGrado;
-      }
-    }
-    if (!baseText) {
-      baseText = careerRaw;
-    }
-
-    let cargoCode = codCargoRaw;
-    if (cargoCode.length > 4) {
-      cargoCode = cargoCode.slice(0, 4);
-    }
-
-    const parts: string[] = [];
-    if (baseText) parts.push(baseText);
-    if (cargoCode) parts.push(cargoCode);
-    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
-      parts.push(`Grado ${codGradeRaw || '0'}`);
-    }
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
   };
 
   const parseDateString = (value?: string | null) => {
@@ -188,22 +132,28 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
         return;
       }
 
-      const cargoCalculado = construirCargoVariable(
-        response?.career_category
-          || response?.careerCategory
-          || response?.career_category_name
-          || response?.position_category
-          || response?.positionCategory
-          || response?.cargo,
-        response?.cod_cargo
-          || response?.codCargo
-          || response?.request?.cod_cargo
-          || response?.request?.codCargo,
-        response?.cod_grade
-          || response?.codGrade
-          || response?.request?.cod_grade
-          || response?.request?.codGrade,
-      );
+      const cargoCalculado = formatCargoDisplay({
+        cargoSource:
+          response?.career_category ||
+          response?.careerCategory ||
+          response?.career_category_name ||
+          response?.position_category ||
+          response?.positionCategory ||
+          response?.cargo,
+        codCargo:
+          response?.cod_cargo ||
+          response?.codCargo ||
+          response?.request?.cod_cargo ||
+          response?.request?.codCargo,
+        codGrade:
+          response?.cod_grade ||
+          response?.codGrade ||
+          response?.request?.cod_grade ||
+          response?.request?.codGrade,
+        templateType: response?.template_type || response?.templateType,
+        includeCodeLabel: true,
+        codeLabel: 'Codigo',
+      });
 
       const certificado = {
         consecutivo,

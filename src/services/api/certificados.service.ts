@@ -89,6 +89,8 @@ export const certificadosService = {
       search?: string;
       cargo?: string;
       tipoVinculacion?: string;
+      fechaDesde?: string;
+      fechaHasta?: string;
       page?: number;
       limit?: number;
     }): Promise<any> {
