@@ -174,7 +174,7 @@ class ControlInternoAPIClient {
     };
 
     // Agregar token si existe
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
     }
@@ -246,7 +246,7 @@ class ControlInternoAPIClient {
     
     // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -1163,7 +1163,7 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     
     const response = await fetch(url, {
       headers: {

@@ -483,7 +483,7 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
 
     setCargando(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('esap_auth_token');
       // Usar directamente el servicio de control interno
       const baseURL = import.meta.env.MODE === 'production' 
         ? `${getBaseURL()}/internal-institutional-control`

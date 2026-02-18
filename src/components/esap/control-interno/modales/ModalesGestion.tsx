@@ -32,45 +32,74 @@ import { motion } from 'motion/react';
 // 1. MODAL ASIGNAR AUDITOR - WORLD CLASS
 // ═════════════════════════════════════════════════════════════════════════
 
+// Tipo para auditores (compatible con backend)
+interface AuditorDisponible {
+  id: string;
+  nombre: string;
+  cargo: string;
+  email: string;
+  experiencia?: string;
+  disponibilidad?: string;
+  auditorias?: number;
+}
+
+// Lista de auditores por defecto (fallback si no se provee desde backend)
+const AUDITORES_DEFAULT: AuditorDisponible[] = [
+  { 
+    id: 'aud-1', 
+    nombre: 'Fernando Ávila', 
+    cargo: 'Auditor Líder', 
+    email: 'favila@esap.edu.co',
+    experiencia: '10 años',
+    disponibilidad: 'Disponible',
+    auditorias: 45
+  },
+  { 
+    id: 'aud-2', 
+    nombre: 'Catalina Rubio', 
+    cargo: 'Auditor Senior', 
+    email: 'crubio@esap.edu.co',
+    experiencia: '7 años',
+    disponibilidad: 'Disponible',
+    auditorias: 32
+  },
+  { 
+    id: 'aud-3', 
+    nombre: 'Laura Villa', 
+    cargo: 'Auditor', 
+    email: 'lvilla@esap.edu.co',
+    experiencia: '4 años',
+    disponibilidad: 'Ocupado',
+    auditorias: 18
+  },
+];
+
 interface ModalAsignarAuditorProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
   onAsignar: (auditorId: string) => void;
+  auditoresDisponibles?: AuditorDisponible[]; // ✅ NUEVO: Lista de auditores del backend
 }
 
-export function ModalAsignarAuditor({ isOpen, onClose, auditoriaId, onAsignar }: ModalAsignarAuditorProps) {
+export function ModalAsignarAuditor({ 
+  isOpen, 
+  onClose, 
+  auditoriaId, 
+  onAsignar,
+  auditoresDisponibles 
+}: ModalAsignarAuditorProps) {
   const [selectedAuditor, setSelectedAuditor] = useState('');
 
-  const auditores = [
-    { 
-      id: 'aud-1', 
-      nombre: 'Fernando Ávila', 
-      cargo: 'Auditor Líder', 
-      email: 'favila@esap.edu.co',
-      experiencia: '10 años',
-      disponibilidad: 'Disponible',
-      auditorias: 45
-    },
-    { 
-      id: 'aud-2', 
-      nombre: 'Catalina Rubio', 
-      cargo: 'Auditor Senior', 
-      email: 'crubio@esap.edu.co',
-      experiencia: '7 años',
-      disponibilidad: 'Disponible',
-      auditorias: 32
-    },
-    { 
-      id: 'aud-3', 
-      nombre: 'Laura Villa', 
-      cargo: 'Auditor', 
-      email: 'lvilla@esap.edu.co',
-      experiencia: '4 años',
-      disponibilidad: 'Ocupado',
-      auditorias: 18
-    },
-  ];
+  // Usar auditores del backend si están disponibles, sino usar fallback
+  const auditores = (auditoresDisponibles && auditoresDisponibles.length > 0)
+    ? auditoresDisponibles.map(a => ({
+        ...a,
+        experiencia: a.experiencia || 'N/A',
+        disponibilidad: a.disponibilidad || 'Disponible',
+        auditorias: a.auditorias || 0
+      }))
+    : AUDITORES_DEFAULT;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

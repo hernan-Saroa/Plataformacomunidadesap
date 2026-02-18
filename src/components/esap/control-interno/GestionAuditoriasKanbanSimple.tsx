@@ -54,6 +54,9 @@ import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAud
 import { useHallazgos } from './HallazgosContext';
 import { useTareas } from './TareasContext';
 
+// ✅ INTEGRACIÓN: Hook para cargar auditorías y auditores del backend
+import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } from './services/useAuditoriasKanban';
+
 // ============ TIPOS ============
 
 type EstadoAuditoria =
@@ -1747,7 +1750,21 @@ export function GestionAuditoriasKanbanSimple() {
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
   const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase } = useTareas();
   
-  const [auditorias, setAuditorias] = useState<Auditoria[]>(AUDITORIAS_MOCK);
+  // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
+  const {
+    auditorias: auditoriasBackend,
+    auditores: auditoresBackend,
+    loading: cargandoBackend,
+    error: errorBackend,
+    refetch: recargarAuditorias,
+    crearAuditoria: crearAuditoriaBackend,
+    actualizarAuditoria: actualizarAuditoriaBackend,
+    eliminarAuditoria: eliminarAuditoriaBackend,
+    cambiarFase: cambiarFaseBackend
+  } = useAuditoriasKanban();
+
+  // Estado local para auditorías (sincronizado con backend)
+  const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
   const [vistaActiva, setVistaActiva] = useState<'kanban' | 'lista'>('kanban');
   const [filtroTerritorial, setFiltroTerritorial] = useState<string>('Todas las Territoriales');
   const [busqueda, setBusqueda] = useState('');
@@ -1781,6 +1798,56 @@ export function GestionAuditoriasKanbanSimple() {
     agregarAuditoriaConHallazgos,
     seleccionarAuditoria
   } = useIntegracionAuditoriaPlanes();
+
+  // ✅ SINCRONIZAR: Auditorías del backend con estado local
+  useEffect(() => {
+    console.log('🔄 [SYNC] Hook disparado:', { 
+      auditoriasBackend: auditoriasBackend?.length, 
+      cargandoBackend,
+      primerAuditoria: auditoriasBackend?.[0]
+    });
+    
+    // Solo sincronizar cuando terminó de cargar y hay datos
+    if (!cargandoBackend && auditoriasBackend && auditoriasBackend.length > 0) {
+      // Transformar auditorías del backend al formato local
+      const auditoriasTransformadas: Auditoria[] = auditoriasBackend.map(aud => ({
+        id: aud.id,
+        codigo: aud.codigo,
+        titulo: aud.titulo,
+        descripcion: aud.descripcion,
+        estado: aud.estado,
+        riesgo: aud.riesgo,
+        semaforo: aud.semaforo,
+        territorial: aud.territorial,
+        auditorLider: aud.auditorLider,
+        auditorAsignado: aud.auditorAsignado,
+        fechaInicio: aud.fechaInicio,
+        fechaFin: aud.fechaFin,
+        progreso: aud.progreso,
+        hallazgos: aud.hallazgos,
+        diasRestantes: aud.diasRestantes,
+        porcentajeTiempo: aud.porcentajeTiempo,
+        ultimaActuacion: aud.ultimaActuacion,
+        objetivos: aud.objetivos,
+        calificacionRiesgo: aud.calificacionRiesgo,
+        documentos: aud.documentos,
+        informes: aud.informes,
+        tareas: aud.tareas,
+        tipo: aud.tipo,
+        prioridad: aud.prioridad,
+        areaObjetivo: aud.areaObjetivo,
+        permiteCambiarObjetivos: aud.permiteCambiarObjetivos,
+        equipoAuditores: aud.equipoAuditores,
+        territorialInfo: aud.territorialInfo,
+        especial: aud.especial,
+        actividadesCompletas: aud.actividadesCompletas,
+        actividadesPendientes: aud.actividadesPendientes
+      }));
+      setAuditorias(auditoriasTransformadas);
+      console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
+    }
+    // No cargar MOCK automáticamente - el usuario decide en desarrollo
+  }, [auditoriasBackend, cargandoBackend]);
 
   // ✅ NUEVO: Effect para detectar scroll horizontal disponible
   useEffect(() => {
@@ -2511,6 +2578,31 @@ export function GestionAuditoriasKanbanSimple() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [vistaActiva, modoVista]);
 
+  // ✅ LOADING STATE: Mostrar mientras carga del backend
+  if (cargandoBackend) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <p className="text-gray-600">Cargando auditorías...</p>
+      </div>
+    );
+  }
+
+  // ✅ ERROR STATE: Mostrar error si falla la carga
+  if (errorBackend) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <AlertCircle className="w-12 h-12 text-amber-500" />
+        <p className="text-gray-600">Error al cargar auditorías</p>
+        <p className="text-sm text-gray-400">{errorBackend}</p>
+        <Button onClick={() => recargarAuditorias()} variant="outline">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Reintentar
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="space-y-3 sm:space-y-4 lg:space-y-5 w-full">
@@ -2535,7 +2627,7 @@ export function GestionAuditoriasKanbanSimple() {
             {/* Botón Nueva Auditoría + Tooltip - STACK EN MÓVIL */}
             <div className="flex items-center gap-2 w-full md:w-auto">
               <Button
-                onClick={() => setShowFormularioInicio(true)}
+                onClick={() => setModalFormularioOpen(true)}
                 className="flex-1 md:flex-initial bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white font-bold hover:shadow-xl transition-all"
                 size="default"
               >
@@ -3731,6 +3823,7 @@ export function GestionAuditoriasKanbanSimple() {
               console.log('Auditor asignado:', auditorId);
               handleGuardarAsignacionAuditores(auditorId);
             }}
+            auditoresDisponibles={auditoresBackend}
           />
         )}
 
