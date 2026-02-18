@@ -845,7 +845,7 @@ export default function App() {
         return renderViewLanding();
 
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />;
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
 
       case 'login':
         return (
@@ -974,7 +974,7 @@ export default function App() {
   const renderViewLanding = () => {
     switch (currentView) {
       case 'solicitar-certificados-laborales':
-        return <SolicitarCertificadoLaboral onBack={handleBackToHome} />
+        return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
       case 'solicitar-certificados-graduados':
         return <ValidarCertificadoGraduado onVolver={handleBackToHome} />
       case 'enrollment-qr':

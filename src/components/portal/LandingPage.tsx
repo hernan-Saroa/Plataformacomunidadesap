@@ -152,6 +152,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
     return (
       <SolicitarCertificadoLaboral
         onBack={() => setVistaActual('landing')}
+        onLoginClick={handleLoginClick}
       />
     );
   }
