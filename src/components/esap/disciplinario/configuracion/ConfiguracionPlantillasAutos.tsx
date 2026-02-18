@@ -65,33 +65,40 @@ export function ConfiguracionPlantillasAutos() {
       const autosFromBD = await disciplinaryService.getAutosConfiguration();
       
       // Mapear autos de BD al formato del componente
-      const tiposFromBD: any[] = autosFromBD.map(auto => ({
-        id: auto.id,
-        nombre: auto.nombre,
-        descripcion: `Auto: ${auto.tipo}`,
-        etapa: auto.stage || 'INDAGACION',
-        plantilla: auto.plantilla || auto.nombre_plantilla ? {
-          id: `plt-${auto.id}`,
-          nombre: auto.nombre_plantilla || 'Plantilla configurada',
-          nombreArchivo: 'plantilla.docx',
-          descripcion: auto.descripcion_plantilla || 'Plantilla almacenada en BD',
-          tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          url: auto.plantilla || '',
-          tamano: 0,
-          version: auto.version_plantilla || '1.0',
+      const tiposFromBD: any[] = autosFromBD.map(auto => {
+        // Construir URL completa para la plantilla si existe
+        const plantillaUrl = auto.plantilla 
+          ? disciplinaryService.getFileUrl(auto.plantilla) 
+          : '';
+        
+        return {
+          id: auto.id,
+          nombre: auto.nombre,
+          descripcion: `Auto: ${auto.tipo}`,
+          etapa: auto.stage || 'INDAGACION',
+          plantilla: auto.plantilla || auto.nombre_plantilla ? {
+            id: `plt-${auto.id}`,
+            nombre: auto.nombre_plantilla || 'Plantilla configurada',
+            nombreArchivo: 'plantilla.docx',
+            descripcion: auto.descripcion_plantilla || 'Plantilla almacenada en BD',
+            tipoArchivo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            url: plantillaUrl,
+            tamano: 0,
+            version: auto.version_plantilla || '1.0',
+            fechaCreacion: auto.createdAt,
+            activo: auto.estado_plantilla === 'activo'
+          } : null,
+          activo: auto.estado === 'activo',
+          orden: auto.orden,
           fechaCreacion: auto.createdAt,
-          activo: auto.estado_plantilla === 'activo'
-        } : null,
-        activo: auto.estado === 'activo',
-        orden: auto.orden,
-        fechaCreacion: auto.createdAt,
-        fechaModificacion: auto.updatedAt,
-        // Campos adicionales para la plantilla
-        nombre_plantilla: auto.nombre_plantilla,
-        descripcion_plantilla: auto.descripcion_plantilla,
-        version_plantilla: auto.version_plantilla,
-        estado_plantilla: auto.estado_plantilla
-      }));
+          fechaModificacion: auto.updatedAt,
+          // Campos adicionales para la plantilla
+          nombre_plantilla: auto.nombre_plantilla,
+          descripcion_plantilla: auto.descripcion_plantilla,
+          version_plantilla: auto.version_plantilla,
+          estado_plantilla: auto.estado_plantilla
+        };
+      });
       
       setTiposAutos(tiposFromBD);
     } catch (error) {

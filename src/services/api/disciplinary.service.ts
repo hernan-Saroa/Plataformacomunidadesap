@@ -391,9 +391,15 @@ class DisciplinaryService {
      * Descargar archivo desde una URL directa (para Autos y otros)
      */
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
-        // La URL ya viene relativa del backend (ej: /control-disciplinario/api/v1/...)
-        // NO remover el slash inicial
-        const fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        // Verificar si la URL ya es absoluta (contiene protocolo)
+        let fullUrl: string;
+        if (/^https?:\/\//i.test(url)) {
+            // URL ya es absoluta, usarla directamente
+            fullUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else {
+            // URL relativa, construir URL completa
+            fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        }
 
         const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
@@ -446,11 +452,12 @@ class DisciplinaryService {
     /**
      * Obtener URL completa para archivos adjuntos
      * SIMPLIFICADO: Los archivos se guardan en ./uploads/{timestamp}_{nombre_original}
+     * Siempre devuelve una ruta relativa para que downloadFileFromUrl funcione correctamente
      */
     getFileUrl(urlRelativa: string): string {
         if (!urlRelativa) return '';
 
-        // Si ya es una URL completa, devolverla tal cual
+        // Si ya es una URL completa, devolverla tal cual (para backward compatibility)
         if (/^https?:\/\//i.test(urlRelativa)) return urlRelativa;
 
         // Extraer solo el nombre del archivo (última parte del path)
@@ -465,11 +472,9 @@ class DisciplinaryService {
             filename = filename.substring(6);
         }
 
-        // Construir URL simple: /files/{filename}
-        if (API_MODE === 'direct') {
-            return `${MICROSERVICE_URLS['control-disciplinario']}/files/${filename}`;
-        }
-        return `${getServiceUrl('control-disciplinario')}${SERVICE_PREFIX}/files/${filename}`;
+        // Devolver solo la ruta relativa (sin el host)
+        // Esto permite que downloadFileFromUrl construya la URL correctamente
+        return `/files/${filename}`;
     }
 
     // --- AUTOS ---
