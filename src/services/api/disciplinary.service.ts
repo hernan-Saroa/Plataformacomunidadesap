@@ -121,6 +121,11 @@ export interface AutoConfiguration {
     orden: number;
     createdAt: string;
     updatedAt: string;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
 }
 
 // DTO para crear configuración de auto
@@ -141,6 +146,11 @@ export interface UpdateAutoConfigurationDto {
     plantilla?: string;
     stage?: string;
     orden?: number;
+    // Campos de plantilla
+    nombre_plantilla?: string;
+    descripcion_plantilla?: string;
+    version_plantilla?: string;
+    estado_plantilla?: string;
 }
 
 export interface CreateNewsDto {

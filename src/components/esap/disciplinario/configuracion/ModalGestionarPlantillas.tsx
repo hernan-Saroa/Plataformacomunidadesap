@@ -14,6 +14,7 @@ import {
   CheckCircle, Info, Save, Loader, Files, Clock, Eye, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import { type TipoAuto, type PlantillaArchivo } from './SeccionPlantillasAutosUnificada';
 
 interface ModalGestionarPlantillasProps {
@@ -108,7 +109,35 @@ export function ModalGestionarPlantillas({
 
     setGuardando(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Si hay un archivo nuevo en alguna plantilla, subirlo al backend
+      for (const plantilla of plantillas) {
+        // Buscar si hay un archivo que fue seleccionado y tiene URL local (blob)
+        if (plantilla.url && plantilla.url.startsWith('blob:')) {
+          try {
+            // Descargar el blob para obtener el archivo
+            const response = await fetch(plantilla.url);
+            const blob = await response.blob();
+            
+            // Crear un archivo a partir del blob
+            // Usar type assertion para crear el archivo correctamente
+            const fileName = plantilla.nombreArchivo;
+            const fileType = blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            
+            // Crear el archivo usando la clase File global
+            const file = new globalThis.File([blob], fileName, { type: fileType });
+            
+            // Usar el servicio para subir el archivo
+            const uploadedData = await disciplinaryService.uploadAutoPlantilla(tipoAuto.id, file);
+            
+            // Actualizar la URL con la respuesta del servidor
+            plantilla.url = uploadedData.plantilla || plantilla.url;
+          } catch (uploadError) {
+            console.error('Error subiendo archivo:', uploadError);
+            // Continuar con la siguiente plantilla aunque falle la subida
+          }
+        }
+      }
+      
       onActualizarPlantillas(tipoAuto.id, plantillas);
       toast.success('Cambios guardados', {
         description: `${plantillas.length} plantilla(s) configurada(s)`

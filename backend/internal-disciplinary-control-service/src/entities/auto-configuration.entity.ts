@@ -23,6 +23,19 @@ export class AutoConfiguration {
   @Column({ type: 'text', nullable: true })
   plantilla: string;
 
+  // Nuevos campos para información de la plantilla
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  nombre_plantilla: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  descripcion_plantilla: string | null;
+
+  @Column({ type: 'varchar', length: 50, default: '1.0' })
+  version_plantilla: string;
+
+  @Column({ type: 'varchar', length: 50, default: 'activo' })
+  estado_plantilla: string;
+
   @Column({ type: 'varchar', length: 50, nullable: true })
   stage: string | null;
 
