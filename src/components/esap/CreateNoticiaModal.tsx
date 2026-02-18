@@ -936,8 +936,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     </div>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={currentDenunciado.identificacion}
-                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, identificacion: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        setCurrentDenunciado({ ...currentDenunciado, identificacion: value });
+                      }}
+                      onKeyDown={(e) => {
+                        if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
                       placeholder="Número de cédula"
                       disabled={porDeterminar.denunciadoIdentificacion}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoIdentificacion ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
@@ -1041,8 +1051,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         </label>
                         <input
                           type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={apoderadoDenunciado.cedula}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, cedula: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setApoderadoDenunciado({ ...apoderadoDenunciado, cedula: value });
+                          }}
+                          onKeyDown={(e) => {
+                            if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder="Número de cédula"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1053,8 +1073,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         </label>
                         <input
                           type="tel"
+                          inputMode="tel"
+                          pattern="[0-9]*"
                           value={apoderadoDenunciado.celular}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, celular: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setApoderadoDenunciado({ ...apoderadoDenunciado, celular: value });
+                          }}
+                          onKeyDown={(e) => {
+                            if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder="3001234567"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1303,8 +1333,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     </div>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={currentDenunciante.identificacion}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, identificacion: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        setCurrentDenunciante({ ...currentDenunciante, identificacion: value });
+                      }}
+                      onKeyDown={(e) => {
+                        if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
                       disabled={porDeterminar.denuncianteIdentificacion}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteIdentificacion ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1353,8 +1393,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     </div>
                     <input
                       type="text"
+                      inputMode="tel"
+                      pattern="[0-9]*"
                       value={currentDenunciante.telefono}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, telefono: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '');
+                        setCurrentDenunciante({ ...currentDenunciante, telefono: value });
+                      }}
+                      onKeyDown={(e) => {
+                        if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
                       disabled={porDeterminar.denuncianteTelefono}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteTelefono ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1476,8 +1526,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         </label>
                         <input
                           type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={apoderadoDenunciante.cedula}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, cedula: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setApoderadoDenunciante({ ...apoderadoDenunciante, cedula: value });
+                          }}
+                          onKeyDown={(e) => {
+                            if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder="Número de cédula"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1488,8 +1548,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         </label>
                         <input
                           type="tel"
+                          inputMode="tel"
+                          pattern="[0-9]*"
                           value={apoderadoDenunciante.celular}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, celular: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            setApoderadoDenunciante({ ...apoderadoDenunciante, celular: value });
+                          }}
+                          onKeyDown={(e) => {
+                            if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder="3001234567"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
