@@ -16,24 +16,32 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../../utils/clipboard';
+import { getPublicBaseUrl } from '../../config/environment';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface ModalCodigoQRProps {
   isOpen: boolean;
   onClose: () => void;
   certificado: {
     consecutivo: string;
+    qrCode?: string;
+    verification_code?: string;
     empleado: {
       nombre: string;
       documento: string;
     };
     fechaGeneracion: string;
   };
+  verificationUrl?: string;
 }
 
-export function ModalCodigoQR({ isOpen, onClose, certificado }: ModalCodigoQRProps) {
+export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }: ModalCodigoQRProps) {
   const qrRef = useRef<HTMLDivElement>(null);
   
-  const urlVerificacion = `https://esap.edu.co/verificar/${certificado.consecutivo}`;
+  const qrData = certificado.qrCode || certificado.verification_code || certificado.consecutivo;
+  const verificationBase = getPublicBaseUrl();
+  const verificationPath = '/verificar-certificado';
+  const urlVerificacion = verificationUrl || `${verificationBase}${verificationPath}/${qrData}`;
 
   const handleDescargarQR = () => {
     // En producción, aquí se generaría y descargaría la imagen del QR
@@ -221,25 +229,15 @@ export function ModalCodigoQR({ isOpen, onClose, certificado }: ModalCodigoQRPro
                   {/* QR Code con borde decorativo */}
                   <div className="bg-white p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 sm:border-4 border-[#003DA5] shadow-xl">
                     <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
-                      {/* QR Code simulado - Responsive */}
-                      <div className="w-48 h-48 sm:w-64 sm:h-64 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
-                        {/* Patrón QR simulado */}
-                        <div className="absolute inset-0 grid grid-cols-8 grid-rows-8 gap-0.5 sm:gap-1 p-1.5 sm:p-2">
-                          {[...Array(64)].map((_, i) => (
-                            <div
-                              key={i}
-                              className={`rounded-sm ${
-                                Math.random() > 0.5 ? 'bg-black' : 'bg-white'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        {/* Logo ESAP en el centro */}
-                        <div className="relative z-10 bg-white p-1.5 sm:p-2 rounded-lg shadow-lg border-2 border-[#003DA5]">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#003DA5] rounded flex items-center justify-center">
-                            <span className="text-white font-bold text-xs">ESAP</span>
-                          </div>
-                        </div>
+                      <div className="w-52 h-52 sm:w-72 sm:h-72 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
+                        <QRCodeCanvas
+                          value={urlVerificacion}
+                          size={253}
+                          level="H"
+                          includeMargin
+                          className="w-full h-full p-2"
+                        />
+                        <div className="absolute inset-0 pointer-events-none" />
                       </div>
                     </div>
                   </div>
