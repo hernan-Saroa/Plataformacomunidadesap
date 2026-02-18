@@ -174,7 +174,7 @@ class ControlInternoAPIClient {
     };
 
     // Agregar token si existe
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
     }
@@ -246,7 +246,7 @@ class ControlInternoAPIClient {
     
     // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -1163,7 +1163,7 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     
     const response = await fetch(url, {
       headers: {
@@ -1399,6 +1399,96 @@ class ControlInternoService {
    */
   async getAuditoriasKanban(): Promise<any[]> {
     return client.get<any[]>('/auditorias/kanban/all');
+  }
+
+  // ==========================================================================
+  // NOTAS DE AUDITORÍA
+  // ==========================================================================
+
+  /**
+   * Obtiene todas las notas de una auditoría
+   */
+  async getNotasAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/${auditoriaId}/notas`);
+  }
+
+  /**
+   * Crea una nueva nota para una auditoría
+   * Categorías válidas: General, Hallazgo, Seguimiento, Evidencia, Recomendación, Observación
+   */
+  async createNotaAuditoria(auditoriaId: string, data: {
+    contenido: string;
+    categoria?: 'General' | 'Hallazgo' | 'Seguimiento' | 'Evidencia' | 'Recomendación' | 'Observación';
+    esImportante?: boolean;
+    usuarioId?: string;
+    usuarioNombre?: string;
+  }): Promise<any> {
+    return client.post<any>(`/auditorias/${auditoriaId}/notas`, data);
+  }
+
+  /**
+   * Actualiza una nota existente
+   */
+  async updateNotaAuditoria(auditoriaId: string, notaId: string, data: {
+    contenido?: string;
+    categoria?: 'General' | 'Hallazgo' | 'Seguimiento' | 'Evidencia' | 'Recomendación' | 'Observación';
+    esImportante?: boolean;
+  }): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/notas/${notaId}`, data);
+  }
+
+  /**
+   * Elimina una nota (soft delete)
+   */
+  async deleteNotaAuditoria(auditoriaId: string, notaId: string): Promise<void> {
+    return client.delete(`/auditorias/${auditoriaId}/notas/${notaId}`);
+  }
+
+  /**
+   * Marca o desmarca una nota como importante
+   */
+  async toggleImportanteNota(auditoriaId: string, notaId: string): Promise<any> {
+    return client.patch<any>(`/auditorias/${auditoriaId}/notas/${notaId}/importante`);
+  }
+
+  // ==========================================================================
+  // HISTORIAL / TRAZABILIDAD DE AUDITORÍA
+  // ==========================================================================
+
+  /**
+   * Obtiene el historial completo de cambios de una auditoría
+   */
+  async getHistorialAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/${auditoriaId}/historial`);
+  }
+
+  // ==========================================================================
+  // APROBACIÓN DE AUDITORÍAS
+  // ==========================================================================
+
+  /**
+   * Aprueba una auditoría
+   */
+  async aprobarAuditoria(id: string, data?: {
+    comentarios?: string;
+    usuarioId?: number;
+    usuarioNombre?: string;
+  }): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/aprobar`, data || {});
+  }
+
+  /**
+   * Rechaza una auditoría
+   */
+  async rechazarAuditoria(id: string, justificacion: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/rechazar`, { justificacion });
+  }
+
+  /**
+   * Solicita modificación de una auditoría
+   */
+  async solicitarModificacionAuditoria(id: string, observaciones: string): Promise<any> {
+    return client.post<any>(`/auditorias/${id}/modificacion`, { observaciones });
   }
 
   // ==========================================================================

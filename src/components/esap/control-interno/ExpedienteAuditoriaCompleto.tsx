@@ -62,7 +62,7 @@
  * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, FileText, Calendar, Users, Target, Clock, CheckCircle,
@@ -383,9 +383,151 @@ export function ExpedienteAuditoriaCompleto({
   tabInicial = 'general',
 }: ExpedienteAuditoriaCompletoProps) {
   // Estado
-  const [auditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
+  const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
   const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
   const [historial] = useState<EventoHistorial[]>(HISTORIAL_EJEMPLO);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // ✅ Cargar datos del backend cuando se abre el modal
+  useEffect(() => {
+    const cargarAuditoria = async () => {
+      if (!isOpen || !auditoriaId) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`http://localhost:3007/api/control-interno/auditorias/${auditoriaId}`);
+        
+        if (!response.ok) {
+          throw new Error('Error al cargar la auditoría');
+        }
+        
+        const data = await response.json();
+        
+        // Mapear datos del backend a la estructura del frontend
+        const auditoriaBackend: Auditoria = {
+          id: data.id,
+          codigo: data.codigo,
+          nombre: data.nombre,
+          tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' : 
+                data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
+          estado: mapearEstado(data.fase || data.estadoKanban),
+          areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
+          procesoNombre: data.procesoAuditado || data.nombre,
+          nivelRiesgo: (data.riesgoKanban || 'Medio') as NivelRiesgo,
+          
+          responsableArea: {
+            id: String(data.auditorLiderId || '1'),
+            nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
+            cargo: data.responsableAreaCargo || 'Responsable',
+            email: `responsable@esap.edu.co`,
+            telefono: undefined,
+          },
+          
+          auditorLider: {
+            id: String(data.auditorLiderId || '1'),
+            nombre: data.auditorLider?.nombre || 'Sin auditor líder',
+            email: 'auditor@esap.edu.co',
+            foto: undefined,
+          },
+          
+          equipoAuditores: Array.isArray(data.equipoAuditores) 
+            ? data.equipoAuditores.map((eq: any) => ({
+                id: eq.id || String(eq.personaId),
+                nombre: eq.nombreCompleto || eq.nombre || 'Auditor',
+                rol: eq.rol || 'Auditor',
+                email: 'auditor@esap.edu.co',
+                foto: undefined,
+              }))
+            : [],
+          
+          cronograma: {
+            fechaCreacion: new Date(data.createdAt || data.fechaInicio),
+            fechaInicio: new Date(data.fechaInicio),
+            fechaFin: new Date(data.fechaFin),
+            fechaFinReal: data.fechaFinReal ? new Date(data.fechaFinReal) : undefined,
+            duracionDias: calcularDiasDuracion(data.fechaInicio, data.fechaFin),
+            diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio),
+          },
+          
+          progreso: {
+            general: data.progreso || 0,
+            planeacion: data.fase === 'planeacion' ? Math.min(data.progreso || 0, 100) : 100,
+            ejecucion: ['en-curso', 'revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
+            comunicacion: ['revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
+          },
+          
+          estadisticas: {
+            totalHallazgos: data.hallazgos || 0,
+            hallazgosCriticos: 0,
+            hallazgosMayores: 0,
+            hallazgosMenores: data.hallazgos || 0,
+            documentosCargados: data.totalDocumentos || 0,
+            notificacionesEnviadas: 0,
+          },
+          
+          fechasClave: {
+            planeacionInicio: new Date(data.fechaInicio),
+            planeacionFin: undefined,
+            ejecucionInicio: undefined,
+            ejecucionFin: undefined,
+            comunicacionInicio: undefined,
+            comunicacionFin: undefined,
+            informePreliminar: undefined,
+            informeFinal: undefined,
+          },
+          
+          metadata: {
+            creadoPor: 'Sistema',
+            fechaCreacion: new Date(data.createdAt || data.fechaInicio),
+            ultimaModificacion: new Date(data.updatedAt || Date.now()),
+            modificadoPor: 'Sistema',
+            version: 1,
+          },
+        };
+        
+        setAuditoria(auditoriaBackend);
+      } catch (err: any) {
+        console.error('Error cargando auditoría:', err);
+        setError(err.message || 'Error desconocido');
+        // Mantener los datos de ejemplo en caso de error
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    cargarAuditoria();
+  }, [isOpen, auditoriaId]);
+  
+  // Funciones auxiliares para mapeo
+  function mapearEstado(fase: string): EstadoAuditoria {
+    const mapeo: Record<string, EstadoAuditoria> = {
+      'planeacion': 'planeacion',
+      'Planeación': 'planeacion',
+      'en-curso': 'ejecucion',
+      'Ejecución': 'ejecucion',
+      'revision': 'comunicacion',
+      'Comunicación': 'comunicacion',
+      'completada': 'finalizada',
+      'Seguimiento': 'seguimiento',
+      'Finalizada': 'finalizada',
+    };
+    return mapeo[fase] || 'planeacion';
+  }
+  
+  function calcularDiasDuracion(fechaInicio: string, fechaFin: string): number {
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+    return Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  
+  function calcularDiasTranscurridos(fechaInicio: string): number {
+    const inicio = new Date(fechaInicio);
+    const hoy = new Date();
+    return Math.max(0, Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
+  }
   
   // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
   const getTabAutomatico = () => {
@@ -517,6 +659,26 @@ export function ExpedienteAuditoriaCompleto({
               </button>
             </div>
           </div>
+
+          {/* Loading indicator */}
+          {loading && (
+            <div className="flex items-center justify-center py-6 bg-blue-50 border-b border-blue-200">
+              <div className="flex items-center gap-3 text-blue-600">
+                <Activity className="w-5 h-5 animate-spin" />
+                <span className="font-medium">Cargando datos de la auditoría...</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Error indicator */}
+          {error && !loading && (
+            <div className="flex items-center justify-center py-4 bg-amber-50 border-b border-amber-200">
+              <div className="flex items-center gap-3 text-amber-600">
+                <AlertCircle className="w-5 h-5" />
+                <span className="text-sm">No se pudieron cargar los datos del servidor. Mostrando datos de ejemplo.</span>
+              </div>
+            </div>
+          )}
 
           {/* Indicadores de estado */}
           <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">

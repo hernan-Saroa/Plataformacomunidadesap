@@ -12,131 +12,43 @@ import {
   Eye,
   Filter,
   X,
-  CheckCheck
+  CheckCheck,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 import { Container4K } from '@/components/ui';
+
+// ✅ CONEXIÓN BACKEND: Hook de notificaciones
+import { useNotificaciones, type NotificacionFrontend } from './services/notificacionesService';
 
 // ====================================
 // TIPOS
 // ====================================
 
-interface Notificacion {
-  id: string;
-  tipo: 'info' | 'exito' | 'advertencia' | 'error' | 'recordatorio';
-  titulo: string;
-  mensaje: string;
-  fecha: string;
-  leida: boolean;
-  origen: string;
-  accion?: {
-    texto: string;
-    url: string;
-  };
-}
-
 type FiltroTipo = 'todos' | 'info' | 'exito' | 'advertencia' | 'error' | 'recordatorio';
 type FiltroEstado = 'todos' | 'leidas' | 'no-leidas';
-
-// ====================================
-// DATOS MOCK
-// ====================================
-
-const NOTIFICACIONES_MOCK: Notificacion[] = [
-  {
-    id: 'n1',
-    tipo: 'recordatorio',
-    titulo: 'Seguimiento Trimestral Próximo',
-    mensaje: 'El seguimiento trimestral del Plan de Mejoramiento PM-2025-005 vence en 7 días (15 de Octubre).',
-    fecha: '2025-10-08T09:00:00',
-    leida: false,
-    origen: 'Sistema de Seguimiento',
-    accion: {
-      texto: 'Ir al Seguimiento',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'n2',
-    tipo: 'exito',
-    titulo: 'Informe Aprobado',
-    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCI.',
-    fecha: '2025-09-30T14:22:00',
-    leida: true,
-    origen: 'Aprobaciones'
-  },
-  {
-    id: 'n3',
-    tipo: 'advertencia',
-    titulo: 'Plan de Mejoramiento Pendiente',
-    mensaje: 'El Plan de Mejoramiento para la auditoría AUD-2025-008 debe ser presentado antes del 28 de Octubre.',
-    fecha: '2025-10-05T10:15:00',
-    leida: false,
-    origen: 'Planes de Mejoramiento',
-    accion: {
-      texto: 'Formular Plan',
-      url: '/formulacion-plan/AUD-2025-008'
-    }
-  },
-  {
-    id: 'n4',
-    tipo: 'info',
-    titulo: 'Nueva Auditoría Programada',
-    mensaje: 'Se ha programado la auditoría AUD-2025-012 - Gestión de TI para el 15 de Noviembre.',
-    fecha: '2025-10-01T08:30:00',
-    leida: true,
-    origen: 'Programa Anual'
-  },
-  {
-    id: 'n5',
-    tipo: 'error',
-    titulo: 'Evidencia Rechazada',
-    mensaje: 'La evidencia "Conciliaciones_Ago.pdf" ha sido rechazada. Motivo: Documento incompleto.',
-    fecha: '2025-09-28T16:45:00',
-    leida: false,
-    origen: 'Validación de Evidencias',
-    accion: {
-      texto: 'Ver Observaciones',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'n6',
-    tipo: 'recordatorio',
-    titulo: 'Reunión de Apertura Mañana',
-    mensaje: 'Reunión de apertura de auditoría AUD-2025-010 programada para mañana a las 10:00 AM.',
-    fecha: '2025-10-07T17:00:00',
-    leida: false,
-    origen: 'Planeación de Auditoría'
-  },
-  {
-    id: 'n7',
-    tipo: 'info',
-    titulo: 'Documento Cargado',
-    mensaje: 'El documento "Plan_Anual_2026.pdf" ha sido cargado en la carpeta Planes Anuales.',
-    fecha: '2025-10-06T11:20:00',
-    leida: true,
-    origen: 'Gestión Documental'
-  },
-  {
-    id: 'n8',
-    tipo: 'exito',
-    titulo: 'Auditoría Finalizada',
-    mensaje: 'La auditoría AUD-2025-007 ha sido completada exitosamente.',
-    fecha: '2025-09-25T15:30:00',
-    leida: true,
-    origen: 'Comunicación'
-  }
-];
 
 // ====================================
 // COMPONENTE PRINCIPAL
 // ====================================
 
 export const NotificacionesModule: React.FC = () => {
-  const [notificaciones, setNotificaciones] = useState<Notificacion[]>(NOTIFICACIONES_MOCK);
+  // ✅ CONEXIÓN BACKEND: Usar hook de notificaciones
+  const { 
+    notificaciones, 
+    conteoNoLeidas, 
+    loading, 
+    error,
+    refetch,
+    marcarComoLeida,
+    marcarTodasLeidas,
+    eliminarNotificacion,
+    usuarioId
+  } = useNotificaciones();
+  
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
 
@@ -150,38 +62,105 @@ export const NotificacionesModule: React.FC = () => {
     });
   }, [notificaciones, filtroTipo, filtroEstado]);
 
-  // Estadísticas
+  // Estadísticas (calculadas desde las notificaciones reales del backend)
   const estadisticas = useMemo(() => {
     const total = notificaciones.length;
-    const noLeidas = notificaciones.filter(n => !n.leida).length;
+    const noLeidas = conteoNoLeidas;
     const hoy = new Date().toISOString().split('T')[0];
-    const hoyCount = notificaciones.filter(n => n.fecha.split('T')[0] === hoy).length;
+    const hoyCount = notificaciones.filter(n => n.fecha?.split('T')[0] === hoy).length;
     const advertencias = notificaciones.filter(n => n.tipo === 'advertencia' && !n.leida).length;
 
     return { total, noLeidas, hoyCount, advertencias };
-  }, [notificaciones]);
+  }, [notificaciones, conteoNoLeidas]);
 
-  // Handlers
-  const marcarComoLeida = (id: string) => {
-    setNotificaciones(prev => prev.map(n =>
-      n.id === id ? { ...n, leida: true } : n
-    ));
+  // Handlers conectados al backend
+  const handleMarcarLeida = async (id: string) => {
+    const success = await marcarComoLeida(id);
+    if (success) {
+      toast.success('Notificación marcada como leída');
+    } else {
+      toast.error('Error al marcar la notificación');
+    }
   };
 
-  const marcarTodasLeidas = () => {
-    setNotificaciones(prev => prev.map(n => ({ ...n, leida: true })));
-    toast.success('Todas las notificaciones marcadas como leídas');
+  const handleMarcarTodasLeidas = async () => {
+    const success = await marcarTodasLeidas();
+    if (success) {
+      toast.success('Todas las notificaciones marcadas como leídas');
+    } else {
+      toast.error('Error al marcar las notificaciones');
+    }
   };
 
-  const eliminarNotificacion = (id: string) => {
-    setNotificaciones(prev => prev.filter(n => n.id !== id));
-    toast.success('Notificación eliminada');
+  const handleEliminar = async (id: string) => {
+    const success = await eliminarNotificacion(id);
+    if (success) {
+      toast.success('Notificación eliminada');
+    } else {
+      toast.error('Error al eliminar la notificación');
+    }
   };
 
-  const limpiarLeidas = () => {
-    setNotificaciones(prev => prev.filter(n => !n.leida));
-    toast.success('Notificaciones leídas eliminadas');
+  const handleLimpiarLeidas = async () => {
+    const leidas = notificaciones.filter(n => n.leida);
+    let exitos = 0;
+    for (const notif of leidas) {
+      const success = await eliminarNotificacion(notif.id);
+      if (success) exitos++;
+    }
+    if (exitos > 0) {
+      toast.success(`${exitos} notificaciones leídas eliminadas`);
+    }
   };
+
+  // Estado de carga
+  if (loading) {
+    return (
+      <Container4K>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-[#003DA5] animate-spin mx-auto mb-4" />
+            <p className="text-gray-600">Cargando notificaciones...</p>
+          </div>
+        </div>
+      </Container4K>
+    );
+  }
+
+  // Estado de error
+  if (error) {
+    return (
+      <Container4K>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button
+              onClick={refetch}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white rounded-lg"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
+          </div>
+        </div>
+      </Container4K>
+    );
+  }
+
+  // Sin usuario autenticado
+  if (!usuarioId) {
+    return (
+      <Container4K>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <Bell className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">Inicia sesión para ver tus notificaciones</p>
+          </div>
+        </div>
+      </Container4K>
+    );
+  }
 
   return (
     <Container4K>
@@ -213,7 +192,14 @@ export const NotificacionesModule: React.FC = () => {
 
             <div className="flex flex-wrap gap-3">
               <button
-                onClick={marcarTodasLeidas}
+                onClick={refetch}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Actualizar
+              </button>
+              <button
+                onClick={handleMarcarTodasLeidas}
                 disabled={estadisticas.noLeidas === 0}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-xl font-semibold text-sm shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -221,7 +207,7 @@ export const NotificacionesModule: React.FC = () => {
                 Marcar Todas Leídas
               </button>
               <button
-                onClick={limpiarLeidas}
+                onClick={handleLimpiarLeidas}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all"
               >
                 <Trash2 className="w-4 h-4" />
@@ -419,7 +405,7 @@ export const NotificacionesModule: React.FC = () => {
                         )}
                       </div>
                       <button
-                        onClick={() => eliminarNotificacion(notif.id)}
+                        onClick={() => handleEliminar(notif.id)}
                         className="text-gray-400 hover:text-red-600 transition-colors flex-shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -448,7 +434,7 @@ export const NotificacionesModule: React.FC = () => {
                         )}
                         {!notif.leida && (
                           <button
-                            onClick={() => marcarComoLeida(notif.id)}
+                            onClick={() => handleMarcarLeida(notif.id)}
                             className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all"
                           >
                             <CheckCircle2 className="w-4 h-4" />

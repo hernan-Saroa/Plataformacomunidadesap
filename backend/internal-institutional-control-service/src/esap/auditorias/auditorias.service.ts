@@ -262,7 +262,11 @@ export class AuditoriasService {
       query.andWhere('auditoria.fechaFin <= :fechaHasta', { fechaHasta: filters.fechaHasta });
     }
 
-    const auditorias = await query.getMany();
+    const auditorias = await query
+      .leftJoinAndSelect('auditoria.objetivos', 'objetivos')
+      .leftJoinAndSelect('auditoria.criterios', 'criterios')
+      .leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores')
+      .getMany();
     // Serializar fechas para evitar problemas de zona horaria
     return auditorias.map(aud => this.serializeAuditoria(aud));
   }
@@ -273,7 +277,7 @@ export class AuditoriasService {
   async findOne(id: string): Promise<Auditoria> {
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id },
-      relations: ['objetivos', 'equipoAuditores'],
+      relations: ['objetivos', 'criterios', 'equipoAuditores'],
     });
 
     if (!auditoria) {
@@ -935,7 +939,22 @@ export class AuditoriasService {
       throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
     }
     
+    // Guardar estado anterior para el historial
+    const estadoAnterior = auditoria.estadoKanban;
+    const faseAnterior = auditoria.fase;
+    
     auditoria.fase = fase;
+    
+    // ✅ Sincronizar estadoKanban con la fase
+    // Mapeo de FaseAuditoria -> EstadoKanban
+    const faseToEstadoKanban: Record<FaseAuditoria, EstadoKanban> = {
+      [FaseAuditoria.PLANEACION]: EstadoKanban.PLANEACION,
+      [FaseAuditoria.EN_CURSO]: EstadoKanban.EJECUCION,
+      [FaseAuditoria.REVISION]: EstadoKanban.COMUNICACION,
+      [FaseAuditoria.COMPLETADA]: EstadoKanban.FINALIZADA,
+    };
+    const estadoNuevo = faseToEstadoKanban[fase] || EstadoKanban.PLANEACION;
+    auditoria.estadoKanban = estadoNuevo;
 
     // Si se completa, asegurar progreso al 100%
     if (fase === FaseAuditoria.COMPLETADA) {
@@ -943,6 +962,25 @@ export class AuditoriasService {
     }
 
     const saved = await this.auditoriaRepository.save(auditoria);
+    
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.accion = 'Cambio de estado';
+    historial.descripcion = `Auditoría ${auditoria.codigo} cambió de ${estadoAnterior || faseAnterior} a ${estadoNuevo}`;
+    historial.estadoAnterior = estadoAnterior || faseAnterior || undefined;
+    historial.estadoNuevo = estadoNuevo || undefined;
+
+    await this.historialRepository.save(historial);
+    
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(saved) as any;
   }

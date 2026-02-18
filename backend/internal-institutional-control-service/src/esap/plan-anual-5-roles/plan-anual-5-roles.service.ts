@@ -180,6 +180,18 @@ export class PlanAnual5RolesService {
       );
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NOTIFICACIONES: Enviar al Jefe OCI cuando el plan se envía a revisión
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (updateDto.estado && updateDto.estado !== estadoAnterior) {
+      try {
+        await this.notificarCambioEstadoPlan(savedPlan, estadoAnterior, updateDto.estado);
+      } catch (notifError) {
+        // No fallar la operación si las notificaciones fallan
+        console.error('[PlanAnual5RolesService.update] Error al enviar notificaciones:', notifError);
+      }
+    }
+
     return this.findOne(savedPlan.id);
   }
 
@@ -735,6 +747,114 @@ export class PlanAnual5RolesService {
         });
       } catch (error) {
         console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al crear notificación:`, error);
+      }
+    }
+  }
+
+  /**
+   * Notifica a los usuarios correspondientes cuando el estado del plan cambia
+   * - en-revision: Notifica al Jefe OCI para que revise y apruebe
+   * - aprobado: Notifica al responsable del plan
+   * - en-ejecucion: Notifica a todos los auditores asignados
+   */
+  private async notificarCambioEstadoPlan(
+    plan: PlanAnual5Roles, 
+    estadoAnterior: string, 
+    nuevoEstado: string
+  ): Promise<void> {
+    console.log(`[PlanAnual5RolesService.notificarCambioEstadoPlan] ${estadoAnterior} → ${nuevoEstado}`);
+    
+    const usuariosNotificar: string[] = [];
+    let titulo = '';
+    let mensaje = '';
+    let prioridad = PrioridadNotificacion.MEDIA;
+
+    switch (nuevoEstado) {
+      case 'en-revision':
+        // Notificar al Jefe OCI para que revise y apruebe el plan
+        titulo = `📋 Plan Anual ${plan.año} - Pendiente de Aprobación`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido enviado a revisión y está pendiente de su aprobación. Responsable: ${plan.responsable || 'No especificado'}.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        usuariosNotificar.push(...jefesOCI);
+        break;
+
+      case 'aprobado':
+        // Notificar al responsable que el plan fue aprobado
+        titulo = `✅ Plan Anual ${plan.año} - Aprobado`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido aprobado. Ya puede proceder a activarlo para iniciar la ejecución.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        // Buscar al responsable
+        if (plan.responsable) {
+          try {
+            const responsable = await this.dataSource.query(
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+              [`%${plan.responsable}%`]
+            );
+            if (responsable && responsable.length > 0) {
+              usuariosNotificar.push(String(responsable[0].id_tercero));
+            }
+          } catch (error) {
+            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
+          }
+        }
+        break;
+
+      case 'en-ejecucion':
+        // Notificar a todos que el plan está vigente
+        titulo = `🚀 Plan Anual ${plan.año} - Vigente`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido activado y está vigente. Las actividades programadas deben iniciar su ejecución.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        
+        // Notificar a Jefes OCI y responsable
+        const jefes = await this.obtenerJefesControlInterno();
+        usuariosNotificar.push(...jefes);
+        
+        if (plan.responsable) {
+          try {
+            const resp = await this.dataSource.query(
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+              [`%${plan.responsable}%`]
+            );
+            if (resp && resp.length > 0) {
+              usuariosNotificar.push(String(resp[0].id_tercero));
+            }
+          } catch (error) {
+            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
+          }
+        }
+        break;
+
+      default:
+        // No enviar notificaciones para otros estados
+        return;
+    }
+
+    // Eliminar duplicados y enviar notificaciones
+    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    
+    for (const usuarioId of usuariosUnicos) {
+      try {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo,
+          mensaje,
+          prioridad,
+          canal: CanalNotificacion.SISTEMA,
+          metadata: {
+            planAnualId: plan.id,
+            año: plan.año,
+            estadoAnterior,
+            nuevoEstado,
+            responsable: plan.responsable,
+          },
+        });
+        console.log(`[notificarCambioEstadoPlan] Notificación enviada a usuario ${usuarioId}`);
+      } catch (error) {
+        console.error(`[notificarCambioEstadoPlan] Error al crear notificación para ${usuarioId}:`, error);
       }
     }
   }
