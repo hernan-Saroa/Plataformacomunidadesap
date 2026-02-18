@@ -547,11 +547,21 @@ function ModalFormularioProceso({
                 </label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   required
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
                   value={formData.cedula}
-                  onChange={(e) => setFormData({ ...formData, cedula: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '');
+                    setFormData({ ...formData, cedula: value });
+                  }}
+                  onKeyDown={(e) => {
+                    if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="Ej: 1234567890"
                 />
               </div>
@@ -607,10 +617,20 @@ function ModalFormularioProceso({
                 </label>
                 <input
                   type="tel"
+                  inputMode="tel"
+                  pattern="[0-9]*"
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
                   value={formData.telefono}
-                  onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, '');
+                    setFormData({ ...formData, telefono: value });
+                  }}
+                  onKeyDown={(e) => {
+                    if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
                   placeholder="3001234567"
                 />
               </div>

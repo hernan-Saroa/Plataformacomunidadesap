@@ -1005,6 +1005,8 @@ export default function App() {
           position: fixed !important; 
           top: 20px !important; 
           right: 20px !important; 
+          bottom: auto !important;
+          left: auto !important;
           z-index: 100010 !important; 
         }
         [data-sonner-toast] { 

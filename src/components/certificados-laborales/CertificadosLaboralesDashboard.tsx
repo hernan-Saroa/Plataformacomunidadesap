@@ -35,6 +35,7 @@ import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
@@ -102,16 +103,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return /\bdocen\w*\b|\bdoc\b/.test(texto) ? 'docente' : 'administrador';
   };
 
-  const normalizarCodigo = (value?: string | number | null) => {
-    if (value === null || value === undefined) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    const digits = raw.replace(/\D+/g, '');
-    return digits || raw.replace(/\s+/g, '');
-  };
-
-  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
-
   const normalizarFechaContrato = (value?: string | number | Date | null) => {
     if (!value) return null;
     if (value instanceof Date) {
@@ -160,52 +151,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return 'activo';
   };
 
-  const construirCargoVariable = (
-    careerCategory?: string | null,
-    codCargo?: string | number | null,
-    codGrade?: string | number | null,
-  ) => {
-    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
-    const codCargoRaw = normalizarCodigo(codCargo);
-    const codGradeRaw = normalizarCodigo(codGrade);
-
-    const esNoDefinido = /no\s+definido/i.test(careerRaw);
-    const cargoEsCero = esCodigoCero(codCargoRaw);
-    const gradoEsCero = esCodigoCero(codGradeRaw);
-
-    if (esNoDefinido && cargoEsCero && gradoEsCero) {
-      return 'No Definido';
-    }
-
-    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
-    let baseText = careerRaw;
-    if (hasLeadingCode) {
-      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
-    }
-    if (/grado/i.test(baseText)) {
-      const antesGrado = baseText.split(/grado/i)[0].trim();
-      if (antesGrado) {
-        baseText = antesGrado;
-      }
-    }
-    if (!baseText) {
-      baseText = careerRaw;
-    }
-
-    let cargoCode = codCargoRaw;
-    if (cargoCode.length > 4) {
-      cargoCode = cargoCode.slice(0, 4);
-    }
-
-    const parts: string[] = [];
-    if (baseText) parts.push(baseText);
-    if (cargoCode) parts.push(cargoCode);
-    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
-      parts.push(`Grado ${codGradeRaw || '0'}`);
-    }
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
-  };
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
@@ -227,11 +172,15 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cert.cod_cargo ||
       cert.codCargo ||
       '';
-    const cargoVariable = construirCargoVariable(
-      cert.request?.career_category || cert.career_category || cert.position_category || '',
-      cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
-      cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
-    );
+    const templateTypeNormalizado =
+      templateTypeRaw ||
+      resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
+    const cargoVariable = formatCargoDisplay({
+      cargoSource: cert.request?.career_category || cert.career_category || cert.position_category || '',
+      codCargo: cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
+      codGrade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+      templateType: templateTypeNormalizado,
+    });
 
     const employmentStatusRaw = String(
       cert.employment_status ||
@@ -258,9 +207,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         : cert.status === 'EXPIRED'
           ? 'expirado'
           : employmentEstado;
-    const templateTypeNormalizado =
-      templateTypeRaw ||
-      resolverTemplateType(`${cert.position_category || ''} ${cert.career_category || ''}`);
     const ubicacionRaw = normalizarDependencia(
       cert.department ||
       cert.request?.department ||
@@ -682,153 +628,162 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         </div>
 
         {/* Botones de acción - Mobile First */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => onNavigate?.('validar-qr')}
-            className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
-            style={{
-              background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-              color: '#FFFFFF',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '12px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              minHeight: '48px'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-            }}
-          >
-            <QrCode className="w-5 h-5" strokeWidth={2.5} />
-            <span>Validar Certificado</span>
-          </button>
-
-          <button
-            onClick={() => onNavigate?.('configuracion-plantilla')}
-            className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
-            style={{
-              background: '#FFFFFF',
-              color: puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF',
-              border: '2px solid #E5E7EB',
-              borderRadius: '12px',
-              padding: '12px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              opacity: puedeConfigurarPlantilla ? 1 : 0.9,
-              minHeight: '48px'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F9FAFB';
-              e.currentTarget.style.borderColor = '#003DA5';
-              e.currentTarget.style.color = '#003DA5';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.borderColor = '#E5E7EB';
-              e.currentTarget.style.color = puedeConfigurarPlantilla ? '#6B7280' : '#9CA3AF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <Settings className="w-5 h-5" strokeWidth={2} />
-            <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
-            <span className="sm:hidden">Plantilla</span>
-          </button>
-
-          <button
-            onClick={() => fetchCertificados(true)}
-            disabled={isRefreshing}
-            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: '#FFFFFF',
-              color: '#10B981',
-              border: '2px solid #10B981',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
-              opacity: isRefreshing ? 0.6 : 1
-            }}
-            onMouseEnter={(e) => {
-              if (!isRefreshing) {
-                e.currentTarget.style.background = '#F0FDF4';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <motion.div
-              animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
-              transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => onNavigate?.('validar-qr')}
+              className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
+              style={{
+                background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '12px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                minHeight: '48px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 10px 25px rgba(41, 98, 255, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              <RefreshCw className="w-5 h-5" strokeWidth={2} />
-            </motion.div>
-            <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
-          </button>
-          
-          <button
-            onClick={() => setIsGenerarOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: '#FFFFFF',
-              color: '#003DA5',
-              border: '2px solid #003DA5',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#F0F6FF';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <Download className="w-5 h-5" strokeWidth={2} />
-            <span>Exportar</span>
-          </button>
+              <QrCode className="w-5 h-5" strokeWidth={2.5} />
+              <span>Validar Certificado</span>
+            </button>
 
-          <button
-            onClick={() => setIsHistorialOpen(true)}
-            className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
-            style={{
-              background: '#FFFFFF',
-              color: '#F97316',
-              border: '2px solid #F97316',
-              borderRadius: '8px',
-              padding: '10px 16px',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#FFF7ED';
-              e.currentTarget.style.transform = 'translateY(-1px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#FFFFFF';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <History className="w-5 h-5" strokeWidth={2} />
-            <span>Ver historial</span>
-          </button>
+            <button
+              onClick={() => onNavigate?.('configuracion-plantilla')}
+              className="inline-flex items-center justify-center gap-2 transition-all font-semibold"
+              style={{
+                background: 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)',
+                color: puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A',
+                border: '2px solid #93C5FD',
+                borderRadius: '12px',
+                padding: '12px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                opacity: 1,
+                boxShadow: '0 2px 8px rgba(37, 99, 235, 0.16)',
+                minHeight: '48px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, #DBEAFE 0%, #C7DDFF 100%)';
+                e.currentTarget.style.borderColor = '#2563EB';
+                e.currentTarget.style.color = '#1E3A8A';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 14px rgba(37, 99, 235, 0.22)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, #F0F7FF 0%, #E0ECFF 100%)';
+                e.currentTarget.style.borderColor = '#93C5FD';
+                e.currentTarget.style.color = puedeConfigurarPlantilla ? '#1E40AF' : '#1E3A8A';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(37, 99, 235, 0.16)';
+              }}
+            >
+              <span className="w-6 h-6 rounded-md bg-white/80 border border-blue-200 flex items-center justify-center">
+                <Settings className="w-4 h-4" strokeWidth={2.2} />
+              </span>
+              <span className="hidden sm:inline">{puedeConfigurarPlantilla ? 'Configurar Plantilla' : 'Ver Plantilla'}</span>
+              <span className="sm:hidden">Plantilla</span>
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:ml-auto">
+            <button
+              onClick={() => fetchCertificados(true)}
+              disabled={isRefreshing}
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              style={{
+                background: '#FFFFFF',
+                color: '#10B981',
+                border: '2px solid #10B981',
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                opacity: isRefreshing ? 0.6 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isRefreshing) {
+                  e.currentTarget.style.background = '#F0FDF4';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <motion.div
+                animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+                transition={isRefreshing ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
+              >
+                <RefreshCw className="w-5 h-5" strokeWidth={2} />
+              </motion.div>
+              <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+            </button>
+
+            <button
+              onClick={() => setIsGenerarOpen(true)}
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              style={{
+                background: '#FFFFFF',
+                color: '#003DA5',
+                border: '2px solid #003DA5',
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#F0F6FF';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <Download className="w-5 h-5" strokeWidth={2} />
+              <span>Exportar</span>
+            </button>
+
+            <button
+              onClick={() => setIsHistorialOpen(true)}
+              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0"
+              style={{
+                background: '#FFFFFF',
+                color: '#F97316',
+                border: '2px solid #F97316',
+                borderRadius: '8px',
+                padding: '10px 16px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#FFF7ED';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#FFFFFF';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <History className="w-5 h-5" strokeWidth={2} />
+              <span>Ver historial</span>
+            </button>
+          </div>
         </div>
       </motion.div>
 
