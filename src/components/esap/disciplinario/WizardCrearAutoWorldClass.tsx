@@ -265,16 +265,20 @@ export function WizardCrearAutoWorldClass({
     setDescargando(true);
 
     try {
-      // Si tiene plantilla del backend, descargar desde la URL
+      // Si tiene plantilla del backend, descargar usando el servicio igual que en configuraciones
       if (tienePlantillaBackend && tipoSeleccionado?.plantillaUrl) {
-        // Abrir la URL de la plantilla en una nueva pestaña para descargar
-        window.open(tipoSeleccionado.plantillaUrl, '_blank');
+        // Usar getFileUrl para procesar la URL (igual que en configuraciones)
+        const urlProcesada = disciplinaryService.getFileUrl(tipoSeleccionado.plantillaUrl);
+        const nombreArchivo = tipoSeleccionado.nombre_plantilla || 'plantilla.docx';
+        
+        // Usar downloadFileFromUrl igual que en SeccionPlantillasAutosUnificada
+        await disciplinaryService.downloadFileFromUrl(urlProcesada, nombreArchivo);
         
         toast.success('Plantilla descargada correctamente', {
-          description: tipoSeleccionado.nombre_plantilla || 'Plantilla del servidor',
+          description: nombreArchivo,
           duration: 3000,
         });
-      } else if (tienePlantillaLocal) {
+      } else if (tienePlantillaLocal && tipoSeleccionado?.plantilla) {
         // Simular descarga para plantillas locales (mock)
         await new Promise(resolve => setTimeout(resolve, 800));
         toast.success('Plantilla descargada correctamente', {
