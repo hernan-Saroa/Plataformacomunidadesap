@@ -4459,6 +4459,7 @@ export function DashboardKanbanOperativo({
         <AnimatePresence>
           {modalActivo === 'gestion-autos' && itemSeleccionado && (
             <WizardCrearAutoWorldClass
+              key="modal-gestion-autos"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
               onAutoCreado={() => {
@@ -4471,6 +4472,7 @@ export function DashboardKanbanOperativo({
 
           {modalActivo === 'gestion-evidencias' && itemSeleccionado && (
             <ModalGestionEvidencias
+              key="modal-gestion-evidencias"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
               onSubirEvidencia={() => {
@@ -4484,6 +4486,7 @@ export function DashboardKanbanOperativo({
 
           {modalActivo === 'gestion-oficios' && itemSeleccionado && (
             <WizardOficiosWorldClass
+              key="modal-gestion-oficios"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
               onOficioCreado={() => {
@@ -4497,6 +4500,7 @@ export function DashboardKanbanOperativo({
 
           {modalActivo === 'gestion-actas' && itemSeleccionado && (
             <WizardActasWorldClass
+              key="modal-gestion-actas"
               proceso={itemSeleccionado}
               onClose={() => setModalActivo(null)}
               onActaCreada={() => {

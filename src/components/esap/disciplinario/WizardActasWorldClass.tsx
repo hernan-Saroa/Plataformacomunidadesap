@@ -886,8 +886,18 @@ export function WizardActasWorldClass({
                                     </label>
                                     <input
                                       type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
                                       value={participante.identificacion}
-                                      onChange={(e) => actualizarParticipante(index, 'identificacion', e.target.value)}
+                                      onChange={(e) => {
+                                        const value = e.target.value.replace(/[^0-9]/g, '');
+                                        actualizarParticipante(index, 'identificacion', value);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                                          e.preventDefault();
+                                        }
+                                      }}
                                       placeholder="CC..."
                                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500/10 focus:border-purple-600 transition-all text-sm"
                                     />
