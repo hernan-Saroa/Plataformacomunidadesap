@@ -53,10 +53,12 @@ export class CertificatesController {
     @Query('status') status?: string,
     @Query('cargo') cargo?: string,
     @Query('tipoVinculacion') tipoVinculacion?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
   ) {
     const parsedPage = page ? Number.parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
-    const hasFilters = Boolean(search || status || cargo || tipoVinculacion);
+    const hasFilters = Boolean(search || status || cargo || tipoVinculacion || fechaDesde || fechaHasta);
     const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters;
 
     if (hasPagination) {
@@ -67,6 +69,8 @@ export class CertificatesController {
         status,
         cargo,
         tipoVinculacion,
+        fechaDesde,
+        fechaHasta,
       });
     }
 

@@ -120,6 +120,50 @@ export class CertificatesService {
     return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO' ? 'A' : 'I';
   }
 
+  private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    // La data puede venir como "E", "N" o textos como "Encargo".
+    if (normalized === 'E' || normalized.startsWith('E')) {
+      return 'E';
+    }
+    if (normalized === 'N' || normalized.startsWith('N')) {
+      return 'N';
+    }
+    return null;
+  }
+
+  private selectPreferredRequestForCertificate(requests: CertificateRequest[]): CertificateRequest | null {
+    if (!requests.length) {
+      return null;
+    }
+
+    // Prioridad 1: contratos activos.
+    const activeRequests = requests.filter(
+      (request) =>
+        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO',
+    );
+
+    // Prioridad 2 dentro de activos: tipo "E" (encargo).
+    const activeWithEncargo = activeRequests.filter(
+      (request) => this.normalizeEncargoType(request.observations) === 'E',
+    );
+
+    if (activeWithEncargo.length) {
+      return activeWithEncargo[0];
+    }
+
+    if (activeRequests.length) {
+      return activeRequests[0];
+    }
+
+    // Fallback: mantener comportamiento previo tomando el registro mas reciente.
+    return requests[0];
+  }
+
   private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
     const cert = certificate as Certificate & {
       template_snapshot?: any;
@@ -458,6 +502,8 @@ export class CertificatesService {
     status?: string;
     cargo?: string;
     tipoVinculacion?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
   }) {
     const safePage = Math.max(params.page || 1, 1);
     const safeLimit = Math.min(Math.max(params.limit || 10, 1), 10);
@@ -498,7 +544,30 @@ export class CertificatesService {
       qb.andWhere('cert.career_category = :tipo', { tipo: params.tipoVinculacion });
     }
 
-    qb.orderBy('cert.issue_date', 'DESC');
+    if (params.fechaDesde) {
+      const desde = new Date(params.fechaDesde);
+      if (!isNaN(desde.getTime())) {
+        desde.setHours(0, 0, 0, 0);
+        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) >= :fechaDesde', {
+          fechaDesde: desde,
+        });
+      }
+    }
+
+    if (params.fechaHasta) {
+      const hasta = new Date(params.fechaHasta);
+      if (!isNaN(hasta.getTime())) {
+        hasta.setHours(23, 59, 59, 999);
+        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) <= :fechaHasta', {
+          fechaHasta: hasta,
+        });
+      }
+    }
+
+    qb
+      .orderBy('COALESCE(cert.issuance_timestamp, cert.created_at)', 'DESC')
+      .addOrderBy('COALESCE(cert.issue_date, cert.created_at)', 'DESC')
+      .addOrderBy('cert.created_at', 'DESC');
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
 
@@ -642,46 +711,110 @@ export class CertificatesService {
   // VALIDATIONS
   // ============================================
 
-  private mapValidationToDTO(validation: CertificateValidation) {
-    const ua = (validation.user_agent || '').toLowerCase();
-    const isMobile = ua.includes('mobile') || ua.includes('android') || ua.includes('iphone');
-    const isTablet = ua.includes('ipad') || ua.includes('tablet');
-    const deviceType = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+  private parseUserAgentInfo(userAgent?: string | null): {
+    deviceType: 'desktop' | 'mobile' | 'tablet';
+    sistemaOperativo: string;
+    navegador: string;
+    version: string;
+  } {
+    const ua = String(userAgent || '').trim();
+    const uaLower = ua.toLowerCase();
+
+    const isTablet = /(ipad|tablet)/i.test(ua);
+    const isMobile = /(mobile|iphone|android)/i.test(ua);
+    const deviceType: 'desktop' | 'mobile' | 'tablet' = isTablet
+      ? 'tablet'
+      : isMobile
+        ? 'mobile'
+        : 'desktop';
 
     let sistemaOperativo = 'Desconocido';
-    if (ua.includes('windows')) sistemaOperativo = 'Windows';
-    else if (ua.includes('android')) sistemaOperativo = 'Android';
-    else if (ua.includes('mac os') || ua.includes('macos')) sistemaOperativo = 'macOS';
-    else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) sistemaOperativo = 'iOS';
-    else if (ua.includes('linux')) sistemaOperativo = 'Linux';
+    if (/(iphone|ipad|ipod|ios)/i.test(ua)) sistemaOperativo = 'iOS';
+    else if (/android/i.test(ua)) sistemaOperativo = 'Android';
+    else if (/windows/i.test(ua)) sistemaOperativo = 'Windows';
+    else if (/(mac os|macos|macintosh)/i.test(ua)) sistemaOperativo = 'macOS';
+    else if (/linux/i.test(ua)) sistemaOperativo = 'Linux';
 
     let navegador = 'Desconocido';
-    if (ua.includes('chrome')) navegador = 'Chrome';
-    else if (ua.includes('safari')) navegador = 'Safari';
-    else if (ua.includes('firefox')) navegador = 'Firefox';
-    else if (ua.includes('edge')) navegador = 'Edge';
+    let version = '';
+
+    const browserPatterns: Array<{ regex: RegExp; name: string }> = [
+      { regex: /(edg|edge|edgios|edga)\/([\d.]+)/i, name: 'Edge' },
+      { regex: /(opr|opera)\/([\d.]+)/i, name: 'Opera' },
+      { regex: /firefox\/([\d.]+)/i, name: 'Firefox' },
+      { regex: /fxios\/([\d.]+)/i, name: 'Firefox' },
+      { regex: /crios\/([\d.]+)/i, name: 'Chrome' },
+      { regex: /chrome\/([\d.]+)/i, name: 'Chrome' },
+      { regex: /version\/([\d.]+).*safari/i, name: 'Safari' },
+      { regex: /safari\/([\d.]+)/i, name: 'Safari' },
+    ];
+
+    for (const pattern of browserPatterns) {
+      const match = ua.match(pattern.regex);
+      if (match) {
+        navegador = pattern.name;
+        version = (match[2] || match[1] || '').trim();
+        break;
+      }
+    }
+
+    // Fallback defensivo para UAs no estandar.
+    if (navegador === 'Desconocido') {
+      if (uaLower.includes('postman')) {
+        navegador = 'Postman';
+      } else if (uaLower.includes('insomnia')) {
+        navegador = 'Insomnia';
+      }
+    }
+
+    return {
+      deviceType,
+      sistemaOperativo,
+      navegador,
+      version,
+    };
+  }
+
+  private mapValidationToDTO(validation: CertificateValidation) {
+    const uaInfo = this.parseUserAgentInfo(validation.user_agent);
 
     const resultado = (validation.result || 'VALID').toUpperCase();
     const resultadoNormalizado =
       resultado === 'REVOKED' || resultado === 'EXPIRED' || resultado === 'INVALID'
         ? 'fallida'
-        : 'exitosa';
+        : resultado === 'SUSPICIOUS' || resultado === 'WARNING'
+          ? 'sospechosa'
+          : 'exitosa';
 
-    const ciudad = validation.city || validation.region || validation.location || 'Desconocido';
-    const pais = validation.country || 'Desconocido';
+    const locationRaw = String(validation.location || '').trim();
+    const locationParts = locationRaw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const ciudad =
+      validation.city ||
+      validation.region ||
+      locationParts[0] ||
+      'Desconocido';
+    const pais =
+      validation.country ||
+      (locationParts.length > 1 ? locationParts.slice(1).join(', ') : '') ||
+      'Desconocido';
+
+    const normalizedIp = this.normalizeIp(validation.ip_address || '') || validation.ip_address || '0.0.0.0';
 
     return {
       id: validation.id,
       timestamp: validation.validation_date,
       resultado: resultadoNormalizado,
       dispositivo: {
-        tipo: deviceType,
-        sistemaOperativo,
-        navegador,
-        version: '',
+        tipo: uaInfo.deviceType,
+        sistemaOperativo: uaInfo.sistemaOperativo,
+        navegador: uaInfo.navegador,
+        version: uaInfo.version,
       },
       ubicacion: {
-        ip: validation.ip_address || '0.0.0.0',
+        ip: normalizedIp,
         pais,
         ciudad,
         latitud: validation.latitude ?? undefined,
@@ -1008,9 +1141,24 @@ export class CertificatesService {
       fechaExpedicionDate || new Date(),
     );
 
+    const normalizarMonto = (value?: string | number | null) => {
+      if (value === null || value === undefined) return 0;
+      const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : String(value);
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed)) return 0;
+      return Math.round(parsed);
+    };
+
+    const formatearMonto = (value?: string | number | null) =>
+      normalizarMonto(value).toLocaleString('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      });
+
     // Formatear salario
-    const salarioNumero = `($${certificado.monthly_salary.toLocaleString('es-CO')})`;
-    const salarioTexto = this.certificateGenerator.numeroATexto(certificado.monthly_salary);
+    const salarioBase = normalizarMonto(certificado.monthly_salary);
+    const salarioNumero = `($${formatearMonto(salarioBase)})`;
+    const salarioTexto = this.certificateGenerator.numeroATexto(salarioBase);
 
     // Generar el documento DOCX
     const buffer = await this.certificateGenerator.generateCertificate({
@@ -1041,13 +1189,15 @@ export class CertificatesService {
   async verificarDocumentoPorSolicitud(documento: string) {
     // Buscar la solicitud por numero de documento
     const documentoTrim = (documento || '').trim();
-    const solicitud = await this.requestRepo
+    const solicitudes = await this.requestRepo
       .createQueryBuilder('request')
       .where('request.id_number = :documento', { documento: documentoTrim })
       .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
       .addOrderBy('request.request_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
-      .getOne();
+      .getMany();
+
+    const solicitud = this.selectPreferredRequestForCertificate(solicitudes);
 
     if (!solicitud) {
       return {

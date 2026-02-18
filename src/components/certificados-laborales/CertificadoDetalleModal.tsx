@@ -33,6 +33,20 @@ interface CertificadoDetalleModalProps {
 export function CertificadoDetalleModal({ certificado, isOpen, onClose }: CertificadoDetalleModalProps) {
   if (!isOpen) return null;
 
+  const normalizarMonto = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
+  };
+
+  const formatearMonto = (value?: string | number | null) =>
+    normalizarMonto(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+
   const getEstadoBadge = (estado: string) => {
     const estilos = {
       GENERADO: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, label: 'Generado' },
@@ -241,7 +255,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Briefcase className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.cargo}
+                            {certificado.empleado.cargo_calculado || certificado.empleado.cargo}
                           </p>
                         </div>
                         <div>
@@ -296,7 +310,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 font-bold flex items-center gap-1.5">
                             <DollarSign className="w-4 h-4 text-green-600" />
-                            ${certificado.empleado.salario.toLocaleString('es-CO')} COP
+                            ${formatearMonto(certificado.empleado.salario)} COP
                           </p>
                         </div>
                       </div>

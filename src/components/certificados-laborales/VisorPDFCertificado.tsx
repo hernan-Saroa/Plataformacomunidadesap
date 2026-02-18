@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
 import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 import { QRCodeCanvas } from 'qrcode.react';
 
 interface VisorPDFCertificadoProps {
@@ -124,62 +125,33 @@ export function VisorPDFCertificado({
 
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
-  const normalizarCodigo = (value?: string | number | null) => {
-    if (value === null || value === undefined) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    const digits = raw.replace(/\D+/g, '');
-    return digits || raw.replace(/\s+/g, '');
+  const normalizarMonto = (value?: string | number | null) => {
+    if (value === null || value === undefined) return 0;
+    const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed);
   };
 
-  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
+  const formatearMonto = (value?: string | number | null) =>
+    normalizarMonto(value).toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
 
   const construirCargoVariable = (
     careerCategory?: string | null,
     codCargo?: string | number | null,
     codGrade?: string | number | null,
-  ) => {
-    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
-    const codCargoRaw = normalizarCodigo(codCargo);
-    const codGradeRaw = normalizarCodigo(codGrade);
-
-    const esNoDefinido = /no\s+definido/i.test(careerRaw);
-    const cargoEsCero = esCodigoCero(codCargoRaw);
-    const gradoEsCero = esCodigoCero(codGradeRaw);
-
-    if (esNoDefinido && cargoEsCero && gradoEsCero) {
-      return 'No Definido';
-    }
-
-    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
-    let baseText = careerRaw;
-    if (hasLeadingCode) {
-      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
-    }
-    if (/grado/i.test(baseText)) {
-      const antesGrado = baseText.split(/grado/i)[0].trim();
-      if (antesGrado) {
-        baseText = antesGrado;
-      }
-    }
-    if (!baseText) {
-      baseText = careerRaw;
-    }
-
-    let cargoCode = codCargoRaw;
-    if (cargoCode.length > 4) {
-      cargoCode = cargoCode.slice(0, 4);
-    }
-
-    const parts: string[] = [];
-    if (baseText) parts.push(baseText);
-    if (cargoCode) parts.push(cargoCode);
-    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
-      parts.push(`Grado ${codGradeRaw || '0'}`);
-    }
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
-  };
+  ) =>
+    formatCargoDisplay({
+      cargoSource: careerCategory,
+      codCargo,
+      codGrade,
+      templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
+    });
 
   const obtenerSnapshotPlantilla = () => {
     return (certificado as any)?.templateSnapshot || (certificado as any)?.template_snapshot || null;
@@ -240,10 +212,11 @@ export function VisorPDFCertificado({
   const typographyFont = normalizarTipografia(
     plantillaConfig?.typography?.font || plantillaConfig?.typographyFont,
   );
-  const salarioBase =
+  const salarioBase = normalizarMonto(
     (certificado.empleado as any)?.salarioOriginal ??
-    certificado.empleado.salario ??
-    0;
+      certificado.empleado.salario ??
+      0,
+  );
   const salarioTextoBase =
     (certificado.empleado as any)?.salarioTextoOriginal ??
     certificado.empleado.salarioTexto ??
@@ -370,7 +343,7 @@ export function VisorPDFCertificado({
       '[DEPENDENCIA]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
-      '[SALARIO]': incluirSalario && salarioBase ? `($${salarioBase.toLocaleString('es-CO')})` : '',
+      '[SALARIO]': incluirSalario && salarioBase ? `($${formatearMonto(salarioBase)})` : '',
       '[SALARIO_LETRAS]': incluirSalario ? salarioEnLetras : '',
       '[FECHA_EXPEDICION_COMPLETA]': fechaExpedicionCompleta,
       '[CIUDAD_EXPEDICION]': 'Bogotá D.C.',
@@ -856,7 +829,7 @@ export function VisorPDFCertificado({
 
   // Mostrar loading mientras se carga la configuración
   if (!plantillaConfig) {
-    return (
+    const loadingModal = (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
         <div className="bg-white p-6 rounded-lg shadow-xl">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#003DA5] mx-auto mb-4"></div>
@@ -864,6 +837,12 @@ export function VisorPDFCertificado({
         </div>
       </div>
     );
+
+    if (typeof document !== 'undefined') {
+      return createPortal(loadingModal, document.body);
+    }
+
+    return loadingModal;
   }
 
   const contenidoNormalizado = plantillaConfig.certificateContentHtml
@@ -872,10 +851,10 @@ export function VisorPDFCertificado({
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
   const incluirPrimaTecnica = certificado.incluyePrimaTecnica ?? false;
-  const primaTecnicaBase = certificado.technical_bonus ?? salarioBase * 0.2;
+  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? salarioBase * 0.2);
   const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
-    ? `<p>Percibe mensualmente una prima tecnica de ($${primaTecnicaParaMostrar.toLocaleString('es-CO')}) adicional a su asignacion basica mensual.</p>`
+    ? `<p>Percibe mensualmente una prima tecnica de ($${formatearMonto(primaTecnicaParaMostrar)}) adicional a su asignacion basica mensual.</p>`
     : '';
 
   const qrToken =
@@ -1069,7 +1048,7 @@ export function VisorPDFCertificado({
             }}>
               Que {certificado.empleado.nombre} percibe mensualmente una asignación salarial de <strong>
                 {salarioParaMostrar
-                  ? `($${salarioParaMostrar.toLocaleString('es-CO')})`
+                  ? `($${formatearMonto(salarioParaMostrar)})`
                   : '(salario no disponible)'}
               </strong> {salarioParaMostrar ? `${salarioEnLetrasParaMostrar} pesos m/cte` : 'pesos m/cte'}.
             </p>
@@ -1196,7 +1175,7 @@ export function VisorPDFCertificado({
     </div>
   );
 
-  return (
+  const modalContent = (
     <AnimatePresence>
       <div className={hiddenMode ? 'fixed inset-0 z-[9999] opacity-0 pointer-events-none' : 'fixed inset-0 z-[9999] overflow-hidden'}>
         {!hiddenMode && (
@@ -1348,4 +1327,11 @@ export function VisorPDFCertificado({
       </div>
     </AnimatePresence>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 }
+

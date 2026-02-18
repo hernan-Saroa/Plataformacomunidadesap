@@ -15,7 +15,9 @@ import {
   QrCode,
   Eye,
   Copy,
-  Activity
+  Activity,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { Badge } from '../ui/badge';
@@ -24,6 +26,7 @@ import { ModalCodigoQR } from './ModalCodigoQR';
 import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
 import { getPublicBaseUrl } from '../../config/environment';
 import { certificadosService } from '../../services/api/certificados.service';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -67,7 +70,14 @@ interface CertificadoDetallePanelProps {
 export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDetallePanelProps) {
   const [showPDFViewer, setShowPDFViewer] = React.useState(false);
   const [autoPDFAction, setAutoPDFAction] = React.useState<'download' | 'print' | 'email' | null>(null);
+  const [isDownloading, setIsDownloading] = React.useState(false);
   const [isSendingEmail, setIsSendingEmail] = React.useState(false);
+  const [emailFeedback, setEmailFeedback] = React.useState<{
+    type: 'success' | 'error' | null;
+    message: string;
+  }>({ type: null, message: '' });
+  const emailFeedbackTimerRef = React.useRef<number | null>(null);
+  const downloadFallbackTimerRef = React.useRef<number | null>(null);
   const [showQRModal, setShowQRModal] = React.useState(false);
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
@@ -80,60 +90,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     if (lower === 'registro padre' || lower === 'registro hijo') return '';
     return cleaned;
   };
-  const normalizarCodigo = (value?: string | number | null) => {
-    if (value === null || value === undefined) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    const digits = raw.replace(/\D+/g, '');
-    return digits || raw.replace(/\s+/g, '');
-  };
-  const esCodigoCero = (value: string) => Boolean(value) && /^0+$/.test(value);
-  const construirCargoVariable = (
-    careerCategory?: string | null,
-    codCargo?: string | number | null,
-    codGrade?: string | number | null,
-  ) => {
-    const careerRaw = String(careerCategory || '').replace(/\s+/g, ' ').trim();
-    const codCargoRaw = normalizarCodigo(codCargo);
-    const codGradeRaw = normalizarCodigo(codGrade);
-
-    const esNoDefinido = /no\s+definido/i.test(careerRaw);
-    const cargoEsCero = esCodigoCero(codCargoRaw);
-    const gradoEsCero = esCodigoCero(codGradeRaw);
-
-    if (esNoDefinido && cargoEsCero && gradoEsCero) {
-      return 'No Definido';
-    }
-
-    const hasLeadingCode = /^\d+\s+/.test(careerRaw);
-    let baseText = careerRaw;
-    if (hasLeadingCode) {
-      baseText = careerRaw.replace(/^\d+\s+/, '').trim();
-    }
-    if (/grado/i.test(baseText)) {
-      const antesGrado = baseText.split(/grado/i)[0].trim();
-      if (antesGrado) {
-        baseText = antesGrado;
-      }
-    }
-    if (!baseText) {
-      baseText = careerRaw;
-    }
-
-    let cargoCode = codCargoRaw;
-    if (cargoCode.length > 4) {
-      cargoCode = cargoCode.slice(0, 4);
-    }
-
-    const parts: string[] = [];
-    if (baseText) parts.push(baseText);
-    if (cargoCode) parts.push(cargoCode);
-    if (!hasLeadingCode && (codGradeRaw || gradoEsCero)) {
-      parts.push(`Grado ${codGradeRaw || '0'}`);
-    }
-
-    return parts.join(' ').replace(/\s+/g, ' ').trim();
-  };
   const ubicacionCargo =
     normalizarDependencia(
       certificado.department ||
@@ -143,11 +99,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     ) || '';
   const cargoCalculado = (
     certificado.empleado.cargo_calculado ||
-    construirCargoVariable(
-      certificado.empleado.cargo,
-      certificado.cod_cargo,
-      certificado.cod_grade,
-    ) ||
+    formatCargoDisplay({
+      cargoSource: certificado.empleado.cargo,
+      codCargo: certificado.cod_cargo,
+      codGrade: certificado.cod_grade,
+      templateType: certificado.templateType,
+    }) ||
     certificado.empleado.cargo
   );
 
@@ -440,24 +397,94 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   };
 
   const totalVerificaciones = verificaciones.length || certificado.cantidadEscaneos || 0;
+  const spinnerTransition = {
+    repeat: Infinity,
+    duration: 0.8,
+    ease: 'linear' as const,
+  };
+  const sendingTextTransition = {
+    repeat: Infinity,
+    duration: 1.2,
+    ease: 'easeInOut' as const,
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (emailFeedbackTimerRef.current) {
+        window.clearTimeout(emailFeedbackTimerRef.current);
+      }
+      if (downloadFallbackTimerRef.current) {
+        window.clearTimeout(downloadFallbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const programarLimpiezaFeedback = (delay = 6000) => {
+    if (emailFeedbackTimerRef.current) {
+      window.clearTimeout(emailFeedbackTimerRef.current);
+    }
+    emailFeedbackTimerRef.current = window.setTimeout(() => {
+      setEmailFeedback({ type: null, message: '' });
+    }, delay);
+  };
 
   const handleDescargar = () => {
+    if (isDownloading) return;
+
     // Generar mediante visor en modo oculto para asegurar variables actualizadas
+    setIsDownloading(true);
     setAutoPDFAction('download');
     setShowPDFViewer(true);
-    setTimeout(() => {
+
+    // Fallback defensivo para no dejar el boton bloqueado si algo externo falla.
+    if (downloadFallbackTimerRef.current) {
+      window.clearTimeout(downloadFallbackTimerRef.current);
+    }
+    downloadFallbackTimerRef.current = window.setTimeout(() => {
+      setIsDownloading(false);
       setShowPDFViewer(false);
       setAutoPDFAction(null);
-    }, 800);
+    }, 15000);
+  };
+
+  const handleAutoActionComplete = (action: 'download' | 'print', success: boolean) => {
+    if (action !== 'download') return;
+
+    if (downloadFallbackTimerRef.current) {
+      window.clearTimeout(downloadFallbackTimerRef.current);
+      downloadFallbackTimerRef.current = null;
+    }
+
+    setIsDownloading(false);
+    setShowPDFViewer(false);
+    setAutoPDFAction(null);
+
+    if (success) {
+      toast.success('Descarga completada', {
+        description: 'El certificado se descargó correctamente.',
+        duration: 3000,
+      });
+    } else {
+      toast.error('No se pudo descargar el certificado', {
+        description: 'Intenta nuevamente en unos segundos.',
+        duration: 4000,
+      });
+    }
   };
 
   const handleEnviarEmail = async () => {
     if (isSendingEmail) return;
     if (!certificado.empleado.email || certificado.empleado.email === 'N/A') {
       toast.error('No hay un correo registrado para este empleado');
+      setEmailFeedback({
+        type: 'error',
+        message: 'No se encontró un correo registrado para reenviar este certificado.',
+      });
+      programarLimpiezaFeedback(7000);
       return;
     }
     setIsSendingEmail(true);
+    setEmailFeedback({ type: null, message: '' });
     toast.loading('Preparando certificado para enviar...', { id: 'send-certificate-email' });
 
     try {
@@ -469,12 +496,22 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
         description: `Certificado enviado a ${response?.email || certificado.empleado.email}`,
         duration: 3000,
       });
+      setEmailFeedback({
+        type: 'success',
+        message: `Certificado reenviado correctamente a ${response?.email || certificado.empleado.email}.`,
+      });
+      programarLimpiezaFeedback();
     } catch (error: any) {
       toast.error('No se pudo reenviar el certificado', {
         id: 'send-certificate-email',
         description: error?.message || 'Intenta nuevamente',
         duration: 5000,
       });
+      setEmailFeedback({
+        type: 'error',
+        message: error?.message || 'No se pudo reenviar el certificado. Intenta nuevamente.',
+      });
+      programarLimpiezaFeedback(7000);
     } finally {
       setIsSendingEmail(false);
       setAutoPDFAction(null);
@@ -667,7 +704,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         </label>
                         <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
                           <DollarSign className="w-3.5 h-3.5 text-green-600" />
-                          ${certificado.empleado.salario.toLocaleString('es-CO')} COP
+                          ${Number(certificado.empleado.salario || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
                         </p>
                       </div>
                     </div>
@@ -790,17 +827,63 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </button>
                     <button
                       onClick={handleDescargar}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-sm font-medium"
+                      disabled={isDownloading}
+                      aria-busy={isDownloading}
+                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg transition-colors text-sm font-medium ${
+                        isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:bg-green-100'
+                      }`}
                     >
-                      <Download className="w-4 h-4" />
-                      Descargar
+                      {isDownloading ? (
+                        <motion.span
+                          className="inline-flex"
+                          animate={{ rotate: 360 }}
+                          transition={spinnerTransition}
+                        >
+                          <Loader2 className="w-4 h-4" />
+                        </motion.span>
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {isDownloading ? (
+                        <motion.span
+                          animate={{ opacity: [1, 0.55, 1] }}
+                          transition={sendingTextTransition}
+                        >
+                          Descargando...
+                        </motion.span>
+                      ) : (
+                        'Descargar'
+                      )}
                     </button>
                     <button
                       onClick={handleEnviarEmail}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium"
+                      disabled={isSendingEmail}
+                      aria-busy={isSendingEmail}
+                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg transition-colors text-sm font-medium ${
+                        isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:bg-purple-100'
+                      }`}
                     >
-                      <Mail className="w-4 h-4" />
-                      Reenviar
+                      {isSendingEmail ? (
+                        <motion.span
+                          className="inline-flex"
+                          animate={{ rotate: 360 }}
+                          transition={spinnerTransition}
+                        >
+                          <Loader2 className="w-4 h-4" />
+                        </motion.span>
+                      ) : (
+                        <Mail className="w-4 h-4" />
+                      )}
+                      {isSendingEmail ? (
+                        <motion.span
+                          animate={{ opacity: [1, 0.55, 1] }}
+                          transition={sendingTextTransition}
+                        >
+                          Enviando...
+                        </motion.span>
+                      ) : (
+                        'Reenviar'
+                      )}
                     </button>
                     <button
                       onClick={handleImprimir}
@@ -823,6 +906,48 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       <Activity className="w-4 h-4" />
                       {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
                     </button>
+                    {(isDownloading || isSendingEmail || emailFeedback.type) && (
+                      <div
+                        className={`col-span-2 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
+                          isDownloading || isSendingEmail
+                            ? 'bg-blue-50 border-blue-200 text-blue-700'
+                            : emailFeedback.type === 'success'
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-red-50 border-red-200 text-red-700'
+                        }`}
+                      >
+                        {isDownloading || isSendingEmail ? (
+                          <motion.span
+                            className="inline-flex flex-shrink-0"
+                            animate={{ rotate: 360 }}
+                            transition={spinnerTransition}
+                          >
+                            <Loader2 className="w-3.5 h-3.5" />
+                          </motion.span>
+                        ) : emailFeedback.type === 'success' ? (
+                          <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        )}
+                        {isDownloading ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Generando y descargando certificado...
+                          </motion.span>
+                        ) : isSendingEmail ? (
+                          <motion.span
+                            animate={{ opacity: [1, 0.55, 1] }}
+                            transition={sendingTextTransition}
+                          >
+                            Enviando certificado al correo registrado...
+                          </motion.span>
+                        ) : (
+                          <span>{emailFeedback.message}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -874,9 +999,20 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
           {/* Visor de PDF Modal */}
           <VisorPDFCertificado
             isOpen={showPDFViewer}
-            onClose={() => setShowPDFViewer(false)}
+            onClose={() => {
+              setShowPDFViewer(false);
+              if (isDownloading) {
+                if (downloadFallbackTimerRef.current) {
+                  window.clearTimeout(downloadFallbackTimerRef.current);
+                  downloadFallbackTimerRef.current = null;
+                }
+                setIsDownloading(false);
+                setAutoPDFAction(null);
+              }
+            }}
             autoAction={autoPDFAction || undefined}
             hiddenMode={!!autoPDFAction}
+            onAutoActionComplete={handleAutoActionComplete}
             certificado={certificado}
           />
 
