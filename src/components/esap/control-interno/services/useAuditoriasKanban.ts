@@ -550,6 +550,54 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Obtener hallazgos de una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const getHallazgos = useCallback(async (auditoriaId: string): Promise<any[]> => {
+    try {
+      const hallazgos = await controlInternoService.getHallazgosByAuditoria(auditoriaId);
+      return Array.isArray(hallazgos) ? hallazgos : [];
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al obtener hallazgos:', err);
+      return [];
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Crear hallazgo para una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const crearHallazgo = useCallback(async (auditoriaId: string, data: {
+    titulo?: string;
+    categoria: string;
+    tipo?: string;
+    area: string;
+    descripcion: string;
+    criterioIncumplido: string;
+    fechaDeteccion: string;
+    responsable?: string;
+  }): Promise<boolean> => {
+    try {
+      // Obtener la auditoría para tener el nombre
+      const auditoriaData = auditorias.find(a => a.id === auditoriaId);
+      const auditoriaNombre = auditoriaData?.titulo || 'Auditoría';
+
+      await controlInternoService.createHallazgo({
+        ...data,
+        auditoriaId,
+        auditoria: auditoriaNombre,
+      });
+      toast.success('Hallazgo registrado exitosamente');
+      // Incrementar contador de hallazgos
+      await controlInternoService.incrementarHallazgosAuditoria(auditoriaId);
+      await fetchAuditorias();
+      return true;
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al crear hallazgo:', err);
+      toast.error('Error al registrar hallazgo');
+      return false;
+    }
+  }, [auditorias, fetchAuditorias]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Cargar datos al montar
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -572,7 +620,10 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     eliminarNota,
     getHistorial,
     aprobarAuditoria,
-    rechazarAuditoria
+    rechazarAuditoria,
+    // ✅ Métodos de hallazgos
+    getHallazgos,
+    crearHallazgo
   };
 }
 

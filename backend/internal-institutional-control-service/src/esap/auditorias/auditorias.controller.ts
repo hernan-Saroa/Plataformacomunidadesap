@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -312,6 +313,15 @@ export class AuditoriasController {
    */
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
+    return this.auditoriasService.update(id, updateDto);
+  }
+
+  /**
+   * PUT /esap/auditorias/:id
+   * Actualiza una auditoría existente (alias de PATCH)
+   */
+  @Put(':id')
+  updatePut(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto) {
     return this.auditoriasService.update(id, updateDto);
   }
 

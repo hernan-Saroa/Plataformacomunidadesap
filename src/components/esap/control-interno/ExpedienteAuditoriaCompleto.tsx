@@ -73,7 +73,7 @@ import {
   Upload, Archive, ExternalLink, Filter, Search, Tag,
   BarChart3, PieChart, LineChart
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // Design System
 import { CardSIGL } from '../gestion-legal/design-system/CardSIGL';
@@ -94,6 +94,9 @@ import {
 // Secciones de Hallazgos y Tareas
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
+
+// Servicio API
+import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // ============ TIPOS ============
 
@@ -183,6 +186,9 @@ interface Auditoria {
     modificadoPor: string;
     version: number;
   };
+  
+  // Estado de actividades del proceso (checklist)
+  checklistCompletados?: Record<string, boolean>;
 }
 
 interface DocumentoExpediente {
@@ -295,7 +301,10 @@ const AUDITORIA_EJEMPLO: Auditoria = {
     ultimaModificacion: new Date('2025-02-09'),
     modificadoPor: 'Carlos Rodríguez',
     version: 1
-  }
+  },
+  
+  // Checklist de actividades (vacío por defecto)
+  checklistCompletados: {}
 };
 
 const DOCUMENTOS_EJEMPLO: DocumentoExpediente[] = [
@@ -398,13 +407,7 @@ export function ExpedienteAuditoriaCompleto({
       setError(null);
       
       try {
-        const response = await fetch(`http://localhost:3007/api/control-interno/auditorias/${auditoriaId}`);
-        
-        if (!response.ok) {
-          throw new Error('Error al cargar la auditoría');
-        }
-        
-        const data = await response.json();
+        const data = await controlInternoService.getAuditoriaById(auditoriaId);
         
         // Mapear datos del backend a la estructura del frontend
         const auditoriaBackend: Auditoria = {
@@ -486,6 +489,9 @@ export function ExpedienteAuditoriaCompleto({
             modificadoPor: 'Sistema',
             version: 1,
           },
+          
+          // Checklist de actividades del proceso
+          checklistCompletados: data.checklistCompletados || {},
         };
         
         setAuditoria(auditoriaBackend);
@@ -500,6 +506,31 @@ export function ExpedienteAuditoriaCompleto({
     
     cargarAuditoria();
   }, [isOpen, auditoriaId]);
+  
+  // ✅ Función para actualizar checklist de actividades en el backend
+  const handleToggleChecklist = async (itemId: string, completado: boolean) => {
+    // Actualizar estado local inmediatamente (optimistic update)
+    const nuevoChecklist = {
+      ...auditoria.checklistCompletados,
+      [itemId]: completado,
+    };
+    setAuditoria(prev => ({
+      ...prev,
+      checklistCompletados: nuevoChecklist,
+    }));
+    
+    // Si es un UUID válido (auditoría real), guardar en backend
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(auditoria.id)) {
+      try {
+        await controlInternoService.updateAuditoria(auditoria.id, {
+          checklistCompletados: nuevoChecklist,
+        });
+      } catch (err) {
+        console.error('Error actualizando checklist:', err);
+      }
+    }
+  };
   
   // Funciones auxiliares para mapeo
   function mapearEstado(fase: string): EstadoAuditoria {
@@ -786,17 +817,29 @@ export function ExpedienteAuditoriaCompleto({
 
                 {/* TAB 2: PLANEACIÓN */}
                 <TabsContent value="planeacion" className="mt-0">
-                  <TabPlaneacion auditoria={auditoria} />
+                  <TabPlaneacion 
+                    auditoria={auditoria} 
+                    checklistCompletados={auditoria.checklistCompletados}
+                    onToggleChecklist={handleToggleChecklist}
+                  />
                 </TabsContent>
 
                 {/* TAB 3: EJECUCIÓN */}
                 <TabsContent value="ejecucion" className="mt-0">
-                  <TabEjecucion auditoria={auditoria} />
+                  <TabEjecucion 
+                    auditoria={auditoria}
+                    checklistCompletados={auditoria.checklistCompletados}
+                    onToggleChecklist={handleToggleChecklist}
+                  />
                 </TabsContent>
 
                 {/* TAB 4: COMUNICACIÓN */}
                 <TabsContent value="comunicacion" className="mt-0">
-                  <TabComunicacion auditoria={auditoria} />
+                  <TabComunicacion 
+                    auditoria={auditoria}
+                    checklistCompletados={auditoria.checklistCompletados}
+                    onToggleChecklist={handleToggleChecklist}
+                  />
                 </TabsContent>
 
                 {/* TAB 5: DOCUMENTACIÓN */}
@@ -1126,7 +1169,13 @@ function TabGeneral({ auditoria }: { auditoria: Auditoria }) {
 }
 
 // TAB 2: PLANEACIÓN
-function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
+interface TabFaseProps {
+  auditoria: Auditoria;
+  checklistCompletados?: Record<string, boolean>;
+  onToggleChecklist?: (id: string, completado: boolean) => void;
+}
+
+function TabPlaneacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -1149,13 +1198,15 @@ function TabPlaneacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#9333ea"
         estadoRequerido="Planeación"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );
 }
 
 // TAB 3: EJECUCIÓN
-function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
+function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -1174,7 +1225,7 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
 
       {/* SECCIÓN: HALLAZGOS */}
       <div className="bg-white border-2 border-red-200 rounded-lg p-5">
-        <SeccionHallazgosExpediente auditoriaId={auditoria.id} />
+        <SeccionHallazgosExpediente auditoriaId={auditoria.id} auditoriaNombre={auditoria.nombre || auditoria.codigo} />
       </div>
 
       {/* SECCIÓN: TAREAS Y ACTIVIDADES */}
@@ -1189,13 +1240,15 @@ function TabEjecucion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#f59e0b"
         estadoRequerido="Ejecución"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );
 }
 
 // TAB 4: COMUNICACIÓN
-function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
+function TabComunicacion({ auditoria, checklistCompletados, onToggleChecklist }: TabFaseProps) {
   return (
     <div className="space-y-4 max-h-[calc(100vh-28rem)] overflow-y-auto">
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -1218,6 +1271,8 @@ function TabComunicacion({ auditoria }: { auditoria: Auditoria }) {
         faseColor="#10b981"
         estadoRequerido="Comunicación"
         estadoActual={auditoria.estado}
+        checklistCompletados={checklistCompletados}
+        onToggleChecklist={onToggleChecklist}
       />
     </div>
   );

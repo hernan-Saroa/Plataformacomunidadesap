@@ -14,6 +14,7 @@ export {
   ModalFormularioAuditoria,
   ModalDetalleAuditoria,
   ModalHistorial,
+  ModalRegistrarHallazgo,
   type Auditoria,
 } from './ModalesAuditorias';
 

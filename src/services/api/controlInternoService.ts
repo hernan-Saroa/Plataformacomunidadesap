@@ -94,6 +94,7 @@ export interface Hallazgo {
     nombre: string;
     tipo: string;
     fecha: string;
+    url?: string;
   }>;
   recomendaciones: string[];
   fechaDeteccion: string;
@@ -145,6 +146,58 @@ export interface PlanIndividual {
   estado: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// Tipos para Tareas de Auditoría
+export type EstadoTarea = 'Pendiente' | 'En Progreso' | 'Completada' | 'Cancelada';
+export type PrioridadTarea = 'Baja' | 'Media' | 'Alta' | 'Urgente';
+export type FaseTarea = 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
+
+export interface TareaAuditoria {
+  id: string;
+  auditoriaId: string;
+  titulo: string;
+  descripcion?: string;
+  estado: EstadoTarea;
+  prioridad: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId: string;
+  responsableNombre: string;
+  fechaVencimiento?: string;
+  fechaCompletado?: string;
+  fechaCreacion: string;
+  progreso: number;
+  notas?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTareaAuditoriaDto {
+  auditoriaId: string;
+  titulo: string;
+  descripcion?: string;
+  estado?: EstadoTarea;
+  prioridad?: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId: string;
+  responsableNombre: string;
+  fechaVencimiento?: string;
+  progreso?: number;
+  notas?: string;
+}
+
+export interface UpdateTareaAuditoriaDto {
+  titulo?: string;
+  descripcion?: string;
+  estado?: EstadoTarea;
+  prioridad?: PrioridadTarea;
+  fase?: FaseTarea;
+  responsableId?: string;
+  responsableNombre?: string;
+  fechaVencimiento?: string;
+  fechaCompletado?: string;
+  progreso?: number;
+  notas?: string;
 }
 
 // ============================================================================
@@ -529,6 +582,94 @@ class ControlInternoService {
    */
   async getBorradores(): Promise<Hallazgo[]> {
     return client.get<Hallazgo[]>('/hallazgos/categoria/borradores');
+  }
+
+  /**
+   * Obtiene hallazgos por auditoría ID
+   */
+  async getHallazgosByAuditoria(auditoriaId: string): Promise<Hallazgo[]> {
+    return client.get<Hallazgo[]>(`/auditorias/${auditoriaId}/hallazgos`);
+  }
+  
+  // ==========================================================================
+  // TAREAS DE AUDITORÍA
+  // ==========================================================================
+  
+  /**
+   * Obtiene todas las tareas con filtros opcionales
+   */
+  async getTareasAuditoria(params?: { 
+    auditoriaId?: string; 
+    estado?: string; 
+    prioridad?: string;
+    fase?: string;
+    responsableId?: string;
+  }): Promise<TareaAuditoria[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.auditoriaId) queryParams.append('auditoriaId', params.auditoriaId);
+    if (params?.estado) queryParams.append('estado', params.estado);
+    if (params?.prioridad) queryParams.append('prioridad', params.prioridad);
+    if (params?.fase) queryParams.append('fase', params.fase);
+    if (params?.responsableId) queryParams.append('responsableId', params.responsableId);
+    
+    const query = queryParams.toString();
+    return client.get<TareaAuditoria[]>(`/tareas-auditoria${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Obtiene tareas de una auditoría específica
+   */
+  async getTareasByAuditoria(auditoriaId: string): Promise<TareaAuditoria[]> {
+    return client.get<TareaAuditoria[]>(`/tareas-auditoria/auditoria/${auditoriaId}`);
+  }
+
+  /**
+   * Obtiene una tarea por ID
+   */
+  async getTareaById(id: string): Promise<TareaAuditoria> {
+    return client.get<TareaAuditoria>(`/tareas-auditoria/${id}`);
+  }
+
+  /**
+   * Crea una nueva tarea
+   */
+  async createTarea(data: CreateTareaAuditoriaDto): Promise<TareaAuditoria> {
+    return client.post<TareaAuditoria>('/tareas-auditoria', data);
+  }
+
+  /**
+   * Actualiza una tarea
+   */
+  async updateTarea(id: string, data: UpdateTareaAuditoriaDto): Promise<TareaAuditoria> {
+    return client.put<TareaAuditoria>(`/tareas-auditoria/${id}`, data);
+  }
+
+  /**
+   * Marca una tarea como completada
+   */
+  async completarTarea(id: string): Promise<TareaAuditoria> {
+    return client.patch<TareaAuditoria>(`/tareas-auditoria/${id}/completar`);
+  }
+
+  /**
+   * Elimina una tarea
+   */
+  async deleteTarea(id: string): Promise<void> {
+    return client.delete(`/tareas-auditoria/${id}`);
+  }
+
+  /**
+   * Obtiene estadísticas de tareas por auditoría
+   */
+  async getEstadisticasTareas(auditoriaId: string): Promise<{
+    total: number;
+    pendientes: number;
+    enProgreso: number;
+    completadas: number;
+    canceladas: number;
+    progresoGeneral: number;
+  }> {
+    return client.get(`/tareas-auditoria/auditoria/${auditoriaId}/estadisticas`);
   }
   
   // ==========================================================================

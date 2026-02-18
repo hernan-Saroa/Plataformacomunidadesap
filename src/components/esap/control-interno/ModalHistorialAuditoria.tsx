@@ -27,8 +27,12 @@ import {
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
-import { getBaseURL } from '../../../services/api/config';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
+
+// URL base para el servicio de Control Interno
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============ TIPOS ============
 
@@ -484,13 +488,9 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
     setCargando(true);
     try {
       const token = localStorage.getItem('esap_auth_token');
-      // Usar directamente el servicio de control interno
-      const baseURL = import.meta.env.MODE === 'production' 
-        ? `${getBaseURL()}/internal-institutional-control`
-        : 'http://localhost:3007';
-      
+      // Usar la URL configurada según el modo (gateway o direct)
       const response = await fetch(
-        `${baseURL}/auditorias/${auditoria.id}/historial`,
+        `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/auditorias/${auditoria.id}/historial`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
