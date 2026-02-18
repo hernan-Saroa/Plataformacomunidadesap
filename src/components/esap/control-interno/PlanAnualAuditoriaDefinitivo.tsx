@@ -1233,6 +1233,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     return iconos[numeroRol] || '📋';
   }
 
+  // Mapear estado del backend al frontend
+  const mapearEstadoPlan = (estadoBackend: string): EstadoPlan => {
+    const mapeo: Record<string, EstadoPlan> = {
+      'borrador': 'BORRADOR',
+      'en-revision': 'EN_REVISION',
+      'aprobado': 'APROBADO',
+      'en-ejecucion': 'VIGENTE',
+      'completado': 'CERRADO',
+    };
+    return mapeo[estadoBackend?.toLowerCase()] || 'BORRADOR';
+  };
+
   // Sincronizar plan del backend con estado local
   useEffect(() => {
     if (planDesdeBackend) {
@@ -1247,7 +1259,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         id: planDesdeBackend.id,
         vigencia: planDesdeBackend.año,
         version: 1,
-        estado: planDesdeBackend.estado.toUpperCase() as EstadoPlan,
+        estado: mapearEstadoPlan(planDesdeBackend.estado),
         jefeOCI: auditores[0] || { id: '1', nombre: planDesdeBackend.responsable, cargo: 'Jefe de Control Interno', email: '' },
         fechaCreacion: planDesdeBackend.fecha_creacion,
         fechaAprobacion: null,
@@ -1271,12 +1283,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               return '';
             };
 
-            // Mapear estado del backend al frontend (en-progreso → EN_EJECUCION, no EN-PROGRESO)
+            // Mapear estado del backend al frontend (en-progreso → EN_EJECUCION, retrasada → PENDIENTE)
             const estadoBackend = (act.estado || 'pendiente').toLowerCase();
             const estadoFront: EstadoActividad =
               estadoBackend === 'completada' ? 'COMPLETADA' :
-              estadoBackend === 'en-progreso' ? 'EN_EJECUCION' :
-              estadoBackend === 'retrasada' ? 'RETRASADA' : 'PENDIENTE';
+              estadoBackend === 'en-progreso' ? 'EN_EJECUCION' : 'PENDIENTE';
 
             // Obtener configuración de evidencias del backend y transformar al formato del frontend
             const configBackend = actExtendido.configuracion_evidencias || actExtendido.configuracionEvidencias;

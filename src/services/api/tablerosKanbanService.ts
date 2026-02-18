@@ -94,7 +94,7 @@ class TablerosKanbanAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = localStorage.getItem('esap_access_token');
+    const token = localStorage.getItem('esap_auth_token');
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
     }

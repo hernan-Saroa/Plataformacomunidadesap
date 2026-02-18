@@ -13,6 +13,7 @@ import {
   File, Folder, Eye, Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 
 // ============ ETAPAS DEL PROCESO DISCIPLINARIO ============
 
@@ -128,6 +129,12 @@ export interface TipoAuto {
   fechaCreacion: string;
   fechaModificacion: string;
   tipo?: string; // ✅ Tipo de auto del backend (ej: AUTO_APERTURA_INVESTIGACION)
+  // ✅ Campos de plantilla desde autos_configuration
+  plantillaUrl?: string | null; // URL de la plantilla
+  nombre_plantilla?: string | null;
+  descripcion_plantilla?: string | null;
+  version_plantilla?: string | null;
+  estado_plantilla?: string | null;
 }
 
 interface SeccionPlantillasAutosUnificadaProps {
@@ -178,10 +185,26 @@ export function SeccionPlantillasAutosUnificada({
     return etapa ? etapa.nombre : etapaId;
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
-    toast.success('Plantilla descargada', {
-      description: plantilla.nombreArchivo
-    });
+  const handleDescargarPlantilla = async (plantilla: PlantillaArchivo) => {
+    if (!plantilla?.url) {
+      toast.error('No hay archivo para descargar', {
+        description: 'La plantilla no tiene un archivo asociado'
+      });
+      return;
+    }
+    
+    try {
+      // Usar el servicio de descarga del disciplinary service
+      await disciplinaryService.downloadFileFromUrl(plantilla.url, plantilla.nombreArchivo);
+      toast.success('Plantilla descargada', {
+        description: plantilla.nombreArchivo
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla:', error);
+      toast.error('Error al descargar', {
+        description: 'No se pudo descargar el archivo'
+      });
+    }
   };
 
   return (

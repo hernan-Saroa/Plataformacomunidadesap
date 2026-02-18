@@ -31,16 +31,18 @@ import {
   ApiResponse,
   FiltrosPlanAnual,
 } from './types';
+import { getServiceUrl, API_MODE } from '../../../../../config/environment';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ═══════════════════════════════════════════════════════════════════════════
 
-// URL específica para el servicio de Control Interno Institucional (puerto 3007)
-// Se usa VITE_CONTROL_INTERNO_URL si existe, sino VITE_API_URL, sino fallback a 3007
-const API_BASE_URL = import.meta.env.VITE_CONTROL_INTERNO_URL 
-  || import.meta.env.VITE_API_URL 
-  || 'http://localhost:3007';
+// URL base del servicio de Control Interno (puerto 3007)
+const BASE_URL = getServiceUrl('control-institucional');
+// En modo gateway necesita el prefijo del servicio
+const API_BASE_URL = API_MODE === 'gateway' 
+  ? `${BASE_URL}/control-institucional/api/v1` 
+  : BASE_URL;
 const PLAN_ANUAL_ENDPOINT = '/plan-anual-5-roles';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -52,7 +54,7 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('esap_auth_token');
     
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       headers: {
@@ -150,7 +152,7 @@ export const planAnualApi = {
    */
   exportExcel: async (planId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('esap_auth_token');
       const response = await fetch(`${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/${planId}/export/excel`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });

@@ -22,10 +22,16 @@ import {
   HallazgoFilters,
   PlanMejoramientoFilters
 } from './types';
+import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 // ==================== CONFIGURACIÓN ====================
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/control-interno';
+// URL base del servicio de Control Interno
+const BASE_URL = getServiceUrl('control-institucional');
+// Prefijo completo dependiendo del modo
+const API_BASE_URL = API_MODE === 'gateway' 
+  ? `${BASE_URL}/control-institucional/api/v1` 
+  : BASE_URL;
 
 // Helper para requests
 async function apiRequest<T>(
@@ -33,9 +39,11 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
+    const token = localStorage.getItem('esap_auth_token');
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       headers: {
         'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },
       ...options,

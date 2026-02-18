@@ -206,14 +206,20 @@ export function WizardCrearAutoWorldClass({
         const tiposMapeados: TipoAuto[] = autosConfig.map((config, index) => ({
           id: config?.id || config?.tipo || `auto-${config?.tipo}-${index}`,
           nombre: config?.nombre || 'Sin nombre',
-          descripcion: config?.plantilla || `Tipo de auto: ${config?.nombre || 'desconocido'}`,
+          descripcion: config?.descripcion_plantilla || config?.plantilla || `Tipo de auto: ${config?.nombre || 'desconocido'}`,
           etapa: (config?.stage as EtapaProcesoId) || 'INVESTIGACION',
-          plantilla: null,
+          plantilla: null, // Se填充 con datos de plantilla si existen
           activo: config?.estado === 'activo',
           orden: config?.orden || index,
           fechaCreacion: config?.createdAt || new Date().toISOString(),
           fechaModificacion: config?.updatedAt || new Date().toISOString(),
-          tipo: config?.tipo || undefined // ✅ Incluir el tipo del backend para crear autos
+          tipo: config?.tipo || undefined, // ✅ Tipo del backend para crear autos
+          // ✅ Campos de plantilla desde autos_configuration
+          plantillaUrl: config?.plantilla || null,
+          nombre_plantilla: config?.nombre_plantilla || null,
+          descripcion_plantilla: config?.descripcion_plantilla || null,
+          version_plantilla: config?.version_plantilla || null,
+          estado_plantilla: config?.estado_plantilla || null
         }));
         
         // Ordenar por orden
@@ -247,20 +253,47 @@ export function WizardCrearAutoWorldClass({
   };
 
   const handleDescargarPlantilla = async () => {
-    if (!tipoSeleccionado?.plantilla) return;
+    // Verificar si hay plantilla disponible (del backend o local)
+    const tienePlantillaBackend = tipoSeleccionado?.plantillaUrl && tipoSeleccionado?.estado_plantilla === 'activo';
+    const tienePlantillaLocal = tipoSeleccionado?.plantilla;
+    
+    if (!tienePlantillaBackend && !tienePlantillaLocal) {
+      toast.error('No hay plantilla disponible para descargar');
+      return;
+    }
 
     setDescargando(true);
 
-    // Simular descarga
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      // Si tiene plantilla del backend, descargar usando el servicio igual que en configuraciones
+      if (tienePlantillaBackend && tipoSeleccionado?.plantillaUrl) {
+        // Usar getFileUrl para procesar la URL (igual que en configuraciones)
+        const urlProcesada = disciplinaryService.getFileUrl(tipoSeleccionado.plantillaUrl);
+        const nombreArchivo = tipoSeleccionado.nombre_plantilla || 'plantilla.docx';
+        
+        // Usar downloadFileFromUrl igual que en SeccionPlantillasAutosUnificada
+        await disciplinaryService.downloadFileFromUrl(urlProcesada, nombreArchivo);
+        
+        toast.success('Plantilla descargada correctamente', {
+          description: nombreArchivo,
+          duration: 3000,
+        });
+      } else if (tienePlantillaLocal && tipoSeleccionado?.plantilla) {
+        // Simular descarga para plantillas locales (mock)
+        await new Promise(resolve => setTimeout(resolve, 800));
+        toast.success('Plantilla descargada correctamente', {
+          description: tipoSeleccionado.plantilla?.nombreArchivo,
+          duration: 3000,
+        });
+      }
 
-    toast.success('Plantilla descargada correctamente', {
-      description: tipoSeleccionado.plantilla.nombreArchivo,
-      duration: 3000,
-    });
-
-    setPlantillaDescargada(true);
-    setDescargando(false);
+      setPlantillaDescargada(true);
+    } catch (error) {
+      console.error('Error al descargar plantilla:', error);
+      toast.error('Error al descargar la plantilla');
+    } finally {
+      setDescargando(false);
+    }
   };
 
   const handleSiguiente = () => {
@@ -798,12 +831,17 @@ export function WizardCrearAutoWorldClass({
                                       >
                                         {etapa.nombre}
                                       </span>
-                                      {tipo.plantilla ? (
+                                      {/* Mostrar estado de plantilla del backend */}
+                                      {tipo.estado_plantilla === 'activo' ? (
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
+                                          ✓ Plantilla activa {tipo.version_plantilla ? `v${tipo.version_plantilla}` : ''}
+                                        </span>
+                                      ) : tipo.plantilla ? (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700">
                                           v{tipo.plantilla.version}
                                         </span>
                                       ) : (
-                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-gray-100 text-gray-600">
+                                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700">
                                           Sin plantilla
                                         </span>
                                       )}
@@ -828,11 +866,19 @@ export function WizardCrearAutoWorldClass({
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <p className="text-xs font-bold text-gray-900 truncate">
-                                          {tipo.plantilla?.nombreArchivo || 'Sin archivo adjunto'}
+                                          {/* Mostrar nombre de plantilla del backend o local */}
+                                          {tipo.nombre_plantilla || tipo.plantilla?.nombreArchivo || 'Sin archivo adjunto'}
                                         </p>
                                         <p className="text-xs text-gray-600">
-                                          {tipo.plantilla?.descripcion || 'El archivo se adjuntará en el siguiente paso'}
+                                          {/* Mostrar descripción de plantilla del backend o mensaje por defecto */}
+                                          {tipo.descripcion_plantilla || tipo.plantilla?.descripcion || 'El archivo se adjuntará en el siguiente paso'}
                                         </p>
+                                        {/* Mostrar estado de plantilla */}
+                                        {tipo.estado_plantilla && tipo.estado_plantilla !== 'activo' && (
+                                          <p className="text-xs text-red-600 font-semibold mt-1">
+                                            ⚠️ Plantilla inactiva
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
 
@@ -841,7 +887,8 @@ export function WizardCrearAutoWorldClass({
                                         e.stopPropagation();
                                         handleDescargarPlantilla();
                                       }}
-                                      disabled={descargando}
+                                      // Deshabilitar si está descargando O si no hay plantilla disponible
+                                      disabled={descargando || (!tipoSeleccionado?.plantillaUrl && !tipoSeleccionado?.plantilla)}
                                       className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs text-white transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 ${plantillaDescargada
                                         ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700'
                                         : 'bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'
