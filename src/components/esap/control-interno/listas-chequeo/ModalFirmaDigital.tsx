@@ -69,7 +69,7 @@ export function ModalFirmaDigital({
             <div>
               <h2 className="text-xl font-bold">Firma Digital</h2>
               <p className="text-green-100 text-sm mt-1">
-                Confirma la finalización de la lista de chequeo
+                Confirma la finalización del registro de biblioteca
               </p>
             </div>
           </div>
@@ -86,7 +86,7 @@ export function ModalFirmaDigital({
           {/* Resumen de la lista */}
           <div className="bg-gradient-to-r from-[#E0EDFF] to-[#F0F7FF] rounded-lg p-4 border border-slate-200">
             <h3 className="font-semibold text-slate-900 mb-3">
-              Resumen de la Lista
+              Resumen del Registro
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
@@ -188,7 +188,7 @@ export function ModalFirmaDigital({
                   Declaración de Veracidad
                 </p>
                 <p className="text-sm text-amber-800 mb-3">
-                  Al firmar esta lista de chequeo, declaro que:
+                  Al firmar este registro de biblioteca, declaro que:
                 </p>
                 <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside mb-3">
                   <li>He revisado todos los ítems de verificación</li>

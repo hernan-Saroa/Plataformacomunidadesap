@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -26,8 +26,8 @@ import {
   Save, Download, X, AlertCircle, CheckSquare, ArrowLeft, Search,
   BarChart3, ClipboardCheck, FileCheck, Building2, Activity, 
   Info, List, LayoutGrid, GripVertical, ArrowRight, Filter,
-  TrendingUp, Flag, Circle, Maximize2, Minimize2, Zap, Award,
-  PlayCircle, PauseCircle, AlertOctagon
+  TrendingUp, Flag, Circle, Maximize2, Minimize2,
+  PlayCircle, PauseCircle, AlertOctagon, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -36,8 +36,6 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
-import { Badge } from '../../ui/badge';
-import { Card } from '../../ui/card';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
@@ -678,7 +676,7 @@ interface SeguimientoViewProps {
 }
 
 function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan }: SeguimientoViewProps) {
-  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
+  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista'); // ✅ Vista por defecto: Lista
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
@@ -793,19 +791,8 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
               )}
             </button>
 
-            {/* Toggle Vista */}
+            {/* Toggle Vista - Lista primero (opción por defecto) */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-              <button
-                onClick={() => setVistaTablero('kanban')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  vistaTablero === 'kanban'
-                    ? 'bg-white text-[#1e5da8] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                Kanban
-              </button>
               <button
                 onClick={() => setVistaTablero('lista')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
@@ -816,6 +803,17 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
               >
                 <List className="w-4 h-4" />
                 Lista
+              </button>
+              <button
+                onClick={() => setVistaTablero('kanban')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  vistaTablero === 'kanban'
+                    ? 'bg-white text-[#1e5da8] shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Kanban
               </button>
             </div>
           </div>
@@ -917,10 +915,57 @@ interface VistaKanbanProps {
 }
 
 function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollLeft = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: -350, behavior: 'smooth' });
+    }
+  };
+
+  const scrollRight = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: 350, behavior: 'smooth' });
+    }
+  };
+
   return (
     <>
       <style>{`
-        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento */
+        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento - MEJORADO */
+        .kanban-scroll-container {
+          scrollbar-width: auto;
+          scrollbar-color: #2962FF #E5E7EB;
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar {
+          height: 16px;
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-track {
+          background: linear-gradient(to bottom, #F9FAFB, #F3F4F6);
+          border-radius: 10px;
+          border: 1px solid #E5E7EB;
+          box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-thumb {
+          background: linear-gradient(to right, #2962FF, #003DA5);
+          border-radius: 10px;
+          border: 3px solid #F3F4F6;
+          box-shadow: 0 2px 4px rgba(41, 98, 255, 0.2);
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to right, #003DA5, #002D7A);
+          box-shadow: 0 2px 6px rgba(41, 98, 255, 0.4);
+        }
+
+        .kanban-scroll-container::-webkit-scrollbar-thumb:active {
+          background: linear-gradient(to right, #002D7A, #001F5A);
+        }
+
+        /* Fallback para otros elementos con overflow-x */
         .overflow-x-auto {
           scrollbar-width: thin;
           scrollbar-color: #2962FF #E5E7EB;
@@ -944,8 +989,36 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
         .overflow-x-auto::-webkit-scrollbar-thumb:hover {
           background: linear-gradient(to right, #003DA5, #002D7A);
         }
+
+        /* Scroll vertical personalizado para columnas kanban */
+        .overflow-y-auto {
+          scrollbar-width: thin;
+          scrollbar-color: #2962FF #E5E7EB;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-track {
+          background: #F3F4F6;
+          border-radius: 8px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+          background: linear-gradient(to bottom, #2962FF, #003DA5);
+          border-radius: 8px;
+          border: 2px solid #F3F4F6;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to bottom, #003DA5, #002D7A);
+        }
       `}</style>
       
+      {/* Indicador de scroll horizontal con botones de navegación - Desktop */}
+      
+
       {/* Indicador Mobile - FASE 1 DÍA 2 */}
       <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
         <p className="text-sm text-blue-900">
@@ -953,11 +1026,13 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
         </p>
       </div>
 
+      {/* Contenedor con scroll horizontal mejorado */}
       <div 
-        className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6"
+        ref={scrollContainerRef}
+        className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6 px-1 kanban-scroll-container"
         style={{
-          flexWrap: typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'nowrap' : undefined,
-          minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'max-content' : undefined
+          flexWrap: 'nowrap',
+          minWidth: 'max-content'
         }}
       >
         {COLUMNAS_KANBAN.map((columna) => {
@@ -1094,9 +1169,10 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
   // Versión expandida
   return (
     <div 
-      className="w-full lg:w-72 xl:w-80 flex-shrink-0"
+      className="w-full flex-shrink-0"
       style={{
-        minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '280px' : undefined
+        minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : undefined,
+        width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : '100%'
       }}
     >
       {/* Header Columna */}
@@ -1161,9 +1237,27 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
       {/* Lista de Tarjetas */}
       <div
         ref={drop}
-        className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : 'bg-gray-50'} transition-colors rounded-b-xl`}
-        style={{ minHeight: 'calc(100vh - 500px)', maxHeight: 'calc(100vh - 500px)' }}
+        className={`p-3 space-y-3 overflow-y-auto transition-all rounded-b-xl border-2 ${
+          isOver 
+            ? 'bg-gradient-to-b from-blue-100 to-blue-50 border-[#1e5da8] border-dashed shadow-inner' 
+            : 'bg-gray-50 border-transparent'
+        }`}
+        style={{ minHeight: 'calc(100vh - 200px)', maxHeight: 'calc(100vh - 200px)' }}
       >
+        {isOver && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center py-8 px-4 bg-white/80 rounded-lg border-2 border-dashed border-[#1e5da8] mb-3"
+          >
+            <div className="text-center">
+              <ArrowRight className="w-8 h-8 text-[#1e5da8] mx-auto mb-2 animate-pulse" />
+              <p className="text-sm font-medium text-[#1e5da8]">
+                Suelta aquí para mover a {columna.titulo}
+              </p>
+            </div>
+          </motion.div>
+        )}
         <AnimatePresence>
           {planes.map((plan) => (
             <TarjetaKanban
@@ -1208,9 +1302,13 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
     <motion.div
       ref={drag}
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
+      animate={{ opacity: isDragging ? 0.5 : 1, y: 0, scale: isDragging ? 1.02 : 1 }}
       exit={{ opacity: 0, y: -20 }}
-      className={`bg-white rounded-lg shadow-sm border-2 border-gray-200 hover:shadow-md hover:border-[#1e5da8] transition-all cursor-move`}
+      className={`bg-white rounded-lg shadow-sm border-2 transition-all ${
+        isDragging 
+          ? 'border-[#1e5da8] shadow-xl cursor-grabbing rotate-2' 
+          : 'border-gray-200 hover:shadow-md hover:border-[#1e5da8] cursor-grab'
+      }`}
     >
       <div className="p-4">
         {/* Header con Semáforo */}

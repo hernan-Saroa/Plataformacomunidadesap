@@ -125,10 +125,10 @@ export function ListasChequeoModule() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900">
-                    Listas de Chequeo Digitales
+                    Biblioteca
                   </h1>
                   <p className="text-sm text-slate-600">
-                    Gestión de plantillas y aplicación de listas durante auditorías
+                    Gestión de plantillas y aplicación de biblioteca durante auditorías
                   </p>
                 </div>
               </div>
@@ -545,7 +545,7 @@ function PlantillaCard({
             onClick={onAplicar}
             className="flex-1 px-3 py-2 bg-gradient-to-r from-[#003DA5] to-[#0051D5] text-white text-sm font-medium rounded-lg hover:shadow-md transition-all duration-200"
           >
-            Aplicar Lista
+            Aplicar
           </button>
           <button
             onClick={onVer}
@@ -646,7 +646,7 @@ function MisListasTab({ onLlenarLista }: { onLlenarLista: (listaId: string) => v
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
           <ClipboardCheck className="w-12 h-12 text-slate-300 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
-            No tienes listas en proceso
+            No tienes elementos en proceso
           </h3>
           <p className="text-slate-600 mb-4">
             Aplica una plantilla desde la sección de Plantillas para comenzar

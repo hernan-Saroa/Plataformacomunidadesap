@@ -27,7 +27,7 @@ import {
   Target, AlertCircle, TrendingUp, Users, FolderOpen,
   Download, Eye, Paperclip, MessageSquare, Activity, Award, 
   BarChart3, Building2, Mail, Phone, MapPin, Calendar as CalendarIcon,
-  FileCheck, Clock3, AlertTriangle, Plus, Trash2
+  FileCheck, Clock3, AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
@@ -36,16 +36,6 @@ import { motion } from 'motion/react';
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS COMPARTIDOS
 // ═════════════════════════════════════════════════════════════════════════
-
-export interface ObjetivoItem {
-  id?: string | number;
-  descripcion: string;
-}
-
-export interface CriterioItem {
-  id?: string | number;
-  descripcion: string;
-}
 
 export interface Auditoria {
   id?: string;
@@ -58,11 +48,9 @@ export interface Auditoria {
   fechaFin: string;
   estado?: string;
   progreso?: number;
-  objetivo?: string; // Mantener para compatibilidad
-  objetivos?: ObjetivoItem[]; // Array de objetivos
+  objetivo?: string;
   alcance?: string;
-  criterios?: string; // Mantener para compatibilidad
-  criteriosArray?: CriterioItem[]; // Array de criterios
+  criterios?: string;
 }
 
 interface BaseModalProps {
@@ -81,108 +69,9 @@ interface ModalFormularioAuditoriaProps {
   onSave: (data: Auditoria) => void;
 }
 
-// Helper para normalizar fecha a formato yyyy-MM-dd
-const normalizarFecha = (fecha: string | Date | undefined): string => {
-  if (!fecha) return '';
-  
-  // Si ya está en formato yyyy-MM-dd, devolverlo tal cual
-  if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-    return fecha;
-  }
-  
-  // Si es ISO string (2026-02-17T23:44:15.057Z)
-  if (typeof fecha === 'string' && fecha.includes('T')) {
-    return fecha.split('T')[0];
-  }
-  
-  // Si es formato dd/MM/yyyy
-  if (typeof fecha === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(fecha)) {
-    const [dia, mes, anio] = fecha.split('/');
-    return `${anio}-${mes}-${dia}`;
-  }
-  
-  // Si es Date object
-  if (fecha instanceof Date) {
-    return fecha.toISOString().split('T')[0];
-  }
-  
-  // Intentar parsear como fecha
-  try {
-    const d = new Date(fecha);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().split('T')[0];
-    }
-  } catch (e) {
-    // Ignorar errores de parseo
-  }
-  
-  return '';
-};
-
-// Helper para normalizar objetivos (puede venir como array de objetos, strings, o string único)
-const normalizarObjetivos = (objetivos: any): ObjetivoItem[] => {
-  if (!objetivos) return [];
-  
-  // Si es un array
-  if (Array.isArray(objetivos)) {
-    return objetivos.map((obj, idx) => {
-      if (typeof obj === 'string') {
-        return { id: `temp-${idx}`, descripcion: obj };
-      }
-      if (obj && typeof obj === 'object') {
-        return {
-          id: obj.id || `temp-${idx}`,
-          descripcion: obj.descripcion || obj.texto || obj.nombre || String(obj)
-        };
-      }
-      return { id: `temp-${idx}`, descripcion: String(obj) };
-    });
-  }
-  
-  // Si es un string, convertir a array con un elemento
-  if (typeof objetivos === 'string' && objetivos.trim()) {
-    return [{ id: 'temp-0', descripcion: objetivos }];
-  }
-  
-  return [];
-};
-
-// Helper para normalizar criterios
-const normalizarCriterios = (criterios: any): CriterioItem[] => {
-  if (!criterios) return [];
-  
-  // Si es un array
-  if (Array.isArray(criterios)) {
-    return criterios.map((crit, idx) => {
-      if (typeof crit === 'string') {
-        return { id: `temp-${idx}`, descripcion: crit };
-      }
-      if (crit && typeof crit === 'object') {
-        return {
-          id: crit.id || `temp-${idx}`,
-          // El backend usa "criterio", no "descripcion"
-          descripcion: crit.criterio || crit.descripcion || crit.texto || crit.nombre || String(crit)
-        };
-      }
-      return { id: `temp-${idx}`, descripcion: String(crit) };
-    });
-  }
-  
-  // Si es un string, convertir a array con un elemento
-  if (typeof criterios === 'string' && criterios.trim()) {
-    return [{ id: 'temp-0', descripcion: criterios }];
-  }
-  
-  return [];
-};
-
 export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }: ModalFormularioAuditoriaProps) {
   const [formData, setFormData] = useState<Auditoria>(
-    auditoria ? {
-      ...auditoria,
-      fechaInicio: normalizarFecha(auditoria.fechaInicio),
-      fechaFin: normalizarFecha(auditoria.fechaFin),
-    } : {
+    auditoria || {
       nombre: '',
       tipo: 'SEDE',
       responsable: '',
@@ -192,71 +81,8 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
   );
   const [paso, setPaso] = useState(1);
 
-  // Estado para objetivos y criterios como arrays
-  const [objetivosList, setObjetivosList] = useState<ObjetivoItem[]>([]);
-  const [criteriosList, setCriteriosList] = useState<CriterioItem[]>([]);
-  const [nuevoObjetivo, setNuevoObjetivo] = useState('');
-  const [nuevoCriterio, setNuevoCriterio] = useState('');
-
-  // Sincronizar formData cuando cambia la auditoría
-  React.useEffect(() => {
-    if (auditoria) {
-      setFormData({
-        ...auditoria,
-        fechaInicio: normalizarFecha(auditoria.fechaInicio),
-        fechaFin: normalizarFecha(auditoria.fechaFin),
-      });
-      // Normalizar objetivos y criterios - buscar en múltiples posibles campos
-      const objNormalizados = normalizarObjetivos((auditoria as any).objetivos || auditoria.objetivo);
-      const critNormalizados = normalizarCriterios((auditoria as any).criterios);
-      console.log('[ModalFormularioAuditoria] Objetivos cargados:', objNormalizados);
-      console.log('[ModalFormularioAuditoria] Criterios cargados:', critNormalizados);
-      setObjetivosList(objNormalizados);
-      setCriteriosList(critNormalizados);
-    } else {
-      setFormData({
-        nombre: '',
-        tipo: 'SEDE',
-        responsable: '',
-        fechaInicio: '',
-        fechaFin: '',
-      });
-      setObjetivosList([]);
-      setCriteriosList([]);
-    }
-    setPaso(1);
-    setNuevoObjetivo('');
-    setNuevoCriterio('');
-  }, [auditoria]);
-
-  // Agregar objetivo
-  const agregarObjetivo = () => {
-    if (nuevoObjetivo.trim()) {
-      setObjetivosList([...objetivosList, { id: `new-${Date.now()}`, descripcion: nuevoObjetivo.trim() }]);
-      setNuevoObjetivo('');
-    }
-  };
-
-  // Eliminar objetivo
-  const eliminarObjetivo = (index: number) => {
-    setObjetivosList(objetivosList.filter((_, i) => i !== index));
-  };
-
-  // Agregar criterio
-  const agregarCriterio = () => {
-    if (nuevoCriterio.trim()) {
-      setCriteriosList([...criteriosList, { id: `new-${Date.now()}`, descripcion: nuevoCriterio.trim() }]);
-      setNuevoCriterio('');
-    }
-  };
-
-  // Eliminar criterio
-  const eliminarCriterio = (index: number) => {
-    setCriteriosList(criteriosList.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     
     // Validaciones
     if (!formData.nombre.trim()) {
@@ -272,16 +98,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
       return;
     }
     
-    // Incluir objetivos y criterios como arrays de strings para el backend
-    const dataConArrays = {
-      ...formData,
-      objetivos: objetivosList.map(o => o.descripcion),
-      criterios: criteriosList.map(c => c.descripcion),
-      // También mantener como string para compatibilidad con UI
-      objetivo: objetivosList.map(o => o.descripcion).join('\n'),
-    };
-    
-    onSave(dataConArrays as Auditoria);
+    onSave(formData);
     toast.success(
       auditoria ? 'Auditoría actualizada exitosamente' : 'Auditoría creada exitosamente',
       { description: `Código: ${formData.codigo || 'Generado automáticamente'}` }
@@ -329,8 +146,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
           </button>
         ) : (
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
             className="px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
@@ -501,129 +317,49 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
             exit={{ opacity: 0, x: 20 }}
             className="space-y-6"
           >
-            {/* Objetivos - Lista con agregar/eliminar */}
+            {/* Objetivo */}
             <div>
-              <label className="flex items-center gap-2 text-base font-semibold text-gray-900 mb-3">
+              <label className="block text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <Target className="w-5 h-5 text-[#F57C00]" />
-                Objetivos de la Auditoría
-                <span className="ml-auto text-sm font-normal text-gray-500">
-                  {objetivosList.length} objetivo{objetivosList.length !== 1 ? 's' : ''}
-                </span>
+                Objetivo de la Auditoría
               </label>
-              
-              {/* Lista de objetivos existentes */}
-              <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                {objetivosList.map((obj, index) => (
-                  <div key={obj.id || index} className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3 group">
-                    <span className="flex-shrink-0 w-6 h-6 bg-[#003DA5] text-white rounded-full flex items-center justify-center text-xs font-bold">
-                      {index + 1}
-                    </span>
-                    <p className="flex-1 text-sm text-gray-700">{obj.descripcion}</p>
-                    <button
-                      type="button"
-                      onClick={() => eliminarObjetivo(index)}
-                      className="flex-shrink-0 p-1 text-red-500 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
-                      title="Eliminar objetivo"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                {objetivosList.length === 0 && (
-                  <p className="text-sm text-gray-400 italic py-2">No hay objetivos agregados</p>
-                )}
-              </div>
-              
-              {/* Input para agregar nuevo objetivo */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={nuevoObjetivo}
-                  onChange={(e) => setNuevoObjetivo(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), agregarObjetivo())}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-sm"
-                  placeholder="Escriba un objetivo y presione Enter o clic en Agregar..."
-                />
-                <button
-                  type="button"
-                  onClick={agregarObjetivo}
-                  disabled={!nuevoObjetivo.trim()}
-                  className="px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
-                >
-                  <Plus className="w-4 h-4" />
-                  Agregar
-                </button>
-              </div>
+              <textarea
+                value={formData.objetivo || ''}
+                onChange={(e) => setFormData({ ...formData, objetivo: e.target.value })}
+                rows={4}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base resize-none"
+                placeholder="Describa el objetivo general de esta auditoría..."
+              />
             </div>
 
             {/* Alcance */}
             <div>
-              <label className="flex items-center gap-2 text-base font-semibold text-gray-900 mb-2">
+              <label className="block text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <FolderOpen className="w-5 h-5 text-[#F57C00]" />
                 Alcance
               </label>
               <textarea
                 value={formData.alcance || ''}
                 onChange={(e) => setFormData({ ...formData, alcance: e.target.value })}
-                rows={3}
+                rows={4}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base resize-none"
                 placeholder="Defina el alcance de la auditoría (áreas, procesos, período)..."
               />
             </div>
 
-            {/* Criterios - Lista con agregar/eliminar */}
+            {/* Criterios */}
             <div>
-              <label className="flex items-center gap-2 text-base font-semibold text-gray-900 mb-3">
+              <label className="block text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-[#F57C00]" />
                 Criterios de Auditoría
-                <span className="ml-auto text-sm font-normal text-gray-500">
-                  {criteriosList.length} criterio{criteriosList.length !== 1 ? 's' : ''}
-                </span>
               </label>
-              
-              {/* Lista de criterios existentes */}
-              <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-                {criteriosList.map((crit, index) => (
-                  <div key={crit.id || index} className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg p-3 group">
-                    <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                      {index + 1}
-                    </span>
-                    <p className="flex-1 text-sm text-gray-700">{crit.descripcion}</p>
-                    <button
-                      type="button"
-                      onClick={() => eliminarCriterio(index)}
-                      className="flex-shrink-0 p-1 text-red-500 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
-                      title="Eliminar criterio"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                {criteriosList.length === 0 && (
-                  <p className="text-sm text-gray-400 italic py-2">No hay criterios agregados</p>
-                )}
-              </div>
-              
-              {/* Input para agregar nuevo criterio */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={nuevoCriterio}
-                  onChange={(e) => setNuevoCriterio(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), agregarCriterio())}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-sm"
-                  placeholder="Escriba un criterio y presione Enter o clic en Agregar..."
-                />
-                <button
-                  type="button"
-                  onClick={agregarCriterio}
-                  disabled={!nuevoCriterio.trim()}
-                  className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
-                >
-                  <Plus className="w-4 h-4" />
-                  Agregar
-                </button>
-              </div>
+              <textarea
+                value={formData.criterios || ''}
+                onChange={(e) => setFormData({ ...formData, criterios: e.target.value })}
+                rows={4}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base resize-none"
+                placeholder="Especifique los criterios, normas o estándares aplicables..."
+              />
             </div>
 
             {/* Resumen Card */}
@@ -648,18 +384,6 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     {formData.fechaInicio && formData.fechaFin
                       ? `${new Date(formData.fechaInicio).toLocaleDateString('es-CO')} - ${new Date(formData.fechaFin).toLocaleDateString('es-CO')}`
                       : '-'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Objetivos:</span>
-                  <p className="font-semibold text-gray-900 mt-1">
-                    {objetivosList.length > 0 ? `${objetivosList.length} definido${objetivosList.length !== 1 ? 's' : ''}` : '-'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Criterios:</span>
-                  <p className="font-semibold text-gray-900 mt-1">
-                    {criteriosList.length > 0 ? `${criteriosList.length} definido${criteriosList.length !== 1 ? 's' : ''}` : '-'}
                   </p>
                 </div>
               </div>
@@ -1138,87 +862,50 @@ export function ModalDetalleAuditoria({ isOpen, onClose, auditoria }: ModalDetal
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 3. MODAL HISTORIAL - WORLD CLASS - ✅ CONECTADO AL BACKEND
+// 3. MODAL HISTORIAL - WORLD CLASS
 // ═════════════════════════════════════════════════════════════════════════
-
-interface EventoHistorial {
-  id: string | number;
-  accion: string;
-  usuario: string;
-  fecha: string;
-  tipo: 'success' | 'warning' | 'info' | 'error';
-  descripcion: string;
-}
 
 interface ModalHistorialProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
-  onLoadHistorial?: (auditoriaId: string) => Promise<any[]>;
 }
 
-export function ModalHistorial({ isOpen, onClose, auditoriaId, onLoadHistorial }: ModalHistorialProps) {
-  const [eventos, setEventos] = React.useState<EventoHistorial[]>([]);
-  const [loading, setLoading] = React.useState(false);
-
-  // Datos mock por defecto
-  const eventosMock: EventoHistorial[] = [
+export function ModalHistorial({ isOpen, onClose, auditoriaId }: ModalHistorialProps) {
+  const eventos = [
     { 
       id: 1, 
       accion: 'Auditoría creada', 
-      usuario: 'Sistema', 
-      fecha: new Date().toISOString().slice(0, 16).replace('T', ' '), 
+      usuario: 'Mario Bernal', 
+      fecha: '2025-01-15 10:00', 
       tipo: 'success',
       descripcion: 'Se creó la auditoría en el sistema OCIG'
     },
+    { 
+      id: 2, 
+      accion: 'Equipo asignado', 
+      usuario: 'Mario Bernal', 
+      fecha: '2025-01-15 14:30', 
+      tipo: 'info',
+      descripcion: 'Se asignó el equipo auditor'
+    },
+    { 
+      id: 3, 
+      accion: 'Estado cambiado a Planeación', 
+      usuario: 'Catalina Rubio', 
+      fecha: '2025-01-20 09:00', 
+      tipo: 'warning',
+      descripcion: 'La auditoría pasó a fase de planeación'
+    },
+    { 
+      id: 4, 
+      accion: 'Documento adjunto', 
+      usuario: 'Fernando Ávila', 
+      fecha: '2025-01-22 11:30', 
+      tipo: 'info',
+      descripcion: 'Se adjuntó el plan de trabajo'
+    },
   ];
-
-  // ✅ Cargar historial del backend cuando se abre el modal
-  React.useEffect(() => {
-    const cargarHistorial = async () => {
-      if (!isOpen || !auditoriaId) return;
-      
-      if (onLoadHistorial) {
-        setLoading(true);
-        try {
-          const historial = await onLoadHistorial(auditoriaId);
-          if (Array.isArray(historial) && historial.length > 0) {
-            // Transformar datos del backend al formato del componente
-            const eventosTransformados: EventoHistorial[] = historial.map((h, index) => ({
-              id: h.id || index,
-              accion: h.accion || h.tipoEvento || h.tipo || 'Evento',
-              usuario: h.usuario || h.usuarioNombre || 'Sistema',
-              fecha: h.fecha || h.createdAt || new Date().toISOString(),
-              tipo: mapearTipoEvento(h.tipo || h.tipoEvento),
-              descripcion: h.descripcion || h.detalle || ''
-            }));
-            setEventos(eventosTransformados);
-          } else {
-            setEventos(eventosMock);
-          }
-        } catch (error) {
-          console.error('Error al cargar historial:', error);
-          setEventos(eventosMock);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        setEventos(eventosMock);
-      }
-    };
-
-    cargarHistorial();
-  }, [isOpen, auditoriaId, onLoadHistorial]);
-
-  // Helper para mapear tipo de evento a color
-  const mapearTipoEvento = (tipo: string): 'success' | 'warning' | 'info' | 'error' => {
-    if (!tipo) return 'info';
-    const tipoLower = tipo.toLowerCase();
-    if (tipoLower.includes('creat') || tipoLower.includes('aprobad') || tipoLower.includes('complet')) return 'success';
-    if (tipoLower.includes('cambio') || tipoLower.includes('modific') || tipoLower.includes('actualiz')) return 'warning';
-    if (tipoLower.includes('error') || tipoLower.includes('rechaz') || tipoLower.includes('cancel')) return 'error';
-    return 'info';
-  };
 
   const headerIcon = <Clock className="w-5 h-5 text-[#003DA5]" />;
 
@@ -1231,79 +918,58 @@ export function ModalHistorial({ isOpen, onClose, auditoriaId, onLoadHistorial }
       size="lg"
       headerIcon={headerIcon}
     >
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#003DA5]"></div>
-          <span className="ml-3 text-gray-600">Cargando historial...</span>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {eventos.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No hay eventos en el historial
+      <div className="space-y-4">
+        {eventos.map((evento, index) => (
+          <motion.div
+            key={evento.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className="relative pl-8 pb-6 last:pb-0"
+          >
+            {/* Línea vertical */}
+            {index < eventos.length - 1 && (
+              <div className="absolute left-3.5 top-10 w-0.5 h-full bg-gradient-to-b from-gray-300 to-transparent" />
+            )}
+            
+            {/* Punto indicador */}
+            <div
+              className={`absolute left-0 top-2 w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${
+                evento.tipo === 'success'
+                  ? 'bg-green-100 border-2 border-green-500'
+                  : evento.tipo === 'warning'
+                  ? 'bg-yellow-100 border-2 border-yellow-500'
+                  : 'bg-blue-100 border-2 border-blue-500'
+              }`}
+            >
+              <CheckCircle
+                className={`w-4 h-4 ${
+                  evento.tipo === 'success'
+                    ? 'text-green-600'
+                    : evento.tipo === 'warning'
+                    ? 'text-yellow-600'
+                    : 'text-blue-600'
+                }`}
+              />
             </div>
-          ) : (
-            eventos.map((evento, index) => (
-              <motion.div
-                key={evento.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="relative pl-8 pb-6 last:pb-0"
-              >
-                {/* Línea vertical */}
-                {index < eventos.length - 1 && (
-                  <div className="absolute left-3.5 top-10 w-0.5 h-full bg-gradient-to-b from-gray-300 to-transparent" />
-                )}
-                
-                {/* Punto indicador */}
-                <div
-                  className={`absolute left-0 top-2 w-7 h-7 rounded-full flex items-center justify-center shadow-sm ${
-                    evento.tipo === 'success'
-                      ? 'bg-green-100 border-2 border-green-500'
-                      : evento.tipo === 'warning'
-                      ? 'bg-yellow-100 border-2 border-yellow-500'
-                      : evento.tipo === 'error'
-                      ? 'bg-red-100 border-2 border-red-500'
-                      : 'bg-blue-100 border-2 border-blue-500'
-                  }`}
-                >
-                  <CheckCircle
-                    className={`w-4 h-4 ${
-                      evento.tipo === 'success'
-                        ? 'text-green-600'
-                        : evento.tipo === 'warning'
-                        ? 'text-yellow-600'
-                        : evento.tipo === 'error'
-                        ? 'text-red-600'
-                        : 'text-blue-600'
-                    }`}
-                  />
-                </div>
 
-                {/* Contenido */}
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="text-base font-semibold text-gray-900">{evento.accion}</h4>
-                    <span className="text-sm text-gray-500 font-mono">
-                      {typeof evento.fecha === 'string' && evento.fecha.includes('T') 
-                        ? evento.fecha.slice(0, 16).replace('T', ' ')
-                        : evento.fecha}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">{evento.descripcion}</p>
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#003DA5] to-[#2962FF] flex items-center justify-center">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700">{evento.usuario}</span>
-                  </div>
+            {/* Contenido */}
+            <div className="bg-white border-2 border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-2">
+                <h4 className="text-base font-semibold text-gray-900">{evento.accion}</h4>
+                <span className="text-sm text-gray-500 font-mono">{evento.fecha}</span>
+              </div>
+              <p className="text-sm text-gray-600 mb-2">{evento.descripcion}</p>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#003DA5] to-[#2962FF] flex items-center justify-center">
+                  <User className="w-4 h-4 text-white" />
                 </div>
-              </motion.div>
-            ))
-          )}
-        </div>
-      )}
+                <span className="text-sm font-medium text-gray-700">{evento.usuario}</span>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
     </ModalBaseWorldClass>
   );
 }

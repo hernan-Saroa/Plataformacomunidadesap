@@ -832,6 +832,7 @@
     * {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      /* transform: translateZ(0); */
     }
 
     [class*="bg-gradient"], [style*="background: linear-gradient"], [style*="background-image: linear-gradient"] {

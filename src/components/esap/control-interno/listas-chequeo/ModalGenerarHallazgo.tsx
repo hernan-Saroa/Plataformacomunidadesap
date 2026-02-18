@@ -86,7 +86,7 @@ export function ModalGenerarHallazgo({
             <div>
               <h2 className="text-xl font-bold">Generar Hallazgo</h2>
               <p className="text-orange-100 text-sm mt-1">
-                Desde lista de chequeo: {lista.id}
+                Desde biblioteca: {lista.id}
               </p>
             </div>
           </div>

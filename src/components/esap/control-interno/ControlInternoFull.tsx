@@ -24,7 +24,7 @@ import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  //
 import { PlanesMejoramientoModuleRediseno } from "./PlanesMejoramientoModuleRediseno";  // RF010-011
 import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013 - MÓDULO INDEPENDIENTE - EXPEDIENTES
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
-import { ListasChequeoModule } from "./listas-chequeo/ListasChequeoModuleComplete";  // RF007 - LISTAS DE CHEQUEO DIGITALES - VERSIÓN COMPLETA
+import { ListasChequeoModule } from "./ListasChequeoModule";  // RF007 - Biblioteca (vista 18_feb)
 import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Universo Auditable + Programa Anual
 
 type SeccionActiva =
@@ -89,11 +89,11 @@ function ControlInternoContent({
       color: "#2962FF", // Azul corporativo
     },
     
-    // ━━━━━━━━━━━ 2. PROGRAMA DE AUDITORÍA ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 2. UNIVERSO AUDITABLE ━━━━━━━━━━━
     {
       id: "universo-auditable",
-      label: "Programa de Auditoría",
-      subtitle: "DÓNDE auditar • Universo Auditable • Programa Anual",
+      label: "Universo Auditable",
+      subtitle: "DÓNDE auditar • Programa Anual",
       icon: <Layers className="w-5 h-5" />,
       color: "#003DA5", // Azul ESAP
     },
@@ -107,11 +107,11 @@ function ControlInternoContent({
       color: "#10B981", // Verde - Principal
     },
     
-    // ━━━━━━━━━━━ 4. LISTAS DE CHEQUEO (RF007) ━━━━━━━━━━━
+    // ━━━━━━━━━━━ 4. BIBLIOTECA (RF007) ━━━━━━━━━━━
     {
       id: "listas-chequeo",
-      label: "Listas de Chequeo",
-      subtitle: "Digitales • Requisitos • Cumplimiento",
+      label: "Biblioteca",
+      subtitle: "Plantillas • Requisitos • Cumplimiento",
       icon: <FileText className="w-5 h-5" />,
       color: "#6366F1", // Azul claro - Requisitos
     },

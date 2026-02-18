@@ -19,6 +19,7 @@ import { auditoresApi } from './plan-anual/api';
 // ═══════════════════════════════════════════════════════════════════════════
 
 type EstadoAuditoria =
+  | 'Plan Anual'
   | 'Planeación'
   | 'Ejecución'
   | 'Comunicación'
@@ -120,6 +121,14 @@ function mapearFaseAEstado(estadoKanban?: string, fase?: string, progreso?: numb
   
   const estadoNorm = estado.toLowerCase();
   
+  if (
+    estadoNorm === 'plan anual' ||
+    estadoNorm === 'plan-anual' ||
+    estadoNorm === 'backlog' ||
+    estadoNorm === 'pendiente' ||
+    estadoNorm === 'programada' ||
+    estadoNorm === 'programado'
+  ) return 'Plan Anual';
   if (estadoNorm === 'planeación' || estadoNorm === 'planeacion' || estadoNorm === 'planificación') return 'Planeación';
   if (estadoNorm === 'ejecución' || estadoNorm === 'ejecucion') return 'Ejecución';
   if (estadoNorm === 'comunicación' || estadoNorm === 'comunicacion' || estadoNorm === 'informe') return 'Comunicación';
