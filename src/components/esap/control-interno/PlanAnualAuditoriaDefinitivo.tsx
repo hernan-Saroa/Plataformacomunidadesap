@@ -1538,29 +1538,6 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
-      {/* Año Activo */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-medium text-gray-700">Plan Anual de Auditoría</span>
-            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-              {añoActual}
-            </span>
-          </div>
-          {planDesdeBackend && (
-            <span className="text-sm text-green-600 font-medium">
-              ✓ Plan activo
-            </span>
-          )}
-          {!planDesdeBackend && !cargandoDatos && (
-            <span className="text-sm text-amber-600 font-medium">
-              Sin plan creado
-            </span>
-          )}
-        </div>
-      </div>
-
       <AnimatePresence mode="wait">
         {vista === 'inicio' && (
           <PantallaInicio

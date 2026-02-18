@@ -35,6 +35,7 @@ import { ESAPLogoSVG } from '../assets/ESAPLogoSVG';
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
   onNavigateToHome?: () => void;
+  onLoginClick?: () => void;
 }
 
 interface EmpleadoData {
@@ -211,7 +212,7 @@ const BASE_DATOS_EMPLEADOS: EmpleadoData[] = [
 type Paso = 'ingreso-documento' | 'validacion-codigo' | 'certificado-generado';
 
 // export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: SolicitarCertificadoLaboralProps) {
-export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: SolicitarCertificadoLaboralProps) {
+export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginClick }: SolicitarCertificadoLaboralProps) {
 
   const normalizarFechaContrato = (value?: string | number | Date | null) => {
     if (!value) return null;
@@ -1014,7 +1015,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome }: Solici
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Navbar Público Flotante */}
-      <PublicNavbar onNavigateToHome={onNavigateToHome} />
+      <PublicNavbar onLoginClick={onLoginClick} onNavigateToHome={onNavigateToHome} />
 
       {/* Main Content */}
       <div className="pt-24 sm:pt-28 py-8 mb-16">

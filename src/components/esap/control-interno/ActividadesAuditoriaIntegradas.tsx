@@ -193,6 +193,9 @@ interface ActividadesIntegratedProps {
   faseColor: string;
   estadoRequerido?: 'Planeación' | 'Ejecución' | 'Comunicación';
   estadoActual?: string;
+  // Nuevas props para conexión con backend
+  checklistCompletados?: Record<string, boolean>;
+  onToggleChecklist?: (id: string, completado: boolean) => void;
 }
 
 export function ActividadesIntegradas({
@@ -201,16 +204,30 @@ export function ActividadesIntegradas({
   faseColor,
   estadoRequerido,
   estadoActual,
+  checklistCompletados: checklistExterno,
+  onToggleChecklist,
 }: ActividadesIntegratedProps) {
   const [actividadExpandida, setActividadExpandida] = useState<string | null>(actividades[0]?.id || null);
-  const [checklistCompletados, setChecklistCompletados] = useState<Record<string, boolean>>({});
+  // Estado local como fallback si no se provee desde props
+  const [checklistLocal, setChecklistLocal] = useState<Record<string, boolean>>({});
+  
+  // Usar checklist externo si está disponible, sino usar el local
+  const checklistCompletados = checklistExterno || checklistLocal;
 
   const toggleChecklist = (id: string) => {
-    setChecklistCompletados(prev => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-    toast.success(!checklistCompletados[id] ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
+    const nuevoEstado = !checklistCompletados[id];
+    
+    if (onToggleChecklist) {
+      // Si hay callback, notificar al padre (que guardará en backend)
+      onToggleChecklist(id, nuevoEstado);
+    } else {
+      // Fallback a estado local
+      setChecklistLocal(prev => ({
+        ...prev,
+        [id]: nuevoEstado,
+      }));
+    }
+    toast.success(nuevoEstado ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
   };
 
   const calcularProgreso = (actividadId: string) => {

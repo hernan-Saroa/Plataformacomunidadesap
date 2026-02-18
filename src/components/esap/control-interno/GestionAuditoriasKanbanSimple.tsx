@@ -20,7 +20,10 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
+// ✅ Servicio de exportación a PDF
+import { exportarAuditoriaPDF, type AuditoriaPDFData } from './services/exportarAuditoriaPDF';
 
 // ✅ Importar modales desde carpeta modales/
 import { 
@@ -50,6 +53,9 @@ import { useResponsive } from '@/hooks/useResponsive';
 // Integración con Planes de Mejoramiento
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 
+// ✅ Servicio para crear planes de mejoramiento
+import controlInternoService from '../../../services/api/controlInternoService';
+
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
 import { useHallazgos } from './HallazgosContext';
 import { useTareas } from './TareasContext';
@@ -60,6 +66,7 @@ import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } fro
 // ============ TIPOS ============
 
 type EstadoAuditoria =
+  | 'Plan Anual'
   | 'Planeación'
   | 'Ejecución'
   | 'Comunicación'
@@ -135,6 +142,9 @@ interface Auditoria {
   
   // Criterios de auditoría
   criterios?: { id: string; criterio: string }[];
+  
+  // ID del auditor líder asignado
+  auditorLiderId?: string | number;
 }
 
 // ============ DATOS DE PRUEBA ============
@@ -741,6 +751,13 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
 const COLUMNAS_KANBAN = [
+  {
+    id: 'Plan Anual',
+    titulo: 'Plan Anual',
+    count: 0,
+    icono: <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />,
+    diasEstimados: 15
+  },
   {
     id: 'Planeación',
     titulo: 'Planeación',
@@ -1355,27 +1372,27 @@ function TarjetaAuditoria({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (auditoria.estado !== 'Planeación') {
+                  if (auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual') {
                     onExportar(auditoria);
                   }
                 }}
-                disabled={auditoria.estado === 'Planeación'}
+                disabled={auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'}
                 className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
-                  auditoria.estado !== 'Planeación' 
+                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
                 }`}
                 title={
-                  auditoria.estado !== 'Planeación' 
+                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'
                     ? 'Exportar informe PDF' 
                     : 'Solo disponible desde Ejecución'
                 }
               >
                 <FileDown className={`w-3.5 h-3.5 ${
-                  auditoria.estado !== 'Planeación' ? 'text-blue-600' : 'text-gray-400'
+                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
                 }`} />
                 <span className={`text-[9px] font-medium ${
-                  auditoria.estado !== 'Planeación' ? 'text-blue-600' : 'text-gray-400'
+                  auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual' ? 'text-blue-600' : 'text-gray-400'
                 }`}>Export</span>
               </button>
 
@@ -1411,27 +1428,27 @@ function TarjetaAuditoria({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (auditoria.estado === 'Planeación') {
+                  if (auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual') {
                     onEliminar(auditoria);
                   }
                 }}
-                disabled={auditoria.estado !== 'Planeación'}
+                disabled={auditoria.estado !== 'Planeación' && auditoria.estado !== 'Plan Anual'}
                 className={`flex flex-col items-center gap-0.5 p-1 rounded transition-colors flex-1 ${
-                  auditoria.estado === 'Planeación' 
+                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
                     ? 'hover:bg-white cursor-pointer' 
                     : 'opacity-40 cursor-not-allowed'
                 }`}
                 title={
-                  auditoria.estado === 'Planeación' 
-                    ? 'Eliminar auditoría en planeación' 
+                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual'
+                    ? 'Eliminar auditoría en etapa inicial'
                     : 'Solo se puede eliminar en Planeación'
                 }
               >
                 <Trash2 className={`w-3.5 h-3.5 ${
-                  auditoria.estado === 'Planeación' ? 'text-red-600' : 'text-gray-400'
+                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
                 }`} />
                 <span className={`text-[9px] font-medium ${
-                  auditoria.estado === 'Planeación' ? 'text-red-600' : 'text-gray-400'
+                  auditoria.estado === 'Planeación' || auditoria.estado === 'Plan Anual' ? 'text-red-600' : 'text-gray-400'
                 }`}>Elim</span>
               </button>
             </div>
@@ -1774,7 +1791,8 @@ export function GestionAuditoriasKanbanSimple() {
     agregarNota: agregarNotaBackend,
     getHistorial: getHistorialBackend,
     aprobarAuditoria: aprobarAuditoriaBackend,
-    rechazarAuditoria: rechazarAuditoriaBackend
+    rechazarAuditoria: rechazarAuditoriaBackend,
+    getHallazgos
   } = useAuditoriasKanban();
 
   // Estado local para auditorías (sincronizado con backend)
@@ -1835,6 +1853,7 @@ export function GestionAuditoriasKanbanSimple() {
         territorial: aud.territorial,
         auditorLider: aud.auditorLider,
         auditorAsignado: aud.auditorAsignado,
+        auditorLiderId: aud.auditorLiderId, // ✅ Preservar ID del auditor líder
         fechaInicio: aud.fechaInicio,
         fechaFin: aud.fechaFin,
         progreso: aud.progreso,
@@ -1857,7 +1876,7 @@ export function GestionAuditoriasKanbanSimple() {
         especial: aud.especial,
         actividadesCompletas: aud.actividadesCompletas,
         actividadesPendientes: aud.actividadesPendientes
-      }));
+      } as Auditoria));
       setAuditorias(auditoriasTransformadas);
       console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
     }
@@ -1970,7 +1989,7 @@ export function GestionAuditoriasKanbanSimple() {
           codigo: audProg.codigo,
           titulo: audProg.titulo,
           descripcion: audProg.descripcion,
-          estado: 'Planeación', // ← Comienzan en Planeación
+          estado: 'Plan Anual', // ← Comienzan en Plan Anual
           riesgo: 'Medio',
           semaforo: 'verde',
           territorial: audProg.territorial,
@@ -2025,7 +2044,7 @@ export function GestionAuditoriasKanbanSimple() {
       toast.success(
         `✅ ${nuevasAuditorias.length} auditoría${nuevasAuditorias.length > 1 ? 's' : ''} agregada${nuevasAuditorias.length > 1 ? 's' : ''} al Kanban`,
         {
-          description: `Las auditorías están listas en la columna "Planeación" y puedes comenzar a trabajar en ellas.`,
+          description: `Las auditorías están listas en la columna "Plan Anual" y puedes comenzar a trabajarlas.`,
           duration: 7000
         }
       );
@@ -2080,7 +2099,7 @@ export function GestionAuditoriasKanbanSimple() {
     
     // Si la auditoría está en Planeación, abrimos el wizard de inicio (RF004)
     // De lo contrario, abrimos el expediente completo
-    if (auditoria.estado === 'Planeación') {
+    if (auditoria.estado === 'Plan Anual') {
       setModalInicioAuditoriaOpen(true);
     } else {
       setModalExpedienteOpen(true);
@@ -2248,8 +2267,9 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoAnterior = item.estado;
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
     
-    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
+    // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
+      'Plan Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -2259,17 +2279,12 @@ export function GestionAuditoriasKanbanSimple() {
 
     const faseActual = estadoAFase[estadoAnterior];
     
-    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
-      const faseCompleta = verificarFaseCompleta(item.id, faseActual);
       const tareasPendientes = contarTareasPendientesPorFase(item.id, faseActual);
       
-      if (!faseCompleta) {
-        toast.error('⚠️ No se puede cambiar de estado', {
-          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
-          duration: 6000,
-        });
-        return;
+      if (tareasPendientes > 0) {
+        console.log(`⚠️ [handleDrop] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
     }
     
@@ -2336,7 +2351,7 @@ export function GestionAuditoriasKanbanSimple() {
     const estadoNorm = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     
     // Mapeo a valores válidos del enum FaseAuditoria del backend
-    if (estadoNorm.includes('planeacion') || estadoNorm.includes('backlog')) {
+    if (estadoNorm.includes('plan anual') || estadoNorm.includes('plan-anual') || estadoNorm.includes('planeacion') || estadoNorm.includes('backlog')) {
       return 'planeacion';
     }
     if (estadoNorm.includes('ejecucion') || estadoNorm.includes('curso')) {
@@ -2359,9 +2374,9 @@ export function GestionAuditoriasKanbanSimple() {
 
     const estadoAnterior = auditoriaActual.estado;
 
-    // ============ VALIDACIÓN DE CHECKLIST COMPLETADO ============
-    // Mapeo de estados a fases de checklist
+    // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
     const estadoAFase: Record<EstadoAuditoria, 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento' | null> = {
+      'Plan Anual': null,
       'Planeación': 'Planeación',
       'Ejecución': 'Ejecución',
       'Comunicación': 'Comunicación',
@@ -2371,20 +2386,12 @@ export function GestionAuditoriasKanbanSimple() {
 
     const faseActual = estadoAFase[estadoAnterior];
     
-    // Validar que el checklist de la fase actual esté completo antes de avanzar
+    // Mostrar advertencia si hay tareas pendientes (pero NO bloquear)
     if (faseActual && faseActual !== estadoAFase[nuevoEstado]) {
-      const faseCompleta = verificarFaseCompleta(auditoriaId, faseActual);
       const tareasPendientes = contarTareasPendientesPorFase(auditoriaId, faseActual);
       
-      if (!faseCompleta) {
-        toast.error('⚠️ No se puede cambiar de estado', {
-          description: `Debes completar todas las ${tareasPendientes} tarea${tareasPendientes !== 1 ? 's' : ''} de la fase "${faseActual}" antes de avanzar`,
-          duration: 6000,
-        });
-        
-        setModalCambiarEstadoOpen(false);
-        setAuditoriaSeleccionada(null);
-        return;
+      if (tareasPendientes > 0) {
+        console.log(`⚠️ [handleGuardarCambioEstado] ${tareasPendientes} tareas pendientes en fase ${faseActual}, continuando de todos modos`);
       }
     }
 
@@ -2458,28 +2465,165 @@ export function GestionAuditoriasKanbanSimple() {
   };
 
   // Exportar individual
-  const handleExportar = (auditoria: Auditoria) => {
-    // Simular exportación a PDF
-    toast.success(`Exportando ${auditoria.codigo}...`, {
-      description: 'Generando informe PDF completo',
-      duration: 3000
-    });
-    
-    // En producción, esto haría una llamada al backend para generar el PDF
-    setTimeout(() => {
-      toast.success(`${auditoria.codigo} exportado`, {
-        description: 'El archivo PDF está listo para descargar'
+  const handleExportar = async (auditoria: Auditoria) => {
+    try {
+      toast.info(`Generando PDF de ${auditoria.codigo}...`, {
+        description: 'El documento se descargará en unos segundos',
+        duration: 3000
       });
+
+      // ✅ Extraer nombre del auditor líder (puede ser objeto, string ID, o string nombre)
+      let nombreAuditorLider = 'No asignado';
+      let cargoAuditorLider = '';
+      if (auditoria.auditorLider) {
+        if (typeof auditoria.auditorLider === 'object' && auditoria.auditorLider.nombre) {
+          nombreAuditorLider = auditoria.auditorLider.nombre;
+          cargoAuditorLider = auditoria.auditorLider.cargo || '';
+        } else if (typeof auditoria.auditorLider === 'string') {
+          // Verificar si es un ID y buscar en la lista de auditores
+          const auditorEncontrado = auditoresBackend?.find(a => 
+            String(a.id) === auditoria.auditorLider || 
+            a.nombre === auditoria.auditorLider
+          );
+          if (auditorEncontrado) {
+            nombreAuditorLider = auditorEncontrado.nombre;
+            cargoAuditorLider = auditorEncontrado.cargo || '';
+          } else {
+            nombreAuditorLider = auditoria.auditorLider;
+          }
+        }
+      }
+      // También verificar si existe auditorLiderId y buscar por ese campo
+      if (nombreAuditorLider === 'No asignado' && (auditoria as any).auditorLiderId) {
+        const auditorPorId = auditoresBackend?.find(a => 
+          String(a.id) === String((auditoria as any).auditorLiderId)
+        );
+        if (auditorPorId) {
+          nombreAuditorLider = auditorPorId.nombre;
+          cargoAuditorLider = auditorPorId.cargo || '';
+        }
+      }
+
+      // ✅ Extraer equipo auditores (puede ser array de strings o de objetos)
+      let equipoFormateado: Array<{ nombre: string; rol?: string }> = [];
+      if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
+        equipoFormateado = auditoria.equipoAuditores.map((auditor: any) => {
+          if (typeof auditor === 'string') {
+            // Buscar en la lista de auditores si es un ID
+            const auditorEncontrado = auditoresBackend?.find(a => 
+              String(a.id) === auditor || a.nombre === auditor
+            );
+            return { 
+              nombre: auditorEncontrado?.nombre || auditor, 
+              rol: auditorEncontrado?.cargo || 'Auditor' 
+            };
+          } else if (typeof auditor === 'object' && auditor !== null) {
+            return { 
+              nombre: auditor.nombre || auditor.name || auditor.id || 'Auditor', 
+              rol: auditor.rol || auditor.cargo || 'Auditor' 
+            };
+          }
+          return { nombre: 'Auditor', rol: 'Auditor' };
+        });
+      }
+
+      // Preparar datos para el PDF (las fechas se pasan tal cual, el servicio las parsea)
+      const datosAuditoria: AuditoriaPDFData = {
+        id: auditoria.id,
+        codigo: auditoria.codigo,
+        nombre: auditoria.titulo,
+        tipo: auditoria.tipo,
+        estado: auditoria.estado,
+        areaObjetivo: auditoria.areaObjetivo,
+        procesoAuditado: auditoria.titulo,
+        auditorLider: {
+          nombre: nombreAuditorLider,
+          cargo: cargoAuditorLider,
+        },
+        equipoAuditores: equipoFormateado,
+        fechaInicio: auditoria.fechaInicio || '',
+        fechaFin: auditoria.fechaFin || '',
+        progreso: auditoria.progreso,
+        hallazgos: auditoria.hallazgos,
+      };
+
+      console.log('📄 Datos para PDF:', datosAuditoria);
+
+      // Generar PDF
+      const resultado = await exportarAuditoriaPDF(datosAuditoria);
+
+      if (resultado.exito) {
+        toast.success(`${auditoria.codigo} exportado`, {
+          description: resultado.nombreArchivo
+        });
+      } else {
+        throw new Error(resultado.error);
+      }
+    } catch (error: any) {
+      console.error('Error al exportar auditoría:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el PDF'
+      });
+    }
+  };
+
+  // ✅ EXPORTAR TODAS LAS AUDITORÍAS A EXCEL
+  const handleExportarTodo = () => {
+    try {
+      toast.info('Generando reporte de auditorías...', { duration: 2000 });
+
+      // Filtrar auditorías según filtros activos
+      let auditoriasExportar = auditorias;
+      if (busqueda) {
+        auditoriasExportar = auditoriasExportar.filter(a => 
+          a.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
+          a.codigo.toLowerCase().includes(busqueda.toLowerCase())
+        );
+      }
+      if (filtroTerritorial !== 'Todas las Territoriales') {
+        auditoriasExportar = auditoriasExportar.filter(a => a.territorial === filtroTerritorial);
+      }
+
+      if (auditoriasExportar.length === 0) {
+        toast.warning('No hay auditorías para exportar');
+        return;
+      }
+
+      // Crear CSV
+      const headers = ['Código', 'Título', 'Tipo', 'Estado', 'Territorial', 'Auditor Líder', 'Fecha Inicio', 'Fecha Fin', 'Progreso', 'Hallazgos', 'Riesgo'];
       
-      // Simular descarga
-      const blob = new Blob(['Informe de Auditoría'], { type: 'application/pdf' });
+      const rows = auditoriasExportar.map(a => [
+        a.codigo,
+        `"${a.titulo.replace(/"/g, '""')}"`,
+        a.tipo,
+        a.estado,
+        a.territorial,
+        a.auditorLider?.nombre || 'No asignado',
+        a.fechaInicio,
+        a.fechaFin,
+        `${a.progreso}%`,
+        a.hallazgos,
+        a.riesgo
+      ]);
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${auditoria.codigo}_Informe.pdf`;
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Auditorias_OCIG_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
       window.URL.revokeObjectURL(url);
-    }, 2000);
+
+      toast.success('Reporte exportado', {
+        description: `${auditoriasExportar.length} auditorías exportadas a Excel`
+      });
+    } catch (error: any) {
+      console.error('Error al exportar:', error);
+      toast.error('Error al exportar', {
+        description: error.message || 'No se pudo generar el reporte'
+      });
+    }
   };
 
   // Archivar individual - ACTUALIZADO
@@ -2498,44 +2642,74 @@ export function GestionAuditoriasKanbanSimple() {
 
   // ============ INTEGRACIÓN: CREAR PLAN DE MEJORAMIENTO ============
   
-  const handleCrearPlan = (auditoria: Auditoria) => {
-    // 1. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
-    const auditoriaParaPlan: AuditoriaParaPlan = {
-      id: auditoria.id,
-      codigo: auditoria.codigo,
-      nombre: auditoria.titulo,
-      areaResponsable: auditoria.areaObjetivo,
-      responsable: auditoria.auditorLider.nombre,
-      cargo: auditoria.auditorLider.cargo,
-      fechaFinalizacion: auditoria.fechaFin,
-      estadoPlan: 'SIN_PLAN',
-      fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin), // 30 días después
-      plazoFormulacion: 30,
-      hallazgos: generarHallazgosEjemplo(auditoria.hallazgos, auditoria.codigo)
-    };
-    
-    // 2. Agregar al context
-    agregarAuditoriaConHallazgos(auditoriaParaPlan);
-    
-    // 3. Seleccionar para formulación
-    seleccionarAuditoria(auditoriaParaPlan);
-    
-    // 4. Notificación
-    toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
-      description: `${auditoria.hallazgos} hallazgos detectados. Ahora puede formular acciones correctivas.`,
-      duration: 5000
-    });
+  const handleCrearPlan = async (auditoria: Auditoria) => {
+    try {
+      // 1. Obtener hallazgos reales del backend si existen
+      let hallazgosReales: HallazgoAuditoria[] = [];
+      try {
+        const hallazgosBackend = await getHallazgos(auditoria.id);
+        if (hallazgosBackend && hallazgosBackend.length > 0) {
+          hallazgosReales = hallazgosBackend.map((h: any) => ({
+            id: h.id,
+            titulo: h.titulo || h.descripcion?.substring(0, 50) || 'Sin título',
+            gravedad: h.criticidad?.toUpperCase() || h.gravedad || 'MODERADO',
+            descripcion: h.descripcion || '',
+            causas: h.causas || [],
+            efectos: h.efectos || [],
+            recomendaciones: h.recomendaciones || []
+          }));
+        }
+      } catch (err) {
+        console.warn('No se pudieron cargar hallazgos del backend:', err);
+      }
+
+      // Usar solo hallazgos reales del backend (no generar ejemplos)
+      const hallazgos = hallazgosReales;
+
+      // NOTA: El plan se crea en el backend cuando el usuario confirma en el modal
+      // de PlanesMejoramientoModuleRediseno, NO aquí.
+
+      // 2. Convertir datos de auditoría del Kanban al formato AuditoriaParaPlan
+      const auditoriaParaPlan: AuditoriaParaPlan = {
+        id: auditoria.id,
+        codigo: auditoria.codigo,
+        nombre: auditoria.titulo,
+        areaResponsable: auditoria.areaObjetivo,
+        responsable: auditoria.auditorLider.nombre,
+        cargo: auditoria.auditorLider.cargo,
+        fechaFinalizacion: auditoria.fechaFin,
+        estadoPlan: 'SIN_PLAN',
+        fechaLimitePlan: calcularFechaLimitePlan(auditoria.fechaFin), // 30 días después
+        plazoFormulacion: 30,
+        hallazgos: hallazgos
+      };
+      
+      // 4. Agregar al context
+      agregarAuditoriaConHallazgos(auditoriaParaPlan);
+      
+      // 5. Seleccionar para formulación
+      seleccionarAuditoria(auditoriaParaPlan);
+      
+      // 6. Notificación
+      toast.success(`Plan de Mejoramiento creado para ${auditoria.codigo}`, {
+        description: `${hallazgos.length} hallazgos detectados. Ahora puede formular acciones correctivas.`,
+        duration: 5000
+      });
+    } catch (err) {
+      console.error('Error en handleCrearPlan:', err);
+      toast.error('Error al crear plan de mejoramiento');
+    }
     
     // Nota: La navegación al módulo de Planes se hace desde ControlInternoFull
     // cuando detecta que hay una auditoría seleccionada
   };
   
-  // Función auxiliar: calcular fecha límite (30 días después de finalización)
+  // Función auxiliar: calcular fecha límite (30 días después de finalización) - ISO 8601
   const calcularFechaLimitePlan = (fechaFin: string): string => {
     const [dia, mes, anio] = fechaFin.split('/');
     const fecha = new Date(parseInt(anio), parseInt(mes) - 1, parseInt(dia));
     fecha.setDate(fecha.getDate() + 30);
-    return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}/${fecha.getFullYear()}`;
+    return fecha.toISOString().split('T')[0]; // YYYY-MM-DD
   };
   
   // Función auxiliar: generar hallazgos de ejemplo basados en el número
@@ -2727,148 +2901,90 @@ export function GestionAuditoriasKanbanSimple() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="space-y-3 sm:space-y-4 lg:space-y-5 w-full">
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* HEADER: Título + Navegación + Controles - RESPONSIVE PREMIUM   */}
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col gap-3">
-          {/* Fila 1: Título + Botón Nueva Auditoría */}
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <h2 
-                className="font-black leading-tight text-lg md:text-xl lg:text-2xl xl:text-3xl"
-                style={{ color: '#F97316' }}
-              >
-                Auditorías OCIG
-              </h2>
-              <p className="text-xs md:text-sm text-gray-600 mt-0.5">
-                Centro de Comando • {auditoriasFiltradas.length} auditorías activas
-              </p>
-            </div>
-
-            {/* Botón Nueva Auditoría + Tooltip - STACK EN MÓVIL */}
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <Button
-                onClick={() => setModalFormularioOpen(true)}
-                className="flex-1 md:flex-initial bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white font-bold hover:shadow-xl transition-all"
-                size="default"
-              >
-                <Plus className="w-4 h-4 md:w-5 md:h-5" />
-                <span className="ml-2 text-sm md:text-base">Nueva Auditoría</span>
-              </Button>
+        <Card className="p-4 sm:p-5 border border-gray-200 shadow-sm">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-3xl font-black leading-tight" style={{ color: '#F97316' }}>
+                  Auditorías OCIG
+                </h2>
+                <p className="text-gray-600 mt-1">{auditoriasFiltradas.length} auditorías</p>
+              </div>
               <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
             </div>
-          </div>
 
-          {/* Fila 2: Controles y Estadísticas */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2 sm:gap-3">
-            {/* BOTONES COLAPSAR/EXPANDIR + VISTA - AGRUPADOS EN MÓVIL */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3">
-              {/* Colapsar/Expandir */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={colapsarTodasTarjetas}
-                  className="flex-1 md:flex-initial px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-semibold transition-all hover:bg-blue-50 border-2 border-blue-300 hover:border-blue-500"
-                  style={{ color: '#1e5da8' }}
-                  title="Colapsar todas las tarjetas"
-                >
-                  <ChevronsDown className="w-4 h-4" />
-                  <span>Colapsar</span>
-                </button>
-                <button
-                  onClick={expandirTodasTarjetas}
-                  className="flex-1 md:flex-initial px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-xs font-semibold transition-all hover:bg-green-50 border-2 border-green-300 hover:border-green-500"
-                  style={{ color: '#059669' }}
-                  title="Expandir todas las tarjetas"
-                >
-                  <ChevronsUp className="w-4 h-4" />
-                  <span>Expandir</span>
-                </button>
-              </div>
-
-              {/* 🚀 NUEVO: Toggle Modo de Vista (Solo visible en Kanban y tablets+) */}
-              {vistaActiva === 'kanban' && (
-                <div className="hidden md:flex items-center gap-1 p-1 rounded-lg" style={{ background: '#E0F2FE' }}>
-                  <button
-                    onClick={() => setModoVista('ajustado')}
-                    className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all"
-                    style={{
-                      background: modoVista === 'ajustado' ? '#FFFFFF' : 'transparent',
-                      color: modoVista === 'ajustado' ? '#2962FF' : '#6B7280',
-                      boxShadow: modoVista === 'ajustado' ? '0 1px 2px rgba(41, 98, 255, 0.2)' : 'none'
-                    }}
-                    title="Ver todas las columnas ajustadas a la pantalla"
-                  >
-                    <Maximize2 className="w-3 h-3" />
-                    <span>Ajustado</span>
-                  </button>
-                  <button
-                    onClick={() => setModoVista('confortable')}
-                    className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all"
-                    style={{
-                      background: modoVista === 'confortable' ? '#FFFFFF' : 'transparent',
-                      color: modoVista === 'confortable' ? '#2962FF' : '#6B7280',
-                      boxShadow: modoVista === 'confortable' ? '0 1px 2px rgba(41, 98, 255, 0.2)' : 'none'
-                    }}
-                    title="Columnas anchas con scroll horizontal"
-                  >
-                    <Move className="w-3 h-3" />
-                    <span>Confortable</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Toggle Vista Kanban/Lista */}
-              <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#F3F4F6' }}>
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
                 <button
                   onClick={() => setVistaActiva('kanban')}
-                  className="flex-1 md:flex-initial px-3 md:px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                  style={{
-                    background: vistaActiva === 'kanban' ? '#FFFFFF' : 'transparent',
-                    color: vistaActiva === 'kanban' ? '#F97316' : '#6B7280',
-                    boxShadow: vistaActiva === 'kanban' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
-                  }}
+                  className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                    vistaActiva === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+                  }`}
                 >
                   <Columns3 className="w-4 h-4" />
-                  <span>Kanban</span>
+                  Kanban
                 </button>
                 <button
                   onClick={() => setVistaActiva('lista')}
-                  className="flex-1 md:flex-initial px-3 md:px-4 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                  style={{
-                    background: vistaActiva === 'lista' ? '#FFFFFF' : 'transparent',
-                    color: vistaActiva === 'lista' ? '#F97316' : '#6B7280',
-                    boxShadow: vistaActiva === 'lista' ? '0 1px 2px rgba(0, 0, 0, 0.05)' : 'none'
-                  }}
+                  className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                    vistaActiva === 'lista' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-600 hover:bg-white'
+                  }`}
                 >
                   <List className="w-4 h-4" />
-                  <span>Lista</span>
+                  Lista
                 </button>
               </div>
-            </div>
 
-            {/* Estadísticas - SCROLL HORIZONTAL EN MÓVIL */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 -mx-1 px-1">
-              <div className="flex items-center gap-1.5 bg-green-50 px-2 sm:px-3 py-1.5 rounded-lg border border-green-200 flex-shrink-0">
-                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
-                <span className="text-xs font-bold text-green-900 whitespace-nowrap">
-                  {auditoriasFiltradas.filter(a => a.semaforo === 'verde').length} Al día
-                </span>
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <Input
+                  type="text"
+                  placeholder="Buscar auditoría..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  className="pl-10 bg-gray-100 border-gray-200 focus:bg-white"
+                />
               </div>
-              <div className="flex items-center gap-1.5 bg-yellow-50 px-2 sm:px-3 py-1.5 rounded-lg border border-yellow-200 flex-shrink-0">
-                <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-600" />
-                <span className="text-xs font-bold text-yellow-900 whitespace-nowrap">
-                  {auditoriasFiltradas.filter(a => a.semaforo === 'amarillo').length} Alerta
-                </span>
+
+              <div className="relative min-w-[130px]">
+                <select
+                  value={filtroTerritorial}
+                  onChange={(e) => setFiltroTerritorial(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none font-medium text-sm appearance-none bg-white cursor-pointer"
+                >
+                  <option value="Todas las Territoriales">Todas</option>
+                  <option value="Nacional">Nacional</option>
+                  <option value="Antioquia">Antioquia</option>
+                  <option value="Atlántico">Atlántico</option>
+                  <option value="Bogotá">Bogotá</option>
+                  <option value="Valle del Cauca">Valle del Cauca</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
-              <div className="flex items-center gap-1.5 bg-red-50 px-2 sm:px-3 py-1.5 rounded-lg border border-red-200 flex-shrink-0">
-                <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-red-600" />
-                <span className="text-xs font-bold text-red-900 whitespace-nowrap">
-                  {auditoriasFiltradas.filter(a => a.semaforo === 'rojo').length} Crítico
-                </span>
-              </div>
+
+              {vistaActiva === 'kanban' && (
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+                  <button
+                    onClick={() => setModoVista('ajustado')}
+                    className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                      modoVista === 'ajustado' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
+                    }`}
+                  >
+                    Compacto
+                  </button>
+                  <button
+                    onClick={() => setModoVista('confortable')}
+                    className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                      modoVista === 'confortable' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
+                    }`}
+                  >
+                    Confortable
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* ACCIONES PRINCIPALES */}
         <div className="flex flex-wrap items-center justify-end gap-2" style={{ display: 'none' }}>
@@ -2930,7 +3046,7 @@ export function GestionAuditoriasKanbanSimple() {
             <Button 
               variant="outline" 
               className="gap-2 border-2 border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00] hover:text-white font-bold transition-all"
-              onClick={() => toast.success('Exportando reporte...')}
+              onClick={handleExportarTodo}
             >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Exportar</span>
@@ -3414,11 +3530,13 @@ export function GestionAuditoriasKanbanSimple() {
                         
                         <Badge 
                           style={{
-                            background: auditoria.estado === 'Planeación' ? '#EFF6FF' :
+                            background: auditoria.estado === 'Plan Anual' ? '#EEF2FF' :
+                                       auditoria.estado === 'Planeación' ? '#EFF6FF' :
                                        auditoria.estado === 'Ejecución' ? '#FEF3C7' :
                                        auditoria.estado === 'Comunicación' ? '#DBEAFE' :
                                        auditoria.estado === 'Seguimiento' ? '#E0E7FF' : '#D1FAE5',
-                            color: auditoria.estado === 'Planeación' ? '#1E40AF' :
+                            color: auditoria.estado === 'Plan Anual' ? '#3730A3' :
+                                   auditoria.estado === 'Planeación' ? '#1E40AF' :
                                    auditoria.estado === 'Ejecución' ? '#B45309' :
                                    auditoria.estado === 'Comunicación' ? '#1E3A8A' :
                                    auditoria.estado === 'Seguimiento' ? '#3730A3' : '#065F46',
@@ -3975,7 +4093,7 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             auditoriaId={auditoriaSeleccionada.id}
-            auditorActualId={(auditoriaSeleccionada as any).auditorLiderId}
+            auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
               console.log('Auditor asignado:', auditorId);
               // Actualizar auditoría en el backend
@@ -3983,6 +4101,25 @@ export function GestionAuditoriasKanbanSimple() {
                 auditorLiderId: auditorId
               });
               if (exito) {
+                // ✅ Actualizar también el estado local con los datos del auditor
+                const auditorSeleccionado = auditoresBackend?.find(a => String(a.id) === String(auditorId));
+                if (auditorSeleccionado) {
+                  setAuditorias(prev => prev.map(aud => 
+                    aud.id === auditoriaSeleccionada.id 
+                      ? {
+                          ...aud,
+                          auditorLiderId: Number(auditorId), // ✅ Guardar también el ID
+                          auditorLider: {
+                            nombre: auditorSeleccionado.nombre,
+                            cargo: auditorSeleccionado.cargo || 'Auditor',
+                            iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                            tipoIdentificacion: 'CC' as const,
+                            numeroIdentificacion: ''
+                          }
+                        } as any
+                      : aud
+                  ));
+                }
                 setModalAsignarAuditorOpen(false);
                 setAuditoriaSeleccionada(null);
               }

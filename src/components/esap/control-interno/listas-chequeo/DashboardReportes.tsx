@@ -78,7 +78,7 @@ export function DashboardReportes() {
                 Dashboard de Reportes
               </h2>
               <p className="text-sm text-slate-600">
-                Análisis y métricas de listas de chequeo
+                Análisis y métricas de la biblioteca
               </p>
             </div>
           </div>

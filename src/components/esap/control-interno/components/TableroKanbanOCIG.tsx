@@ -12,12 +12,12 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Filter, LayoutGrid, List } from 'lucide-react';
+import { Search, Plus, Filter, LayoutGrid, List, Download, FileText } from 'lucide-react';
 import { KanbanColumn } from './KanbanColumn';
 import { type AuditoriaCardData } from './AuditoriaCard';
 import { type EstadoKanban } from '../utils/esapThemeOCIG';
 import { ESAP_CLASSES } from '../utils/esapThemeOCIG';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // ═════════════════════════════════════════════════════════════════════════
 // DATOS DE EJEMPLO
@@ -158,6 +158,17 @@ export function TableroKanbanOCIG() {
     console.log('📋 Abrir auditoría:', id);
   };
 
+  const handleExportar = (formato: 'excel' | 'pdf') => {
+    const fechaActual = new Date().toISOString().split('T')[0];
+    const totalAuditorias = auditorias.length;
+    
+    toast.success(`Exportando a ${formato.toUpperCase()}`, {
+      description: `${totalAuditorias} auditorías - ${fechaActual}`,
+      duration: 3000,
+    });
+    console.log('📥 Exportar:', { formato, totalAuditorias });
+  };
+
   const handleDrop = (auditoriaId: string, nuevoEstado: EstadoKanban) => {
     setAuditorias((prev) =>
       prev.map((aud) =>
@@ -187,13 +198,42 @@ export function TableroKanbanOCIG() {
               </p>
             </div>
 
-            <button
-              onClick={handleNuevaAuditoria}
-              className={`${ESAP_CLASSES.button.primary} flex items-center gap-2`}
-            >
-              <Plus className="w-5 h-5" />
-              Nueva Auditoría
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Dropdown Exportar */}
+              <div className="relative group">
+                <button
+                  className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded-lg font-medium transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  Exportar
+                </button>
+                <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                  <button
+                    onClick={() => handleExportar('excel')}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-t-lg"
+                  >
+                    <FileText className="w-4 h-4 text-green-600" />
+                    Excel (.xlsx)
+                  </button>
+                  <button
+                    onClick={() => handleExportar('pdf')}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-b-lg"
+                  >
+                    <FileText className="w-4 h-4 text-red-600" />
+                    PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Botón Nueva Auditoría */}
+              <button
+                onClick={handleNuevaAuditoria}
+                className={`${ESAP_CLASSES.button.primary} flex items-center gap-2`}
+              >
+                <Plus className="w-5 h-5" />
+                Nueva Auditoría
+              </button>
+            </div>
           </div>
 
           {/* Filtros y búsqueda */}

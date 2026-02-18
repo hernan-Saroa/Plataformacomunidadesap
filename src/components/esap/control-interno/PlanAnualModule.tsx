@@ -36,7 +36,7 @@ import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import { Badge } from '../../ui/badge';
 import { Avatar, AvatarFallback } from '../../ui/avatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { planAnual5RolesApi } from './services/api';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
@@ -840,9 +840,9 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
 
   const handleExportarPDF = async (plan: PlanAnual) => {
     try {
-    toast.success('Generando PDF...', {
-      description: 'El documento se descargará en unos segundos'
-    });
+      toast.info('Generando PDF...', {
+        description: 'El documento se descargará en unos segundos'
+      });
     
       // Importar jspdf-autotable dinámicamente
       const autoTableModule = await import('jspdf-autotable');
@@ -856,91 +856,86 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       });
 
       // Configuración de colores
-      const colorAzul = [0, 61, 165]; // #003DA5
-      const colorGris = [128, 128, 128];
+      const colorAzul: [number, number, number] = [0, 61, 165]; // #003DA5
+      const colorGris: [number, number, number] = [128, 128, 128];
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 10;
 
       // ============ HEADER INSTITUCIONAL ESAP ============
-      try {
-        // Usar imagen institucional del encabezado
-        doc.addImage(headerImg, 'PNG', margin, 10, pageWidth * 0.6, 20);
-      } catch (error) {
-        console.warn('No se pudo cargar encabezado institucional, usando fallback');
-        // Fallback: Logo dibujado
-        const logoX = 15;
-        const logoY = 10;
-        doc.setFillColor(...colorAzul);
-        doc.setDrawColor(...colorAzul);
-        doc.circle(logoX + 11, logoY + 2, 2.3, 'FD');
-        doc.setFontSize(7);
-        doc.setTextColor(...colorAzul);
-        doc.setFont(undefined, 'bold');
-        doc.text('Escuela Superior de', logoX, logoY + 16.5);
-        doc.text('Administración Pública', logoX, logoY + 19.5);
-      }
+      // Logo ESAP (texto simulado)
+      doc.setFillColor(...colorAzul);
+      doc.rect(margin, 8, 45, 22, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ESAP', margin + 22.5, 18, { align: 'center' });
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Escuela Superior de', margin + 22.5, 23, { align: 'center' });
+      doc.text('Administración Pública', margin + 22.5, 27, { align: 'center' });
       
       // Título principal (centrado)
-      doc.setFontSize(14);
-      doc.setFont(undefined, 'bold');
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('PLAN DE AUDITORIA INTERNAS DEL SISTEMA DE GESTIÓN DE LA CALIDAD', 105, 20, { align: 'center', maxWidth: 140 });
+      doc.text('PLAN DE AUDITORÍAS INTERNAS', 115, 14, { align: 'center' });
+      doc.text('SISTEMA DE GESTIÓN DE LA CALIDAD', 115, 20, { align: 'center' });
 
       // Metadata (Código, Versión, Fecha) - lado derecho
-      doc.setFontSize(9);
-      doc.setFont(undefined, 'normal');
-      doc.text('Código: EM-FO-014', 160, 10);
-      doc.text('Versión: 1', 160, 14);
-      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CO')}`, 160, 18);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Código: EM-FO-014', 165, 12);
+      doc.text('Versión: 1', 165, 16);
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-CO')}`, 165, 20);
 
       let yPos = 35; // Más espacio después del header
 
       // ============ SECCIÓN: PROCESO ============
       yPos += 5; // Espacio antes de la sección
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(...colorAzul);
       doc.text('PROCESO: EVALUACION, CONTROL Y MEJORA', 10, yPos);
       yPos += 8; // Espacio después del título
 
       doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
       
       // Campos del proceso
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FECHA DEL PLAN:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(new Date().toLocaleDateString('es-CO'), 50, yPos);
       yPos += 10; // Espacio entre líneas
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       const procesoLabel = 'PROCESO/DEPENDENCIA A AUDITAR:';
       doc.text(procesoLabel, 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       // Calcular posición X para el valor: después del label + espacio
       const procesoLabelWidth = doc.getTextWidth(procesoLabel);
       doc.text('Control Interno - Plan Anual', 10 + procesoLabelWidth + 5, yPos);
       yPos += 10; // Espacio vertical normal
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       const responsableLabel = 'RESPONSABLE PROCESO/DEPENDENCIA A AUDITAR:';
       doc.text(responsableLabel, 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       // Calcular posición X para el valor: después del label + espacio
       const responsableLabelWidth = doc.getTextWidth(responsableLabel);
       doc.text(plan.jefeOCI.nombre, 10 + responsableLabelWidth + 5, yPos);
       yPos += 10; // Espacio después
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('AUDITOR LIDER:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(plan.jefeOCI.nombre, 50, yPos);
       yPos += 8;
 
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('EQUIPO AUDITOR:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       const equipoAuditores = plan.roles
         .flatMap(rol => rol.actividades.map(act => act.responsableNombre))
         .filter((nombre, index, arr) => arr.indexOf(nombre) === index)
@@ -956,48 +951,48 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 190, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('ASPECTOS A TENER EN CUENTA', 105, yPos + 6, { align: 'center' });
       yPos += 10; // Espacio después del banner
 
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(10);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
 
       // Objetivo
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('OBJETIVO DE LA AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       const objetivoText = doc.splitTextToSize('Verificar el cumplimiento del Plan Anual de Control Interno según Decreto 648/2017', 180);
       doc.text(objetivoText, 10, yPos + 5);
       yPos += objetivoText.length * 5 + 8; // Espacio dinámico
 
       // Alcance
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('ALCANCE DE LA AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(`Plan Anual ${plan.año} - ${plan.roles.length} roles del Decreto 648/2017`, 10, yPos + 5);
       yPos += 10;
 
       // Criterios
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('CRITERIOS DE AUDITORÍA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('Decreto 648 de 2017 - Sistema de Control Interno', 10, yPos + 5);
       yPos += 10;
 
       // Método
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('METODO DE AUDITORIA:', 10, yPos);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('Revisión documental y verificación de actividades', 10, yPos + 5);
       yPos += 10;
 
       // Recursos
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('RECURSOS:', 10, yPos);
       yPos += 6; // Más espacio
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('FINANCIEROS', 10, yPos);
       doc.text('LOGISTICOS', 50, yPos);
       doc.text('TECNOLÓGICOS', 90, yPos);
@@ -1010,7 +1005,7 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 190, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('CRONOGRAMA Y EQUIPO AUDITOR', 105, yPos + 6, { align: 'center' });
       yPos += 10; // Espacio después del banner
 
@@ -1078,21 +1073,21 @@ export function PlanAnualModule({ onPlanChange, filtros }: PlanAnualModuleProps 
       doc.rect(10, yPos, 90, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FIRMA DEL AUDITOR LÍDER', 55, yPos + 6, { align: 'center' });
       yPos += 12; // Espacio entre banner y nombre
       doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text(plan.jefeOCI.nombre, 55, yPos, { align: 'center' });
 
       // Firma Jefe Oficina de Planeación
       doc.setFillColor(...colorAzul);
       doc.rect(110, yPos - 12, 90, 8, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFont(undefined, 'bold');
+      doc.setFont('helvetica', 'bold');
       doc.text('FIRMA JEFE OFICINA DE PLANEACIÓN', 155, yPos - 6, { align: 'center' });
       doc.setTextColor(0, 0, 0);
-      doc.setFont(undefined, 'normal');
+      doc.setFont('helvetica', 'normal');
       doc.text('_________________________', 155, yPos + 2, { align: 'center' });
 
       // Guardar PDF

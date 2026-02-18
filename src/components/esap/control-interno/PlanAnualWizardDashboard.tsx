@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, BookOpen, Download, FileText,
-  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, ChevronDown, FileSpreadsheet
+  Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -1515,7 +1515,7 @@ interface DashboardPlanProps {
 
 export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
-  const [exportOpen, setExportOpen] = useState(false);
+  const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
   
   // Estado para auditores cargados desde backend
@@ -1551,6 +1551,183 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const actividadesEnEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length, 0);
   const avancePromedio = Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0), 0) / totalActividades);
 
+  const handleExportarExcel = async () => {
+    setExportando('excel');
+    setMostrarModalExportacion(false);
+    const res = await planAnualApi.exportExcel(plan.id);
+    if (res.success) {
+      toast.success('Exportado', { description: 'Excel descargado correctamente' });
+      setExportando(null);
+      return;
+    }
+    try {
+      const XLSX = await import('xlsx');
+      const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
+      const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
+      const rows: unknown[][] = [
+        ['Plan Anual de Auditoría - ESAP'],
+        [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
+        [],
+        headers,
+      ];
+      (plan.roles ?? []).forEach((rol) => {
+        (rol.actividades ?? []).forEach((a, i) => {
+          rows.push([
+            rol.nombre,
+            i + 1,
+            a.nombre,
+            a.descripcion ?? '',
+            a.responsable?.nombre ?? '',
+            a.fechaInicio ?? '',
+            a.fechaFin ?? '',
+            a.estado ?? '',
+            a.porcentajeAvance ?? 0,
+          ]);
+        });
+      });
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
+      XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
+      toast.success('Exportado', { description: 'Excel generado correctamente' });
+    } catch (e) {
+      toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
+    }
+    setExportando(null);
+  };
+
+  const handleExportarPDF = async () => {
+    setExportando('pdf');
+    setMostrarModalExportacion(false);
+    try {
+      const jsPDF = (await import('jspdf')).default;
+      const autoTable = (await import('jspdf-autotable')).default;
+      const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
+      
+      // Crear documento PDF con jsPDF
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+
+      // Header institucional estandarizado
+      const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
+        ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
+        logoImg: logoESAP
+      });
+      
+      let currentY = alturaEncabezado + 5;
+
+      // Vigencia
+      doc.setTextColor(0, 61, 165);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Vigencia ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
+      currentY += 10;
+
+      // Información general
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INFORMACIÓN GENERAL', margin, currentY);
+      currentY += 8;
+
+      const estadoLabel = plan.estado === 'BORRADOR' ? 'Borrador' : 
+                          plan.estado === 'EN_REVISION' ? 'En revisión' : 
+                          plan.estado === 'APROBADO' ? 'Aprobado' : 
+                          plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado';
+
+      const infoData = [
+        ['Vigencia', vigencia.toString()],
+        ['Estado', estadoLabel],
+        ['Jefe OCI', plan.jefeOCI?.nombre || ''],
+        ['Cargo', plan.jefeOCI?.cargo || ''],
+        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')]
+      ];
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [],
+        body: infoData,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 40 },
+          1: { cellWidth: 'auto' }
+        },
+        margin: { left: margin, right: margin }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Actividades por rol
+      plan.roles.forEach((rol, rolIdx) => {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
+        currentY += 7;
+
+        const actividadesData = rol.actividades.map((act, idx) => [
+          (idx + 1).toString(),
+          act.nombre,
+          act.responsable?.nombre || 'Sin asignar',
+          act.estado === 'COMPLETADA' ? 'Completada' : 
+          act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
+          `${act.porcentajeAvance}%`
+        ]);
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
+          body: actividadesData,
+          theme: 'striped',
+          headStyles: {
+            fillColor: [0, 61, 165],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9
+          },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 10, halign: 'center' },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 40 },
+            3: { cellWidth: 30, halign: 'center' },
+            4: { cellWidth: 20, halign: 'center' }
+          },
+          margin: { left: margin, right: margin }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 8;
+
+        if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
+          doc.addPage();
+          currentY = margin;
+        }
+      });
+
+      // Footer institucional
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        dibujarPieInstitucional(doc, i, true);
+      }
+
+      doc.save(`Plan-Anual-Auditoria-${vigencia}.pdf`);
+      toast.success('PDF generado exitosamente', { description: 'Documento con formato institucional oficial ESAP' });
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      toast.error('Error al generar PDF', { description: 'Intente nuevamente' });
+    }
+    setExportando(null);
+  };
+
   return (
     <div className="flex-1 flex flex-col">
       <div className="bg-white border-b-2 border-gray-200 px-8 py-6">
@@ -1580,233 +1757,139 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </button>
             )}
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setExportOpen((o) => !o)}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Exportar
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              {exportOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} aria-hidden="true" />
-                  <div className="absolute right-0 top-full mt-1 z-20 w-48 py-1 bg-white border border-gray-200 rounded-lg shadow-lg">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setExportando('excel');
-                        setExportOpen(false);
-                        const res = await planAnualApi.exportExcel(plan.id);
-                        if (res.success) {
-                          toast.success('Exportado', { description: 'Excel descargado correctamente' });
-                          setExportando(null);
-                          return;
-                        }
-                        try {
-                          const XLSX = await import('xlsx');
-                          const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-                          const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
-                          const rows: unknown[][] = [
-                            ['Plan Anual de Auditoría - ESAP'],
-                            [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
-                            [],
-                            headers,
-                          ];
-                          (plan.roles ?? []).forEach((rol) => {
-                            (rol.actividades ?? []).forEach((a, i) => {
-                              rows.push([
-                                rol.nombre,
-                                i + 1,
-                                a.nombre,
-                                a.descripcion ?? '',
-                                a.responsable?.nombre ?? '',
-                                a.fechaInicio ?? '',
-                                a.fechaFin ?? '',
-                                a.estado ?? '',
-                                a.porcentajeAvance ?? 0,
-                              ]);
-                            });
-                          });
-                          const ws = XLSX.utils.aoa_to_sheet(rows);
-                          const wb = XLSX.utils.book_new();
-                          XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
-                          XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
-                          toast.success('Exportado', { description: 'Excel generado correctamente' });
-                        } catch (e) {
-                          toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
-                        }
-                        setExportando(null);
-                      }}
-                      disabled={!!exportando}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {exportando === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-                      Excel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setExportando('pdf');
-                        setExportOpen(false);
-                        try {
-                          const jsPDF = (await import('jspdf')).default;
-                          const autoTable = (await import('jspdf-autotable')).default;
-                          const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-                          
-                          // Crear documento PDF con jsPDF
-                          const doc = new jsPDF({
-                            orientation: 'portrait',
-                            unit: 'mm',
-                            format: 'letter'
-                          });
-
-                          const pageWidth = doc.internal.pageSize.getWidth();
-                          const pageHeight = doc.internal.pageSize.getHeight();
-                          const margin = 20;
-
-                          // ============================================
-                          // HEADER INSTITUCIONAL ESTANDARIZADO (EM-PT-004)
-                          // ============================================
-                          
-                          const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
-                            ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
-                            logoImg: logoESAP
-                          });
-                          
-                          let currentY = alturaEncabezado + 5;
-
-                          // Vigencia
-                          doc.setTextColor(0, 61, 165);
-                          doc.setFontSize(14);
-                          doc.setFont('helvetica', 'bold');
-                          doc.text(`Vigencia ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
-                          currentY += 10;
-
-                          // ============================================
-                          // INFORMACIÓN GENERAL
-                          // ============================================
-
-                          doc.setTextColor(0, 0, 0);
-                          doc.setFontSize(11);
-                          doc.setFont('helvetica', 'bold');
-                          doc.text('INFORMACIÓN GENERAL', margin, currentY);
-                          currentY += 8;
-
-                          const estadoLabel = plan.estado === 'BORRADOR' ? 'Borrador' : 
-                                              plan.estado === 'EN_REVISION' ? 'En revisión' : 
-                                              plan.estado === 'APROBADO' ? 'Aprobado' : 
-                                              plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado';
-
-                          const infoData = [
-                            ['Vigencia', vigencia.toString()],
-                            ['Estado', estadoLabel],
-                            ['Jefe OCI', plan.jefeOCI?.nombre || ''],
-                            ['Cargo', plan.jefeOCI?.cargo || ''],
-                            ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')]
-                          ];
-
-                          autoTable(doc, {
-                            startY: currentY,
-                            head: [],
-                            body: infoData,
-                            theme: 'grid',
-                            styles: { fontSize: 9, cellPadding: 3 },
-                            columnStyles: {
-                              0: { fontStyle: 'bold', cellWidth: 40 },
-                              1: { cellWidth: 'auto' }
-                            },
-                            margin: { left: margin, right: margin }
-                          });
-
-                          currentY = (doc as any).lastAutoTable.finalY + 10;
-
-                          // ============================================
-                          // ACTIVIDADES POR ROL
-                          // ============================================
-
-                          plan.roles.forEach((rol, rolIdx) => {
-                            // Título del rol
-                            doc.setFontSize(11);
-                            doc.setFont('helvetica', 'bold');
-                            doc.setTextColor(0, 61, 165);
-                            doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
-                            currentY += 7;
-
-                            // Tabla de actividades
-                            const actividadesData = rol.actividades.map((act, idx) => [
-                              (idx + 1).toString(),
-                              act.nombre,
-                              act.responsable?.nombre || 'Sin asignar',
-                              act.estado === 'COMPLETADA' ? 'Completada' : 
-                              act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
-                              `${act.porcentajeAvance}%`
-                            ]);
-
-                            autoTable(doc, {
-                              startY: currentY,
-                              head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
-                              body: actividadesData,
-                              theme: 'striped',
-                              headStyles: {
-                                fillColor: [0, 61, 165],
-                                textColor: [255, 255, 255],
-                                fontStyle: 'bold',
-                                fontSize: 9
-                              },
-                              styles: { fontSize: 8, cellPadding: 2 },
-                              columnStyles: {
-                                0: { cellWidth: 10, halign: 'center' },
-                                1: { cellWidth: 'auto' },
-                                2: { cellWidth: 40 },
-                                3: { cellWidth: 30, halign: 'center' },
-                                4: { cellWidth: 20, halign: 'center' }
-                              },
-                              margin: { left: margin, right: margin }
-                            });
-
-                            currentY = (doc as any).lastAutoTable.finalY + 8;
-
-                            // Nueva página si es necesario
-                            if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
-                              doc.addPage();
-                              currentY = margin;
-                            }
-                          });
-
-                          // ============================================
-                          // FOOTER INSTITUCIONAL ESTANDARIZADO
-                          // ============================================
-
-                          const totalPages = doc.getNumberOfPages();
-                          for (let i = 1; i <= totalPages; i++) {
-                            doc.setPage(i);
-                            dibujarPieInstitucional(doc, i, true);
-                          }
-
-                          // Guardar PDF
-                          doc.save(`Plan-Anual-Auditoria-${vigencia}.pdf`);
-                          toast.success('PDF generado exitosamente', { description: 'Document con formato institucional oficial ESAP' });
-                        } catch (error) {
-                          console.error('Error generando PDF:', error);
-                          toast.error('Error al generar PDF', { description: 'Intente nuevamente' });
-                        }
-                        setExportando(null);
-                      }}
-                      disabled={!!exportando}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {exportando === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                      PDF
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => setMostrarModalExportacion(true)}
+              className="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg"
+            >
+              <Download className="w-4 h-4" />
+              Exportar
+            </button>
           </div>
         </div>
+
+        {mostrarModalExportacion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4"
+            onClick={() => setMostrarModalExportacion(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-6 py-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                      <Download className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">Exportar Plan Anual</h2>
+                      <p className="text-sm text-blue-100">Vigencia {plan.vigencia} • {plan.id}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setMostrarModalExportacion(false)}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    disabled={!!exportando}
+                  >
+                    <X className="w-5 h-5 text-white" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-6">
+                  Selecciona el formato de exportación. El documento incluirá toda la información del Plan Anual según normativa (Decreto 648/2017).
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleExportarPDF}
+                    disabled={!!exportando}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-[#2962FF] hover:bg-blue-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
+                        <FileText className="w-6 h-6 text-red-600" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <h3 className="text-base font-bold text-gray-900 mb-1">📄 Exportar a PDF</h3>
+                        <p className="text-sm text-gray-600 mb-2">
+                          Documento oficial con diseño corporativo ESAP. Incluye portada, roles, actividades y firmas.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Diseño corporativo</span>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ Normativa 648/2017</span>
+                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Listo para firmar</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        {exportando === 'pdf' ? (
+                          <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                        ) : (
+                          <Download className="w-5 h-5 text-gray-400 group-hover:text-[#2962FF]" />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={handleExportarExcel}
+                    disabled={!!exportando}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-green-600 hover:bg-green-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
+                        <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <h3 className="text-base font-bold text-gray-900 mb-1">📊 Exportar a Excel</h3>
+                        <p className="text-sm text-gray-600 mb-2">
+                          Tabla estructurada editable con todas las actividades. Ideal para análisis, seguimiento y modificaciones.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Editable</span>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ Con fórmulas</span>
+                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Análisis de datos</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        {exportando === 'excel' ? (
+                          <Loader2 className="w-5 h-5 text-green-600 animate-spin" />
+                        ) : (
+                          <Download className="w-5 h-5 text-gray-400 group-hover:text-green-600" />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-blue-900 mb-1">Información incluida en ambos formatos:</p>
+                      <ul className="text-sm text-blue-800 space-y-1">
+                        <li>• 5 Roles del Decreto 648/2017</li>
+                        <li>• {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades programadas</li>
+                        <li>• Responsables asignados y fechas</li>
+                        <li>• Estado de cumplimiento y avances</li>
+                        <li>• Información del Jefe OCIG: {plan.jefeOCI.nombre}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-5 gap-4 mb-6">

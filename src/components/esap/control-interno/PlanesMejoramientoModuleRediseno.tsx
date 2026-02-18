@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -26,8 +26,8 @@ import {
   Save, Download, X, AlertCircle, CheckSquare, ArrowLeft, Search,
   BarChart3, ClipboardCheck, FileCheck, Building2, Activity, 
   Info, List, LayoutGrid, GripVertical, ArrowRight, Filter,
-  TrendingUp, Flag, Circle, Maximize2, Minimize2, Zap, Award,
-  PlayCircle, PauseCircle, AlertOctagon
+  TrendingUp, Flag, Circle, Maximize2, Minimize2,
+  PlayCircle, PauseCircle, AlertOctagon, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -36,12 +36,13 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
-import { Badge } from '../../ui/badge';
-import { Card } from '../../ui/card';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
 import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesContext';
+
+// ✅ Hook de backend para planes de mejoramiento
+import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
 
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
@@ -351,8 +352,60 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
-  const [planes, setPlanes] = useState<PlanMejoramiento[]>(PLANES_EJEMPLO);
+  // ✅ HOOK DE BACKEND - Planes de mejoramiento
+  const {
+    planes: planesBackend,
+    loading: cargandoBackend,
+    error: errorBackend,
+    fetchPlanes,
+    crearPlan: crearPlanBackend,
+    actualizarEstadoPlan,
+    aprobarPlan,
+    rechazarPlan
+  } = usePlanesMejoramiento();
+
+  // Estado local sincronizado con backend
+  const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+
+  // Sincronizar planes del backend con estado local
+  useEffect(() => {
+    if (!cargandoBackend && planesBackend.length > 0) {
+      // Transformar PlanMejoramientoKanban a PlanMejoramiento local
+      const planesLocales: PlanMejoramiento[] = planesBackend.map(p => ({
+        id: p.id,
+        codigo: p.codigo,
+        auditoria: p.auditoria,
+        area: p.area,
+        responsable: p.responsable,
+        cargoResponsable: p.cargoResponsable,
+        fechaCreacion: p.fechaCreacion,
+        fechaAprobacion: p.fechaAprobacion,
+        fechaInicio: p.fechaInicio,
+        fechaFin: p.fechaFin,
+        estado: p.estado,
+        semaforo: p.semaforo,
+        totalHallazgos: p.totalHallazgos,
+        totalAcciones: p.totalAcciones,
+        accionesCompletadas: p.accionesCompletadas,
+        accionesEnProceso: p.accionesEnProceso,
+        accionesPendientes: p.accionesPendientes,
+        porcentajeAvance: p.porcentajeAvance,
+        hallazgosCriticos: p.hallazgosCriticos,
+        hallazgosModerados: p.hallazgosModerados,
+        hallazgosLeves: p.hallazgosLeves,
+        ultimaActualizacion: p.ultimaActualizacion,
+        alertas: p.alertas,
+        diasRestantes: p.diasRestantes
+      }));
+      setPlanes(planesLocales);
+      console.log('✅ [PlanesMejoramiento] Sincronizados', planesLocales.length, 'planes del backend');
+    } else if (!cargandoBackend && planesBackend.length === 0) {
+      // Sin planes en backend - mostrar lista vacía
+      console.log('ℹ️ [PlanesMejoramiento] Sin planes en backend');
+      setPlanes([]);
+    }
+  }, [planesBackend, cargandoBackend]);
 
   // Integración con Auditorías
   const { 
@@ -361,7 +414,7 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriasConHallazgos,
     navegarAFormulacion,
     setNavegarAFormulacion,
-    crearPlan,
+    crearPlan: crearPlanContext,
     generarExpediente // ✅ NUEVO: Para generar expedientes
   } = useIntegracionAuditoriaPlanes();
 
@@ -373,53 +426,94 @@ export function PlanesMejoramientoModuleRediseno() {
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion]);
 
-  const handleCrearPlanDesdeAuditoria = (auditoria: any) => {
+  const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
 
-    const nuevoPlan: PlanMejoramiento = {
-      id: `plan-${Date.now()}`,
-      codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
-      auditoria: auditoria.nombre,
-      area: auditoria.areaResponsable,
-      responsable: auditoria.responsable,
-      cargoResponsable: auditoria.cargo,
-      fechaCreacion: new Date().toISOString().split('T')[0],
-      fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
-      estado: 'FORMULACION',
-      semaforo: 'amarillo',
-      totalHallazgos: auditoria.hallazgos.length,
-      totalAcciones: 0,
-      accionesCompletadas: 0,
-      accionesEnProceso: 0,
-      accionesPendientes: 0,
-      porcentajeAvance: 0,
-      hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
-      hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
-      hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
-      ultimaActualizacion: new Date().toISOString().split('T')[0],
-      alertas: 0,
-      diasRestantes: 365
-    };
+    // ✅ Crear en backend con DTO correcto
+    const fechaLimite = auditoria.fechaLimitePlan || calcularFechaLimite();
+    // Asegurar formato ISO 8601
+    const fechaLimiteISO = fechaLimite.includes('/') 
+      ? (() => {
+          const [d, m, y] = fechaLimite.split('/');
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        })()
+      : fechaLimite;
 
-    setPlanes(prev => [nuevoPlan, ...prev]);
-
-    // Actualizar contexto
-    crearPlan({
+    const planCreado = await crearPlanBackend({
+      areaResponsable: auditoria.areaResponsable || auditoria.area || 'Sin área',
+      responsableImplementacion: auditoria.responsable || 'Sin responsable',
+      fechaLimite: fechaLimiteISO,
       auditoriaId: auditoria.id,
-      codigoAuditoria: auditoria.codigo,
-      fechaCreacion: nuevoPlan.fechaCreacion,
-      estado: 'EN_FORMULACION',
-      accionesCreadas: 0,
-      progresoGeneral: 0
+      titulo: `Plan de Mejoramiento - ${auditoria.codigo || 'Nuevo'}`,
+      descripcion: `Plan de mejoramiento derivado de la auditoría ${auditoria.nombre || auditoria.titulo || ''}`
     });
 
-    toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
+    if (planCreado) {
+      // Actualizar contexto de integración
+      crearPlanContext({
+        auditoriaId: auditoria.id,
+        codigoAuditoria: auditoria.codigo,
+        fechaCreacion: planCreado.fechaCreacion,
+        estado: 'EN_FORMULACION',
+        accionesCreadas: 0,
+        progresoGeneral: 0
+      });
+      
+      // ✅ Toast de éxito
+      toast.success(`Plan ${planCreado.codigo} creado exitosamente`);
+      setModalCrearPlanOpen(false);
+      limpiarSeleccion();
+      return;
+    }
+
+    // Fallback: crear localmente si falla el backend
+    if (!planCreado) {
+      const nuevoPlan: PlanMejoramiento = {
+        id: `plan-${Date.now()}`,
+        codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
+        auditoria: auditoria.nombre,
+        area: auditoria.areaResponsable,
+        responsable: auditoria.responsable,
+        cargoResponsable: auditoria.cargo,
+        fechaCreacion: new Date().toISOString().split('T')[0],
+        fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
+        estado: 'FORMULACION',
+        semaforo: 'amarillo',
+        totalHallazgos: auditoria.hallazgos.length,
+        totalAcciones: 0,
+        accionesCompletadas: 0,
+        accionesEnProceso: 0,
+        accionesPendientes: 0,
+        porcentajeAvance: 0,
+        hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
+        hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
+        hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
+        ultimaActualizacion: new Date().toISOString().split('T')[0],
+        alertas: 0,
+        diasRestantes: 365
+      };
+
+      setPlanes(prev => [nuevoPlan, ...prev]);
+
+      // Actualizar contexto
+      crearPlanContext({
+        auditoriaId: auditoria.id,
+        codigoAuditoria: auditoria.codigo,
+        fechaCreacion: nuevoPlan.fechaCreacion,
+        estado: 'EN_FORMULACION',
+        accionesCreadas: 0,
+        progresoGeneral: 0
+      });
+
+      toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
+    }
+
     setModalCrearPlanOpen(false);
     limpiarSeleccion();
   };
 
   // ✅ NUEVO: Handler para completar plan y generar expediente automáticamente
-  const handleCompletarPlan = (plan: PlanMejoramiento) => {
+  const handleCompletarPlan = async (plan: PlanMejoramiento) => {
     // 1. Validar que esté 100% completo
     if (plan.porcentajeAvance < 100) {
       toast.error('El plan debe estar completado al 100%', {
@@ -439,7 +533,14 @@ export function PlanesMejoramientoModuleRediseno() {
       return;
     }
 
-    // 3. Actualizar estado del plan
+    // 3. Actualizar estado del plan en backend
+    const actualizado = await actualizarEstadoPlan(plan.id, 'COMPLETADO' as EstadoPlan);
+    if (!actualizado) {
+      toast.error('Error al completar el plan en el servidor');
+      return;
+    }
+
+    // Actualizar localmente
     const planActualizado: PlanMejoramiento = {
       ...plan,
       estado: 'COMPLETADO',
@@ -575,7 +676,7 @@ interface SeguimientoViewProps {
 }
 
 function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan }: SeguimientoViewProps) {
-  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('kanban');
+  const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista'); // ✅ Vista por defecto: Lista
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
@@ -637,11 +738,20 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
     };
   }, [planes]);
 
-  const handleMoverPlan = (planId: string, nuevoEstado: EstadoPlan) => {
+  const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan) => {
+    // Actualizar localmente primero (optimistic update)
     setPlanes(prev => prev.map(p => 
       p.id === planId ? { ...p, estado: nuevoEstado } : p
     ));
-    toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+    
+    // ✅ Sincronizar con backend
+    const actualizado = await actualizarEstadoPlan(planId, nuevoEstado);
+    if (!actualizado) {
+      // Revertir si falla
+      fetchPlanes();
+    } else {
+      toast.success(`Plan movido a ${obtenerNombreEstado(nuevoEstado)}`);
+    }
   };
 
   const toggleColapsoColumna = (columnaId: string) => {
@@ -681,19 +791,8 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
               )}
             </button>
 
-            {/* Toggle Vista */}
+            {/* Toggle Vista - Lista primero (opción por defecto) */}
             <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-              <button
-                onClick={() => setVistaTablero('kanban')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  vistaTablero === 'kanban'
-                    ? 'bg-white text-[#1e5da8] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                Kanban
-              </button>
               <button
                 onClick={() => setVistaTablero('lista')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
@@ -704,6 +803,17 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
               >
                 <List className="w-4 h-4" />
                 Lista
+              </button>
+              <button
+                onClick={() => setVistaTablero('kanban')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  vistaTablero === 'kanban'
+                    ? 'bg-white text-[#1e5da8] shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Kanban
               </button>
             </div>
           </div>
@@ -805,10 +915,57 @@ interface VistaKanbanProps {
 }
 
 function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onToggleColapso }: VistaKanbanProps) {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollLeft = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: -350, behavior: 'smooth' });
+    }
+  };
+
+  const scrollRight = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: 350, behavior: 'smooth' });
+    }
+  };
+
   return (
     <>
       <style>{`
-        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento */
+        /* Scroll horizontal personalizado ESAP para Planes de Mejoramiento - MEJORADO */
+        .kanban-scroll-container {
+          scrollbar-width: auto;
+          scrollbar-color: #2962FF #E5E7EB;
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar {
+          height: 16px;
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-track {
+          background: linear-gradient(to bottom, #F9FAFB, #F3F4F6);
+          border-radius: 10px;
+          border: 1px solid #E5E7EB;
+          box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-thumb {
+          background: linear-gradient(to right, #2962FF, #003DA5);
+          border-radius: 10px;
+          border: 3px solid #F3F4F6;
+          box-shadow: 0 2px 4px rgba(41, 98, 255, 0.2);
+        }
+        
+        .kanban-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to right, #003DA5, #002D7A);
+          box-shadow: 0 2px 6px rgba(41, 98, 255, 0.4);
+        }
+
+        .kanban-scroll-container::-webkit-scrollbar-thumb:active {
+          background: linear-gradient(to right, #002D7A, #001F5A);
+        }
+
+        /* Fallback para otros elementos con overflow-x */
         .overflow-x-auto {
           scrollbar-width: thin;
           scrollbar-color: #2962FF #E5E7EB;
@@ -832,8 +989,36 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
         .overflow-x-auto::-webkit-scrollbar-thumb:hover {
           background: linear-gradient(to right, #003DA5, #002D7A);
         }
+
+        /* Scroll vertical personalizado para columnas kanban */
+        .overflow-y-auto {
+          scrollbar-width: thin;
+          scrollbar-color: #2962FF #E5E7EB;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar {
+          width: 8px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-track {
+          background: #F3F4F6;
+          border-radius: 8px;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+          background: linear-gradient(to bottom, #2962FF, #003DA5);
+          border-radius: 8px;
+          border: 2px solid #F3F4F6;
+        }
+        
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to bottom, #003DA5, #002D7A);
+        }
       `}</style>
       
+      {/* Indicador de scroll horizontal con botones de navegación - Desktop */}
+      
+
       {/* Indicador Mobile - FASE 1 DÍA 2 */}
       <div className="lg:hidden bg-blue-50 border-l-4 border-blue-500 rounded-lg p-3 mb-4">
         <p className="text-sm text-blue-900">
@@ -841,11 +1026,13 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, columnasColapsadas, onT
         </p>
       </div>
 
+      {/* Contenedor con scroll horizontal mejorado */}
       <div 
-        className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6"
+        ref={scrollContainerRef}
+        className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-6 px-1 kanban-scroll-container"
         style={{
-          flexWrap: typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'nowrap' : undefined,
-          minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'max-content' : undefined
+          flexWrap: 'nowrap',
+          minWidth: 'max-content'
         }}
       >
         {COLUMNAS_KANBAN.map((columna) => {
@@ -982,9 +1169,10 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
   // Versión expandida
   return (
     <div 
-      className="w-full lg:w-72 xl:w-80 flex-shrink-0"
+      className="w-full flex-shrink-0"
       style={{
-        minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '280px' : undefined
+        minWidth: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : undefined,
+        width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? '320px' : '100%'
       }}
     >
       {/* Header Columna */}
@@ -1049,9 +1237,27 @@ function ColumnaKanban({ columna, planes, onMoverPlan, onAbrirPlan, colapsada, o
       {/* Lista de Tarjetas */}
       <div
         ref={drop}
-        className={`p-3 space-y-3 overflow-y-auto ${isOver ? 'bg-blue-50' : 'bg-gray-50'} transition-colors rounded-b-xl`}
-        style={{ minHeight: 'calc(100vh - 500px)', maxHeight: 'calc(100vh - 500px)' }}
+        className={`p-3 space-y-3 overflow-y-auto transition-all rounded-b-xl border-2 ${
+          isOver 
+            ? 'bg-gradient-to-b from-blue-100 to-blue-50 border-[#1e5da8] border-dashed shadow-inner' 
+            : 'bg-gray-50 border-transparent'
+        }`}
+        style={{ minHeight: 'calc(100vh - 200px)', maxHeight: 'calc(100vh - 200px)' }}
       >
+        {isOver && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center py-8 px-4 bg-white/80 rounded-lg border-2 border-dashed border-[#1e5da8] mb-3"
+          >
+            <div className="text-center">
+              <ArrowRight className="w-8 h-8 text-[#1e5da8] mx-auto mb-2 animate-pulse" />
+              <p className="text-sm font-medium text-[#1e5da8]">
+                Suelta aquí para mover a {columna.titulo}
+              </p>
+            </div>
+          </motion.div>
+        )}
         <AnimatePresence>
           {planes.map((plan) => (
             <TarjetaKanban
@@ -1096,9 +1302,13 @@ function TarjetaKanban({ plan, onAbrirPlan }: TarjetaKanbanProps) {
     <motion.div
       ref={drag}
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: isDragging ? 0.5 : 1, y: 0 }}
+      animate={{ opacity: isDragging ? 0.5 : 1, y: 0, scale: isDragging ? 1.02 : 1 }}
       exit={{ opacity: 0, y: -20 }}
-      className={`bg-white rounded-lg shadow-sm border-2 border-gray-200 hover:shadow-md hover:border-[#1e5da8] transition-all cursor-move`}
+      className={`bg-white rounded-lg shadow-sm border-2 transition-all ${
+        isDragging 
+          ? 'border-[#1e5da8] shadow-xl cursor-grabbing rotate-2' 
+          : 'border-gray-200 hover:shadow-md hover:border-[#1e5da8] cursor-grab'
+      }`}
     >
       <div className="p-4">
         {/* Header con Semáforo */}
@@ -1542,7 +1752,7 @@ function ModalCrearPlanDesdeAuditoria({
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-[#1e5da8]">{aud.codigo}</span>
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">
-                              {aud.hallazgos.length} hallazgos
+                              {Array.isArray(aud.hallazgos) ? aud.hallazgos.length : (aud.hallazgos || 0)} hallazgos
                             </span>
                           </div>
                           <p className="text-sm text-gray-900 mb-1">{aud.nombre}</p>
@@ -1579,11 +1789,12 @@ function ModalCrearPlanDesdeAuditoria({
                   </div>
                   <div>
                     <div className="text-xs text-gray-600 mb-1">Total Hallazgos</div>
-                    <div className="text-sm text-gray-900 font-medium">{auditoriaSeleccionada.hallazgos.length}</div>
+                    <div className="text-sm text-gray-900 font-medium">{Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)}</div>
                   </div>
                 </div>
 
-                {/* Distribución de Hallazgos */}
+                {/* Distribución de Hallazgos - Solo si es array */}
+                {Array.isArray(auditoriaSeleccionada.hallazgos) && (
                 <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
                   <span className="text-xs text-gray-600">Gravedad:</span>
                   {auditoriaSeleccionada.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length > 0 && (
@@ -1602,6 +1813,7 @@ function ModalCrearPlanDesdeAuditoria({
                     </span>
                   )}
                 </div>
+                )}
               </div>
             )}
 
@@ -1616,7 +1828,7 @@ function ModalCrearPlanDesdeAuditoria({
                     </h4>
                     <ul className="text-sm text-purple-700 space-y-1 list-disc list-inside">
                       <li>Se creará un plan de mejoramiento en estado Formulación</li>
-                      <li>Los {auditoriaSeleccionada.hallazgos.length} hallazgos quedarán vinculados al plan</li>
+                      <li>Los {Array.isArray(auditoriaSeleccionada.hallazgos) ? auditoriaSeleccionada.hallazgos.length : (auditoriaSeleccionada.hallazgos || 0)} hallazgos quedarán vinculados al plan</li>
                       <li>Deberás formular acciones correctivas para cada hallazgo</li>
                       <li>El plazo para formular es de 30 días desde la finalización de la auditoría</li>
                     </ul>
@@ -1638,14 +1850,8 @@ function ModalCrearPlanDesdeAuditoria({
           <button
             onClick={() => {
               if (auditoriaSeleccionada) {
-                // Ejecutar la creación del plan
+                // Ejecutar la creación del plan - el toast se muestra en handleCrearPlanDesdeAuditoria
                 onCrear(auditoriaSeleccionada);
-                
-                // Mostrar notificación de éxito
-                toast.success('Plan de Mejoramiento creado exitosamente', {
-                  description: `Se ha creado el plan PM-${auditoriaSeleccionada.codigo} con ${auditoriaSeleccionada.hallazgos.length} hallazgos vinculados.`,
-                  duration: 4000
-                });
                 
                 // Cerrar el modal
                 onCerrar();

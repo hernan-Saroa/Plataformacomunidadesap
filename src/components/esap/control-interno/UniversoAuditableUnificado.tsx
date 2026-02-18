@@ -6,7 +6,7 @@
  * Módulo único y completo que integra:
  * - Universo Auditable (DÓNDE se puede auditar)
  * - Programa Anual de Auditorías (CUÁNDO auditar)
- * - Vinculación con Plan Anual (QUÉ auditar)
+ * - Profesionales OCIG (QUIÉN audita)
  * - Integración con Auditorías OCIG (ejecución)
  * - Integración con Planes de Mejoramiento (hallazgos)
  * 
@@ -49,7 +49,7 @@ import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from '
 // TIPOS LOCALES (re-exportados desde hooks)
 // ════════════════════════════════════════════════════════════════════════════
 
-type TabActiva = 'universo' | 'programa' | 'vinculacion';
+type TabActiva = 'universo' | 'programa' | 'profesionales';
 type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
 type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
@@ -291,19 +291,21 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
               </span>
             </button>
             <button
-              onClick={() => setTabActiva('vinculacion')}
+              onClick={() => setTabActiva('profesionales')}
               className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${
-                tabActiva === 'vinculacion'
+                tabActiva === 'profesionales'
                   ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              <Link2 className="w-4 h-4" />
-              Vinculación
+              <Users className="w-4 h-4" />
+              Profesionales
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'vinculacion' ? 'bg-white/20' : 'bg-gray-200'
+                tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
-                {estadisticas.vinculadasOCIG}
+                {new Set(
+                  auditoriasProgramadas.flatMap((a) => [a.auditorLider, ...(a.equipo || [])].filter(Boolean))
+                ).size}
               </span>
             </button>
           </div>
@@ -356,9 +358,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                 setMostrarFormulario={setMostrarFormulario}
               />
             )}
-            {tabActiva === 'vinculacion' && (
-              <TabVinculacion
-                key="vinculacion"
+            {tabActiva === 'profesionales' && (
+              <TabProfesionales
+                key="profesionales"
                 auditorias={auditoriasProgramadas}
                 estadisticas={estadisticas}
               />
@@ -740,15 +742,52 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB 3: VINCULACIÓN
+// TAB 3: PROFESIONALES
 // ════════════════════════════════════════════════════════════════════════════
 
-interface TabVinculacionProps {
+interface TabProfesionalesProps {
   auditorias: AuditoriaProgramada[];
   estadisticas: Estadisticas;
 }
 
-function TabVinculacion({ auditorias, estadisticas }: TabVinculacionProps) {
+function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
+  const resumenProfesionales = useMemo(() => {
+    const mapa = new Map<string, { lider: number; apoyo: number; horas: number }>();
+
+    auditorias.forEach((a) => {
+      const lider = (a.auditorLider || '').trim();
+      if (lider) {
+        const actual = mapa.get(lider) || { lider: 0, apoyo: 0, horas: 0 };
+        actual.lider += 1;
+        actual.horas += a.horasEstimadas || 0;
+        mapa.set(lider, actual);
+      }
+
+      (a.equipo || []).forEach((nombre) => {
+        const apoyo = (nombre || '').trim();
+        if (!apoyo) return;
+        const actual = mapa.get(apoyo) || { lider: 0, apoyo: 0, horas: 0 };
+        actual.apoyo += 1;
+        actual.horas += Math.round((a.horasEstimadas || 0) * 0.3);
+        mapa.set(apoyo, actual);
+      });
+    });
+
+    return Array.from(mapa.entries())
+      .map(([nombre, data]) => {
+        const carga = data.lider + data.apoyo * 0.3;
+        const capacidadMax = 4;
+        const porcentaje = Math.round((carga / capacidadMax) * 100);
+        const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
+        return { nombre, ...data, carga, porcentaje, semaforo };
+      })
+      .sort((a, b) => b.carga - a.carga);
+  }, [auditorias]);
+
+  const totalProfesionales = resumenProfesionales.length;
+  const conCargaAlta = resumenProfesionales.filter((p) => p.semaforo === 'rojo').length;
+  const conCargaMedia = resumenProfesionales.filter((p) => p.semaforo === 'amarillo').length;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -756,99 +795,97 @@ function TabVinculacion({ auditorias, estadisticas }: TabVinculacionProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* Estadísticas de vinculación */}
+      {/* Estadísticas de profesionales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Vinculadas OCIG</span>
-            <Link2 className="w-5 h-5 text-blue-600" />
+            <span className="text-sm font-semibold text-blue-700">Profesionales Activos</span>
+            <Users className="w-5 h-5 text-blue-600" />
           </div>
-          <p className="text-3xl font-black text-blue-700">{estadisticas.vinculadasOCIG}</p>
-          <p className="text-xs text-blue-600 mt-1">de {estadisticas.totalProgramadas} programadas</p>
+          <p className="text-3xl font-black text-blue-700">{totalProfesionales}</p>
+          <p className="text-xs text-blue-600 mt-1">con asignaciones en el programa</p>
+        </div>
+
+        <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-yellow-700">Carga Media</span>
+            <Clock className="w-5 h-5 text-yellow-600" />
+          </div>
+          <p className="text-3xl font-black text-yellow-700">{conCargaMedia}</p>
+          <p className="text-xs text-yellow-600 mt-1">profesionales en alerta</p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-red-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-red-700">Con Hallazgos</span>
+            <span className="text-sm font-semibold text-red-700">Carga Alta</span>
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
-          <p className="text-3xl font-black text-red-700">{estadisticas.conHallazgos}</p>
-          <p className="text-xs text-red-600 mt-1">auditorías con hallazgos</p>
-        </div>
-
-        <div className="bg-white rounded-xl border-2 border-green-200 p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-green-700">Planes Mejoramiento</span>
-            <FileText className="w-5 h-5 text-green-600" />
-          </div>
-          <p className="text-3xl font-black text-green-700">{estadisticas.conPlanesMejoramiento}</p>
-          <p className="text-xs text-green-600 mt-1">planes activos</p>
+          <p className="text-3xl font-black text-red-700">{conCargaAlta}</p>
+          <p className="text-xs text-red-600 mt-1">requieren balance de carga</p>
         </div>
       </div>
 
-      {/* Mapa de vinculación */}
+      {/* Mapa de carga profesional */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
         <h2 className="text-xl font-black text-gray-900 mb-4">
-          Mapa de Integración
+          Mapa de Carga de Profesionales
         </h2>
         <p className="text-sm text-gray-600 mb-6">
-          Visualización de la integración entre el Programa Anual, Auditorías OCIG y Planes de Mejoramiento
+          Distribución de auditorías por profesional (liderazgo y apoyo) para balancear capacidad operativa.
         </p>
 
         <div className="space-y-4">
-          {auditorias.filter(a => a.auditoriaOCIGId).map((auditoria) => (
-            <div key={auditoria.id} className="border-2 border-gray-200 rounded-xl p-6">
-              <div className="flex items-center gap-6">
-                {/* Programa Anual */}
-                <div className="flex-1 bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CalendarIcon className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs font-bold text-blue-700">PROGRAMA ANUAL</span>
-                  </div>
-                  <p className="font-semibold text-gray-900 text-sm">{auditoria.nombre}</p>
-                  <p className="text-xs text-gray-600 mt-1">{auditoria.proceso.nombre}</p>
+          {resumenProfesionales.map((p) => (
+            <div key={p.nombre} className="border-2 border-gray-200 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-black text-gray-900">{p.nombre}</p>
+                  <p className="text-xs text-gray-600">
+                    Lidera {p.lider} auditoría(s) • Apoya {p.apoyo} auditoría(s)
+                  </p>
                 </div>
-
-                <ChevronRight className="w-6 h-6 text-gray-400 flex-shrink-0" />
-
-                {/* Auditoría OCIG */}
-                <div className="flex-1 bg-purple-50 border-2 border-purple-300 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileCheck className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-bold text-purple-700">AUDITORÍA OCIG</span>
-                  </div>
-                  <p className="font-semibold text-gray-900 text-sm">ID: {auditoria.auditoriaOCIGId}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="px-2 py-1 bg-purple-200 text-purple-800 rounded text-xs font-bold">
-                      {auditoria.estado}
-                    </span>
-                    <span className="text-xs text-gray-600">{auditoria.avance}% avance</span>
-                  </div>
-                </div>
-
-                {auditoria.planMejoramientoId && (
-                  <>
-                    <ChevronRight className="w-6 h-6 text-gray-400 flex-shrink-0" />
-                    
-                    {/* Plan de Mejoramiento */}
-                    <div className="flex-1 bg-green-50 border-2 border-green-300 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-bold text-green-700">PLAN MEJORAMIENTO</span>
-                      </div>
-                      <p className="font-semibold text-gray-900 text-sm">ID: {auditoria.planMejoramientoId}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="px-2 py-1 bg-green-200 text-green-800 rounded text-xs font-bold">
-                          {auditoria.hallazgosCount} Hallazgos
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <span
+                  className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                    p.semaforo === 'rojo'
+                      ? 'bg-red-100 text-red-700'
+                      : p.semaforo === 'amarillo'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-green-100 text-green-700'
+                  }`}
+                >
+                  Carga {p.porcentaje}%
+                </span>
               </div>
+              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${
+                    p.semaforo === 'rojo'
+                      ? 'bg-red-500'
+                      : p.semaforo === 'amarillo'
+                      ? 'bg-yellow-500'
+                      : 'bg-green-500'
+                  }`}
+                  style={{ width: `${Math.min(p.porcentaje, 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Carga ponderada: {p.carga.toFixed(1)} / 4.0
+              </p>
             </div>
           ))}
+          {resumenProfesionales.length === 0 && (
+            <div className="text-center py-10">
+              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-semibold">No hay profesionales asignados aún</p>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+        <p className="text-sm text-blue-800">
+          La configuración detallada de perfiles y capacidades puede gestionarse en <strong>Configuraciones → Profesionales OCIG</strong>.
+        </p>
       </div>
     </motion.div>
   );
