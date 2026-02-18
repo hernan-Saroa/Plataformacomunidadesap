@@ -80,6 +80,7 @@ interface ModalAsignarAuditorProps {
   auditoriaId: string;
   onAsignar: (auditorId: string) => void;
   auditoresDisponibles?: AuditorDisponible[]; // ✅ NUEVO: Lista de auditores del backend
+  auditorActualId?: string | number | null; // ✅ NUEVO: ID del auditor actualmente asignado
 }
 
 export function ModalAsignarAuditor({ 
@@ -87,9 +88,12 @@ export function ModalAsignarAuditor({
   onClose, 
   auditoriaId, 
   onAsignar,
-  auditoresDisponibles 
+  auditoresDisponibles,
+  auditorActualId 
 }: ModalAsignarAuditorProps) {
-  const [selectedAuditor, setSelectedAuditor] = useState('');
+  // Normalizar el ID del auditor actual a string para comparación
+  const auditorActualIdStr = auditorActualId != null ? String(auditorActualId) : '';
+  const [selectedAuditor, setSelectedAuditor] = useState(auditorActualIdStr);
 
   // Usar auditores del backend si están disponibles, sino usar fallback
   const auditores = (auditoresDisponibles && auditoresDisponibles.length > 0)
@@ -100,6 +104,11 @@ export function ModalAsignarAuditor({
         auditorias: a.auditorias || 0
       }))
     : AUDITORES_DEFAULT;
+
+  // Sincronizar cuando cambia el auditor actual
+  React.useEffect(() => {
+    setSelectedAuditor(auditorActualId != null ? String(auditorActualId) : '');
+  }, [auditorActualId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,7 +159,10 @@ export function ModalAsignarAuditor({
       footerActions={footerActions}
     >
       <div className="space-y-4">
-        {auditores.map((auditor, index) => (
+        {auditores.map((auditor, index) => {
+          // Comparación flexible: puede ser '2' == 2 o 'aud-1' == 'aud-1'
+          const esAuditorActual = auditorActualIdStr && String(auditor.id) === auditorActualIdStr;
+          return (
           <motion.label
             key={auditor.id}
             initial={{ opacity: 0, y: 20 }}
@@ -173,9 +185,16 @@ export function ModalAsignarAuditor({
             />
             
             <div className="flex-1">
-              {/* Header con nombre y badge */}
+              {/* Header con nombre y badges */}
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-base font-semibold text-gray-900">{auditor.nombre}</h4>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-base font-semibold text-gray-900">{auditor.nombre}</h4>
+                  {esAuditorActual && (
+                    <span className="px-2 py-0.5 bg-[#003DA5] text-white rounded-full text-xs font-semibold">
+                      Actual
+                    </span>
+                  )}
+                </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                   auditor.disponibilidad === 'Disponible'
                     ? 'bg-green-100 text-green-700'
@@ -205,7 +224,8 @@ export function ModalAsignarAuditor({
               </div>
             </div>
           </motion.label>
-        ))}
+          );
+        })}
 
         {/* Info adicional */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-[#003DA5] rounded-lg p-4 mt-6">
@@ -362,16 +382,35 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
 // 3. MODAL CAMBIAR ESTADO - WORLD CLASS
 // ═════════════════════════════════════════════════════════════════════════
 
+// Helper para normalizar estado del backend al formato del modal
+const normalizarEstado = (estado: string | undefined): EstadoKanban => {
+  if (!estado) return 'planeacion';
+  const estadoLower = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (estadoLower.includes('backlog') || estadoLower.includes('pendiente')) return 'backlog';
+  if (estadoLower.includes('planeacion') || estadoLower.includes('planificacion')) return 'planeacion';
+  if (estadoLower.includes('ejecucion')) return 'ejecucion';
+  if (estadoLower.includes('comunicacion') || estadoLower.includes('informe')) return 'comunicacion';
+  if (estadoLower.includes('cerrado') || estadoLower.includes('finalizada') || estadoLower.includes('seguimiento')) return 'cerrado';
+  return 'planeacion';
+};
+
 interface ModalCambiarEstadoProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
-  estadoActual: EstadoKanban;
+  estadoActual: EstadoKanban | string;
   onCambiar: (nuevoEstado: EstadoKanban) => void;
 }
 
 export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual, onCambiar }: ModalCambiarEstadoProps) {
-  const [nuevoEstado, setNuevoEstado] = useState<EstadoKanban>(estadoActual);
+  // Normalizar el estado actual
+  const estadoNormalizado = normalizarEstado(estadoActual as string);
+  const [nuevoEstado, setNuevoEstado] = useState<EstadoKanban>(estadoNormalizado);
+
+  // Actualizar cuando cambia el estado actual
+  React.useEffect(() => {
+    setNuevoEstado(normalizarEstado(estadoActual as string));
+  }, [estadoActual]);
 
   const estados: { value: EstadoKanban; label: string; color: string; descripcion: string }[] = [
     { 
@@ -430,7 +469,7 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
       <button
         type="submit"
         onClick={handleSubmit}
-        disabled={nuevoEstado === estadoActual}
+        disabled={nuevoEstado === estadoNormalizado}
         className="px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Workflow className="w-4 h-4" />
@@ -460,7 +499,7 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
               nuevoEstado === estado.value
                 ? 'border-[#003DA5] shadow-md'
                 : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-            } ${estadoActual === estado.value ? 'bg-gray-50' : 'bg-white'}`}
+            } ${estadoNormalizado === estado.value ? 'bg-gray-50' : 'bg-white'}`}
             style={{ 
               backgroundColor: nuevoEstado === estado.value ? `${estado.color}40` : undefined 
             }}
@@ -484,7 +523,7 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-base font-semibold text-gray-900">{estado.label}</span>
-                {estadoActual === estado.value && (
+                {estadoNormalizado === estado.value && (
                   <span className="px-2 py-0.5 bg-[#003DA5] text-white rounded-full text-xs font-semibold">
                     Actual
                   </span>
@@ -500,18 +539,62 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 4. MODAL NOTAS - WORLD CLASS
+// 4. MODAL NOTAS - WORLD CLASS - ✅ CON LISTADO DE NOTAS
 // ═════════════════════════════════════════════════════════════════════════
+
+interface NotaExistente {
+  id: string;
+  contenido: string;
+  categoria: string;
+  fecha: string;
+  hora?: string;
+  autorNombre?: string;
+  autorCargo?: string;
+  importante?: boolean;
+}
 
 interface ModalNotasProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
   onGuardar: (nota: string) => void;
+  onLoadNotas?: (auditoriaId: string) => Promise<any[]>;
 }
 
-export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar }: ModalNotasProps) {
+export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar, onLoadNotas }: ModalNotasProps) {
   const [nota, setNota] = useState('');
+  const [notas, setNotas] = useState<NotaExistente[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Cargar notas cuando se abre el modal
+  React.useEffect(() => {
+    const cargarNotas = async () => {
+      if (!isOpen || !auditoriaId || !onLoadNotas) return;
+      
+      setLoading(true);
+      try {
+        const notasBackend = await onLoadNotas(auditoriaId);
+        if (Array.isArray(notasBackend)) {
+          setNotas(notasBackend.map(n => ({
+            id: n.id,
+            contenido: n.contenido,
+            categoria: n.categoria || 'General',
+            fecha: n.fecha || n.createdAt,
+            hora: n.hora,
+            autorNombre: n.autorNombre || 'Usuario',
+            autorCargo: n.autorCargo || '',
+            importante: n.importante || n.esImportante
+          })));
+        }
+      } catch (error) {
+        console.error('Error al cargar notas:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    cargarNotas();
+  }, [isOpen, auditoriaId, onLoadNotas]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -520,11 +603,37 @@ export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar }: ModalNot
       return;
     }
     onGuardar(nota);
-    toast.success('Nota guardada exitosamente', {
-      description: 'La nota ha sido agregada al expediente'
-    });
     setNota('');
-    onClose();
+    // Recargar notas después de guardar
+    if (onLoadNotas) {
+      onLoadNotas(auditoriaId).then(notasBackend => {
+        if (Array.isArray(notasBackend)) {
+          setNotas(notasBackend.map(n => ({
+            id: n.id,
+            contenido: n.contenido,
+            categoria: n.categoria || 'General',
+            fecha: n.fecha || n.createdAt,
+            hora: n.hora,
+            autorNombre: n.autorNombre || 'Usuario',
+            autorCargo: n.autorCargo || '',
+            importante: n.importante || n.esImportante
+          })));
+        }
+      });
+    }
+  };
+
+  const formatearFecha = (fecha: string, hora?: string) => {
+    if (!fecha) return '';
+    try {
+      const date = new Date(fecha);
+      const dia = date.getDate().toString().padStart(2, '0');
+      const mes = (date.getMonth() + 1).toString().padStart(2, '0');
+      const año = date.getFullYear();
+      return hora ? `${dia}/${mes}/${año} ${hora}` : `${dia}/${mes}/${año}`;
+    } catch {
+      return fecha;
+    }
   };
 
   const headerIcon = <MessageSquare className="w-5 h-5 text-[#003DA5]" />;
@@ -536,7 +645,7 @@ export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar }: ModalNot
         onClick={onClose}
         className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-base font-medium"
       >
-        Cancelar
+        Cerrar
       </button>
       <button
         type="submit"
@@ -554,41 +663,89 @@ export function ModalNotas({ isOpen, onClose, auditoriaId, onGuardar }: ModalNot
     <ModalBaseWorldClass
       isOpen={isOpen}
       onClose={onClose}
-      title="Agregar Nota"
-      subtitle="Registre observaciones o comentarios sobre la auditoría"
-      size="md"
+      title="Notas de Auditoría"
+      subtitle="Registre y consulte observaciones sobre la auditoría"
+      size="lg"
       headerIcon={headerIcon}
       footerActions={footerActions}
     >
       <div className="space-y-4">
-        {/* Info Card */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-[#003DA5] rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <MessageSquare className="w-5 h-5 text-[#003DA5] flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-gray-900 mb-1">
-                Notas Rápidas
-              </p>
-              <p className="text-sm text-gray-700">
-                Las notas se guardarán en el expediente de la auditoría y serán visibles 
-                para todos los miembros del equipo auditor.
-              </p>
-            </div>
+        {/* Listado de notas existentes */}
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#003DA5]"></div>
+            <span className="ml-2 text-gray-600">Cargando notas...</span>
           </div>
-        </div>
+        ) : notas.length > 0 ? (
+          <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+            <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Notas registradas ({notas.length})
+            </h4>
+            {notas.map((n, index) => (
+              <motion.div
+                key={n.id || index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className={`p-3 rounded-lg border-2 ${
+                  n.importante 
+                    ? 'border-amber-300 bg-amber-50' 
+                    : 'border-gray-200 bg-white'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-[#E0EDFF] text-[#003DA5]">
+                      {n.categoria}
+                    </span>
+                    {n.importante && (
+                      <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700">
+                        ⭐ Importante
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {formatearFecha(n.fecha, n.hora)}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.contenido}</p>
+                {n.autorNombre && (
+                  <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-[#003DA5] flex items-center justify-center">
+                      <span className="text-[10px] text-white font-bold">
+                        {n.autorNombre.split(' ').map(p => p[0]).join('').slice(0, 2)}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-600">
+                      {n.autorNombre} {n.autorCargo && `• ${n.autorCargo}`}
+                    </span>
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+            <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">No hay notas registradas</p>
+          </div>
+        )}
 
-        {/* Editor de nota */}
-        <div>
-          <label className="block text-base font-semibold text-gray-900 mb-2">
-            Nota
-          </label>
+        {/* Separador */}
+        <div className="border-t-2 border-gray-200 pt-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Agregar nueva nota
+          </h4>
+          
+          {/* Editor de nota */}
           <textarea
             value={nota}
             onChange={(e) => setNota(e.target.value)}
-            rows={8}
+            rows={4}
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base resize-none"
-            placeholder="Escriba su nota aquí...&#10;&#10;Puede incluir:&#10;• Observaciones importantes&#10;• Hallazgos preliminares&#10;• Recordatorios para el equipo&#10;• Cualquier información relevante"
-            autoFocus
+            placeholder="Escriba su nota aquí..."
           />
           
           <div className="flex justify-between items-center mt-2">

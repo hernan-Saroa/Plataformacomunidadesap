@@ -83,6 +83,13 @@ export interface AuditoriaKanban {
   };
   actividadesCompletas?: boolean;
   actividadesPendientes?: number;
+  // Criterios de auditoría
+  criterios?: CriterioAuditoria[];
+}
+
+export interface CriterioAuditoria {
+  id: string;
+  criterio: string;
 }
 
 export interface AuditorDisponible {
@@ -260,9 +267,13 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
     diasRestantes: auditoriaBackend.diasRestantes || tiempos.diasRestantes,
     porcentajeTiempo: auditoriaBackend.porcentajeTiempo || tiempos.porcentajeTiempo,
     ultimaActuacion: auditoriaBackend.ultimaActuacion || 'Sin actuaciones registradas',
-    objetivos: (auditoriaBackend.objetivos || []).map((obj: string, i: number) => ({
-      id: `obj-${i}`,
-      descripcion: obj
+    objetivos: (auditoriaBackend.objetivos || []).map((obj: any, i: number) => ({
+      id: obj.id || `obj-${i}`,
+      descripcion: typeof obj === 'string' ? obj : (obj.descripcion || '')
+    })),
+    criterios: (auditoriaBackend.criterios || []).map((crit: any, i: number) => ({
+      id: crit.id || `crit-${i}`,
+      criterio: typeof crit === 'string' ? crit : (crit.criterio || '')
     })),
     calificacionRiesgo: auditoriaBackend.calificacionRiesgo || `Riesgo ${mapearRiesgo(auditoriaBackend.nivelRiesgo)}`,
     documentos: auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0,
@@ -297,6 +308,15 @@ interface UseAuditoriasKanbanResult {
   actualizarAuditoria: (id: string, data: any) => Promise<boolean>;
   eliminarAuditoria: (id: string) => Promise<boolean>;
   cambiarFase: (id: string, fase: string) => Promise<boolean>;
+  // ✅ NUEVOS: Métodos para notas
+  getNotas: (auditoriaId: string) => Promise<any[]>;
+  agregarNota: (auditoriaId: string, contenido: string, tipo?: string) => Promise<boolean>;
+  eliminarNota: (auditoriaId: string, notaId: string) => Promise<boolean>;
+  // ✅ NUEVOS: Métodos para historial
+  getHistorial: (auditoriaId: string) => Promise<any[]>;
+  // ✅ NUEVOS: Métodos para aprobación
+  aprobarAuditoria: (id: string, comentarios?: string) => Promise<boolean>;
+  rechazarAuditoria: (id: string, justificacion: string) => Promise<boolean>;
 }
 
 export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
@@ -438,6 +458,98 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Obtener notas de una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const getNotas = useCallback(async (auditoriaId: string): Promise<any[]> => {
+    try {
+      const notas = await controlInternoService.getNotasAuditoria(auditoriaId);
+      return Array.isArray(notas) ? notas : [];
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al obtener notas:', err);
+      return [];
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Agregar nota a una auditoría
+  // Categorías válidas: General, Hallazgo, Seguimiento, Evidencia, Recomendación, Observación
+  // ─────────────────────────────────────────────────────────────────────────
+  const agregarNota = useCallback(async (
+    auditoriaId: string, 
+    contenido: string, 
+    categoria: string = 'General'
+  ): Promise<boolean> => {
+    try {
+      await controlInternoService.createNotaAuditoria(auditoriaId, {
+        contenido,
+        categoria: categoria as 'General' | 'Hallazgo' | 'Seguimiento' | 'Evidencia' | 'Recomendación' | 'Observación',
+      });
+      toast.success('Nota guardada exitosamente');
+      return true;
+    } catch (err) {
+      toast.error('Error al guardar nota');
+      return false;
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Eliminar nota de una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const eliminarNota = useCallback(async (auditoriaId: string, notaId: string): Promise<boolean> => {
+    try {
+      await controlInternoService.deleteNotaAuditoria(auditoriaId, notaId);
+      toast.success('Nota eliminada');
+      return true;
+    } catch (err) {
+      toast.error('Error al eliminar nota');
+      return false;
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Obtener historial de una auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const getHistorial = useCallback(async (auditoriaId: string): Promise<any[]> => {
+    try {
+      const historial = await controlInternoService.getHistorialAuditoria(auditoriaId);
+      return Array.isArray(historial) ? historial : [];
+    } catch (err) {
+      console.error('[useAuditoriasKanban] Error al obtener historial:', err);
+      return [];
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Aprobar auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const aprobarAuditoria = useCallback(async (id: string, comentarios?: string): Promise<boolean> => {
+    try {
+      await controlInternoService.aprobarAuditoria(id, { comentarios });
+      toast.success('Auditoría aprobada exitosamente');
+      await fetchAuditorias();
+      return true;
+    } catch (err) {
+      toast.error('Error al aprobar auditoría');
+      return false;
+    }
+  }, [fetchAuditorias]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✅ NUEVO: Rechazar auditoría
+  // ─────────────────────────────────────────────────────────────────────────
+  const rechazarAuditoria = useCallback(async (id: string, justificacion: string): Promise<boolean> => {
+    try {
+      await controlInternoService.rechazarAuditoria(id, justificacion);
+      toast.success('Auditoría rechazada');
+      await fetchAuditorias();
+      return true;
+    } catch (err) {
+      toast.error('Error al rechazar auditoría');
+      return false;
+    }
+  }, [fetchAuditorias]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Cargar datos al montar
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -453,7 +565,14 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     crearAuditoria,
     actualizarAuditoria,
     eliminarAuditoria,
-    cambiarFase
+    cambiarFase,
+    // ✅ Nuevos métodos
+    getNotas,
+    agregarNota,
+    eliminarNota,
+    getHistorial,
+    aprobarAuditoria,
+    rechazarAuditoria
   };
 }
 
