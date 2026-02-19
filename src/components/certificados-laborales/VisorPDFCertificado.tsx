@@ -310,6 +310,12 @@ export function VisorPDFCertificado({
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
 
     const requestData = (certificado as any)?.request || {};
+    const grupoVariable = normalizarDependencia(
+      requestData?.position_location ||
+      requestData?.positionLocation ||
+      certificado.position_location ||
+      '',
+    );
     const cargoVariable = construirCargoVariable(
       requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
       requestData?.cod_cargo ||
@@ -338,6 +344,7 @@ export function VisorPDFCertificado({
       '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
       '[TIPO_DATO]': cargoDato6,
+      '[GRUPO]': grupoVariable,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
       '[DEPENDENCIA]': dependenciaPlantilla,
@@ -595,7 +602,7 @@ export function VisorPDFCertificado({
       if (autoAction === 'print') {
         onAutoActionComplete?.('print', false);
       }
-      toast.error('No se pudo preparar la vista de impresiÃ³n.');
+      toast.error('No se pudo preparar la vista de impresión.');
       return;
     }
 
@@ -642,7 +649,7 @@ export function VisorPDFCertificado({
       if (autoAction === 'print') {
         onAutoActionComplete?.('print', false);
       }
-      toast.error('No se pudo abrir la ventana de impresiÃ³n.');
+      toast.error('No se pudo abrir la ventana de impresión.');
       return;
     }
 
@@ -850,7 +857,7 @@ export function VisorPDFCertificado({
     : '';
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
-  const incluirPrimaTecnica = certificado.incluyePrimaTecnica ?? false;
+  const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
   const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? salarioBase * 0.2);
   const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0

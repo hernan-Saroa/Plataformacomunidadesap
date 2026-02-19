@@ -40,6 +40,12 @@ export class Certificate {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   technical_bonus: number;
 
+  @Column({ type: 'boolean', default: true })
+  include_salary: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  include_technical_bonus: boolean;
+
   @Column({ length: 255, nullable: true })
   salary_text: string;
 

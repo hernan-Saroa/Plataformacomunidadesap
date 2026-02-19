@@ -20,9 +20,28 @@ type SendLaborCertificateOptions = {
   to?: string;
 };
 
+type GeoLookupResult = {
+  city?: string;
+  region?: string;
+  country?: string;
+  latitude?: number;
+  longitude?: number;
+  isp?: string;
+};
+
+type ValidationGeoContext = {
+  geoCountry?: string;
+  geoRegion?: string;
+  geoCity?: string;
+  geoTimezone?: string;
+};
+
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
+  private readonly geoCache = new Map<string, { expiresAt: number; value: GeoLookupResult | null }>();
+  private readonly geoCacheTtlMs = 1000 * 60 * 60 * 6;
+  private readonly geoCacheMissTtlMs = 1000 * 60 * 15;
 
   private resolveNotificationsBaseUrl() {
     const direct =
@@ -43,6 +62,17 @@ export class CertificatesService {
       .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
   }
 
   private resolveTemplateTypeFromText(value: string): TemplateType {
@@ -327,9 +357,22 @@ export class CertificatesService {
       throw new BadRequestException('No hay un email registrado para enviar el certificado');
     }
 
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
+
     const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
-      includeSalary: options.includeSalary,
-      includeTechnicalBonus: options.includeTechnicalBonus,
+      includeSalary,
+      includeTechnicalBonus,
       templateType: options.templateType,
       publicBaseUrl: options.publicBaseUrl,
     });
@@ -645,7 +688,13 @@ export class CertificatesService {
     return certificate;
   }
 
-  async createCertificado(solicitudId: string) {
+  async createCertificado(
+    solicitudId: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
     const request = await this.findSolicitudById(solicitudId);
     const signer = await this.signerRepo.findOne({
       where: { is_primary: true, is_active: true },
@@ -677,6 +726,11 @@ export class CertificatesService {
       this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
     }
 
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+
     const certificate = this.certificateRepo.create({
       verification_code,
       certificate_number,
@@ -689,6 +743,8 @@ export class CertificatesService {
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
       technical_bonus: Number(request.monthly_salary || 0) * 0.2,
+      include_salary: includeSalary,
+      include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,
       department: request.department,
       cod_cargo: request.cod_cargo,
@@ -777,6 +833,74 @@ export class CertificatesService {
     };
   }
 
+  private normalizeGeoText(value?: string | null): string | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) return undefined;
+    if (/^(unknown|desconocido|n\/a|na|null|undefined|localhost|local)$/i.test(normalized)) {
+      return undefined;
+    }
+    if (/^(xx|t1)$/i.test(normalized)) {
+      return undefined;
+    }
+    return normalized;
+  }
+
+  private normalizeGeoPayload(geo?: GeoLookupResult | null): GeoLookupResult | null {
+    if (!geo) return null;
+
+    const city = this.normalizeGeoText(geo.city);
+    const region = this.normalizeGeoText(geo.region);
+    const country = this.normalizeGeoText(geo.country);
+    const isp = this.normalizeGeoText(geo.isp);
+    const latitude =
+      typeof geo.latitude === 'number' && Number.isFinite(geo.latitude)
+        ? geo.latitude
+        : undefined;
+    const longitude =
+      typeof geo.longitude === 'number' && Number.isFinite(geo.longitude)
+        ? geo.longitude
+        : undefined;
+
+    if (!city && !region && !country && latitude === undefined && longitude === undefined) {
+      return null;
+    }
+
+    return {
+      city,
+      region,
+      country,
+      latitude,
+      longitude,
+      isp,
+    };
+  }
+
+  private resolveGeoFromContext(context?: ValidationGeoContext): GeoLookupResult | null {
+    if (!context) return null;
+    return this.normalizeGeoPayload({
+      city: context.geoCity,
+      region: context.geoRegion,
+      country: context.geoCountry,
+    });
+  }
+
+  private mergeGeoSources(primary?: GeoLookupResult | null, fallback?: GeoLookupResult | null): GeoLookupResult | null {
+    return this.normalizeGeoPayload({
+      city: primary?.city || fallback?.city,
+      region: primary?.region || fallback?.region,
+      country: primary?.country || fallback?.country,
+      latitude: primary?.latitude ?? fallback?.latitude,
+      longitude: primary?.longitude ?? fallback?.longitude,
+      isp: primary?.isp || fallback?.isp,
+    });
+  }
+
+  private getGeoLookupTimeoutMs(): number {
+    const raw = Number(process.env.GEOLOOKUP_TIMEOUT_MS || process.env.GEO_LOOKUP_TIMEOUT_MS || 3500);
+    if (!Number.isFinite(raw)) return 3500;
+    return Math.min(10000, Math.max(1200, Math.round(raw)));
+  }
+
   private mapValidationToDTO(validation: CertificateValidation) {
     const uaInfo = this.parseUserAgentInfo(validation.user_agent);
 
@@ -793,14 +917,22 @@ export class CertificatesService {
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean);
+    const locationSingle = locationParts.length === 1 ? locationParts[0] : undefined;
+    const cityFromLocation = locationParts.length > 1 ? locationParts[0] : undefined;
+    const countryFromLocation =
+      locationParts.length > 1 ? locationParts.slice(1).join(', ') : undefined;
+    const locationLooksLikeCountryCode =
+      Boolean(locationSingle) && /^[A-Za-z]{2,3}$/.test(String(locationSingle));
     const ciudad =
       validation.city ||
       validation.region ||
-      locationParts[0] ||
+      cityFromLocation ||
+      (!locationLooksLikeCountryCode ? locationSingle : undefined) ||
       'Desconocido';
     const pais =
       validation.country ||
-      (locationParts.length > 1 ? locationParts.slice(1).join(', ') : '') ||
+      countryFromLocation ||
+      (locationLooksLikeCountryCode ? String(locationSingle).toUpperCase() : '') ||
       'Desconocido';
 
     const normalizedIp = this.normalizeIp(validation.ip_address || '') || validation.ip_address || '0.0.0.0';
@@ -902,11 +1034,17 @@ export class CertificatesService {
     return false;
   }
 
-  private async fetchJsonWithTimeout(url: string, timeoutMs = 2500): Promise<any | null> {
+  private async fetchJsonWithTimeout(url: string, timeoutMs = 3500): Promise<any | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'esap-certification-service/1.0',
+        },
+      });
       if (!response.ok) return null;
       return await response.json();
     } catch {
@@ -927,52 +1065,111 @@ export class CertificatesService {
     const normalizedIp = this.normalizeIp(ip || '');
     if (!normalizedIp || this.isPrivateIp(normalizedIp)) return null;
 
+    const now = Date.now();
+    const cached = this.geoCache.get(normalizedIp);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+    if (cached) {
+      this.geoCache.delete(normalizedIp);
+    }
+
+    const timeoutMs = this.getGeoLookupTimeoutMs();
+
     try {
       const ipWho = await this.fetchJsonWithTimeout(
         `https://ipwho.is/${encodeURIComponent(normalizedIp)}`,
+        timeoutMs,
       );
-      if (ipWho && ipWho.success !== false) {
-        const geo = {
-          city: ipWho.city || undefined,
-          region: ipWho.region || undefined,
-          country: ipWho.country || undefined,
-          latitude: typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
-          longitude: typeof ipWho.longitude === 'number' ? ipWho.longitude : undefined,
-          isp: ipWho.connection?.isp || undefined,
-        };
-        if (geo.city || geo.region || geo.country) {
-          return geo;
-        }
+      const fromIpWho = this.normalizeGeoPayload(
+        ipWho && ipWho.success !== false
+          ? {
+              city: ipWho.city || undefined,
+              region: ipWho.region || undefined,
+              country: ipWho.country || undefined,
+              latitude: typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
+              longitude: typeof ipWho.longitude === 'number' ? ipWho.longitude : undefined,
+              isp: ipWho.connection?.isp || undefined,
+            }
+          : null,
+      );
+      if (fromIpWho) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpWho,
+        });
+        return fromIpWho;
       }
 
       const ipApiCo = await this.fetchJsonWithTimeout(
         `https://ipapi.co/${encodeURIComponent(normalizedIp)}/json/`,
+        timeoutMs,
       );
-      if (ipApiCo && !ipApiCo.error) {
-        const latitude =
-          typeof ipApiCo.latitude === 'number'
-            ? ipApiCo.latitude
-            : Number(ipApiCo.latitude) || undefined;
-        const longitude =
-          typeof ipApiCo.longitude === 'number'
-            ? ipApiCo.longitude
-            : Number(ipApiCo.longitude) || undefined;
-        const geo = {
-          city: ipApiCo.city || undefined,
-          region: ipApiCo.region || undefined,
-          country: ipApiCo.country_name || ipApiCo.country || undefined,
-          latitude,
-          longitude,
-          isp: ipApiCo.org || undefined,
-        };
-        if (geo.city || geo.region || geo.country) {
-          return geo;
-        }
+      const fromIpApiCo = this.normalizeGeoPayload(
+        ipApiCo && !ipApiCo.error
+          ? {
+              city: ipApiCo.city || undefined,
+              region: ipApiCo.region || undefined,
+              country: ipApiCo.country_name || ipApiCo.country || undefined,
+              latitude:
+                typeof ipApiCo.latitude === 'number'
+                  ? ipApiCo.latitude
+                  : Number(ipApiCo.latitude) || undefined,
+              longitude:
+                typeof ipApiCo.longitude === 'number'
+                  ? ipApiCo.longitude
+                  : Number(ipApiCo.longitude) || undefined,
+              isp: ipApiCo.org || undefined,
+            }
+          : null,
+      );
+      if (fromIpApiCo) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpApiCo,
+        });
+        return fromIpApiCo;
       }
 
-      return null;
+      const ipInfo = await this.fetchJsonWithTimeout(
+        `https://ipinfo.io/${encodeURIComponent(normalizedIp)}/json`,
+        timeoutMs,
+      );
+      const [rawLat, rawLng] = String(ipInfo?.loc || '')
+        .split(',')
+        .map((part) => part.trim());
+      const fromIpInfo = this.normalizeGeoPayload(
+        ipInfo
+          ? {
+              city: ipInfo.city || undefined,
+              region: ipInfo.region || undefined,
+              country: ipInfo.country || undefined,
+              latitude: rawLat ? Number(rawLat) : undefined,
+              longitude: rawLng ? Number(rawLng) : undefined,
+              isp: ipInfo.org || undefined,
+            }
+          : null,
+      );
+      if (fromIpInfo) {
+        this.geoCache.set(normalizedIp, {
+          expiresAt: now + this.geoCacheTtlMs,
+          value: fromIpInfo,
+        });
+        return fromIpInfo;
+      }
+
+      const geoFallback = this.normalizeGeoPayload(null);
+      this.geoCache.set(normalizedIp, {
+        expiresAt: now + this.geoCacheMissTtlMs,
+        value: geoFallback,
+      });
+      return geoFallback;
     } catch (error) {
       this.logger.warn(`No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`);
+      this.geoCache.set(normalizedIp, {
+        expiresAt: now + this.geoCacheMissTtlMs,
+        value: null,
+      });
       return null;
     }
   }
@@ -1008,7 +1205,12 @@ export class CertificatesService {
     return mapped;
   }
 
-  async registrarValidacion(codigoVerificacion: string, ip?: string, userAgent?: string) {
+  async registrarValidacion(
+    codigoVerificacion: string,
+    ip?: string,
+    userAgent?: string,
+    geoContext?: ValidationGeoContext,
+  ) {
     const certificate = await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
 
     // Determine validation result based on certificate status
@@ -1019,7 +1221,17 @@ export class CertificatesService {
       result = 'EXPIRED';
     }
 
-    const geo = await this.resolveGeoFromIp(ip);
+    const normalizedIp =
+      this.normalizeIp(ip || '') ||
+      this.normalizeSingleIp(ip || '') ||
+      String(ip || '').trim() ||
+      undefined;
+    const geoFromHeader = this.resolveGeoFromContext(geoContext);
+    const geoFromIp = await this.resolveGeoFromIp(normalizedIp);
+    const geo = this.mergeGeoSources(geoFromIp, geoFromHeader);
+    if (!geo && normalizedIp && !this.isPrivateIp(normalizedIp)) {
+      this.logger.warn(`Validacion sin geolocalizacion para IP publica ${normalizedIp}`);
+    }
     const location =
       geo?.city && geo?.country
         ? `${geo.city}, ${geo.country}`
@@ -1030,7 +1242,7 @@ export class CertificatesService {
     const validation = this.validationRepo.create({
       certificate_id: certificate.id,
       validation_date: new Date(),
-      ip_address: this.normalizeIp(ip || '') || ip,
+      ip_address: normalizedIp,
       user_agent: userAgent,
       location,
       country: geo?.country,
@@ -1299,7 +1511,14 @@ export class CertificatesService {
   /**
    * Validar codigo y generar certificado
    */
-  async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
+  async validarCodigoYGenerarCertificado(
+    documento: string,
+    codigo: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
     const documentoTrim = (documento || '').trim();
     const codigoTrim = (codigo || '').trim();
     // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
@@ -1331,7 +1550,14 @@ export class CertificatesService {
     }
 
     // Generar el certificado
-    const nuevoCertificado = await this.createCertificado(solicitud.id);
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+    const nuevoCertificado = await this.createCertificado(solicitud.id, {
+      includeSalary,
+      includeTechnicalBonus,
+    });
 
     // Limpia el codigo y expiracion en la solicitud
     await this.requestRepo.update(solicitud.id, {

@@ -240,12 +240,24 @@ export const certificadosService = {
     /**
      * Validar código y generar certificado
      */
-    async validarCodigoYGenerarCertificado(documento: string, codigo: string): Promise<{
+    async validarCodigoYGenerarCertificado(
+      documento: string,
+      codigo: string,
+      options?: {
+        includeSalary?: boolean;
+        includeTechnicalBonus?: boolean;
+      },
+    ): Promise<{
       mensaje: string;
       certificado: any;
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/validar-codigo`,
-        { documento, codigo },
+        {
+          documento,
+          codigo,
+          ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
+          ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
+        },
         { requiresAuth: false }
       );
     },
