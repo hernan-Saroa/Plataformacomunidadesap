@@ -33,6 +33,8 @@ interface CertificadoDetallePanelProps {
     id: string;
     consecutivo: string;
     qrCode: string;
+    certificateHash?: string;
+    verification_code?: string;
     cantidadEscaneos: number;
     empleado: {
       nombre: string;
@@ -82,7 +84,14 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
-  const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+  const codigoVerificacion = String(
+    certificado.qrCode ||
+    certificado.certificateHash ||
+    certificado.verification_code ||
+    certificado.consecutivo ||
+    '',
+  ).trim();
+  const verificationUrl = `${verificationBase}${verificationPath}/${encodeURIComponent(codigoVerificacion)}`;
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
@@ -360,8 +369,16 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     setCargandoHistorial(true);
     setHistorialError(null);
 
+    if (!codigoVerificacion) {
+      setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
+      setVerificaciones([]);
+      setHistorialCargado(true);
+      setCargandoHistorial(false);
+      return;
+    }
+
     try {
-      const response = await certificadosService.validacion.historialValidaciones(certificado.qrCode);
+      const response = await certificadosService.validacion.historialValidaciones(codigoVerificacion);
       const historialRemoto =
         response?.validation_history ||
         response?.validationHistory ||
@@ -574,6 +591,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
+    }
+  };
+
+  const handleCopiarCodigoQR = async () => {
+    if (!codigoVerificacion) {
+      toast.error('No hay codigo QR disponible para copiar');
+      return;
+    }
+    const copiado = await copiarAlPortapapeles(codigoVerificacion);
+    if (copiado) {
+      toast.success('Codigo QR copiado', {
+        description: 'El codigo de verificacion completo fue copiado al portapapeles'
+      });
+    } else {
+      toast.error('No se pudo copiar el codigo QR');
     }
   };
 
@@ -792,10 +824,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
-                        <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
-                          <QrCode className="w-3.5 h-3.5" />
-                          QR-{certificado.qrCode.slice(-6)}
-                        </p>
+                        <div className="flex items-start gap-2">
+                          <p className="text-xs text-blue-600 font-mono flex items-start gap-1.5 break-all leading-5">
+                            <QrCode className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            {codigoVerificacion || 'No disponible'}
+                          </p>
+                          {!!codigoVerificacion && (
+                            <button
+                              onClick={handleCopiarCodigoQR}
+                              className="text-gray-400 hover:text-[#003DA5] transition-colors"
+                              title="Copiar codigo QR completo"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">

@@ -41,12 +41,51 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
   const qrData = certificado.qrCode || certificado.verification_code || certificado.consecutivo;
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
-  const urlVerificacion = verificationUrl || `${verificationBase}${verificationPath}/${qrData}`;
+  const urlVerificacion =
+    verificationUrl || `${verificationBase}${verificationPath}/${encodeURIComponent(qrData)}`;
+
+  const getQrCanvas = (): HTMLCanvasElement | null => {
+    if (!qrRef.current) return null;
+    return qrRef.current.querySelector('canvas');
+  };
+
+  const getQrDataUrl = (): string | null => {
+    const canvas = getQrCanvas();
+    if (!canvas) return null;
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  };
+
+  const getSafeFileName = () => {
+    const base = String(certificado.consecutivo || qrData || 'QR_CERTIFICADO')
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^\w.-]/g, '');
+    return `QR-${base || 'CERTIFICADO'}.png`;
+  };
 
   const handleDescargarQR = () => {
-    // En producción, aquí se generaría y descargaría la imagen del QR
+    const dataUrl = getQrDataUrl();
+    if (!dataUrl) {
+      toast.error('No se pudo descargar el QR', {
+        description: 'Intenta nuevamente en unos segundos.',
+        duration: 3500
+      });
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = getSafeFileName();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
     toast.success('QR descargado exitosamente', {
-      description: `QR-${certificado.consecutivo}.png`,
+      description: link.download,
       duration: 3000
     });
   };
@@ -88,92 +127,121 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
   };
 
   const handleImprimir = () => {
-    if (qrRef.current) {
-      const printWindow = window.open('', '', 'width=600,height=800');
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Código QR - ${certificado.consecutivo}</title>
-              <style>
-                body {
-                  font-family: Arial, sans-serif;
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  justify-content: center;
-                  min-height: 100vh;
-                  margin: 0;
-                  padding: 40px;
-                  background: white;
-                }
-                .container {
-                  text-align: center;
-                  border: 2px solid #003DA5;
-                  padding: 40px;
-                  border-radius: 12px;
-                }
-                h1 {
-                  color: #003DA5;
-                  margin-bottom: 10px;
-                  font-size: 24px;
-                }
-                .qr-box {
-                  width: 300px;
-                  height: 300px;
-                  margin: 30px auto;
-                  border: 3px solid #003DA5;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  background: white;
-                  border-radius: 8px;
-                }
-                .info {
-                  margin-top: 20px;
-                  color: #333;
-                  font-size: 14px;
-                }
-                .url {
-                  color: #003DA5;
-                  font-weight: bold;
-                  font-size: 12px;
-                  margin-top: 15px;
-                  word-break: break-all;
-                }
-                @media print {
-                  @page { margin: 0.5in; }
-                  body { padding: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
-                <p style="color: #666; margin-bottom: 10px;">Código QR de Verificación</p>
-                ${qrRef.current.innerHTML}
-                <div class="info">
-                  <p><strong>Consecutivo:</strong> ${certificado.consecutivo}</p>
-                  <p><strong>Empleado:</strong> ${certificado.empleado.nombre}</p>
-                  <p><strong>Documento:</strong> ${certificado.empleado.documento}</p>
-                  <p><strong>Fecha de emisión:</strong> ${new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO')}</p>
-                  <div class="url">
-                    <p>Verificar en:</p>
-                    <p>${urlVerificacion}</p>
-                  </div>
-                </div>
-              </div>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 250);
-      }
+    const dataUrl = getQrDataUrl();
+    if (!dataUrl) {
+      toast.error('No se pudo imprimir el QR', {
+        description: 'El código QR aún no está listo. Intenta nuevamente.',
+        duration: 3500
+      });
+      return;
     }
+
+    const printWindow = window.open('', '', 'width=700,height=900');
+    if (!printWindow) {
+      toast.error('No se pudo abrir la ventana de impresión');
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Código QR - ${certificado.consecutivo}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              padding: 40px;
+              background: white;
+            }
+            .container {
+              text-align: center;
+              border: 2px solid #003DA5;
+              padding: 40px;
+              border-radius: 12px;
+              max-width: 680px;
+            }
+            h1 {
+              color: #003DA5;
+              margin-bottom: 10px;
+              font-size: 32px;
+            }
+            .qr-box {
+              width: 300px;
+              height: 300px;
+              margin: 30px auto;
+              border: 3px solid #003DA5;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              background: white;
+              border-radius: 8px;
+            }
+            .qr-image {
+              width: 260px;
+              height: 260px;
+              object-fit: contain;
+              image-rendering: pixelated;
+            }
+            .info {
+              margin-top: 20px;
+              color: #333;
+              font-size: 18px;
+            }
+            .url {
+              color: #003DA5;
+              font-weight: bold;
+              font-size: 14px;
+              margin-top: 15px;
+              word-break: break-all;
+            }
+            @media print {
+              @page { margin: 0.5in; }
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA</h1>
+            <p style="color: #666; margin-bottom: 10px; font-size: 22px;">Código QR de Verificación</p>
+            <div class="qr-box">
+              <img class="qr-image" src="${dataUrl}" alt="Código QR de verificación" />
+            </div>
+            <div class="info">
+              <p><strong>Consecutivo:</strong> ${certificado.consecutivo}</p>
+              <p><strong>Empleado:</strong> ${certificado.empleado.nombre}</p>
+              <p><strong>Documento:</strong> ${certificado.empleado.documento}</p>
+              <p><strong>Fecha de emisión:</strong> ${new Date(certificado.fechaGeneracion).toLocaleDateString('es-CO')}</p>
+              <div class="url">
+                <p>Verificar en:</p>
+                <p>${urlVerificacion}</p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    const finalizePrint = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    };
+
+    const qrImage = printWindow.document.querySelector('.qr-image') as HTMLImageElement | null;
+    if (qrImage && !qrImage.complete) {
+      qrImage.onload = () => setTimeout(finalizePrint, 120);
+      qrImage.onerror = () => setTimeout(finalizePrint, 220);
+    } else {
+      setTimeout(finalizePrint, 180);
+    }
+
     toast.info('Abriendo vista de impresión...');
   };
 
@@ -231,6 +299,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                     <div className="bg-gradient-to-br from-gray-50 to-white p-3 sm:p-4 rounded-lg sm:rounded-xl">
                       <div className="w-52 h-52 sm:w-72 sm:h-72 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center relative overflow-hidden">
                         <QRCodeCanvas
+                          key={`${certificado.consecutivo}-${qrData}`}
                           value={urlVerificacion}
                           size={253}
                           level="H"
