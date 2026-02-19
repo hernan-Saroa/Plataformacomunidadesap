@@ -2804,10 +2804,24 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Handler para asignar profesional en transición Recepción → Valoración
-  const handleAsignarProfesional = (profesionalId: string, profesionalNombre: string, observaciones: string) => {
+  const handleAsignarProfesional = async (profesionalId: string, profesionalNombre: string, observaciones: string) => {
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+
+    // ✅ NUEVO: Llamar al backend para persistir el cambio de etapa
+    try {
+      await disciplinaryService.cambiarEtapa(
+        itemSeleccionado.id,
+        'EVALUACION',  // Etapa API对应的Valoración
+        'Valoración',  // kanbanStage
+        undefined
+      );
+      console.log('✅ Etapa cambiada en backend: Recepción → Valoración');
+    } catch (error) {
+      console.error('❌ Error al cambiar etapa en backend:', error);
+      // No bloqueamos la UI, continuamos con la actualización local
+    }
 
     // Actualizar el proceso con el profesional asignado y moverlo a Valoración
     setItems(prev => prev.map(i =>
