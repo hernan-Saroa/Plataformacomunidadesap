@@ -22,6 +22,7 @@ import { Checkbox } from '../ui/checkbox';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { certificadosService } from '../../services/api/certificados.service';
+import { obtenerPreferenciasCertificadoLaboral } from '../../utils/certificadosLaboralesPreferencias';
 
 interface GenerarCertificadoModalProps {
   isOpen: boolean;
@@ -40,6 +41,9 @@ interface CertificadoLaboralListado {
   cod_cargo?: string;
   cod_grade?: string;
   campus?: string;
+  technical_bonus?: number;
+  incluyeSalario?: boolean;
+  incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
   empleado: {
@@ -138,6 +142,17 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       maximumFractionDigits: 0,
     });
 
+  const normalizarBoolean = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  };
+
   const [step, setStep] = useState<'buscar' | 'validar'>('buscar');
   const [searchTerm, setSearchTerm] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
@@ -145,7 +160,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
   const [certificadoSeleccionado, setCertificadoSeleccionado] = useState<CertificadoLaboralListado | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [configuracion, setConfiguracion] = useState({
-    incluyeSalario: true
+    incluyeSalario: true,
+    incluyePrimaTecnica: false,
   });
   const [showPDFViewer, setShowPDFViewer] = useState(false);
   const [autoPDFAction, setAutoPDFAction] = useState<'download' | 'print' | null>(null);
@@ -291,6 +307,30 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             : cert.status === 'EXPIRED'
               ? 'expirado'
               : employmentEstado;
+        const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
+          id: cert.id,
+          consecutivo: cert.certificate_number,
+          qrCode: cert.verification_code,
+          certificateHash: cert.verification_code,
+        });
+        const incluyeSalario = preferenciasPersistidas?.includeSalary ?? normalizarBoolean(
+          cert.include_salary ??
+            cert.includeSalary ??
+            cert.incluyeSalario ??
+            cert.request?.include_salary ??
+            cert.request?.includeSalary,
+          true,
+        );
+        const incluyePrimaTecnica = incluyeSalario
+          ? (preferenciasPersistidas?.includeTechnicalBonus ?? normalizarBoolean(
+              cert.include_technical_bonus ??
+                cert.includeTechnicalBonus ??
+                cert.incluyePrimaTecnica ??
+                cert.request?.include_technical_bonus ??
+                cert.request?.includeTechnicalBonus,
+              false,
+            ))
+          : false;
         return {
           id: cert.id,
           consecutivo: cert.certificate_number,
@@ -307,6 +347,9 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cod_cargo: dependenciaPadreRaw,
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
+          technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus ?? preferenciasPersistidas?.technicalBonus,
+          incluyeSalario,
+          incluyePrimaTecnica,
           templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
           templateType:
             cert.template_type ||
@@ -383,6 +426,11 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
 
   const handleSelectCertificado = (cert: CertificadoLaboralListado) => {
     setCertificadoSeleccionado(cert);
+    const incluyeSalario = cert.incluyeSalario !== false;
+    setConfiguracion({
+      incluyeSalario,
+      incluyePrimaTecnica: incluyeSalario && !!cert.incluyePrimaTecnica,
+    });
     setStep('validar');
   };
 
@@ -434,7 +482,8 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
     setFechaHasta('');
     setCertificadoSeleccionado(null);
     setConfiguracion({
-      incluyeSalario: true
+      incluyeSalario: true,
+      incluyePrimaTecnica: false,
     });
     setModalPage(1);
     setModalItems([]);
@@ -723,9 +772,14 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                           <Checkbox
                             id="salario"
                             checked={configuracion.incluyeSalario}
-                            onCheckedChange={(checked) =>
-                              setConfiguracion({ ...configuracion, incluyeSalario: checked as boolean })
-                            }
+                            onCheckedChange={(checked) => {
+                              const incluyeSalario = checked === true;
+                              setConfiguracion({
+                                ...configuracion,
+                                incluyeSalario,
+                                incluyePrimaTecnica: incluyeSalario ? configuracion.incluyePrimaTecnica : false,
+                              });
+                            }}
                           />
                           <label
                             htmlFor="salario"
@@ -733,6 +787,34 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                           >
                             Incluir informacion salarial
                           </label>
+                        </div>
+                        <div className="flex items-start space-x-2">
+                          <Checkbox
+                            id="prima-tecnica"
+                            checked={configuracion.incluyeSalario && configuracion.incluyePrimaTecnica}
+                            disabled={!configuracion.incluyeSalario}
+                            onCheckedChange={(checked) =>
+                              setConfiguracion({
+                                ...configuracion,
+                                incluyePrimaTecnica: checked === true && configuracion.incluyeSalario,
+                              })
+                            }
+                          />
+                          <div>
+                            <label
+                              htmlFor="prima-tecnica"
+                              className={`text-sm cursor-pointer ${
+                                configuracion.incluyeSalario ? 'text-gray-700' : 'text-gray-500'
+                              }`}
+                            >
+                              Incluir prima tecnica
+                            </label>
+                            {!configuracion.incluyeSalario && (
+                              <p className="text-xs text-amber-700 mt-1">
+                                Activa primero la informacion salarial.
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -811,7 +893,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           certificado={{
             ...certificadoSeleccionado,
             incluyeSalario: configuracion.incluyeSalario,
-            incluyePrimaTecnica: false
+            incluyePrimaTecnica: configuracion.incluyeSalario && configuracion.incluyePrimaTecnica
           }}
         />
       )}

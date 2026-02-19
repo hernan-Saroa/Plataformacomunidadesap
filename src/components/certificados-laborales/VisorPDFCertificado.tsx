@@ -857,7 +857,7 @@ export function VisorPDFCertificado({
     : '';
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
-  const incluirPrimaTecnica = certificado.incluyePrimaTecnica ?? false;
+  const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
   const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? salarioBase * 0.2);
   const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0

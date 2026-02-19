@@ -36,6 +36,7 @@ import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
 import { formatCargoDisplay } from '../../utils/cargoFormatter';
+import { obtenerPreferenciasCertificadoLaboral } from '../../utils/certificadosLaboralesPreferencias';
 
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
@@ -50,6 +51,8 @@ interface CertificadoLaboral {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  incluyeSalario?: boolean;
+  incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
   templateType?: 'docente' | 'administrador';
   estadoLaboral?: 'activo' | 'inactivo';
@@ -159,6 +162,17 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return cleaned;
   };
 
+  const normalizarBoolean = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  };
+
   const transformarCertificado = (cert: any): CertificadoLaboral => {
     const templateTypeRaw =
       cert.template_type ||
@@ -217,6 +231,30 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cert.positionLocation ||
       '',
     );
+    const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
+      id: cert.id,
+      consecutivo: cert.certificate_number,
+      qrCode: cert.verification_code,
+      certificateHash: cert.verification_code,
+    });
+    const incluyeSalario = preferenciasPersistidas?.includeSalary ?? normalizarBoolean(
+      cert.include_salary ??
+        cert.includeSalary ??
+        cert.incluyeSalario ??
+        cert.request?.include_salary ??
+        cert.request?.includeSalary,
+      true,
+    );
+    const incluyePrimaTecnica = incluyeSalario
+      ? (preferenciasPersistidas?.includeTechnicalBonus ?? normalizarBoolean(
+          cert.include_technical_bonus ??
+            cert.includeTechnicalBonus ??
+            cert.incluyePrimaTecnica ??
+            cert.request?.include_technical_bonus ??
+            cert.request?.includeTechnicalBonus,
+          false,
+        ))
+      : false;
 
     return {
       id: cert.id,
@@ -229,7 +267,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
       cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       campus: cert.campus,
-      technical_bonus: cert.technical_bonus,
+      technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus ?? preferenciasPersistidas?.technicalBonus,
+      incluyeSalario,
+      incluyePrimaTecnica,
       templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
       templateType: templateTypeNormalizado,
       estadoLaboral: employmentEstado,
