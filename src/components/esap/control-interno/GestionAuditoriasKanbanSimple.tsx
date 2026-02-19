@@ -1773,7 +1773,7 @@ function ColumnaKanban({
 export function GestionAuditoriasKanbanSimple() {
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
-  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase } = useTareas();
+  const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, cargarTareas } = useTareas();
   
   // ✅ HOOK BACKEND: Cargar auditorías y auditores desde el backend
   const {
@@ -1879,9 +1879,14 @@ export function GestionAuditoriasKanbanSimple() {
       } as Auditoria));
       setAuditorias(auditoriasTransformadas);
       console.log(`✅ [GestionAuditorias] ${auditoriasTransformadas.length} auditorías sincronizadas desde backend`);
+      
+      // ✅ CARGAR TAREAS: Cargar tareas para cada auditoría desde el backend
+      auditoriasTransformadas.forEach(aud => {
+        cargarTareas(aud.id);
+      });
     }
     // No cargar MOCK automáticamente - el usuario decide en desarrollo
-  }, [auditoriasBackend, cargandoBackend]);
+  }, [auditoriasBackend, cargandoBackend, cargarTareas]);
 
   // ✅ NUEVO: Effect para detectar scroll horizontal disponible
   useEffect(() => {

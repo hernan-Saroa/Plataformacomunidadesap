@@ -291,7 +291,7 @@ export function ExpedienteAuditoriaCompleto({
 }: ExpedienteAuditoriaCompletoProps) {
   const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
   const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
-  const [historial] = useState<EventoHistorial[]>(HISTORIAL_EJEMPLO);
+  const [historial, setHistorial] = useState<EventoHistorial[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -392,6 +392,17 @@ export function ExpedienteAuditoriaCompleto({
         };
         
         setAuditoria(auditoriaBackend);
+        
+        // ✅ Cargar historial de la auditoría desde el backend
+        try {
+          const historialData = await controlInternoService.getHistorialAuditoria(auditoriaId);
+          const historialMapeado = mapearHistorialBackend(historialData);
+          setHistorial(historialMapeado);
+        } catch (histErr) {
+          console.error('Error cargando historial:', histErr);
+          // Si falla el historial, no bloquear - simplemente mostrar vacío
+          setHistorial([]);
+        }
       } catch (err: any) {
         console.error('Error cargando auditoría:', err);
         setError(err.message || 'Error desconocido');
@@ -403,6 +414,68 @@ export function ExpedienteAuditoriaCompleto({
     
     cargarAuditoria();
   }, [isOpen, auditoriaId]);
+  
+  // ✅ Función para mapear historial del backend al formato del frontend
+  function mapearHistorialBackend(data: any[]): EventoHistorial[] {
+    const iconosPorTipo: Record<string, React.ReactNode> = {
+      'creacion': <CheckCircle className="w-5 h-5" />,
+      'cambio_estado': <Activity className="w-5 h-5" />,
+      'asignacion': <Users className="w-5 h-5" />,
+      'actualizacion': <Edit2 className="w-5 h-5" />,
+      'documento': <FileText className="w-5 h-5" />,
+      'hallazgo': <AlertCircle className="w-5 h-5" />,
+      'nota': <MessageSquare className="w-5 h-5" />,
+      'aprobacion': <CheckSquare className="w-5 h-5" />,
+      'finalizacion': <Award className="w-5 h-5" />,
+      'eliminacion': <Trash2 className="w-5 h-5" />,
+      'archivo': <Archive className="w-5 h-5" />,
+      'ampliacion_plazo': <Clock className="w-5 h-5" />,
+    };
+    
+    const coloresPorTipo: Record<string, string> = {
+      'creacion': '#10b981',
+      'cambio_estado': '#3b82f6',
+      'asignacion': '#8b5cf6',
+      'actualizacion': '#f59e0b',
+      'documento': '#06b6d4',
+      'hallazgo': '#ef4444',
+      'nota': '#6366f1',
+      'aprobacion': '#22c55e',
+      'finalizacion': '#059669',
+      'eliminacion': '#dc2626',
+      'archivo': '#64748b',
+      'ampliacion_plazo': '#f97316',
+    };
+    
+    return data.map((evento: any) => ({
+      id: evento.id,
+      tipo: mapearTipoEvento(evento.tipo),
+      titulo: evento.accion || evento.titulo || 'Evento',
+      descripcion: evento.descripcion || '',
+      usuario: evento.usuario || 'Sistema',
+      fecha: new Date(evento.fecha + 'T' + (evento.hora || '00:00:00')),
+      icono: iconosPorTipo[evento.tipo] || <Activity className="w-5 h-5" />,
+      color: coloresPorTipo[evento.tipo] || '#6b7280',
+    }));
+  }
+  
+  function mapearTipoEvento(tipo: string): EventoHistorial['tipo'] {
+    const mapeo: Record<string, EventoHistorial['tipo']> = {
+      'creacion': 'accion',
+      'cambio_estado': 'cambio-estado',
+      'asignacion': 'accion',
+      'actualizacion': 'accion',
+      'documento': 'documento',
+      'hallazgo': 'accion',
+      'nota': 'comentario',
+      'aprobacion': 'accion',
+      'finalizacion': 'cambio-estado',
+      'eliminacion': 'accion',
+      'archivo': 'documento',
+      'ampliacion_plazo': 'notificacion',
+    };
+    return mapeo[tipo] || 'accion';
+  }
   
   // ✅ Función para actualizar checklist de actividades en el backend
   const handleToggleChecklist = async (itemId: string, completado: boolean) => {
@@ -817,9 +890,27 @@ export function ExpedienteAuditoriaCompleto({
               transition={{ duration: 0.2 }}
             >
               {activeTab === 'general' && <TabGeneral auditoria={auditoria} />}
-              {activeTab === 'planeacion' && <TabPlaneacion auditoria={auditoria} />}
-              {activeTab === 'ejecucion' && <TabEjecucion auditoria={auditoria} />}
-              {activeTab === 'comunicacion' && <TabComunicacion auditoria={auditoria} />}
+              {activeTab === 'planeacion' && (
+                <TabPlaneacion 
+                  auditoria={auditoria} 
+                  checklistCompletados={auditoria.checklistCompletados}
+                  onToggleChecklist={handleToggleChecklist}
+                />
+              )}
+              {activeTab === 'ejecucion' && (
+                <TabEjecucion 
+                  auditoria={auditoria}
+                  checklistCompletados={auditoria.checklistCompletados}
+                  onToggleChecklist={handleToggleChecklist}
+                />
+              )}
+              {activeTab === 'comunicacion' && (
+                <TabComunicacion 
+                  auditoria={auditoria}
+                  checklistCompletados={auditoria.checklistCompletados}
+                  onToggleChecklist={handleToggleChecklist}
+                />
+              )}
               {activeTab === 'documentacion' && (
                 <TabDocumentacion
                   documentos={documentosFiltrados}

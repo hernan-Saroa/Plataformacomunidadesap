@@ -1211,7 +1211,7 @@ export class PlanesMejoramientoService {
       try {
         console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
         const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
           [`%${plan.responsableImplementacion}%`]
         );
         

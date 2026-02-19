@@ -709,7 +709,7 @@ export class PlanAnual5RolesService {
     if (plan.responsable) {
       try {
         const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
           [`%${plan.responsable}%`]
         );
         if (responsable && responsable.length > 0) {
@@ -790,7 +790,7 @@ export class PlanAnual5RolesService {
         if (plan.responsable) {
           try {
             const responsable = await this.dataSource.query(
-              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
               [`%${plan.responsable}%`]
             );
             if (responsable && responsable.length > 0) {
@@ -815,7 +815,7 @@ export class PlanAnual5RolesService {
         if (plan.responsable) {
           try {
             const resp = await this.dataSource.query(
-              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR sig_tercero ILIKE $1 LIMIT 1`,
+              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
               [`%${plan.responsable}%`]
             );
             if (resp && resp.length > 0) {

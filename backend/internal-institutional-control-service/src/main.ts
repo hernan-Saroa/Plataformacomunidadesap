@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import * as bodyParser from 'body-parser';
+import { join } from 'path';
 
 async function bootstrap() {
   try {
@@ -71,6 +73,15 @@ async function bootstrap() {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Accept-Charset'],
+    });
+
+    // Aumentar límite de body-parser para archivos grandes (base64)
+    app.use(bodyParser.json({ limit: '50mb' }));
+    app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+    // Servir archivos estáticos desde la carpeta uploads
+    app.useStaticAssets(join(process.cwd(), 'uploads'), {
+      prefix: '/uploads/',
     });
 
     // Middleware global para establecer charset UTF-8 en todas las respuestas JSON

@@ -5,6 +5,7 @@ import { Hallazgo, HallazgoCategoria, HallazgoEstado } from './entities/hallazgo
 import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
+import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
 
 @Injectable()
 export class HallazgosService {
@@ -13,7 +14,41 @@ export class HallazgosService {
     private readonly hallazgoRepository: Repository<Hallazgo>,
     @InjectRepository(Auditoria)
     private readonly auditoriaRepository: Repository<Auditoria>,
+    @InjectRepository(HistorialAuditoria)
+    private readonly historialRepository: Repository<HistorialAuditoria>,
   ) {}
+
+  /**
+   * Registra evento en el historial de la auditoría
+   */
+  private async registrarHistorial(
+    auditoriaId: string | null | undefined,
+    tipoEvento: TipoEvento,
+    accion: string,
+    descripcion: string,
+  ): Promise<void> {
+    if (!auditoriaId) return;
+    
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().split(' ')[0];
+      
+      const historial = new HistorialAuditoria();
+      historial.auditoriaId = auditoriaId;
+      historial.tipoEvento = tipoEvento;
+      historial.fecha = new Date(fecha);
+      historial.hora = hora;
+      historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+      historial.accion = accion;
+      historial.descripcion = descripcion;
+      historial.cambios = [];
+      
+      await this.historialRepository.save(historial);
+    } catch (err) {
+      console.error('[HallazgosService] Error registrando historial:', err);
+    }
+  }
 
   /**
    * Parsea una fecha string (YYYY-MM-DD) a Date sin conversión de zona horaria
@@ -217,6 +252,14 @@ export class HallazgosService {
     const saved = await this.hallazgoRepository.save(hallazgo);
     await this.ajustarContadorAuditoria(saved.auditoriaId, 1);
 
+    // ✅ Registrar en historial de auditoría
+    await this.registrarHistorial(
+      saved.auditoriaId,
+      TipoEvento.HALLAZGO,
+      'Hallazgo creado',
+      `Se creó el hallazgo ${saved.codigo} - ${saved.titulo}`,
+    );
+
     return this.findOne(saved.id);
   }
 
@@ -303,13 +346,33 @@ export class HallazgosService {
       await this.ajustarContadorAuditoria(nuevoAuditoriaId, 1);
     }
 
+    // ✅ Registrar en historial de auditoría
+    await this.registrarHistorial(
+      actualizado.auditoriaId,
+      TipoEvento.HALLAZGO,
+      'Hallazgo actualizado',
+      `Se actualizó el hallazgo ${actualizado.codigo} - ${actualizado.titulo}`,
+    );
+
     return this.findOne(actualizado.id);
   }
 
   async delete(id: string): Promise<void> {
     const hallazgo = await this.findOne(id);
+    const auditoriaId = hallazgo.auditoriaId;
+    const codigo = hallazgo.codigo;
+    const titulo = hallazgo.titulo;
+    
     await this.hallazgoRepository.remove(hallazgo);
-    await this.ajustarContadorAuditoria(hallazgo.auditoriaId, -1);
+    await this.ajustarContadorAuditoria(auditoriaId, -1);
+
+    // ✅ Registrar en historial de auditoría
+    await this.registrarHistorial(
+      auditoriaId,
+      TipoEvento.ELIMINACION,
+      'Hallazgo eliminado',
+      `Se eliminó el hallazgo ${codigo} - ${titulo}`,
+    );
   }
 
   async findByCategoria(categoria: HallazgoCategoria): Promise<Hallazgo[]> {
