@@ -417,6 +417,10 @@ export class LaborCertificatePdfService {
       requestPositionLocation ||
       certificate.position_location ||
       '';
+    const grupoVariable =
+      requestPositionLocation ||
+      certificate.position_location ||
+      '';
     const cargoDato6 = tipoVinculacion;
 
     const salarioBase = this.normalizeMoneyValue(certificate.monthly_salary);
@@ -441,6 +445,7 @@ export class LaborCertificatePdfService {
       '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
       '[TIPO_DATO]': cargoDato6,
+      '[GRUPO]': grupoVariable,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
       '[DEPENDENCIA]': dependenciaPadre,

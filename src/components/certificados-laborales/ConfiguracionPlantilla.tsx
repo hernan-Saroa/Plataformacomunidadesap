@@ -587,6 +587,7 @@ const descripcionVariables: Record<string, string> = {
   '[NOMBRE_EMPLEADO]': 'Nombre completo del empleado',
   '[DOCUMENTO]': 'Numero de documento',
   '[CARGO]': 'Cargo calculado (categoria + palabra Codigo + codigo + grado)',
+  '[GRUPO]': 'Grupo (position_location de la solicitud)',
   '[TIPO_DATO]': 'Tipo de vinculación',
   '[DEPENDENCIA]': 'Dependencia donde trabaja',
   '[DATO1]': 'Dato 1 (nombre empleado)',
@@ -700,13 +701,17 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const variablesDisponibles = useMemo(() => {
     const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
     const tokens = contenidoBase.match(/\[[A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*\]/g) || [];
-    const vistos = new Set<string>();
     const ordenados: string[] = [];
+    const vistos = new Set<string>();
     for (const token of tokens) {
       if (!vistos.has(token)) {
         vistos.add(token);
         ordenados.push(token);
       }
+    }
+    const variableOpcionalGrupo = '[GRUPO]';
+    if (!vistos.has(variableOpcionalGrupo)) {
+      ordenados.push(variableOpcionalGrupo);
     }
     return ordenados.map((codigo) => ({
       codigo,
