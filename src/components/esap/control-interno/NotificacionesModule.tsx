@@ -35,15 +35,16 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Bell, Settings, Plus, Edit2, Trash2, Save, X, 
   AlertTriangle, CheckCircle2, Info, Clock, Mail,
   Users, Zap, Eye, Filter, ChevronRight, Play, Pause,
-  History, TrendingUp, MessageSquare, Calendar, Sparkles
+  History, TrendingUp, MessageSquare, Calendar, Sparkles, Loader2, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -327,17 +328,186 @@ const NOTIFICACIONES_ENVIADAS_MOCK: NotificacionEnviada[] = [
 
 export function NotificacionesModule() {
   const [eventos, setEventos] = useState<EventoNotificable[]>(EVENTOS_NOTIFICABLES_MOCK);
-  const [historial, setHistorial] = useState<NotificacionEnviada[]>(NOTIFICACIONES_ENVIADAS_MOCK);
+  const [historial, setHistorial] = useState<NotificacionEnviada[]>([]);
   const [tabActiva, setTabActiva] = useState<'configuracion' | 'historial'>('configuracion');
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('Todas');
   const [eventoEditando, setEventoEditando] = useState<EventoNotificable | null>(null);
   const [mostrarModal, setMostrarModal] = useState(false);
+  
+  // ✅ Estados para conexión con backend
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
+
+  // ✅ Obtener el usuarioId del localStorage
+  const getUsuarioId = useCallback(() => {
+    try {
+      // Intentar con la key principal: esap_user_data
+      let userStr = localStorage.getItem('esap_user_data');
+      console.log('[NotificacionesModule] localStorage esap_user_data:', userStr?.slice(0, 200));
+      
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        console.log('[NotificacionesModule] User object parsed:', user);
+        // Buscar en diferentes propiedades donde puede estar el ID
+        const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
+        console.log('[NotificacionesModule] UserId extraído:', userId, '| tipo:', typeof userId);
+        if (userId) return String(userId);
+      }
+      
+      // Fallback: esap_auth_user (legacy)
+      userStr = localStorage.getItem('esap_auth_user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
+        if (userId) return String(userId);
+      }
+    } catch (e) {
+      console.error('[NotificacionesModule] Error parsing localStorage:', e);
+    }
+    console.log('[NotificacionesModule] Usando fallback admin');
+    return 'admin';
+  }, []);
+
+  // ✅ Cargar configuración desde el backend
+  const cargarConfiguracion = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const usuarioId = getUsuarioId();
+      console.log('[NotificacionesModule] Cargando configuración para usuario:', usuarioId);
+      
+      // Cargar preferencias de notificación
+      const preferencias = await controlInternoService.getPreferenciasNotificacion(usuarioId);
+      console.log('[NotificacionesModule] Preferencias recibidas:', JSON.stringify(preferencias, null, 2));
+      
+      // Mapear preferencias del backend a eventos del frontend
+      if (preferencias?.tiposNotificacion) {
+        const tiposBackend = preferencias.tiposNotificacion;
+        
+        // ✅ Crear nuevos eventos actualizados directamente desde el MOCK
+        const eventosActualizados = EVENTOS_NOTIFICABLES_MOCK.map(evento => {
+          const configBackend = tiposBackend[evento.id];
+          if (configBackend) {
+            const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
+                              configBackend.email ? 'email' as const : 'sistema' as const;
+            console.log(`[NotificacionesModule] Aplicando config backend para ${evento.id}: activo=${configBackend.activo}, canal=${nuevoCanal}`);
+            return {
+              ...evento,
+              activo: configBackend.activo === true || configBackend.activo === 'true',
+              canal: nuevoCanal
+            };
+          }
+          console.log(`[NotificacionesModule] Sin config backend para ${evento.id}, usando default`);
+          return evento;
+        });
+        
+        console.log('[NotificacionesModule] Eventos actualizados:', 
+          eventosActualizados.map(e => ({ id: e.id, activo: e.activo, canal: e.canal }))
+        );
+        
+        // Actualizar estado con los nuevos eventos
+        setEventos(eventosActualizados);
+      }
+
+      // Cargar historial de notificaciones
+      try {
+        console.log('[NotificacionesModule] Solicitando notificaciones para usuario:', usuarioId);
+        const notificaciones = await controlInternoService.getNotificacionesUsuario(usuarioId);
+        console.log('[NotificacionesModule] Notificaciones recibidas:', notificaciones?.length || 0, 'items');
+        console.log('[NotificacionesModule] Respuesta completa:', JSON.stringify(notificaciones)?.slice(0, 500));
+        if (Array.isArray(notificaciones)) {
+          const historialMapeado = notificaciones.map((n: any) => ({
+            id: n.id,
+            eventoId: n.tipoNotificacion || n.tipo || 'EVT-SISTEMA',
+            titulo: n.titulo,
+            mensaje: n.mensaje,
+            destinatario: n.nombreUsuario || usuarioId,
+            canal: n.canal?.toLowerCase() === 'email' ? 'email' : 'sistema',
+            fechaEnvio: n.createdAt || n.fechaCreacion,
+            leida: n.leida ?? false,
+            accion: n.accionUrl ? { texto: 'Ver', url: n.accionUrl } : undefined
+          }));
+          console.log('[NotificacionesModule] Historial mapeado:', historialMapeado.length, 'items');
+          setHistorial(historialMapeado);
+        }
+      } catch (histErr) {
+        console.warn('[NotificacionesModule] Error cargando historial (no crítico):', histErr);
+      }
+      
+    } catch (err: any) {
+      console.error('[NotificacionesModule] Error al cargar configuración:', err);
+      // No mostrar error si es 404 - usar datos mock
+      if (err?.response?.status !== 404 && !err?.message?.includes('404')) {
+        setError('Error al cargar configuración. Usando datos locales.');
+      }
+    } finally {
+      setCargando(false);
+    }
+  }, [getUsuarioId]);
+
+  // ✅ Guardar configuración en el backend
+  const guardarConfiguracionBackend = useCallback(async (eventosActualizados: EventoNotificable[]) => {
+    setGuardando(true);
+    try {
+      const usuarioId = getUsuarioId();
+      
+      // Convertir eventos a formato de preferencias del backend
+      const tiposNotificacion: Record<string, { email: boolean; sistema: boolean; activo: boolean }> = {};
+      eventosActualizados.forEach(evento => {
+        tiposNotificacion[evento.id] = {
+          email: evento.canal === 'email' || evento.canal === 'ambos',
+          sistema: evento.canal === 'sistema' || evento.canal === 'ambos',
+          activo: evento.activo
+        };
+      });
+
+      await controlInternoService.updatePreferenciasNotificacion(usuarioId, {
+        tiposNotificacion,
+        recibirEmail: eventosActualizados.some(e => e.activo && (e.canal === 'email' || e.canal === 'ambos')),
+        recibirSistema: eventosActualizados.some(e => e.activo && (e.canal === 'sistema' || e.canal === 'ambos'))
+      });
+
+      return true;
+    } catch (err) {
+      console.error('Error al guardar configuración:', err);
+      toast.error('Error al guardar en el servidor. Cambios guardados localmente.');
+      return false;
+    } finally {
+      setGuardando(false);
+    }
+  }, [getUsuarioId]);
+
+  // ✅ Cargar al montar (solo una vez)
+  useEffect(() => {
+    // Evitar múltiples cargas (por StrictMode o HMR)
+    if (yaCargadoRef.current) {
+      console.log('[NotificacionesModule] Ya se cargó, omitiendo...');
+      return;
+    }
+    yaCargadoRef.current = true;
+    console.log('[NotificacionesModule] useEffect ejecutándose - cargando configuración...');
+    cargarConfiguracion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Ejecutar solo al montar
 
   // Filtrar eventos por categoría
   const eventosFiltrados = useMemo(() => {
     if (categoriaFiltro === 'Todas') return eventos;
     return eventos.filter(e => e.categoria === categoriaFiltro);
   }, [eventos, categoriaFiltro]);
+
+  // Log para debug: mostrar estado actual de eventos
+  useEffect(() => {
+    const activos = eventos.filter(e => e.activo).map(e => e.id);
+    const inactivos = eventos.filter(e => !e.activo).map(e => e.id);
+    console.log('[NotificacionesModule] Estado actual de eventos:', {
+      activos: activos.length,
+      inactivos: inactivos.length,
+      inactivosIds: inactivos
+    });
+  }, [eventos]);
 
   // Estadísticas
   const estadisticas = useMemo(() => {
@@ -349,16 +519,21 @@ export function NotificacionesModule() {
     return { totalEventos, eventosActivos, notificacionesEnviadas, noLeidas };
   }, [eventos, historial]);
 
-  // Handlers
-  const handleToggleEvento = (id: string) => {
-    setEventos(prev =>
-      prev.map(e => (e.id === id ? { ...e, activo: !e.activo } : e))
-    );
+  // Handlers - ✅ CONECTADOS AL BACKEND
+  const handleToggleEvento = async (id: string) => {
+    const eventosActualizados = eventos.map(e => (e.id === id ? { ...e, activo: !e.activo } : e));
+    setEventos(eventosActualizados);
+    
     const evento = eventos.find(e => e.id === id);
+    const nuevoEstado = !evento?.activo;
+    
+    // Guardar en backend
+    await guardarConfiguracionBackend(eventosActualizados);
+    
     toast.success(
-      evento?.activo
-        ? '✅ Notificación desactivada'
-        : '✅ Notificación activada'
+      nuevoEstado
+        ? '✅ Notificación activada'
+        : '✅ Notificación desactivada'
     );
   };
 
@@ -367,10 +542,14 @@ export function NotificacionesModule() {
     setMostrarModal(true);
   };
 
-  const handleGuardarEvento = (evento: EventoNotificable) => {
-    setEventos(prev => prev.map(e => (e.id === evento.id ? evento : e)));
+  const handleGuardarEvento = async (evento: EventoNotificable) => {
+    const eventosActualizados = eventos.map(e => (e.id === evento.id ? evento : e));
+    setEventos(eventosActualizados);
     setMostrarModal(false);
     setEventoEditando(null);
+    
+    // Guardar en backend
+    await guardarConfiguracionBackend(eventosActualizados);
     toast.success('✅ Configuración de notificación actualizada');
   };
 
@@ -390,7 +569,7 @@ export function NotificacionesModule() {
     setMostrarModal(true);
   };
 
-  const handleGuardarNuevo = (evento: EventoNotificable) => {
+  const handleGuardarNuevo = async (evento: EventoNotificable) => {
     if (!evento.nombre.trim()) {
       toast.error('❌ El nombre de la notificación es obligatorio');
       return;
@@ -402,31 +581,81 @@ export function NotificacionesModule() {
 
     // Si es nuevo (no existe en la lista)
     const existe = eventos.find(e => e.id === evento.id);
+    let eventosActualizados: EventoNotificable[];
+    
     if (!existe) {
-      setEventos(prev => [...prev, evento]);
+      eventosActualizados = [...eventos, evento];
+      setEventos(eventosActualizados);
       toast.success('✅ Notificación personalizada creada exitosamente');
     } else {
-      setEventos(prev => prev.map(e => (e.id === evento.id ? evento : e)));
+      eventosActualizados = eventos.map(e => (e.id === evento.id ? evento : e));
+      setEventos(eventosActualizados);
       toast.success('✅ Notificación actualizada exitosamente');
     }
+    
+    // Guardar en backend
+    await guardarConfiguracionBackend(eventosActualizados);
     
     setMostrarModal(false);
     setEventoEditando(null);
   };
 
-  const handleEliminarEvento = (id: string) => {
+  const handleEliminarEvento = async (id: string) => {
     const evento = eventos.find(e => e.id === id);
     if (!evento?.esPersonalizada) {
       toast.error('❌ Solo puedes eliminar notificaciones personalizadas');
       return;
     }
     
-    setEventos(prev => prev.filter(e => e.id !== id));
+    const eventosActualizados = eventos.filter(e => e.id !== id);
+    setEventos(eventosActualizados);
+    
+    // Guardar en backend
+    await guardarConfiguracionBackend(eventosActualizados);
     toast.success('🗑️ Notificación personalizada eliminada');
   };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* ESTADO DE CARGA */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {cargando && (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center gap-3 text-blue-600">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span className="text-lg font-medium">Cargando configuración...</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* ERROR */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {error && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <span className="text-amber-800">{error}</span>
+          <button 
+            onClick={cargarConfiguracion}
+            className="ml-auto flex items-center gap-1 text-amber-700 hover:text-amber-900"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* INDICADOR DE GUARDADO */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {guardando && (
+        <div className="fixed top-4 right-4 z-50 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-sm font-medium">Guardando...</span>
+        </div>
+      )}
+
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER CON EXPLICACIÓN */}
       {/* ═══════════════════════════════════════════════════════════════ */}

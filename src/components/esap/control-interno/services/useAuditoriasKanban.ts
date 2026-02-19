@@ -192,6 +192,27 @@ function calcularTiempos(fechaInicio: string, fechaFin: string): { diasRestantes
 }
 
 /**
+ * Detecta si un string parece ser un ID en lugar de un nombre real
+ * - IDs comunes: UUID, aud-XXX, usr-XXX, números puros
+ */
+function esIdNoNombre(valor: string): boolean {
+  if (!valor) return true;
+  const valorNorm = valor.toLowerCase().trim();
+  
+  // Patrones de ID comunes
+  const patronesId = [
+    /^aud-\d+$/i,           // aud-001, aud-123
+    /^usr-\d+$/i,           // usr-001
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i, // UUID
+    /^[a-f0-9]{24}$/i,      // MongoDB ObjectId
+    /^\d+$/,                // Solo números
+    /^id[-_]?\d+$/i,        // id-123, id_456
+  ];
+  
+  return patronesId.some(patron => patron.test(valorNorm));
+}
+
+/**
  * Genera iniciales de un nombre
  */
 function generarIniciales(nombre: string): string {
@@ -233,47 +254,86 @@ function mapearTipo(tipo?: string): TipoAuditoria {
 /**
  * Transforma una auditoría del backend al formato del Kanban
  */
-function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
+function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: AuditorDisponible[]): AuditoriaKanban {
   const tiempos = calcularTiempos(auditoriaBackend.fechaInicio, auditoriaBackend.fechaFin);
   const progreso = auditoriaBackend.progreso || 0;
   // Usar semáforo del backend si existe, sino calcularlo
   const semaforo = (auditoriaBackend.semaforo as SemaforoColor) || calcularSemaforo(progreso, tiempos.diasRestantes, tiempos.porcentajeTiempo);
   
-  // Construir persona del auditor líder (puede venir como objeto o string)
-  const auditorLiderData = auditoriaBackend.auditorLider;
-  const auditorLider: Persona = typeof auditorLiderData === 'object' && auditorLiderData !== null
-    ? {
-        nombre: auditorLiderData.nombre || 'Por asignar',
-        cargo: auditorLiderData.cargo || 'Auditor Líder',
-        iniciales: auditorLiderData.iniciales || generarIniciales(auditorLiderData.nombre || ''),
-        tipoIdentificacion: auditorLiderData.tipoIdentificacion || 'CC',
-        numeroIdentificacion: auditorLiderData.numeroIdentificacion || ''
+  // Función auxiliar para resolver nombre de auditor
+  const resolverAuditor = (auditorData: any, tipoDefault: string): Persona => {
+    // Si viene como objeto completo
+    if (typeof auditorData === 'object' && auditorData !== null) {
+      // Verificar si el nombre es un ID
+      const nombreReal = auditorData.nombre && !esIdNoNombre(auditorData.nombre) 
+        ? auditorData.nombre 
+        : 'Por asignar';
+      return {
+        nombre: nombreReal,
+        cargo: auditorData.cargo || tipoDefault,
+        iniciales: nombreReal !== 'Por asignar' ? generarIniciales(nombreReal) : 'PA',
+        tipoIdentificacion: auditorData.tipoIdentificacion || 'CC',
+        numeroIdentificacion: auditorData.numeroIdentificacion || ''
+      };
+    }
+    
+    // Si viene como string
+    if (typeof auditorData === 'string' && auditorData) {
+      // Verificar si es un ID
+      if (esIdNoNombre(auditorData)) {
+        // Buscar en la lista de auditores disponibles
+        if (auditoresDisponibles && auditoresDisponibles.length > 0) {
+          const auditorEncontrado = auditoresDisponibles.find(a => a.id === auditorData);
+          if (auditorEncontrado) {
+            return {
+              nombre: auditorEncontrado.nombre,
+              cargo: auditorEncontrado.cargo || tipoDefault,
+              iniciales: auditorEncontrado.iniciales || generarIniciales(auditorEncontrado.nombre),
+              tipoIdentificacion: 'CC',
+              numeroIdentificacion: ''
+            };
+          }
+        }
+        // ID no encontrado en la lista
+        return {
+          nombre: 'Por asignar',
+          cargo: tipoDefault,
+          iniciales: 'PA',
+          tipoIdentificacion: 'CC',
+          numeroIdentificacion: ''
+        };
       }
-    : {
-        nombre: auditoriaBackend.responsable || auditorLiderData || 'Por asignar',
-        cargo: 'Auditor Líder',
-        iniciales: generarIniciales(auditoriaBackend.responsable || auditorLiderData || ''),
+      
+      // Es un nombre real
+      return {
+        nombre: auditorData,
+        cargo: tipoDefault,
+        iniciales: generarIniciales(auditorData),
         tipoIdentificacion: 'CC',
         numeroIdentificacion: ''
       };
+    }
+    
+    // Fallback
+    return {
+      nombre: 'Por asignar',
+      cargo: tipoDefault,
+      iniciales: 'PA',
+      tipoIdentificacion: 'CC',
+      numeroIdentificacion: ''
+    };
+  };
+
+  // Construir personas de auditores
+  const auditorLider = resolverAuditor(
+    auditoriaBackend.auditorLider || auditoriaBackend.responsable,
+    'Auditor Líder'
+  );
   
-  // Construir persona del auditor asignado (puede venir como objeto o string)
-  const auditorAsignadoData = auditoriaBackend.auditorAsignado;
-  const auditorAsignado: Persona = typeof auditorAsignadoData === 'object' && auditorAsignadoData !== null
-    ? {
-        nombre: auditorAsignadoData.nombre || 'Por asignar',
-        cargo: auditorAsignadoData.cargo || 'Auditor',
-        iniciales: auditorAsignadoData.iniciales || generarIniciales(auditorAsignadoData.nombre || ''),
-        tipoIdentificacion: auditorAsignadoData.tipoIdentificacion || 'CC',
-        numeroIdentificacion: auditorAsignadoData.numeroIdentificacion || ''
-      }
-    : {
-        nombre: auditorAsignadoData || 'Por asignar',
-        cargo: 'Auditor',
-        iniciales: generarIniciales(auditorAsignadoData || ''),
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: ''
-      };
+  const auditorAsignado = resolverAuditor(
+    auditoriaBackend.auditorAsignado,
+    'Auditor'
+  );
 
   // ⚡ IMPORTANTE: Usar estadoKanban que viene del drag & drop del backend
   const estado = mapearFaseAEstado(auditoriaBackend.estadoKanban, auditoriaBackend.fase, progreso);
@@ -361,44 +421,9 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   const [error, setError] = useState<string | null>(null);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Cargar auditorías del backend
+  // Cargar auditores del backend (se ejecuta primero)
   // ─────────────────────────────────────────────────────────────────────────
-  const fetchAuditorias = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      console.log('🔍 [useAuditoriasKanban] Iniciando carga de auditorías...');
-
-      // Obtener auditorías del backend
-      const response = await controlInternoService.getAuditorias();
-      
-      console.log('📦 [useAuditoriasKanban] Respuesta del backend:', response);
-      
-      if (Array.isArray(response)) {
-        const auditoriasTransformadas = response.map(transformarAuditoria);
-        console.log('🔄 [useAuditoriasKanban] Auditorías transformadas:', auditoriasTransformadas);
-        setAuditorias(auditoriasTransformadas);
-        console.log(`✅ [useAuditoriasKanban] ${auditoriasTransformadas.length} auditorías cargadas del backend`);
-      } else {
-        console.warn('[useAuditoriasKanban] Respuesta no es array:', response);
-        setAuditorias([]);
-      }
-    } catch (err) {
-      const mensaje = err instanceof Error ? err.message : 'Error al cargar auditorías';
-      console.error('[useAuditoriasKanban] Error:', mensaje, err);
-      setError(mensaje);
-      // En caso de error, mantener array vacío
-      setAuditorias([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Cargar auditores del backend
-  // ─────────────────────────────────────────────────────────────────────────
-  const fetchAuditores = useCallback(async () => {
+  const fetchAuditores = useCallback(async (): Promise<AuditorDisponible[]> => {
     try {
       const response = await auditoresApi.getAll();
       
@@ -412,18 +437,59 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
         }));
         setAuditores(auditoresTransformados);
         console.log(`✅ [useAuditoriasKanban] ${auditoresTransformados.length} auditores cargados`);
+        return auditoresTransformados;
       }
+      return [];
     } catch (err) {
       console.warn('[useAuditoriasKanban] Error cargando auditores:', err);
-      // No es crítico, se puede continuar sin auditores
+      return [];
     }
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Refetch (recargar datos)
+  // Cargar auditorías del backend (usa auditores para resolver nombres)
+  // ─────────────────────────────────────────────────────────────────────────
+  const fetchAuditorias = useCallback(async (auditoresDisponibles?: AuditorDisponible[]) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('🔍 [useAuditoriasKanban] Iniciando carga de auditorías...');
+
+      // Obtener auditorías del backend
+      const response = await controlInternoService.getAuditorias();
+      
+      console.log('📦 [useAuditoriasKanban] Respuesta del backend:', response);
+      
+      if (Array.isArray(response)) {
+        // ✅ MEJORADO: Pasar auditores disponibles para resolver nombres
+        const auditoriasTransformadas = response.map(aud => 
+          transformarAuditoria(aud, auditoresDisponibles)
+        );
+        console.log('🔄 [useAuditoriasKanban] Auditorías transformadas:', auditoriasTransformadas);
+        setAuditorias(auditoriasTransformadas);
+        console.log(`✅ [useAuditoriasKanban] ${auditoriasTransformadas.length} auditorías cargadas del backend`);
+      } else {
+        console.warn('[useAuditoriasKanban] Respuesta no es array:', response);
+        setAuditorias([]);
+      }
+    } catch (err) {
+      const mensaje = err instanceof Error ? err.message : 'Error al cargar auditorías';
+      console.error('[useAuditoriasKanban] Error:', mensaje, err);
+      setError(mensaje);
+      setAuditorias([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []); // ✅ FIX: Sin dependencias para evitar bucle infinito
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Refetch (recargar datos) - Primero auditores, luego auditorías
   // ─────────────────────────────────────────────────────────────────────────
   const refetch = useCallback(async () => {
-    await Promise.all([fetchAuditorias(), fetchAuditores()]);
+    // ✅ MEJORADO: Cargar auditores primero, luego auditorías con esos auditores
+    const auditoresCargados = await fetchAuditores();
+    await fetchAuditorias(auditoresCargados);
   }, [fetchAuditorias, fetchAuditores]);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -478,16 +544,19 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Cambiar fase de auditoría
+  // Cambiar estado Kanban de auditoría (para drag & drop)
+  // Ahora usa el endpoint directo de estado Kanban que soporta todos los estados
   // ─────────────────────────────────────────────────────────────────────────
-  const cambiarFase = useCallback(async (id: string, fase: string): Promise<boolean> => {
+  const cambiarFase = useCallback(async (id: string, estadoKanban: string): Promise<boolean> => {
     try {
-      await controlInternoService.updateFaseAuditoria(id, fase);
-      toast.success(`Fase actualizada a: ${fase}`);
+      // ✅ MEJORADO: Usar endpoint de estado Kanban que soporta todos los estados
+      await controlInternoService.updateEstadoKanbanAuditoria(id, estadoKanban);
+      toast.success(`Estado actualizado a: ${estadoKanban}`);
       await fetchAuditorias();
       return true;
     } catch (err) {
-      toast.error('Error al cambiar fase');
+      console.error('[useAuditoriasKanban] Error al cambiar estado:', err);
+      toast.error('Error al cambiar estado');
       return false;
     }
   }, [fetchAuditorias]);
@@ -633,11 +702,12 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   }, [auditorias, fetchAuditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Cargar datos al montar
+  // Cargar datos al montar (solo una vez)
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     refetch();
-  }, [refetch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ✅ FIX: Solo ejecutar al montar, no cuando refetch cambie
 
   return {
     auditorias,

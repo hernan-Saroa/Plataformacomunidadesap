@@ -1033,6 +1033,87 @@ export class AuditoriasService {
   }
 
   /**
+   * Actualiza el estado Kanban de una auditoría (para drag & drop del frontend)
+   * Acepta tanto valores en español como normalizados
+   */
+  async updateEstadoKanban(id: string, estadoKanbanInput: string): Promise<Auditoria> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id } });
+    if (!auditoria) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada`);
+    }
+    
+    // Guardar estado anterior para el historial
+    const estadoAnterior = auditoria.estadoKanban;
+    
+    // Normalizar el estado recibido del frontend
+    const estadoNormalizado = estadoKanbanInput.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    
+    // Mapear al enum EstadoKanban
+    let nuevoEstadoKanban: EstadoKanban;
+    if (estadoNormalizado.includes('plan anual') || estadoNormalizado === 'plan-anual') {
+      nuevoEstadoKanban = EstadoKanban.PLAN_ANUAL;
+    } else if (estadoNormalizado === 'planeacion' || estadoNormalizado === 'planificacion') {
+      nuevoEstadoKanban = EstadoKanban.PLANEACION;
+    } else if (estadoNormalizado === 'ejecucion' || estadoNormalizado.includes('curso')) {
+      nuevoEstadoKanban = EstadoKanban.EJECUCION;
+    } else if (estadoNormalizado === 'comunicacion' || estadoNormalizado.includes('informe') || estadoNormalizado.includes('revision')) {
+      nuevoEstadoKanban = EstadoKanban.COMUNICACION;
+    } else if (estadoNormalizado === 'seguimiento') {
+      nuevoEstadoKanban = EstadoKanban.SEGUIMIENTO;
+    } else if (estadoNormalizado === 'finalizada' || estadoNormalizado.includes('completad') || estadoNormalizado.includes('cerrad')) {
+      nuevoEstadoKanban = EstadoKanban.FINALIZADA;
+    } else {
+      // Por defecto, intentar usar el valor tal como viene si coincide con el enum
+      const estadoDirecto = Object.values(EstadoKanban).find(
+        e => e.toLowerCase() === estadoNormalizado || e === estadoKanbanInput
+      );
+      nuevoEstadoKanban = estadoDirecto || EstadoKanban.PLANEACION;
+    }
+    
+    // Actualizar el estado
+    auditoria.estadoKanban = nuevoEstadoKanban;
+    
+    // Sincronizar la fase del backend (para compatibilidad)
+    const estadoToFase: Record<EstadoKanban, FaseAuditoria> = {
+      [EstadoKanban.PLAN_ANUAL]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.PLANEACION]: FaseAuditoria.PLANEACION,
+      [EstadoKanban.EJECUCION]: FaseAuditoria.EN_CURSO,
+      [EstadoKanban.COMUNICACION]: FaseAuditoria.REVISION,
+      [EstadoKanban.SEGUIMIENTO]: FaseAuditoria.COMPLETADA,
+      [EstadoKanban.FINALIZADA]: FaseAuditoria.COMPLETADA,
+    };
+    auditoria.fase = estadoToFase[nuevoEstadoKanban];
+    
+    // Si se finaliza, asegurar progreso al 100%
+    if (nuevoEstadoKanban === EstadoKanban.FINALIZADA) {
+      auditoria.progreso = 100;
+    }
+
+    const saved = await this.auditoriaRepository.save(auditoria);
+    
+    // ✅ Registrar en el historial
+    const ahora = new Date();
+    const fecha = ahora.toISOString().split('T')[0];
+    const hora = ahora.toTimeString().slice(0, 5);
+
+    const historial = new HistorialAuditoria();
+    historial.auditoriaId = id;
+    historial.tipoEvento = TipoEvento.CAMBIO_ESTADO;
+    historial.fecha = new Date(fecha);
+    historial.hora = hora;
+    historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+    historial.accion = 'Cambio de estado (Kanban)';
+    historial.descripcion = `Auditoría ${auditoria.codigo} cambió de "${estadoAnterior}" a "${nuevoEstadoKanban}"`;
+    historial.estadoAnterior = estadoAnterior || undefined;
+    historial.estadoNuevo = nuevoEstadoKanban;
+
+    await this.historialRepository.save(historial);
+    
+    // Serializar fechas para evitar problemas de zona horaria
+    return this.serializeAuditoria(saved) as any;
+  }
+
+  /**
    * Incrementa el contador de hallazgos
    */
   async incrementarHallazgos(id: string): Promise<Auditoria> {
@@ -2540,24 +2621,44 @@ export class AuditoriasService {
   }
 
   /**
-   * Obtiene todas las personas de auth.personas que pueden ser auditores
-   * Retorna la lista completa para usar en selectores
+   * Obtiene personas que tienen roles de Control Interno y pueden ser auditores
+   * Solo muestra usuarios con roles: JEFE_OCI, JEFE_CONTROL_INTERNO, AUDITOR_LIDER, 
+   * CONTROL_INTERNO, PROFESIONAL_AUDITOR, AUXILIAR_AUDITORIA
    */
   async obtenerPersonasDisponibles(): Promise<any[]> {
     try {
+      // Roles de Control Interno válidos para ser auditores
+      const rolesControlInterno = [
+        'JEFE_OCI',
+        'JEFE_CONTROL_INTERNO', 
+        'AUDITOR_LIDER',
+        'CONTROL_INTERNO',
+        'PROFESIONAL_AUDITOR',
+        'AUXILIAR_AUDITORIA'
+      ];
+
       const personas = await this.auditoriaRepository.query(
-        `SELECT 
-          id_tercero,
-          num_identificacion,
-          tip_identificacion,
-          nom_largo,
-          nom_tercero,
-          pri_apellido,
-          seg_apellido,
-          dir_email
-         FROM auth.personas 
-         WHERE id_tercero IS NOT NULL
-         ORDER BY nom_largo ASC`
+        `SELECT DISTINCT
+          p.id_tercero,
+          p.num_identificacion,
+          p.tip_identificacion,
+          p.nom_largo,
+          p.nom_tercero,
+          p.pri_apellido,
+          p.seg_apellido,
+          p.dir_email,
+          r.name as rol_nombre,
+          r.code as rol_code
+         FROM auth.personas p
+         INNER JOIN auth."user" u ON u.id_tercero = p.id_tercero
+         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         INNER JOIN auth.role r ON r.id = ur.id_rol
+         WHERE r.code = ANY($1)
+           AND ur.is_active = true
+           AND u.is_active = true
+           AND p.id_tercero IS NOT NULL
+         ORDER BY p.nom_largo ASC`,
+        [rolesControlInterno]
       );
 
       return personas.map((p: any) => ({
@@ -2568,9 +2669,10 @@ export class AuditoriasService {
         tipoIdentificacion: p.tip_identificacion || 'CC',
         numeroIdentificacion: p.num_identificacion || '',
         email: p.dir_email || '',
-        cargo: 'Auditor', // Por defecto, se puede ajustar según rol
+        cargo: p.rol_nombre || 'Auditor',
+        rolCode: p.rol_code || '',
         especialidad: 'General',
-        auditoriasConducto: 0, // Se puede calcular en el futuro
+        auditoriasConducto: 0,
         disponibilidad: 'Disponible'
       }));
     } catch (error) {

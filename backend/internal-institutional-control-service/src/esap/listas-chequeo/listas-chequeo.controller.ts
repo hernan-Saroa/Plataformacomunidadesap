@@ -18,6 +18,32 @@ import { UpdateListaChequeoDto } from './dto/update-lista-chequeo.dto';
 export class ListasChequeoController {
   constructor(private readonly listasChequeoService: ListasChequeoService) {}
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // RUTAS ESPECÍFICAS (deben ir ANTES de las rutas con :id genérico)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /listas-chequeo/auditoria/:auditoriaId
+   * Obtener listas de chequeo vinculadas a una auditoría
+   */
+  @Get('auditoria/:auditoriaId')
+  getByAuditoria(@Param('auditoriaId') auditoriaId: string) {
+    return this.listasChequeoService.findByAuditoria(auditoriaId);
+  }
+
+  /**
+   * POST /listas-chequeo/aplicar
+   * Aplicar una lista a una auditoría
+   */
+  @Post('aplicar')
+  aplicarLista(@Body() data: { listaChequeoId: string; auditoriaId: string; aplicadoPor: string }) {
+    return this.listasChequeoService.aplicarAuditoria(data);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // RUTAS GENERALES DE LISTAS
+  // ════════════════════════════════════════════════════════════════════════════
+
   /**
    * GET /listas-chequeo
    * Obtener todas las listas de chequeo
@@ -29,21 +55,21 @@ export class ListasChequeoController {
   }
 
   /**
-   * GET /listas-chequeo/:id
-   * Obtener una lista de chequeo por ID
-   */
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.listasChequeoService.findOne(id);
-  }
-
-  /**
    * POST /listas-chequeo
    * Crear una nueva lista de chequeo
    */
   @Post()
   create(@Body() createDto: CreateListaChequeoDto) {
     return this.listasChequeoService.create(createDto);
+  }
+
+  /**
+   * GET /listas-chequeo/:id
+   * Obtener una lista de chequeo por ID
+   */
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.listasChequeoService.findOne(id);
   }
 
   /**
@@ -72,5 +98,40 @@ export class ListasChequeoController {
   @Post(':id/restore')
   restore(@Param('id') id: string) {
     return this.listasChequeoService.restore(id);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ENDPOINTS DE ITEMS
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * GET /listas-chequeo/:id/items
+   * Obtener los items de una lista
+   */
+  @Get(':id/items')
+  getItems(@Param('id') id: string) {
+    return this.listasChequeoService.getItems(id);
+  }
+
+  /**
+   * POST /listas-chequeo/:id/items
+   * Agregar un item a una lista
+   */
+  @Post(':id/items')
+  addItem(@Param('id') id: string, @Body() itemData: any) {
+    return this.listasChequeoService.addItem(id, itemData);
+  }
+
+  /**
+   * PATCH /listas-chequeo/:id/items/:itemId
+   * Actualizar un item de una lista (completar/pendiente)
+   */
+  @Patch(':id/items/:itemId')
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() updateData: { completado?: boolean; responsable?: string; fechaCompletado?: string; observaciones?: string }
+  ) {
+    return this.listasChequeoService.updateItem(id, itemId, updateData);
   }
 }

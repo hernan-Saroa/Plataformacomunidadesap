@@ -172,21 +172,39 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     ? lista.items.map((it: any) => ({
         id: it?.id || `item-${Date.now()}`,
         texto: it?.texto || it?.pregunta || '',
-        completado: false
+        completado: it?.completado || false
       }))
     : [];
+  
+  // Mapear tipo del backend a etapaKanban del frontend
+  const tipoToEtapa: Record<string, EtapaKanban> = {
+    'planeacion': 'PLANEACION',
+    'PLANEACION': 'PLANEACION',
+    'ejecucion': 'EJECUCION',
+    'EJECUCION': 'EJECUCION',
+    'comunicacion': 'EJECUCION', // Comunicación se mapea a Ejecución
+    'COMUNICACION': 'EJECUCION',
+    'seguimiento': 'SEGUIMIENTO',
+    'SEGUIMIENTO': 'SEGUIMIENTO',
+    'cierre': 'CIERRE',
+    'CIERRE': 'CIERRE',
+  };
+  const etapa = tipoToEtapa[lista?.tipo] || tipoToEtapa[lista?.etapaKanban] || 'PLANEACION';
+
   return {
     id: lista?.id || `lista-${Date.now()}`,
     nombre: lista?.nombre || 'Lista sin nombre',
     descripcion: lista?.descripcion || '',
-    etapaKanban: ((lista?.tipo || 'planeacion').toString().toUpperCase() as EtapaKanban),
+    etapaKanban: etapa,
     items,
-    documentosAdjuntos: [],
-    creadoPor: lista?.createdBy || 'Sistema',
-    fechaCreacion: lista?.createdAt || new Date().toISOString(),
-    ultimaModificacion: lista?.updatedAt || new Date().toISOString(),
-    completitud: 0,
-    activa: lista?.activa !== false
+    documentosAdjuntos: lista?.documentosAdjuntos || [],
+    creadoPor: lista?.creadoPor || lista?.createdBy || 'Sistema',
+    fechaCreacion: lista?.createdAt || lista?.fechaCreacion || new Date().toISOString(),
+    ultimaModificacion: lista?.updatedAt || lista?.ultimaModificacion || new Date().toISOString(),
+    completitud: lista?.completitud || (items.length > 0 ? Math.round(items.filter((i: any) => i.completado).length / items.length * 100) : 0),
+    activa: lista?.activa !== false,
+    auditoriaId: lista?.auditoriaId,
+    auditoriaCodigoNombre: lista?.auditoriaCodigoNombre
   };
 };
 
@@ -714,10 +732,67 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [listaSeleccionada, setListaSeleccionada] = useState<ListaChequeo | null>(null);
+  const [listaAEditar, setListaAEditar] = useState<ListaChequeo | null>(null);
+  const [listaAEliminar, setListaAEliminar] = useState<ListaChequeo | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
   useEffect(() => {
     setListas(listasIniciales || []);
   }, [listasIniciales]);
+
+  // ✅ ELIMINAR LISTA DE CHEQUEO (Backend conectado)
+  const handleEliminarLista = async () => {
+    if (!listaAEliminar) return;
+    setEliminando(true);
+    try {
+      await controlInternoService.deleteListaChequeo(listaAEliminar.id);
+      setListas(prev => prev.filter(l => l.id !== listaAEliminar.id));
+      toast.success('Lista eliminada exitosamente', {
+        description: `"${listaAEliminar.nombre}" ha sido eliminada del sistema`
+      });
+      setListaAEliminar(null);
+    } catch (error) {
+      console.error('Error eliminando lista:', error);
+      toast.error('Error al eliminar la lista', {
+        description: 'No se pudo eliminar del backend. Intente nuevamente.'
+      });
+    } finally {
+      setEliminando(false);
+    }
+  };
+
+  // ✅ EDITAR LISTA DE CHEQUEO (Backend conectado)
+  const handleGuardarEdicion = async (listaEditada: Partial<ListaChequeo>) => {
+    if (!listaAEditar) return;
+    try {
+      const tipo =
+        listaEditada.etapaKanban === 'EJECUCION'
+          ? 'ejecucion'
+          : listaEditada.etapaKanban === 'COMUNICACION'
+          ? 'comunicacion'
+          : 'planeacion';
+
+      const actualizada = await controlInternoService.updateListaChequeo(listaAEditar.id, {
+        nombre: listaEditada.nombre,
+        descripcion: listaEditada.descripcion,
+        tipo,
+        activa: listaEditada.activa ?? true
+      });
+
+      setListas(prev => prev.map(l => 
+        l.id === listaAEditar.id ? mapApiListaToUI(actualizada) : l
+      ));
+      setListaAEditar(null);
+      toast.success('Lista actualizada exitosamente', {
+        description: `"${listaEditada.nombre}" guardada en backend`
+      });
+    } catch (error) {
+      console.error('Error actualizando lista:', error);
+      toast.error('Error al actualizar', {
+        description: 'No se pudo guardar los cambios. Intente nuevamente.'
+      });
+    }
+  };
 
   const listasFiltradas = listas.filter(lista => 
     filtroEtapa === 'TODOS' || lista.etapaKanban === filtroEtapa
@@ -763,22 +838,23 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           ? 'comunicacion'
           : 'planeacion';
 
+      // Generar código único para la lista
+      const codigoLista = `LC-${tipo.toUpperCase().substring(0, 4)}-${Date.now().toString().slice(-6)}`;
+
       const creadaApi = await controlInternoService.createListaChequeo({
+        codigo: codigoLista,
         nombre: listaCompleta.nombre,
-        descripcion: listaCompleta.descripcion,
+        descripcion: listaCompleta.descripcion || '',
         tipo,
         categoria: 'biblioteca',
+        activa: true,
         items: (listaCompleta.items || []).map((item, idx) => ({
-          id: item.id,
-          numero: idx + 1,
-          pregunta: item.texto,
-          criterio: '',
-          tipoRespuesta: 'cumple_no_cumple',
+          texto: item.texto,
+          categoria: 'General',
           obligatorio: true,
-          evidenciaRequerida: false
-        })),
-        estado: 'activa'
-      } as any);
+          orden: idx + 1
+        }))
+      });
 
       setListas(prev => [mapApiListaToUI(creadaApi), ...prev]);
       setMostrarModalCrear(false);
@@ -918,6 +994,8 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
             key={lista.id}
             lista={lista}
             onVer={() => setListaSeleccionada(lista)}
+            onEditar={(l) => setListaAEditar(l)}
+            onEliminar={(l) => setListaAEliminar(l)}
           />
         ))}
       </div>
@@ -964,6 +1042,63 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           onClose={() => setListaSeleccionada(null)}
         />
       )}
+
+      {/* ✅ MODAL EDITAR LISTA (reutiliza modal crear) */}
+      {listaAEditar && (
+        <ModalCrearListaChequeo
+          onClose={() => setListaAEditar(null)}
+          onCrear={handleGuardarEdicion}
+          documentosBiblioteca={documentosBiblioteca}
+          auditorias={auditorias}
+          listaEditar={listaAEditar}
+        />
+      )}
+
+      {/* ✅ MODAL CONFIRMAR ELIMINACIÓN */}
+      {listaAEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar Eliminación</h3>
+                <p className="text-sm text-gray-500">Esta acción no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-gray-700 mb-6">
+              ¿Está seguro de eliminar la lista de chequeo <strong>"{listaAEliminar.nombre}"</strong>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setListaAEliminar(null)}
+                disabled={eliminando}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEliminarLista}
+                disabled={eliminando}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {eliminando ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Eliminar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -975,15 +1110,17 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
 interface TarjetaListaChequeoProps {
   lista: ListaChequeo;
   onVer: () => void;
+  onEditar: (lista: ListaChequeo) => void;
+  onEliminar: (lista: ListaChequeo) => void;
 }
 
-function TarjetaListaChequeo({ lista, onVer }: TarjetaListaChequeoProps) {
+function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar }: TarjetaListaChequeoProps) {
   const colorEtapa = {
     'PLANEACION': { bg: 'bg-green-100', text: 'text-green-700' },
     'EJECUCION': { bg: 'bg-purple-100', text: 'text-purple-700' },
     'SEGUIMIENTO': { bg: 'bg-blue-100', text: 'text-blue-700' },
     'CIERRE': { bg: 'bg-red-100', text: 'text-red-700' }
-  }[lista.etapaKanban];
+  }[lista.etapaKanban] || { bg: 'bg-gray-100', text: 'text-gray-700' };
 
   const itemsCompletados = lista.items.filter(i => i.completado).length;
   const totalItems = lista.items.length;
@@ -1109,14 +1246,14 @@ function TarjetaListaChequeo({ lista, onVer }: TarjetaListaChequeoProps) {
             Ver Detalle
           </button>
           <button
-            onClick={() => toast.info('✏️ Editando lista de chequeo...')}
+            onClick={() => onEditar(lista)}
             className="sm:flex-shrink-0 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
           >
             <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="sm:hidden">Editar</span>
           </button>
           <button
-            onClick={() => toast.success('🗑️ Lista de chequeo eliminada')}
+            onClick={() => onEliminar(lista)}
             className="sm:flex-shrink-0 px-3 sm:px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
           >
             <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1174,19 +1311,21 @@ interface ModalCrearListaChequeoProps {
   onCrear: (lista: Partial<ListaChequeo>) => void;
   documentosBiblioteca: DocumentoBiblioteca[];
   auditorias: any[]; // Auditorías del Plan Anual
+  listaEditar?: ListaChequeo; // ✅ Para modo edición
 }
 
-function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias }: ModalCrearListaChequeoProps) {
-  const [nombre, setNombre] = useState('');
-  const [descripcion, setDescripcion] = useState('');
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>('PLANEACION');
-  const [items, setItems] = useState<ItemChequeo[]>([]);
+function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias, listaEditar }: ModalCrearListaChequeoProps) {
+  const modoEdicion = !!listaEditar;
+  const [nombre, setNombre] = useState(listaEditar?.nombre || '');
+  const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
+  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(listaEditar?.etapaKanban || 'PLANEACION');
+  const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
   
   // ✅ VINCULACIÓN CON AUDITORÍAS OCIG
-  const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState('');
-  const [fasesSeleccionadas, setFasesSeleccionadas] = useState({
+  const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(listaEditar?.auditoriaId || '');
+  const [fasesSeleccionadas, setFasesSeleccionadas] = useState(listaEditar?.fasesImpactadas || {
     planeacion: false,
     ejecucion: false,
     comunicacion: false,
@@ -1194,8 +1333,8 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   });
   
   // ✅ LEGACY: Configuración de auditoría (mantener compatibilidad)
-  const [etapaProceso, setEtapaProceso] = useState('');
-  const [auditoriaAsignada, setAuditoriaAsignada] = useState('');
+  const [etapaProceso, setEtapaProceso] = useState(listaEditar?.etapaProceso || '');
+  const [auditoriaAsignada, setAuditoriaAsignada] = useState(listaEditar?.auditoriaAsignada || '');
 
   const handleAgregarItem = () => {
     if (!nuevoItemTexto.trim()) return;
@@ -1313,9 +1452,13 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
         <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sm:p-6 rounded-t-xl">
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
-              <h2 className="text-xl sm:text-2xl font-black">Nueva Lista de Chequeo</h2>
+              <h2 className="text-xl sm:text-2xl font-black">
+                {modoEdicion ? 'Editar Lista de Chequeo' : 'Nueva Lista de Chequeo'}
+              </h2>
               <p className="text-xs sm:text-sm text-blue-100 mt-1">
-                Crea una lista de verificación personalizada para tus auditorías
+                {modoEdicion 
+                  ? 'Modifica los datos de la lista de verificación'
+                  : 'Crea una lista de verificación personalizada para tus auditorías'}
               </p>
             </div>
             <button
@@ -1660,7 +1803,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             className="w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-sm sm:text-base"
           >
             <Save className="w-4 h-4 sm:w-5 sm:h-5" />
-            Crear Lista de Chequeo
+            {modoEdicion ? 'Guardar Cambios' : 'Crear Lista de Chequeo'}
           </button>
         </div>
       </motion.div>

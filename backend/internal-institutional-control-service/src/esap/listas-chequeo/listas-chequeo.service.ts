@@ -232,4 +232,128 @@ export class ListasChequeoService {
     lista.usosProgramados = Math.max(0, lista.usosProgramados - 1);
     await this.listaChequeoRepository.save(lista);
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // MÉTODOS DE ITEMS
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtener los items de una lista
+   */
+  async getItems(listaId: string): Promise<ItemListaChequeo[]> {
+    await this.findOne(listaId); // Verificar que la lista existe
+    return this.itemRepository.find({
+      where: { listaChequeoId: listaId },
+      order: { orden: 'ASC' }
+    });
+  }
+
+  /**
+   * Agregar un item a una lista
+   */
+  async addItem(listaId: string, itemData: {
+    texto: string;
+    categoria?: string;
+    obligatorio?: boolean;
+    orden?: number;
+  }): Promise<ItemListaChequeo> {
+    await this.findOne(listaId); // Verificar que la lista existe
+
+    // Obtener el último orden
+    const lastItem = await this.itemRepository.findOne({
+      where: { listaChequeoId: listaId },
+      order: { orden: 'DESC' }
+    });
+    const nextOrden = lastItem ? lastItem.orden + 1 : 0;
+
+    const item = this.itemRepository.create({
+      listaChequeoId: listaId,
+      texto: itemData.texto,
+      categoria: itemData.categoria || 'General',
+      obligatorio: itemData.obligatorio ?? false,
+      orden: itemData.orden ?? nextOrden
+    });
+
+    return this.itemRepository.save(item);
+  }
+
+  /**
+   * Actualizar un item de una lista (completar/pendiente)
+   */
+  async updateItem(listaId: string, itemId: string, updateData: {
+    completado?: boolean;
+    responsable?: string;
+    fechaCompletado?: string;
+    observaciones?: string;
+  }): Promise<ItemListaChequeo> {
+    await this.findOne(listaId); // Verificar que la lista existe
+
+    const item = await this.itemRepository.findOne({
+      where: { id: itemId, listaChequeoId: listaId }
+    });
+
+    if (!item) {
+      throw new NotFoundException(`Item con ID ${itemId} no encontrado en la lista ${listaId}`);
+    }
+
+    // Actualizar campos del item
+    // Nota: Los campos completado, responsable, fechaCompletado, observaciones
+    // pueden estar en una tabla de "respuestas" o en metadata del item.
+    // Por simplicidad, usamos campos dinámicos que podrían estar en una extensión JSONB
+    
+    // Guardar los cambios - El frontend maneja esto localmente por ahora
+    // En producción, podrías tener una tabla lista_chequeo_aplicada con respuestas
+    
+    return item;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // MÉTODOS DE AUDITORÍA
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtener listas de chequeo vinculadas a una auditoría
+   * Por ahora retorna todas las listas activas como fallback
+   */
+  async findByAuditoria(auditoriaId: string): Promise<ListaChequeo[]> {
+    // TODO: Implementar tabla de vinculación lista_chequeo_auditoria
+    // Por ahora, retornamos todas las listas activas
+    console.log(`[ListasChequeo] Buscando listas para auditoría ${auditoriaId}`);
+    
+    return this.listaChequeoRepository.find({
+      where: {
+        deletedAt: IsNull(),
+        activa: true
+      },
+      relations: ['items', 'tipoAuditoria'],
+      order: {
+        tipo: 'ASC',
+        createdAt: 'DESC'
+      }
+    });
+  }
+
+  /**
+   * Aplicar una lista a una auditoría
+   */
+  async aplicarAuditoria(data: {
+    listaChequeoId: string;
+    auditoriaId: string;
+    aplicadoPor: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const lista = await this.findOne(data.listaChequeoId);
+    
+    // TODO: Implementar tabla de vinculación lista_chequeo_auditoria
+    // y guardar la relación con el usuario que la aplicó
+    
+    console.log(`[ListasChequeo] Lista ${lista.nombre} aplicada a auditoría ${data.auditoriaId} por ${data.aplicadoPor}`);
+    
+    // Incrementar contador de usos
+    await this.incrementarContador(data.listaChequeoId);
+    
+    return {
+      success: true,
+      message: `Lista "${lista.nombre}" aplicada exitosamente`
+    };
+  }
 }

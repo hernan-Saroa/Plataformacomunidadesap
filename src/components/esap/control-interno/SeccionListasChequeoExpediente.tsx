@@ -22,7 +22,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckSquare, ChevronDown, ChevronRight, CheckCircle2, Circle,
@@ -30,6 +30,7 @@ import {
   AlertCircle, Calendar, User, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -71,167 +72,50 @@ interface SeccionListasChequeoExpedienteProps {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK (en producción vendrían del backend)
+// FUNCIÓN PARA MAPEAR DATOS DEL BACKEND AL FORMATO DE UI
 // ════════════════════════════════════════════════════════════════════════════
 
-const LISTAS_CHEQUEO_MOCK: ListaChequeo[] = [
-  {
-    id: 'lista-plan-001',
-    nombre: 'Plan Anual - Programación de Auditoría',
-    descripcion: 'Verificación de inclusión en el Plan Anual de Auditorías',
-    etapaKanban: 'Plan Anual',
-    items: [
-      {
-        id: 'item-pa-001',
-        texto: 'Verificar aprobación del Plan Anual por el Comité de Coordinación',
-        completado: false
-      },
-      {
-        id: 'item-pa-002',
-        texto: 'Confirmar inclusión de la auditoría en el cronograma aprobado',
-        completado: false
-      },
-      {
-        id: 'item-pa-003',
-        texto: 'Validar disponibilidad de recursos (personal, presupuesto)',
-        completado: false
-      }
-    ],
-    documentosAdjuntos: [],
-    completitud: 0,
-    activa: true
-  },
-  {
-    id: 'lista-001',
-    nombre: 'Planeación - Auditoría Financiera',
-    descripcion: 'Checklist completo para la fase de planeación de auditorías financieras',
-    etapaKanban: 'Planeación',
-    items: [
-      {
-        id: 'item-001',
-        texto: 'Revisar Programa Anual de Auditoría aprobado',
-        completado: true,
-        responsable: 'Ana María López',
-        fechaCompletado: '2026-02-12',
-        observaciones: 'Programa aprobado por el Comité'
-      },
-      {
-        id: 'item-002',
-        texto: 'Elaborar matriz de riesgos del proceso',
-        completado: true,
-        responsable: 'Ana María López',
-        fechaCompletado: '2026-02-13'
-      },
-      {
-        id: 'item-003',
-        texto: 'Solicitar documentación al área auditada',
-        completado: false,
-        responsable: 'Juan Pablo García'
-      },
-      {
-        id: 'item-004',
-        texto: 'Definir muestra de auditoría',
-        completado: false
-      },
-      {
-        id: 'item-005',
-        texto: 'Elaborar cronograma detallado de actividades',
-        completado: false
-      }
-    ],
-    documentosAdjuntos: [
-      {
-        documentoBibliotecaId: 'doc-001',
-        nombreDocumento: 'Plantilla Programa Anual de Auditoría',
-        diligenciado: true,
-        archivoSubidoUrl: '/uploads/programa-anual-2026.docx',
-        fechaSubida: '2026-02-12'
-      },
-      {
-        documentoBibliotecaId: 'doc-005',
-        nombreDocumento: 'Matriz de Riesgos',
-        diligenciado: true,
-        archivoSubidoUrl: '/uploads/matriz-riesgos-gestion-financiera.xlsx',
-        fechaSubida: '2026-02-13'
-      }
-    ],
-    completitud: 40,
-    activa: true
-  },
-  {
-    id: 'lista-002',
-    nombre: 'Ejecución - Levantamiento de Información',
-    descripcion: 'Lista de verificación para la fase de ejecución y levantamiento de información',
-    etapaKanban: 'Ejecución',
-    items: [
-      {
-        id: 'item-005',
-        texto: 'Enviar oficio de apertura al responsable del proceso',
-        completado: true,
-        responsable: 'Carlos Mendoza',
-        fechaCompletado: '2026-02-11'
-      },
-      {
-        id: 'item-006',
-        texto: 'Realizar entrevistas con personal clave',
-        completado: false,
-        responsable: 'Laura Rodríguez'
-      },
-      {
-        id: 'item-007',
-        texto: 'Aplicar pruebas de cumplimiento',
-        completado: false
-      },
-      {
-        id: 'item-008',
-        texto: 'Documentar hallazgos preliminares',
-        completado: false
-      }
-    ],
-    documentosAdjuntos: [
-      {
-        documentoBibliotecaId: 'doc-003',
-        nombreDocumento: 'Oficio de Apertura de Auditoría',
-        diligenciado: true,
-        archivoSubidoUrl: '/uploads/oficio-apertura-aud-2026-01.docx',
-        fechaSubida: '2026-02-11'
-      }
-    ],
-    completitud: 25,
-    activa: true
-  },
-  {
-    id: 'lista-003',
-    nombre: 'Comunicación - Informe Final',
-    descripción: 'Lista para preparación y envío del informe final de auditoría',
-    etapaKanban: 'Comunicación',
-    items: [
-      {
-        id: 'item-009',
-        texto: 'Elaborar informe preliminar',
-        completado: false
-      },
-      {
-        id: 'item-010',
-        texto: 'Enviar informe preliminar para controversia',
-        completado: false
-      },
-      {
-        id: 'item-011',
-        texto: 'Consolidar observaciones del área auditada',
-        completado: false
-      },
-      {
-        id: 'item-012',
-        texto: 'Elaborar informe final',
-        completado: false
-      }
-    ],
-    documentosAdjuntos: [],
-    completitud: 0,
-    activa: true
-  }
-];
+function mapApiListaToExpediente(apiLista: any): ListaChequeo {
+  // Mapear tipo del backend a etapaKanban del frontend
+  const tipoToEtapa: Record<string, EtapaKanban> = {
+    'planeacion': 'Planeación',
+    'ejecucion': 'Ejecución',
+    'comunicacion': 'Comunicación',
+    'seguimiento': 'Seguimiento',
+    'plan_anual': 'Plan Anual'
+  };
+
+  const items: ItemChequeo[] = (apiLista.items || []).map((item: any, idx: number) => ({
+    id: item.id?.toString() || `item-${idx}`,
+    texto: item.texto || item.nombre || '',
+    completado: item.completado || item.checked || false,
+    responsable: item.responsable || item.usuario_completado || undefined,
+    fechaCompletado: item.fecha_completado || item.fechaCompletado || undefined,
+    observaciones: item.observaciones || undefined
+  }));
+
+  const documentosAdjuntos: DocumentoAdjunto[] = (apiLista.documentos || []).map((doc: any) => ({
+    documentoBibliotecaId: doc.id?.toString() || '',
+    nombreDocumento: doc.nombre || doc.nombreDocumento || '',
+    diligenciado: doc.diligenciado || doc.completado || false,
+    archivoSubidoUrl: doc.url || doc.archivoUrl || undefined,
+    fechaSubida: doc.fecha_subida || doc.fechaSubida || undefined
+  }));
+
+  const itemsCompletados = items.filter(i => i.completado).length;
+  const completitud = items.length > 0 ? Math.round((itemsCompletados / items.length) * 100) : 0;
+
+  return {
+    id: apiLista.id?.toString() || '',
+    nombre: apiLista.nombre || '',
+    descripcion: apiLista.descripcion || '',
+    etapaKanban: tipoToEtapa[apiLista.tipo] || 'Planeación',
+    items,
+    documentosAdjuntos,
+    completitud,
+    activa: apiLista.activa !== false
+  };
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -241,13 +125,43 @@ export function SeccionListasChequeoExpediente({
   auditoriaId,
   etapaActual
 }: SeccionListasChequeoExpedienteProps) {
-  const [listas, setListas] = useState<ListaChequeo[]>(LISTAS_CHEQUEO_MOCK);
+  const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ✅ CARGAR LISTAS DE CHEQUEO VINCULADAS A LA AUDITORÍA
+  useEffect(() => {
+    const cargarListasAuditoria = async () => {
+      if (!auditoriaId) {
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
+        const listasMapeadas = (listasApi || []).map(mapApiListaToExpediente);
+        setListas(listasMapeadas);
+        console.log(`[ListasChequeo] ✅ Cargadas ${listasMapeadas.length} listas para auditoría ${auditoriaId}`);
+      } catch (error) {
+        console.error('[ListasChequeo] ❌ Error cargando listas:', error);
+        setLoadError('No se pudieron cargar las listas de chequeo');
+        // No mostrar toast para no saturar al usuario
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    cargarListasAuditoria();
+  }, [auditoriaId]);
 
   // Filtrar listas por la etapa actual
   const listasEtapaActual = listas.filter(lista => lista.etapaKanban === etapaActual);
 
-  const toggleItem = (listaId: string, itemId: string) => {
+  const toggleItem = async (listaId: string, itemId: string) => {
     // ✅ VALIDACIÓN: Solo permitir toggle si la lista pertenece a la etapa actual
     const lista = listas.find(l => l.id === listaId);
     if (!lista) return;
@@ -260,38 +174,108 @@ export function SeccionListasChequeoExpediente({
       return;
     }
 
-    setListas(prev => prev.map(lista => {
-      if (lista.id === listaId) {
-        const nuevosItems = lista.items.map(item => {
-          if (item.id === itemId) {
+    const item = lista.items.find(i => i.id === itemId);
+    if (!item) return;
+
+    const nuevoEstado = !item.completado;
+    const fechaCompletado = nuevoEstado ? new Date().toISOString().split('T')[0] : undefined;
+
+    // Actualizar UI optimistamente
+    setListas(prev => prev.map(l => {
+      if (l.id === listaId) {
+        const nuevosItems = l.items.map(i => {
+          if (i.id === itemId) {
             return {
-              ...item,
-              completado: !item.completado,
-              fechaCompletado: !item.completado ? new Date().toISOString().split('T')[0] : undefined,
-              responsable: !item.completado ? 'Usuario Actual' : item.responsable
+              ...i,
+              completado: nuevoEstado,
+              fechaCompletado,
+              responsable: nuevoEstado ? 'Usuario Actual' : i.responsable
             };
           }
-          return item;
+          return i;
         });
 
         const itemsCompletados = nuevosItems.filter(i => i.completado).length;
         const completitud = Math.round((itemsCompletados / nuevosItems.length) * 100);
 
-        toast.success(
-          nuevosItems.find(i => i.id === itemId)?.completado 
-            ? '✅ Item marcado como completado' 
-            : '⭕ Item marcado como pendiente'
-        );
-
-        return {
-          ...lista,
-          items: nuevosItems,
-          completitud
-        };
+        return { ...l, items: nuevosItems, completitud };
       }
-      return lista;
+      return l;
     }));
+
+    // Llamar al backend
+    try {
+      await controlInternoService.actualizarItemLista(listaId, itemId, {
+        completado: nuevoEstado,
+        fechaCompletado,
+        responsable: nuevoEstado ? 'Usuario Actual' : undefined
+      });
+
+      toast.success(
+        nuevoEstado 
+          ? '✅ Item marcado como completado' 
+          : '⭕ Item marcado como pendiente'
+      );
+    } catch (error) {
+      console.error('[ListasChequeo] Error actualizando item:', error);
+      // Revertir cambio en caso de error
+      setListas(prev => prev.map(l => {
+        if (l.id === listaId) {
+          const nuevosItems = l.items.map(i => {
+            if (i.id === itemId) {
+              return { ...i, completado: !nuevoEstado };
+            }
+            return i;
+          });
+          const itemsCompletados = nuevosItems.filter(i => i.completado).length;
+          const completitud = Math.round((itemsCompletados / nuevosItems.length) * 100);
+          return { ...l, items: nuevosItems, completitud };
+        }
+        return l;
+      }));
+      toast.error('Error al actualizar', {
+        description: 'No se pudo guardar el cambio. Intente nuevamente.'
+      });
+    }
   };
+
+  // Estado de carga
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-600 mx-auto mb-4 animate-spin" />
+          <h3 className="text-lg font-bold text-gray-900 mb-2">
+            Cargando listas de chequeo...
+          </h3>
+          <p className="text-gray-600">
+            Obteniendo listas vinculadas a esta auditoría
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Estado de error
+  if (loadError) {
+    return (
+      <div className="bg-white rounded-xl border-2 border-red-200 p-8">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-red-900 mb-2">
+            Error al cargar listas
+          </h3>
+          <p className="text-red-600 mb-4">{loadError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition-colors"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (listasEtapaActual.length === 0) {
     return (

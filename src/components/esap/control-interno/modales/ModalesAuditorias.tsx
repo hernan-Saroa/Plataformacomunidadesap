@@ -21,7 +21,7 @@
  * @date 30 Enero 2025
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, Save, Calendar, User, FileText, Clock, CheckCircle, 
   Target, AlertCircle, TrendingUp, Users, FolderOpen,
@@ -862,50 +862,77 @@ export function ModalDetalleAuditoria({ isOpen, onClose, auditoria }: ModalDetal
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 3. MODAL HISTORIAL - WORLD CLASS
+// 3. MODAL HISTORIAL - WORLD CLASS - ✅ CONECTADO AL BACKEND
 // ═════════════════════════════════════════════════════════════════════════
+
+interface EventoHistorial {
+  id: string | number;
+  accion: string;
+  usuario: string;
+  fecha: string;
+  tipo: 'success' | 'info' | 'warning' | 'error';
+  descripcion: string;
+}
 
 interface ModalHistorialProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
+  onLoadHistorial?: (auditoriaId: string) => Promise<any[]>;
 }
 
-export function ModalHistorial({ isOpen, onClose, auditoriaId }: ModalHistorialProps) {
-  const eventos = [
-    { 
-      id: 1, 
-      accion: 'Auditoría creada', 
-      usuario: 'Mario Bernal', 
-      fecha: '2025-01-15 10:00', 
-      tipo: 'success',
-      descripcion: 'Se creó la auditoría en el sistema OCIG'
-    },
-    { 
-      id: 2, 
-      accion: 'Equipo asignado', 
-      usuario: 'Mario Bernal', 
-      fecha: '2025-01-15 14:30', 
-      tipo: 'info',
-      descripcion: 'Se asignó el equipo auditor'
-    },
-    { 
-      id: 3, 
-      accion: 'Estado cambiado a Planeación', 
-      usuario: 'Catalina Rubio', 
-      fecha: '2025-01-20 09:00', 
-      tipo: 'warning',
-      descripcion: 'La auditoría pasó a fase de planeación'
-    },
-    { 
-      id: 4, 
-      accion: 'Documento adjunto', 
-      usuario: 'Fernando Ávila', 
-      fecha: '2025-01-22 11:30', 
-      tipo: 'info',
-      descripcion: 'Se adjuntó el plan de trabajo'
-    },
-  ];
+export function ModalHistorial({ isOpen, onClose, auditoriaId, onLoadHistorial }: ModalHistorialProps) {
+  const [eventos, setEventos] = useState<EventoHistorial[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ Cargar historial del backend cuando se abre el modal
+  useEffect(() => {
+    if (isOpen && auditoriaId && onLoadHistorial) {
+      cargarHistorial();
+    }
+  }, [isOpen, auditoriaId]);
+
+  const cargarHistorial = async () => {
+    if (!onLoadHistorial) return;
+    
+    setCargando(true);
+    setError(null);
+    try {
+      const data = await onLoadHistorial(auditoriaId);
+      // Mapear datos del backend al formato esperado
+      const eventosMapeados: EventoHistorial[] = (data || []).map((item: any, index: number) => ({
+        id: item.id || index,
+        accion: item.accion || item.action || 'Acción registrada',
+        usuario: item.usuario || item.user || item.nombreUsuario || 'Sistema',
+        fecha: item.fecha || item.createdAt || item.created_at || new Date().toISOString(),
+        tipo: mapearTipoEvento(item.tipo || item.type || item.tipoEvento),
+        descripcion: item.descripcion || item.description || item.detalle || ''
+      }));
+      setEventos(eventosMapeados);
+    } catch (err) {
+      console.error('Error cargando historial:', err);
+      setError('Error al cargar el historial');
+      setEventos([]);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Mapear tipos de evento del backend a tipos del UI
+  const mapearTipoEvento = (tipo: string): 'success' | 'info' | 'warning' | 'error' => {
+    const tipoLower = (tipo || '').toLowerCase();
+    if (tipoLower.includes('creat') || tipoLower.includes('aprob') || tipoLower.includes('complet') || tipoLower === 'success') {
+      return 'success';
+    }
+    if (tipoLower.includes('cambio') || tipoLower.includes('estado') || tipoLower === 'warning') {
+      return 'warning';
+    }
+    if (tipoLower.includes('error') || tipoLower.includes('rechaz')) {
+      return 'error';
+    }
+    return 'info';
+  };
 
   const headerIcon = <Clock className="w-5 h-5 text-[#003DA5]" />;
 
@@ -919,7 +946,39 @@ export function ModalHistorial({ isOpen, onClose, auditoriaId }: ModalHistorialP
       headerIcon={headerIcon}
     >
       <div className="space-y-4">
-        {eventos.map((evento, index) => (
+        {/* Estado de carga */}
+        {cargando && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-10 h-10 border-4 border-[#003DA5] border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-gray-600">Cargando historial...</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {!cargando && error && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+            <p className="text-red-600 font-medium">{error}</p>
+            <button 
+              onClick={cargarHistorial}
+              className="mt-4 px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {/* Sin eventos */}
+        {!cargando && !error && eventos.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Clock className="w-12 h-12 text-gray-400 mb-4" />
+            <p className="text-gray-600">No hay eventos en el historial</p>
+            <p className="text-sm text-gray-500 mt-2">Los cambios y acciones se registrarán aquí</p>
+          </div>
+        )}
+
+        {/* Lista de eventos */}
+        {!cargando && !error && eventos.map((evento, index) => (
           <motion.div
             key={evento.id}
             initial={{ opacity: 0, x: -20 }}
@@ -939,6 +998,8 @@ export function ModalHistorial({ isOpen, onClose, auditoriaId }: ModalHistorialP
                   ? 'bg-green-100 border-2 border-green-500'
                   : evento.tipo === 'warning'
                   ? 'bg-yellow-100 border-2 border-yellow-500'
+                  : evento.tipo === 'error'
+                  ? 'bg-red-100 border-2 border-red-500'
                   : 'bg-blue-100 border-2 border-blue-500'
               }`}
             >
@@ -948,6 +1009,8 @@ export function ModalHistorial({ isOpen, onClose, auditoriaId }: ModalHistorialP
                     ? 'text-green-600'
                     : evento.tipo === 'warning'
                     ? 'text-yellow-600'
+                    : evento.tipo === 'error'
+                    ? 'text-red-600'
                     : 'text-blue-600'
                 }`}
               />
