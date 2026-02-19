@@ -469,7 +469,8 @@ export class LaborCertificatePdfService {
       '[GRUPO]': grupoVariable,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dependenciaPadre,
+      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': includeSalary && salarioBase
@@ -964,3 +965,4 @@ export class LaborCertificatePdfService {
     return resultado.trim();
   }
 }
+

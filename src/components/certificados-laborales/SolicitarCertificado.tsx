@@ -164,6 +164,8 @@ export function SolicitarCertificado() {
       codCargo: cert.cod_cargo || cert.codCargo,
       codGrade: cert.cod_grade || cert.codGrade,
       templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
     return {

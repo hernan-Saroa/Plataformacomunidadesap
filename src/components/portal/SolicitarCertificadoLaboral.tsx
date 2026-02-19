@@ -298,6 +298,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       codCargo,
       codGrade,
       templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
@@ -393,7 +395,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location: cert.department || cert.position_location,
+        position_location:
+          cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '',
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -833,7 +840,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location: cert.department || cert.position_location,
+          position_location:
+            cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '',
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,

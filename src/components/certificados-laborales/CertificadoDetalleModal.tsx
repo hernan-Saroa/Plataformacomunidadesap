@@ -23,6 +23,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { copyToClipboard } from '../../utils/clipboard';
+import { formatCargoDisplay } from '../../utils/cargoFormatter';
 
 interface CertificadoDetalleModalProps {
   certificado: any;
@@ -46,6 +47,33 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     });
+
+  const cargoCalculado = formatCargoDisplay({
+    cargoSource:
+      certificado?.career_category ||
+      certificado?.careerCategory ||
+      certificado?.empleado?.cargo ||
+      certificado?.position_category ||
+      certificado?.positionCategory,
+    codCargo:
+      certificado?.cod_cargo ||
+      certificado?.codCargo ||
+      certificado?.empleado?.cod_cargo ||
+      certificado?.empleado?.codCargo,
+    codGrade:
+      certificado?.cod_grade ||
+      certificado?.codGrade ||
+      certificado?.empleado?.cod_grade ||
+      certificado?.empleado?.codGrade,
+    templateType: certificado?.templateType || certificado?.template_type,
+    includeCodeLabel: true,
+    codeLabel: 'Codigo',
+  });
+  const cargoMostrar =
+    certificado?.empleado?.cargo_calculado ||
+    cargoCalculado ||
+    certificado?.empleado?.cargo ||
+    'No disponible';
 
   const getEstadoBadge = (estado: string) => {
     const estilos = {
@@ -255,7 +283,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
                           </label>
                           <p className="text-gray-900 mt-1.5 flex items-center gap-1.5">
                             <Briefcase className="w-4 h-4 text-gray-400" />
-                            {certificado.empleado.cargo_calculado || certificado.empleado.cargo}
+                            {cargoMostrar}
                           </p>
                         </div>
                         <div>
