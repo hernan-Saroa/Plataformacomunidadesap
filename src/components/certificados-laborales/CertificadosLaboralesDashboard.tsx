@@ -192,6 +192,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cargoSource: cert.request?.career_category || cert.career_category || cert.position_category || '',
       codCargo: cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
       codGrade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+      observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,
       includeCodeLabel: true,
       codeLabel: 'Codigo',

@@ -20,6 +20,28 @@ const normalizarTextoBusqueda = (value?: string | null): string => {
     .trim();
 };
 
+const normalizarEncargo = (value?: string | null): 'E' | 'N' | null => {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === 'E' || normalized.startsWith('E')) return 'E';
+  if (normalized === 'N' || normalized.startsWith('N')) return 'N';
+  return null;
+};
+
+const agregarSufijoEncargo = (
+  cargo: string,
+  encargo: 'E' | 'N' | null,
+): string => {
+  const base = normalizarEspacios(cargo);
+  if (!base || base === 'N/A' || encargo !== 'E') {
+    return base;
+  }
+  if (/\bE$/i.test(base)) {
+    return base;
+  }
+  return `${base} E`;
+};
+
 export const esCargoDocente = (value?: string | null): boolean =>
   /\bdocen\w*\b|\bdoc\b/.test(normalizarTextoBusqueda(value));
 
@@ -30,6 +52,8 @@ interface FormatCargoDisplayOptions {
   templateType?: CargoTemplateType | null;
   includeCodeLabel?: boolean;
   codeLabel?: string;
+  observations?: string | null;
+  encargoFlag?: string | null;
 }
 
 export const formatCargoDisplay = ({
@@ -39,8 +63,11 @@ export const formatCargoDisplay = ({
   templateType,
   includeCodeLabel = false,
   codeLabel = 'Codigo',
+  observations,
+  encargoFlag,
 }: FormatCargoDisplayOptions): string => {
   const cargoRaw = normalizarEspacios(cargoSource);
+  const encargo = normalizarEncargo(observations ?? encargoFlag);
   const leadingMatch = cargoRaw.match(/^(\d+)\s+(.+)$/);
   const leadingCode = normalizarCodigo(leadingMatch?.[1]);
   let baseText = normalizarEspacios(leadingMatch ? leadingMatch[2] : cargoRaw);
@@ -118,5 +145,5 @@ export const formatCargoDisplay = ({
   }
 
   const cargo = normalizarEspacios(parts.join(' '));
-  return cargo || cargoRaw || 'N/A';
+  return agregarSufijoEncargo(cargo || cargoRaw || 'N/A', encargo);
 };

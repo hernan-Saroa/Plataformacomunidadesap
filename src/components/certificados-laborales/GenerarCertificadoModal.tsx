@@ -36,6 +36,7 @@ interface CertificadoLaboralListado {
   consecutivo: string;
   certificateHash?: string;
   qrCode?: string;
+  observations?: string;
   position_location?: string;
   department?: string;
   cod_cargo?: string;
@@ -326,6 +327,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             cert.request?.codGrade ||
             cert.cod_grade ||
             cert.codGrade,
+          observations: cert.request?.observations || cert.observations,
           templateType: templateTypeNormalizado,
           includeCodeLabel: true,
           codeLabel: 'Codigo',
@@ -378,6 +380,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           consecutivo: cert.certificate_number,
           certificateHash: cert.verification_code,
           qrCode: cert.verification_code,
+          observations: cert.observations || cert.request?.observations,
           position_location: normalizarTexto(grupoRaw),
           department: normalizarTexto(
             cert.department ||

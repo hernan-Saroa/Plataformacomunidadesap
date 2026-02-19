@@ -663,6 +663,7 @@ export class CertificatesService {
   async findCertificadoById(id: string) {
     const certificate = await this.certificateRepo.findOne({
       where: { id },
+      relations: ['request'],
     });
     if (!certificate) {
       throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
@@ -762,7 +763,11 @@ export class CertificatesService {
     });
 
     const saved = await this.certificateRepo.save(certificate);
-    return saved;
+    const savedWithRequest = await this.certificateRepo.findOne({
+      where: { id: saved.id },
+      relations: ['request'],
+    });
+    return savedWithRequest || saved;
   }
 
   // ============================================
@@ -1257,9 +1262,23 @@ export class CertificatesService {
     await this.validationRepo.save(validation);
 
     const historial = await this.obtenerHistorialValidacionesPorCertificado(certificate.id);
+    const requestContext = certificate.request_id
+      ? await this.requestRepo.findOne({ where: { id: certificate.request_id } })
+      : null;
+    const requestPayload = requestContext
+      ? {
+          observations: requestContext.observations,
+          cod_cargo: requestContext.cod_cargo,
+          cod_grade: requestContext.cod_grade,
+          department: requestContext.department,
+          position_location: requestContext.position_location,
+        }
+      : undefined;
 
     return {
       ...certificate,
+      observations: requestContext?.observations || undefined,
+      request: requestPayload,
       validation_history: historial,
       validation_count: historial.length,
     };
@@ -1423,6 +1442,7 @@ export class CertificatesService {
     // Verificar si ya tiene un certificado generado
     const certificadoExistente = await this.certificateRepo.findOne({
       where: { request_id: solicitud.id },
+      relations: ['request'],
     });
 
     if (certificadoExistente) {
@@ -1503,7 +1523,10 @@ export class CertificatesService {
         position_location: verificacion.solicitud.position_location,
         monthly_salary: verificacion.solicitud.monthly_salary,
         department: verificacion.solicitud.department,
+        cod_cargo: verificacion.solicitud.cod_cargo,
+        cod_grade: verificacion.solicitud.cod_grade,
         campus: verificacion.solicitud.campus,
+        observations: verificacion.solicitud.observations,
       },
     };
   }

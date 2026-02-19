@@ -150,6 +150,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           response?.codGrade ||
           response?.request?.cod_grade ||
           response?.request?.codGrade,
+        observations:
+          response?.request?.observations ||
+          response?.observations,
         templateType: response?.template_type || response?.templateType,
         includeCodeLabel: true,
         codeLabel: 'Codigo',

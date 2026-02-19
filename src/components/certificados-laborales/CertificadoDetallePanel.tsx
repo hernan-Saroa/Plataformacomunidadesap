@@ -58,6 +58,10 @@ interface CertificadoDetallePanelProps {
     campus?: string;
     cod_cargo?: string;
     cod_grade?: string;
+    observations?: string;
+    request?: {
+      observations?: string;
+    };
     technical_bonus?: number;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
@@ -123,6 +127,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       cargoSource: certificado.empleado.cargo,
       codCargo: certificado.cod_cargo,
       codGrade: certificado.cod_grade,
+      observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
       includeCodeLabel: true,
       codeLabel: 'Codigo',

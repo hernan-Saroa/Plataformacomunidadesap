@@ -65,6 +65,9 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
       certificado?.codGrade ||
       certificado?.empleado?.cod_grade ||
       certificado?.empleado?.codGrade,
+    observations:
+      certificado?.request?.observations ||
+      certificado?.observations,
     templateType: certificado?.templateType || certificado?.template_type,
     includeCodeLabel: true,
     codeLabel: 'Codigo',

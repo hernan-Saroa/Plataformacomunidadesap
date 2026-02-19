@@ -192,6 +192,25 @@ export class LaborCertificatePdfService {
       .trim();
   }
 
+  private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === 'E' || normalized.startsWith('E')) return 'E';
+    if (normalized === 'N' || normalized.startsWith('N')) return 'N';
+    return null;
+  }
+
+  private appendEncargoSuffix(cargo: string, encargoType: 'E' | 'N' | null): string {
+    const base = this.normalizeSpaces(cargo);
+    if (!base || base === 'N/A' || encargoType !== 'E') {
+      return base;
+    }
+    if (/\bE$/i.test(base)) {
+      return base;
+    }
+    return `${base} E`;
+  }
+
   private isZeroValue(value: string): boolean {
     return Boolean(value) && /^0+$/.test(value);
   }
@@ -204,9 +223,14 @@ export class LaborCertificatePdfService {
       templateType?: TemplateType;
       includeCodeLabel?: boolean;
       codeLabel?: string;
+      observations?: string | null;
+      encargoFlag?: string | null;
     },
   ): string {
     const careerRaw = this.normalizeSpaces(careerCategory);
+    const encargoType = this.normalizeEncargoType(
+      options?.observations ?? options?.encargoFlag,
+    );
     const leadingMatch = careerRaw.match(/^(\d+)\s+(.+)$/);
     const leadingCode = this.normalizeCodeValue(leadingMatch?.[1]);
     let baseText = this.normalizeSpaces(leadingMatch ? leadingMatch[2] : careerRaw);
@@ -292,7 +316,10 @@ export class LaborCertificatePdfService {
       parts.push(`Grado ${codGradeRaw || '0'}`);
     }
 
-    return this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A';
+    return this.appendEncargoSuffix(
+      this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A',
+      encargoType,
+    );
   }
 
   private async generateQrCodeDataUrl(value: string): Promise<string | null> {
@@ -403,6 +430,7 @@ export class LaborCertificatePdfService {
         templateType,
         includeCodeLabel: true,
         codeLabel: 'Codigo',
+        observations: requestObservations,
       }) ||
       cargoTexto ||
       tipoVinculacion ||
