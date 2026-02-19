@@ -813,6 +813,29 @@ class DisciplinaryService {
         formData.append('file', file);
         return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
+
+    // ==================== ASOCIACIONES ====================
+    
+    /**
+     * Asociar una noticia a un proceso disciplinario existente
+     */
+    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<DisciplinaryNews> {
+        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
+            procesoId,
+            justificacion
+        });
+    }
+
+    /**
+     * Asociar un proceso disciplinario a otro proceso
+     */
+    async asociarProcesoAProceso(procesoOrigenId: string, procesoDestinoId: string, tipoAsociacion: string, justificacion: string): Promise<DisciplinaryProcess> {
+        return apiClient.post<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${procesoOrigenId}/associate-process`, {
+            procesoDestinoId,
+            tipoAsociacion,
+            justificacion
+        });
+    }
 }
 
 const disciplinaryService = new DisciplinaryService();

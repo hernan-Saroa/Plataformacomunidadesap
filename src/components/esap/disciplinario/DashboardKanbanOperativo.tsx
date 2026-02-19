@@ -3026,7 +3026,7 @@ export function DashboardKanbanOperativo({
     setModalActivo('asociar-noticia-proceso');
   };
 
-  const handleConfirmarAsociacion = (noticiaId: string, procesoId: string, justificacion: string) => {
+  const handleConfirmarAsociacion = async (noticiaId: string, procesoId: string, justificacion: string) => {
     // Encontrar proceso y noticia
     const proceso = items.find(i => i.id === procesoId && i.tipo === 'proceso') as Proceso;
     const noticia = items.find(i => i.id === noticiaId && i.tipo === 'noticia') as Noticia;
@@ -3036,22 +3036,7 @@ export function DashboardKanbanOperativo({
       return;
     }
 
-    // En una implementación real, aquí se haría:
-    // 1. POST a /api/noticias/:noticiaId/asociar-proceso
-    // 2. Body: { procesoId, justificacion }
-    // 3. Se registra en historial del proceso
-    // 4. Se marca la noticia como asociada
-
-    console.log('Asociación registrada:', {
-      noticiaId,
-      noticiaNumero: noticia.numero,
-      procesoId,
-      procesoNumero: proceso.numeroProceso,
-      justificacion,
-      timestamp: new Date().toISOString()
-    });
-
-    // ✅ Actualizar la noticia con información del proceso asociado
+    // Actualizar la noticia con información del proceso asociado
     setItems(prev => prev.map(item => {
       if (item.id === noticiaId && item.tipo === 'noticia') {
         return {
@@ -3066,6 +3051,10 @@ export function DashboardKanbanOperativo({
       }
       return item;
     }));
+
+    toast.success('Noticia Asociada', {
+      description: `${noticia.numero} → ${proceso.numeroProceso}`
+    });
 
     // Cerrar modal
     setModalActivo(null);
@@ -3147,7 +3136,7 @@ export function DashboardKanbanOperativo({
     setModalActivo('asociar-proceso-proceso');
   };
 
-  const handleConfirmarAsociacionProcesoProceso = (procesoOrigenId: string, procesoDestinoId: string, justificacion: string, tipoAsociacion: 'conexo' | 'similar' | 'consolidado') => {
+  const handleConfirmarAsociacionProcesoProceso = async (procesoOrigenId: string, procesoDestinoId: string, justificacion: string, tipoAsociacion: 'conexo' | 'similar' | 'consolidado') => {
     if (!itemSeleccionado) return;
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -4636,9 +4625,10 @@ export function DashboardKanbanOperativo({
             />
           )}
 
-          {/* ✅ NUEVO: Modal Asociar Noticia a Proceso Existente */}
+          {/* ✅ NUEVO: Modal Asociar Noticia a Proceso Existente - Renderizado directo */}
           {modalActivo === 'asociar-noticia-proceso' && itemSeleccionado && (
             <ModalAsociarNoticiaProceso
+              key={`modal-asociar-noticia-proceso-${itemSeleccionado.id}`}
               isOpen={true}
               onClose={() => {
                 setModalActivo(null);
@@ -4650,9 +4640,10 @@ export function DashboardKanbanOperativo({
             />
           )}
 
-          {/* ✅ NUEVO: Modal Asociar Proceso a Proceso (estados post-Recepción) */}
+          {/* ✅ NUEVO: Modal Asociar Proceso a Proceso (estados post-Recepción) - Renderizado directo */}
           {modalActivo === 'asociar-proceso-proceso' && itemSeleccionado && (
             <ModalAsociarProcesoAProceso
+              key={`modal-asociar-proceso-proceso-${itemSeleccionado.id}`}
               isOpen={true}
               onClose={() => {
                 setModalActivo(null);
