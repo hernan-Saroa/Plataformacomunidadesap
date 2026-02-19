@@ -465,7 +465,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           )}
 
           {/* ✅ MAIN CONTENT - Flexbox Column */}
-          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '70px' : '0'}}>
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar
