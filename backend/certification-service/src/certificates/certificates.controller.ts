@@ -107,9 +107,47 @@ export class CertificatesController {
       typeof req.socket?.remoteAddress === 'string' ? req.socket.remoteAddress.trim() : '',
     ].filter(Boolean);
 
+    const parseSingleHeader = (value?: string | string[]) => {
+      const raw = Array.isArray(value) ? value.find((item) => String(item || '').trim()) : value;
+      const parsed = String(raw || '').trim();
+      return parsed || undefined;
+    };
+
+    const pickHeader = (...headerNames: string[]) => {
+      for (const headerName of headerNames) {
+        const value = parseSingleHeader(req.headers?.[headerName]);
+        if (value) return value;
+      }
+      return undefined;
+    };
+
     const ip = ipCandidates.join(',');
     const userAgent = req.get('user-agent');
-    return await this.certificatesService.registrarValidacion(codigo, ip, userAgent);
+    const geoContext = {
+      geoCountry: pickHeader(
+        'cf-ipcountry',
+        'x-vercel-ip-country',
+        'x-country',
+        'x-country-code',
+        'x-geo-country',
+      ),
+      geoRegion: pickHeader(
+        'x-vercel-ip-country-region',
+        'x-region',
+        'x-geo-region',
+      ),
+      geoCity: pickHeader(
+        'x-vercel-ip-city',
+        'x-city',
+        'x-geo-city',
+      ),
+      geoTimezone: pickHeader(
+        'x-vercel-ip-timezone',
+        'x-timezone',
+        'x-geo-timezone',
+      ),
+    };
+    return await this.certificatesService.registrarValidacion(codigo, ip, userAgent, geoContext);
   }
 
   // Obtener historial de validaciones sin registrar una nueva
