@@ -289,14 +289,14 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                         {urlVerificacion}
                       </code>
                       <div className="flex gap-2">
-                        <button
+                        {/* <button
                           onClick={handleCopiarEnlace}
                           className="flex-1 sm:flex-initial p-2 hover:bg-gray-200 rounded-lg transition-colors min-h-[44px] flex items-center justify-center gap-2"
                           title="Copiar enlace"
                         >
                           <Copy className="w-4 h-4 text-gray-600" />
                           <span className="text-xs sm:hidden">Copiar</span>
-                        </button>
+                        </button> */}
                         <a
                           href={urlVerificacion}
                           target="_blank"
@@ -313,11 +313,11 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                 </div>
               </div>
 
-              {/* Botones de acción - Mobile Grid */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-6">
+              {/* Botones de acción */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <button
                   onClick={handleDescargarQR}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Download className="w-4 h-4" />
                   <span className="hidden sm:inline">Descargar QR</span>
@@ -325,25 +325,18 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
                 </button>
                 <button
                   onClick={handleImprimir}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-gray-700 hover:bg-gray-800 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md border border-gray-800"
                 >
                   <Printer className="w-4 h-4" />
                   Imprimir
                 </button>
                 <button
                   onClick={handleCopiarEnlace}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Copy className="w-4 h-4" />
                   <span className="hidden sm:inline">Copiar Enlace</span>
                   <span className="sm:hidden">Copiar</span>
-                </button>
-                <button
-                  onClick={handleCompartir}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium text-sm min-h-[48px]"
-                >
-                  <Share2 className="w-4 h-4" />
-                  Compartir
                 </button>
               </div>
 
