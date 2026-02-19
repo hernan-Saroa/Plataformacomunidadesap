@@ -80,6 +80,13 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   const [guardando, setGuardando] = useState(false);
   const [archivosEvidencia, setArchivosEvidencia] = useState<File[]>([]);
   
+  // Estado para evidencias del hallazgo seleccionado (cargadas del backend)
+  const [evidenciasHallazgo, setEvidenciasHallazgo] = useState<any[]>([]);
+  const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
+  
+  // Estado para evidencias de TODOS los hallazgos (para mostrar en tarjetas)
+  const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>({});
+  
   // Estado para edición (null = creando nuevo, string = editando ese ID)
   const [hallazgoEditandoId, setHallazgoEditandoId] = useState<string | null>(null);
 
@@ -98,16 +105,6 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   const isValidUUID = (id: string): boolean => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     return uuidRegex.test(id);
-  };
-
-  // Convertir archivo a base64
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
   };
 
   // Obtener nombre de persona por ID
@@ -145,6 +142,31 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
   useEffect(() => {
     cargarHallazgos();
   }, [cargarHallazgos]);
+
+  // Cargar evidencias de todos los hallazgos para mostrar en tarjetas
+  useEffect(() => {
+    const cargarTodasEvidencias = async () => {
+      if (hallazgos.length === 0) return;
+      
+      const evidenciasMap: Record<string, any[]> = {};
+      
+      // Cargar evidencias de cada hallazgo en paralelo
+      await Promise.all(
+        hallazgos.map(async (hallazgo) => {
+          try {
+            const evidencias = await controlInternoService.getEvidenciasByHallazgo(hallazgo.id);
+            evidenciasMap[hallazgo.id] = evidencias || [];
+          } catch (err) {
+            evidenciasMap[hallazgo.id] = [];
+          }
+        })
+      );
+      
+      setEvidenciasPorHallazgo(evidenciasMap);
+    };
+    
+    cargarTodasEvidencias();
+  }, [hallazgos]);
 
   // Cargar personas disponibles
   useEffect(() => {
@@ -205,18 +227,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
     try {
       setGuardando(true);
       
-      // Preparar evidencias desde archivos seleccionados (convertir a base64)
-      const evidencias = await Promise.all(
-        archivosEvidencia.map(async (archivo) => {
-          const base64Url = await fileToBase64(archivo);
-          return {
-            nombre: archivo.name,
-            tipo: archivo.type || 'application/octet-stream',
-            fecha: new Date().toISOString().split('T')[0],
-            url: base64Url
-          };
-        })
-      );
+      let hallazgoId = hallazgoEditandoId;
       
       if (hallazgoEditandoId) {
         // Actualizar hallazgo existente
@@ -225,13 +236,12 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
           area: nuevoHallazgo.area,
           descripcion: nuevoHallazgo.descripcion,
           criterioIncumplido: nuevoHallazgo.criterioIncumplido,
-          responsable: nuevoHallazgo.responsable || undefined,
-          evidencias: evidencias.length > 0 ? evidencias : undefined
+          responsable: nuevoHallazgo.responsable || undefined
         });
         toast.success('Hallazgo actualizado exitosamente');
       } else {
-        // Crear nuevo hallazgo
-        await controlInternoService.createHallazgo({
+        // Crear nuevo hallazgo primero (sin evidencias)
+        const hallazgoCreado = await controlInternoService.createHallazgo({
           titulo: nuevoHallazgo.descripcion.substring(0, 100),
           categoria: nuevoHallazgo.categoria,
           area: nuevoHallazgo.area,
@@ -240,11 +250,36 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
           fechaDeteccion: nuevoHallazgo.fechaDeteccion,
           responsable: nuevoHallazgo.responsable || undefined,
           auditoria: auditoriaNombre,
-          auditoriaId: auditoriaId,
-          evidencias: evidencias.length > 0 ? evidencias : undefined
+          auditoriaId: auditoriaId
         });
+        hallazgoId = hallazgoCreado.id;
         toast.success('Hallazgo creado exitosamente');
       }
+      
+      // Subir archivos de evidencia usando el endpoint de upload (NO base64)
+      if (archivosEvidencia.length > 0 && hallazgoId) {
+        toast.info(`Subiendo ${archivosEvidencia.length} archivo(s)...`);
+        
+        for (const archivo of archivosEvidencia) {
+          try {
+            await controlInternoService.createEvidencia(
+              archivo,
+              {
+                nombre: archivo.name,
+                descripcion: `Evidencia para hallazgo`,
+                tipoDocumento: 'evidencia_hallazgo',
+                hallazgoId: hallazgoId,
+                subidoPor: 'Sistema'
+              }
+            );
+          } catch (uploadErr) {
+            console.error(`Error subiendo ${archivo.name}:`, uploadErr);
+            toast.error(`Error al subir: ${archivo.name}`);
+          }
+        }
+        toast.success('Archivos subidos correctamente');
+      }
+      
       setMostrarFormulario(false);
       setHallazgoEditandoId(null);
       setNuevoHallazgo({
@@ -297,11 +332,40 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
     setArchivosEvidencia([]);
   };
 
+  // Cargar evidencias cuando se selecciona un hallazgo
+  useEffect(() => {
+    const cargarEvidenciasHallazgo = async () => {
+      if (!hallazgoSeleccionado?.id) {
+        setEvidenciasHallazgo([]);
+        return;
+      }
+      
+      setCargandoEvidencias(true);
+      try {
+        const evidencias = await controlInternoService.getEvidenciasByHallazgo(hallazgoSeleccionado.id);
+        setEvidenciasHallazgo(evidencias || []);
+      } catch (err) {
+        console.error('Error cargando evidencias:', err);
+        setEvidenciasHallazgo([]);
+      } finally {
+        setCargandoEvidencias(false);
+      }
+    };
+    
+    cargarEvidenciasHallazgo();
+  }, [hallazgoSeleccionado?.id]);
+
   // Ver/Descargar evidencia
   const handleVerEvidencia = (evidencia: any) => {
-    const nombre = evidencia.nombre || evidencia;
-    const tipo = evidencia.tipo || '';
-    const url = evidencia.url;
+    const nombre = evidencia.nombre || evidencia.nombreArchivoOriginal || evidencia;
+    const tipo = evidencia.tipoMime || evidencia.tipo || '';
+    
+    // Construir URL del servidor
+    let url = evidencia.rutaArchivo;
+    if (url && !url.startsWith('http')) {
+      // URL relativa, agregar base del servidor
+      url = `http://localhost:3007/${url.replace(/\\/g, '/')}`;
+    }
     
     // Determinar si es PDF o imagen
     const esPDF = tipo.includes('pdf') || nombre.toLowerCase().endsWith('.pdf');
@@ -776,20 +840,23 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                     </div>
                   </div>
 
-                  {/* Evidencias */}
-                  {hallazgo.evidencias && hallazgo.evidencias.length > 0 && (
+                  {/* Evidencias (cargadas del backend) */}
+                  {evidenciasPorHallazgo[hallazgo.id] && evidenciasPorHallazgo[hallazgo.id].length > 0 && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
-                      <p className="text-xs text-gray-500 mb-1">Evidencias:</p>
+                      <p className="text-xs text-gray-500 mb-1">
+                        <Paperclip className="w-3 h-3 inline mr-1" />
+                        Evidencias ({evidenciasPorHallazgo[hallazgo.id].length}):
+                      </p>
                       <div className="flex gap-2 flex-wrap">
-                        {hallazgo.evidencias.map((evidencia, idx) => (
+                        {evidenciasPorHallazgo[hallazgo.id].map((evidencia, idx) => (
                           <button
-                            key={idx}
+                            key={evidencia.id || idx}
                             onClick={() => handleVerEvidencia(evidencia)}
                             className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 flex items-center gap-1 hover:bg-blue-100 transition-colors cursor-pointer"
                             title="Ver/Descargar evidencia"
                           >
                             <Eye className="w-3 h-3" />
-                            <span className="max-w-[150px] truncate">{typeof evidencia === 'string' ? evidencia : evidencia.nombre}</span>
+                            <span className="max-w-[150px] truncate">{evidencia.nombre || evidencia.nombreArchivoOriginal}</span>
                             <Download className="w-3 h-3" />
                           </button>
                         ))}
@@ -948,27 +1015,36 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre }: Pro
                   </div>
                 )}
 
-                {hallazgoSeleccionado.evidencias && hallazgoSeleccionado.evidencias.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-bold text-gray-900 mb-1">
-                      Evidencias:
-                    </label>
+                {/* Evidencias cargadas del backend */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">
+                    Evidencias:
+                  </label>
+                  {cargandoEvidencias ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Cargando evidencias...</span>
+                    </div>
+                  ) : evidenciasHallazgo.length > 0 ? (
                     <div className="flex gap-2 flex-wrap">
-                      {hallazgoSeleccionado.evidencias.map((evidencia, idx) => (
+                      {evidenciasHallazgo.map((evidencia, idx) => (
                         <button
-                          key={idx}
+                          key={evidencia.id || idx}
                           onClick={() => handleVerEvidencia(evidencia)}
                           className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded border border-blue-200 flex items-center gap-2 hover:bg-blue-100 transition-colors cursor-pointer"
                           title="Ver/Descargar evidencia"
                         >
                           <Eye className="w-4 h-4" />
-                          <span>{typeof evidencia === 'string' ? evidencia : evidencia.nombre}</span>
+                          <span>{evidencia.nombre || evidencia.nombreArchivoOriginal}</span>
+                          <span className="text-xs text-gray-400">({(evidencia.tamanioBytes / 1024).toFixed(1)} KB)</span>
                           <Download className="w-4 h-4" />
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">Sin evidencias adjuntas</p>
+                  )}
+                </div>
               </div>
             </motion.div>
           </motion.div>

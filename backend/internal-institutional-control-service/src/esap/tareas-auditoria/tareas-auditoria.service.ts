@@ -13,6 +13,7 @@ import {
 import { CreateTareaAuditoriaDto } from './dto/create-tarea-auditoria.dto';
 import { UpdateTareaAuditoriaDto } from './dto/update-tarea-auditoria.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
+import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
 
 @Injectable()
 export class TareasAuditoriaService {
@@ -21,7 +22,41 @@ export class TareasAuditoriaService {
     private readonly tareaRepository: Repository<TareaAuditoria>,
     @InjectRepository(Auditoria)
     private readonly auditoriaRepository: Repository<Auditoria>,
+    @InjectRepository(HistorialAuditoria)
+    private readonly historialRepository: Repository<HistorialAuditoria>,
   ) {}
+
+  /**
+   * Registra evento en el historial de la auditoría
+   */
+  private async registrarHistorial(
+    auditoriaId: string | null | undefined,
+    tipoEvento: TipoEvento,
+    accion: string,
+    descripcion: string,
+  ): Promise<void> {
+    if (!auditoriaId) return;
+    
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().split(' ')[0];
+      
+      const historial = new HistorialAuditoria();
+      historial.auditoriaId = auditoriaId;
+      historial.tipoEvento = tipoEvento;
+      historial.fecha = new Date(fecha);
+      historial.hora = hora;
+      historial.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+      historial.accion = accion;
+      historial.descripcion = descripcion;
+      historial.cambios = [];
+      
+      await this.historialRepository.save(historial);
+    } catch (err) {
+      console.error('[TareasAuditoriaService] Error registrando historial:', err);
+    }
+  }
 
   /**
    * Serializa una fecha Date o string a string YYYY-MM-DD
@@ -168,6 +203,15 @@ export class TareasAuditoriaService {
     });
 
     const saved = await this.tareaRepository.save(tarea);
+
+    // ✅ Registrar en historial de auditoría
+    await this.registrarHistorial(
+      saved.auditoriaId,
+      TipoEvento.NOTA, // Usamos NOTA para tareas
+      'Tarea creada',
+      `Se creó la tarea "${saved.titulo}" en fase ${saved.fase || 'general'}`,
+    );
+
     return this.serializeTarea(saved);
   }
 
@@ -214,6 +258,17 @@ export class TareasAuditoriaService {
     });
 
     const updated = await this.tareaRepository.save(tarea);
+
+    // ✅ Registrar en historial si cambió el estado
+    if (dto.estado && dto.estado !== tarea.estado) {
+      await this.registrarHistorial(
+        updated.auditoriaId,
+        TipoEvento.NOTA,
+        `Tarea ${dto.estado === EstadoTarea.COMPLETADA ? 'completada' : 'actualizada'}`,
+        `La tarea "${updated.titulo}" cambió a estado ${dto.estado}`,
+      );
+    }
+
     return this.serializeTarea(updated);
   }
 
@@ -237,7 +292,18 @@ export class TareasAuditoriaService {
       throw new NotFoundException(`Tarea con ID ${id} no encontrada`);
     }
 
+    const auditoriaId = tarea.auditoriaId;
+    const titulo = tarea.titulo;
+
     await this.tareaRepository.remove(tarea);
+
+    // ✅ Registrar en historial de auditoría
+    await this.registrarHistorial(
+      auditoriaId,
+      TipoEvento.ELIMINACION,
+      'Tarea eliminada',
+      `Se eliminó la tarea "${titulo}"`,
+    );
   }
 
   /**

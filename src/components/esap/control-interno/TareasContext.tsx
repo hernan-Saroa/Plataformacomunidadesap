@@ -4,19 +4,21 @@
  * ============================================
  * 
  * Sistema de gestión de tareas y actividades de auditorías
+ * CONECTADO AL BACKEND
  * 
  * FUNCIONALIDADES:
- * - CRUD completo de tareas por auditoría
+ * - CRUD completo de tareas por auditoría (persistido en BD)
  * - Asignación de responsables
  * - Seguimiento de progreso
  * - Contadores dinámicos para el Kanban
  * - Estados y prioridades
  * 
- * ÚLTIMA ACTUALIZACIÓN: 23 Enero 2026
+ * ÚLTIMA ACTUALIZACIÓN: 19 Febrero 2026
  */
 
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { controlInternoService, type TareaAuditoria } from '../../../services/api/controlInternoService';
 
 // ============ TIPOS ============
 
@@ -37,8 +39,8 @@ export interface Tarea {
   fase?: 'Planeación' | 'Ejecución' | 'Comunicación' | 'Seguimiento';
   
   // Asignación
-  responsableId: string;
-  responsableNombre: string;
+  responsableId?: string;
+  responsableNombre?: string;
   
   // Fechas
   fechaCreacion: string;
@@ -55,12 +57,16 @@ export interface Tarea {
 interface TareasContextType {
   // Estado
   tareasPorAuditoria: { [auditoriaId: string]: Tarea[] };
+  loading: boolean;
   
   // CRUD
-  crearTarea: (auditoriaId: string, datos: Omit<Tarea, 'id' | 'fechaCreacion'>) => string;
-  editarTarea: (tareaId: string, datos: Partial<Tarea>) => void;
-  eliminarTarea: (tareaId: string) => void;
-  completarTarea: (tareaId: string) => void;
+  crearTarea: (auditoriaId: string, datos: Omit<Tarea, 'id' | 'fechaCreacion'>) => Promise<string>;
+  editarTarea: (tareaId: string, datos: Partial<Tarea>) => Promise<void>;
+  eliminarTarea: (tareaId: string) => Promise<void>;
+  completarTarea: (tareaId: string) => Promise<void>;
+  
+  // Cargar datos
+  cargarTareas: (auditoriaId: string) => Promise<void>;
   
   // Consultas
   obtenerTareasPorAuditoria: (auditoriaId: string) => Tarea[];
@@ -88,211 +94,31 @@ export interface FiltrosTarea {
   busqueda?: string;
 }
 
-// ============ DATOS INICIALES MOCK ============
+// ============ HELPERS ============
 
-const TAREAS_MOCK: { [auditoriaId: string]: Tarea[] } = {
-  'aud-004': [
-    {
-      id: 'tar-001',
-      auditoriaId: 'aud-004',
-      titulo: 'Revisar matriz de riesgos del área',
-      descripcion: 'Analizar la matriz de riesgos de Talento Humano actualizada en 2024',
-      estado: 'Completada',
-      prioridad: 'Alta',
-      fase: 'Planeación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '01/02/2025 08:00',
-      fechaVencimiento: '05/02/2025',
-      fechaCompletado: '04/02/2025 16:30',
-      progreso: 100
-    },
-    {
-      id: 'tar-002',
-      auditoriaId: 'aud-004',
-      titulo: 'Solicitar información de contratos 2024',
-      descripcion: 'Pedir al área listado de contratos laborales firmados en 2024',
-      estado: 'Completada',
-      prioridad: 'Media',
-      fase: 'Planeación',
-      responsableId: 'usr-004',
-      responsableNombre: 'William Alonso Pérez',
-      fechaCreacion: '01/02/2025 09:00',
-      fechaVencimiento: '06/02/2025',
-      fechaCompletado: '05/02/2025 11:00',
-      progreso: 100
-    },
-    {
-      id: 'tar-003',
-      auditoriaId: 'aud-004',
-      titulo: 'Realizar reunión de apertura',
-      descripcion: 'Reunión con Jefe de Talento Humano para presentar alcance de la auditoría',
-      estado: 'Completada',
-      prioridad: 'Alta',
-      fase: 'Planeación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '01/02/2025 10:00',
-      fechaVencimiento: '08/02/2025',
-      fechaCompletado: '07/02/2025 14:00',
-      progreso: 100
-    },
-    {
-      id: 'tar-004',
-      auditoriaId: 'aud-004',
-      titulo: 'Aplicar lista de chequeo de procesos',
-      descripcion: 'Aplicar lista de chequeo de procesos de selección y contratación',
-      estado: 'En Progreso',
-      prioridad: 'Alta',
-      fase: 'Ejecución',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '09/02/2025 08:00',
-      fechaVencimiento: '15/02/2025',
-      progreso: 65
-    },
-    {
-      id: 'tar-005',
-      auditoriaId: 'aud-004',
-      titulo: 'Revisar expedientes de personal',
-      descripcion: 'Verificar que los expedientes de personal contengan toda la documentación requerida',
-      estado: 'En Progreso',
-      prioridad: 'Media',
-      fase: 'Ejecución',
-      responsableId: 'usr-004',
-      responsableNombre: 'William Alonso Pérez',
-      fechaCreacion: '09/02/2025 09:00',
-      fechaVencimiento: '16/02/2025',
-      progreso: 40
-    },
-    {
-      id: 'tar-006',
-      auditoriaId: 'aud-004',
-      titulo: 'Entrevistar a funcionarios del área',
-      descripcion: 'Realizar entrevistas a 5 funcionarios clave del área de Talento Humano',
-      estado: 'Pendiente',
-      prioridad: 'Media',
-      fase: 'Ejecución',
-      responsableId: 'usr-005',
-      responsableNombre: 'Alexandra Gómez López',
-      fechaCreacion: '10/02/2025 08:00',
-      fechaVencimiento: '18/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-007',
-      auditoriaId: 'aud-004',
-      titulo: 'Documentar hallazgos identificados',
-      descripcion: 'Consolidar y documentar todos los hallazgos encontrados durante la ejecución',
-      estado: 'Pendiente',
-      prioridad: 'Alta',
-      fase: 'Ejecución',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '12/02/2025 08:00',
-      fechaVencimiento: '20/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-008',
-      auditoriaId: 'aud-004',
-      titulo: 'Reunión de cierre con el área',
-      descripcion: 'Presentar hallazgos preliminares al Jefe de Talento Humano',
-      estado: 'Pendiente',
-      prioridad: 'Alta',
-      fase: 'Ejecución',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '13/02/2025 08:00',
-      fechaVencimiento: '22/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-009',
-      auditoriaId: 'aud-004',
-      titulo: 'Elaborar informe preliminar',
-      descripcion: 'Redactar el informe preliminar con todos los hallazgos y evidencias',
-      estado: 'Pendiente',
-      prioridad: 'Urgente',
-      fase: 'Comunicación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '14/02/2025 08:00',
-      fechaVencimiento: '25/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-010',
-      auditoriaId: 'aud-004',
-      titulo: 'Revisar descargos del área (si aplica)',
-      descripcion: 'Analizar los descargos presentados por el área auditada',
-      estado: 'Pendiente',
-      prioridad: 'Media',
-      fase: 'Comunicación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '15/02/2025 08:00',
-      fechaVencimiento: '26/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-011',
-      auditoriaId: 'aud-004',
-      titulo: 'Elaborar informe final',
-      descripcion: 'Redactar el informe final incorporando respuestas del área',
-      estado: 'Pendiente',
-      prioridad: 'Urgente',
-      fase: 'Comunicación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '16/02/2025 08:00',
-      fechaVencimiento: '28/02/2025',
-      progreso: 0
-    },
-    {
-      id: 'tar-012',
-      auditoriaId: 'aud-004',
-      titulo: 'Generar plan de mejoramiento',
-      descripcion: 'Crear el plan de mejoramiento con las acciones correctivas',
-      estado: 'Pendiente',
-      prioridad: 'Alta',
-      fase: 'Comunicación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '17/02/2025 08:00',
-      fechaVencimiento: '28/02/2025',
-      progreso: 0
-    }
-  ],
-  'aud-001': [
-    {
-      id: 'tar-013',
-      auditoriaId: 'aud-001',
-      titulo: 'Revisar procedimiento de compras',
-      estado: 'En Progreso',
-      prioridad: 'Alta',
-      fase: 'Planeación',
-      responsableId: 'usr-002',
-      responsableNombre: 'Catalina Rubio Silva',
-      fechaCreacion: '02/02/2025 08:00',
-      fechaVencimiento: '10/02/2025',
-      progreso: 50
-    },
-    {
-      id: 'tar-014',
-      auditoriaId: 'aud-001',
-      titulo: 'Solicitar registros de compras 2024',
-      estado: 'Pendiente',
-      prioridad: 'Media',
-      fase: 'Planeación',
-      responsableId: 'usr-003',
-      responsableNombre: 'Lucila Villamil Torres',
-      fechaCreacion: '02/02/2025 09:00',
-      fechaVencimiento: '12/02/2025',
-      progreso: 0
-    }
-  ]
+// Validar si es un UUID válido
+const isValidUUID = (id: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
 };
+
+// Convertir TareaAuditoria del backend a Tarea del contexto
+const convertirTarea = (tarea: TareaAuditoria): Tarea => ({
+  id: tarea.id,
+  auditoriaId: tarea.auditoriaId,
+  titulo: tarea.titulo,
+  descripcion: tarea.descripcion,
+  estado: tarea.estado as EstadoTarea,
+  prioridad: tarea.prioridad as PrioridadTarea,
+  fase: tarea.fase as Tarea['fase'],
+  responsableId: tarea.responsableId,
+  responsableNombre: tarea.responsableNombre,
+  fechaCreacion: tarea.createdAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+  fechaVencimiento: tarea.fechaVencimiento?.split('T')[0],
+  fechaCompletado: tarea.fechaCompletado?.split('T')[0],
+  progreso: tarea.progreso || 0,
+  notas: tarea.notas
+});
 
 // ============ CONTEXTO ============
 
@@ -301,93 +127,166 @@ const TareasContext = createContext<TareasContextType | undefined>(undefined);
 export function TareasProvider({ children }: { children: ReactNode }) {
   const [tareasPorAuditoria, setTareasPorAuditoria] = useState<{
     [auditoriaId: string]: Tarea[];
-  }>(TAREAS_MOCK);
+  }>({});
+  const [loading, setLoading] = useState(false);
 
-  // ============ CREAR TAREA ============
-  const crearTarea = useCallback((
+  // ============ CARGAR TAREAS DEL BACKEND ============
+  const cargarTareas = useCallback(async (auditoriaId: string) => {
+    // Solo cargar si es UUID válido
+    if (!isValidUUID(auditoriaId)) {
+      console.log('[TareasContext] ID no es UUID válido, omitiendo carga:', auditoriaId);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const tareasBackend = await controlInternoService.getTareasByAuditoria(auditoriaId);
+      const tareasConvertidas = tareasBackend.map(convertirTarea);
+      
+      setTareasPorAuditoria(prev => ({
+        ...prev,
+        [auditoriaId]: tareasConvertidas
+      }));
+    } catch (err: any) {
+      console.error('[TareasContext] Error cargando tareas:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ============ CREAR TAREA (BACKEND) ============
+  const crearTarea = useCallback(async (
     auditoriaId: string,
     datos: Omit<Tarea, 'id' | 'fechaCreacion'>
-  ): string => {
-    const nuevoId = `tar-${Date.now()}`;
-    
-    const fechaCreacion = new Date().toLocaleString('es-CO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  ): Promise<string> => {
+    if (!isValidUUID(auditoriaId)) {
+      toast.error('ID de auditoría no válido');
+      throw new Error('ID de auditoría no válido');
+    }
 
-    const nuevaTarea: Tarea = {
-      ...datos,
-      id: nuevoId,
-      auditoriaId,
-      fechaCreacion
-    };
+    try {
+      const tareaCreada = await controlInternoService.createTarea({
+        auditoriaId,
+        titulo: datos.titulo,
+        descripcion: datos.descripcion,
+        estado: datos.estado,
+        prioridad: datos.prioridad,
+        fase: datos.fase,
+        responsableId: datos.responsableId,
+        responsableNombre: datos.responsableNombre,
+        fechaVencimiento: datos.fechaVencimiento,
+        progreso: datos.progreso || 0,
+        notas: datos.notas
+      });
 
-    setTareasPorAuditoria(prev => ({
-      ...prev,
-      [auditoriaId]: [...(prev[auditoriaId] || []), nuevaTarea]
-    }));
+      const nuevaTarea = convertirTarea(tareaCreada);
+      setTareasPorAuditoria(prev => ({
+        ...prev,
+        [auditoriaId]: [...(prev[auditoriaId] || []), nuevaTarea]
+      }));
 
-    toast.success(`✅ Tarea "${datos.titulo}" creada exitosamente`);
-    
-    return nuevoId;
+      toast.success('Tarea creada exitosamente');
+      return tareaCreada.id;
+    } catch (err: any) {
+      toast.error(err.message || 'Error al crear tarea');
+      throw err;
+    }
   }, []);
 
-  // ============ EDITAR TAREA ============
-  const editarTarea = useCallback((tareaId: string, datos: Partial<Tarea>) => {
-    setTareasPorAuditoria(prev => {
-      const nuevoEstado = { ...prev };
-      
-      for (const auditoriaId in nuevoEstado) {
-        const indice = nuevoEstado[auditoriaId].findIndex(t => t.id === tareaId);
-        if (indice !== -1) {
-          nuevoEstado[auditoriaId][indice] = {
-            ...nuevoEstado[auditoriaId][indice],
-            ...datos
-          };
-          break;
+  // ============ EDITAR TAREA (BACKEND) ============
+  const editarTarea = useCallback(async (tareaId: string, datos: Partial<Tarea>) => {
+    try {
+      await controlInternoService.updateTarea(tareaId, {
+        titulo: datos.titulo,
+        descripcion: datos.descripcion,
+        estado: datos.estado,
+        prioridad: datos.prioridad,
+        fase: datos.fase,
+        responsableId: datos.responsableId,
+        responsableNombre: datos.responsableNombre,
+        fechaVencimiento: datos.fechaVencimiento,
+        progreso: datos.progreso,
+        notas: datos.notas
+      });
+
+      setTareasPorAuditoria(prev => {
+        const nuevoEstado = { ...prev };
+        
+        for (const auditoriaId in nuevoEstado) {
+          const indice = nuevoEstado[auditoriaId].findIndex(t => t.id === tareaId);
+          if (indice !== -1) {
+            nuevoEstado[auditoriaId] = [...nuevoEstado[auditoriaId]];
+            nuevoEstado[auditoriaId][indice] = {
+              ...nuevoEstado[auditoriaId][indice],
+              ...datos
+            };
+            break;
+          }
         }
-      }
-      
-      return nuevoEstado;
-    });
+        
+        return nuevoEstado;
+      });
 
-    toast.success('✅ Tarea actualizada correctamente');
+      toast.success('Tarea actualizada correctamente');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar tarea');
+      throw err;
+    }
   }, []);
 
-  // ============ ELIMINAR TAREA ============
-  const eliminarTarea = useCallback((tareaId: string) => {
-    setTareasPorAuditoria(prev => {
-      const nuevoEstado = { ...prev };
-      
-      for (const auditoriaId in nuevoEstado) {
-        nuevoEstado[auditoriaId] = nuevoEstado[auditoriaId].filter(t => t.id !== tareaId);
-      }
-      
-      return nuevoEstado;
-    });
+  // ============ ELIMINAR TAREA (BACKEND) ============
+  const eliminarTarea = useCallback(async (tareaId: string) => {
+    try {
+      await controlInternoService.deleteTarea(tareaId);
 
-    toast.success('✅ Tarea eliminada correctamente');
+      setTareasPorAuditoria(prev => {
+        const nuevoEstado = { ...prev };
+        
+        for (const auditoriaId in nuevoEstado) {
+          nuevoEstado[auditoriaId] = nuevoEstado[auditoriaId].filter(t => t.id !== tareaId);
+        }
+        
+        return nuevoEstado;
+      });
+
+      toast.success('Tarea eliminada correctamente');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar tarea');
+      throw err;
+    }
   }, []);
 
-  // ============ COMPLETAR TAREA ============
-  const completarTarea = useCallback((tareaId: string) => {
-    const fechaCompletado = new Date().toLocaleString('es-CO', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  // ============ COMPLETAR TAREA (BACKEND) ============
+  const completarTarea = useCallback(async (tareaId: string) => {
+    try {
+      await controlInternoService.completarTarea(tareaId);
 
-    editarTarea(tareaId, {
-      estado: 'Completada',
-      progreso: 100,
-      fechaCompletado
-    });
-  }, [editarTarea]);
+      setTareasPorAuditoria(prev => {
+        const nuevoEstado = { ...prev };
+        
+        for (const auditoriaId in nuevoEstado) {
+          const indice = nuevoEstado[auditoriaId].findIndex(t => t.id === tareaId);
+          if (indice !== -1) {
+            nuevoEstado[auditoriaId] = [...nuevoEstado[auditoriaId]];
+            nuevoEstado[auditoriaId][indice] = {
+              ...nuevoEstado[auditoriaId][indice],
+              estado: 'Completada',
+              progreso: 100,
+              fechaCompletado: new Date().toISOString().split('T')[0]
+            };
+            break;
+          }
+        }
+        
+        return nuevoEstado;
+      });
+
+      toast.success('Tarea completada');
+    } catch (err: any) {
+      toast.error(err.message || 'Error al completar tarea');
+      throw err;
+    }
+  }, []);
 
   // ============ CONSULTAS ============
   const obtenerTareasPorAuditoria = useCallback((auditoriaId: string): Tarea[] => {
@@ -464,7 +363,7 @@ export function TareasProvider({ children }: { children: ReactNode }) {
 
     if (filtros.responsable) {
       tareasFiltradas = tareasFiltradas.filter(t => 
-        t.responsableNombre.toLowerCase().includes(filtros.responsable!.toLowerCase())
+        t.responsableNombre?.toLowerCase().includes(filtros.responsable!.toLowerCase())
       );
     }
 
@@ -484,10 +383,12 @@ export function TareasProvider({ children }: { children: ReactNode }) {
     <TareasContext.Provider
       value={{
         tareasPorAuditoria,
+        loading,
         crearTarea,
         editarTarea,
         eliminarTarea,
         completarTarea,
+        cargarTareas,
         obtenerTareasPorAuditoria,
         obtenerTareaPorId,
         contarTareas,

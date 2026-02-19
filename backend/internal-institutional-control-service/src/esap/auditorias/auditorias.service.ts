@@ -291,7 +291,7 @@ export class AuditoriasService {
     if (auditoria.auditorLiderId) {
       try {
         const lider = await this.auditoriaRepository.query(
-          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+          `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
            WHERE id_tercero = $1`,
           [auditoria.auditorLiderId]
@@ -299,7 +299,7 @@ export class AuditoriasService {
         if (lider && lider.length > 0 && lider[0]) {
           const p = lider[0];
           const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          const iniciales = this.getIniciales(nombreCompleto);
           auditorLider = {
             nombre: nombreCompleto,
             cargo: 'Auditor Líder',
@@ -317,7 +317,7 @@ export class AuditoriasService {
     if (auditoria.auditorAsignadoId) {
       try {
         const asignado = await this.auditoriaRepository.query(
-          `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+          `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
            FROM auth.personas 
            WHERE id_tercero = $1`,
           [auditoria.auditorAsignadoId]
@@ -325,7 +325,7 @@ export class AuditoriasService {
         if (asignado && asignado.length > 0 && asignado[0]) {
           const p = asignado[0];
           const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-          const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+          const iniciales = this.getIniciales(nombreCompleto);
           auditorAsignado = {
             nombre: nombreCompleto,
             cargo: 'Auditor',
@@ -569,6 +569,28 @@ export class AuditoriasService {
     } catch (notifError) {
       // No fallar la creación si las notificaciones fallan
       console.error('[AuditoriasService.create] Error al crear notificaciones:', notifError);
+    }
+
+    // ✅ Registrar evento de creación en el historial
+    try {
+      const ahora = new Date();
+      const fecha = ahora.toISOString().split('T')[0];
+      const hora = ahora.toTimeString().split(' ')[0];
+      
+      const historialCreacion = new HistorialAuditoria();
+      historialCreacion.auditoriaId = auditoriaGuardada.id;
+      historialCreacion.tipoEvento = TipoEvento.CREACION;
+      historialCreacion.fecha = new Date(fecha);
+      historialCreacion.hora = hora;
+      historialCreacion.usuarioId = Number(createDto.auditorLiderId) || 1;
+      historialCreacion.accion = 'Auditoría creada';
+      historialCreacion.descripcion = `Se creó la auditoría ${auditoriaGuardada.codigo} - ${auditoriaGuardada.nombre}`;
+      historialCreacion.estadoNuevo = auditoriaGuardada.estadoKanban || auditoriaGuardada.fase || 'Planeación';
+      historialCreacion.cambios = [];
+      
+      await this.historialRepository.save(historialCreacion);
+    } catch (histError) {
+      console.error('[AuditoriasService.create] Error al registrar en historial:', histError);
     }
 
     return this.serializeAuditoria(auditoriaCompleta || auditoriaGuardada) as any;
@@ -824,6 +846,31 @@ export class AuditoriasService {
       relations: ['objetivos', 'criterios', 'equipoAuditores', 'territorialInfo', 'especialInfo'],
     });
 
+    // ✅ Registrar evento de actualización en el historial si hay cambios importantes
+    if (cambios.length > 0) {
+      try {
+        const ahora = new Date();
+        const fecha = ahora.toISOString().split('T')[0];
+        const hora = ahora.toTimeString().split(' ')[0];
+        
+        const historialActualizacion = new HistorialAuditoria();
+        historialActualizacion.auditoriaId = saved.id;
+        historialActualizacion.tipoEvento = TipoEvento.ACTUALIZACION;
+        historialActualizacion.fecha = new Date(fecha);
+        historialActualizacion.hora = hora;
+        historialActualizacion.usuarioId = 1; // TODO: Obtener del contexto de autenticación
+        historialActualizacion.accion = 'Auditoría actualizada';
+        historialActualizacion.descripcion = `Cambios realizados: ${cambios.join(', ')}`;
+        historialActualizacion.estadoAnterior = estadoAnterior || undefined;
+        historialActualizacion.estadoNuevo = updateDto.estadoKanban || updateDto.fase || saved.estadoKanban || saved.fase || undefined;
+        historialActualizacion.cambios = cambios.map(c => ({ campo: c, valorAnterior: '', valorNuevo: '' }));
+        
+        await this.historialRepository.save(historialActualizacion);
+      } catch (histError) {
+        console.error('[AuditoriasService.update] Error al registrar en historial:', histError);
+      }
+    }
+
     // Serializar fechas para evitar problemas de zona horaria
     return this.serializeAuditoria(auditoriaActualizada || saved) as any;
   }
@@ -1055,7 +1102,7 @@ export class AuditoriasService {
             if (auditoria.auditorLiderId) {
               try {
                 const lider = await this.auditoriaRepository.query(
-                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                  `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
                    WHERE id_tercero = $1`,
                   [auditoria.auditorLiderId]
@@ -1063,7 +1110,7 @@ export class AuditoriasService {
                 if (lider && lider.length > 0 && lider[0]) {
                   const p = lider[0];
                   const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  const iniciales = this.getIniciales(nombreCompleto);
                   auditorLider = {
                     nombre: nombreCompleto,
                     cargo: 'Auditor Líder',
@@ -1081,7 +1128,7 @@ export class AuditoriasService {
             if (auditoria.auditorAsignadoId) {
               try {
                 const asignado = await this.auditoriaRepository.query(
-                  `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                  `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                    FROM auth.personas 
                    WHERE id_tercero = $1`,
                   [auditoria.auditorAsignadoId]
@@ -1089,7 +1136,7 @@ export class AuditoriasService {
                 if (asignado && asignado.length > 0 && asignado[0]) {
                   const p = asignado[0];
                   const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                  const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                  const iniciales = this.getIniciales(nombreCompleto);
                   auditorAsignado = {
                     nombre: nombreCompleto,
                     cargo: 'Auditor',
@@ -1113,7 +1160,7 @@ export class AuditoriasService {
                 const primerMiembro = equipoActivo[0];
                 if (primerMiembro.personaId) {
                   const lider = await this.auditoriaRepository.query(
-                    `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                    `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                      FROM auth.personas 
                      WHERE id_tercero = $1`,
                     [primerMiembro.personaId]
@@ -1121,7 +1168,7 @@ export class AuditoriasService {
                   if (lider && lider.length > 0 && lider[0]) {
                     const p = lider[0];
                     const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                    const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                    const iniciales = this.getIniciales(nombreCompleto);
                     auditorLider = {
                       nombre: nombreCompleto,
                       cargo: 'Auditor Líder',
@@ -1307,14 +1354,14 @@ export class AuditoriasService {
 
         if (auditoria.auditorLiderId) {
           const lider = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+            `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
              WHERE id_tercero = $1`,
             [auditoria.auditorLiderId]
           );
           if (lider && lider.length > 0) {
             const p = lider[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            const iniciales = this.getIniciales(p.nom_largo);
             auditorLider = {
               nombre: p.nom_largo,
               cargo: 'Auditor Líder',
@@ -1327,14 +1374,14 @@ export class AuditoriasService {
 
         if (auditoria.auditorAsignadoId) {
           const asignado = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+            `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
              FROM auth.personas 
              WHERE id_tercero = $1`,
             [auditoria.auditorAsignadoId]
           );
           if (asignado && asignado.length > 0) {
             const p = asignado[0];
-            const iniciales = p.sig_tercero || this.getIniciales(p.nom_largo);
+            const iniciales = this.getIniciales(p.nom_largo);
             auditorAsignado = {
               nombre: p.nom_largo,
               cargo: 'Auditor',
@@ -1354,7 +1401,7 @@ export class AuditoriasService {
             const primerMiembro = equipoActivo[0];
             if (primerMiembro.personaId) {
               const lider = await this.auditoriaRepository.query(
-                `SELECT nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+                `SELECT nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
                  FROM auth.personas 
                  WHERE id_tercero = $1`,
                 [primerMiembro.personaId]
@@ -1362,7 +1409,7 @@ export class AuditoriasService {
               if (lider && lider.length > 0 && lider[0]) {
                 const p = lider[0];
                 const nombreCompleto = p.nom_largo || 'Usuario Desconocido';
-                const iniciales = p.sig_tercero || this.getIniciales(nombreCompleto);
+                const iniciales = this.getIniciales(nombreCompleto);
                 auditorLider = {
                   nombre: nombreCompleto,
                   cargo: 'Auditor Líder',
@@ -1600,11 +1647,11 @@ export class AuditoriasService {
 
         if (nota.autorId) {
           const autor = await this.auditoriaRepository.query(
-            `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+            `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
             [nota.autorId]
           );
           if (autor && autor.length > 0) {
-            autorNombre = autor[0].nom_largo || 'Usuario Desconocido';
+            autorNombre = autor[0].nom_largo || `${autor[0].nom_tercero || ''} ${autor[0].pri_apellido || ''}`.trim() || 'Usuario Desconocido';
             autorCargo = 'Auditor'; // TODO: Obtener desde auditor_perfil
           }
         }
@@ -1656,7 +1703,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -1712,7 +1759,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -1772,7 +1819,7 @@ export class AuditoriasService {
     let autorCargo = 'N/A';
     if (saved.autorId) {
       const autor = await this.auditoriaRepository.query(
-        `SELECT nom_largo, sig_tercero FROM auth.personas WHERE id_tercero = $1`,
+        `SELECT nom_largo, nom_tercero, pri_apellido FROM auth.personas WHERE id_tercero = $1`,
         [saved.autorId]
       );
       if (autor && autor.length > 0) {
@@ -2471,7 +2518,7 @@ export class AuditoriasService {
   async buscarPersonaPorNumeroIdentificacion(numeroIdentificacion: string): Promise<{ id_tercero: number; nombre: string; } | null> {
     try {
       const resultado = await this.auditoriaRepository.query(
-        `SELECT id_tercero, nom_largo, sig_tercero, tip_identificacion, num_identificacion 
+        `SELECT id_tercero, nom_largo, nom_tercero, pri_apellido, tip_identificacion, num_identificacion 
          FROM auth.personas 
          WHERE num_identificacion = $1 
          LIMIT 1`,

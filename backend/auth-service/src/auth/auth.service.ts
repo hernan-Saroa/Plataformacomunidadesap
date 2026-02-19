@@ -38,10 +38,16 @@ export class AuthService {
       throw new UnauthorizedException('El usuario no tiene roles asignados');
     }
 
+    // Optimización: Solo incluir códigos de roles en el JWT para reducir tamaño
+    // Los permisos completos se envían en el body de la respuesta, no en el token
+    const rolesCodes = user.roles.map((r) => r.code);
+    const rolesIds = user.roles.map((r) => r.id);
+
     const payload = {
       sub: user.id_user,
       username: user.username,
-      roles: user.roles,
+      roles: rolesCodes, // Solo códigos: ['SUPER_ADMIN', 'AUDITOR'] en lugar de objetos completos
+      rolesIds: rolesIds, // IDs para consultas en backend
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {

@@ -239,23 +239,41 @@ function transformarAuditoria(auditoriaBackend: any): AuditoriaKanban {
   // Usar semáforo del backend si existe, sino calcularlo
   const semaforo = (auditoriaBackend.semaforo as SemaforoColor) || calcularSemaforo(progreso, tiempos.diasRestantes, tiempos.porcentajeTiempo);
   
-  // Construir persona del auditor líder
-  const auditorLider: Persona = {
-    nombre: auditoriaBackend.responsable || auditoriaBackend.auditorLider || 'Por asignar',
-    cargo: 'Auditor Líder',
-    iniciales: generarIniciales(auditoriaBackend.responsable || auditoriaBackend.auditorLider || ''),
-    tipoIdentificacion: 'CC',
-    numeroIdentificacion: ''
-  };
+  // Construir persona del auditor líder (puede venir como objeto o string)
+  const auditorLiderData = auditoriaBackend.auditorLider;
+  const auditorLider: Persona = typeof auditorLiderData === 'object' && auditorLiderData !== null
+    ? {
+        nombre: auditorLiderData.nombre || 'Por asignar',
+        cargo: auditorLiderData.cargo || 'Auditor Líder',
+        iniciales: auditorLiderData.iniciales || generarIniciales(auditorLiderData.nombre || ''),
+        tipoIdentificacion: auditorLiderData.tipoIdentificacion || 'CC',
+        numeroIdentificacion: auditorLiderData.numeroIdentificacion || ''
+      }
+    : {
+        nombre: auditoriaBackend.responsable || auditorLiderData || 'Por asignar',
+        cargo: 'Auditor Líder',
+        iniciales: generarIniciales(auditoriaBackend.responsable || auditorLiderData || ''),
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: ''
+      };
   
-  // Construir persona del auditor asignado
-  const auditorAsignado: Persona = {
-    nombre: auditoriaBackend.auditorAsignado || 'Por asignar',
-    cargo: 'Auditor',
-    iniciales: generarIniciales(auditoriaBackend.auditorAsignado || ''),
-    tipoIdentificacion: 'CC',
-    numeroIdentificacion: ''
-  };
+  // Construir persona del auditor asignado (puede venir como objeto o string)
+  const auditorAsignadoData = auditoriaBackend.auditorAsignado;
+  const auditorAsignado: Persona = typeof auditorAsignadoData === 'object' && auditorAsignadoData !== null
+    ? {
+        nombre: auditorAsignadoData.nombre || 'Por asignar',
+        cargo: auditorAsignadoData.cargo || 'Auditor',
+        iniciales: auditorAsignadoData.iniciales || generarIniciales(auditorAsignadoData.nombre || ''),
+        tipoIdentificacion: auditorAsignadoData.tipoIdentificacion || 'CC',
+        numeroIdentificacion: auditorAsignadoData.numeroIdentificacion || ''
+      }
+    : {
+        nombre: auditorAsignadoData || 'Por asignar',
+        cargo: 'Auditor',
+        iniciales: generarIniciales(auditorAsignadoData || ''),
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: ''
+      };
 
   // ⚡ IMPORTANTE: Usar estadoKanban que viene del drag & drop del backend
   const estado = mapearFaseAEstado(auditoriaBackend.estadoKanban, auditoriaBackend.fase, progreso);

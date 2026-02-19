@@ -14,7 +14,7 @@ import {
   FileCheck, FileWarning, Scale, Gavel, AlertTriangle, Shield,
   MessageSquare, Bell, X, Clock, Folders,
   ArrowUp, ArrowDown, History, Info,
-  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2
+  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2, Play, ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -364,6 +364,12 @@ export function ExpedientesElectronicosWorldClass() {
   // ✅ NUEVO: Estado para modal de compartir expediente
   const [showModalCompartir, setShowModalCompartir] = useState(false);
   const [expedienteParaCompartir, setExpedienteParaCompartir] = useState<ExpedienteElectronico | null>(null);
+
+  // ✅ NUEVO: Estado para modal de visor de documentos
+  const [showModalVisor, setShowModalVisor] = useState(false);
+  const [documentoParaVer, setDocumentoParaVer] = useState<Documento | null>(null);
+  const [documentoUrl, setDocumentoUrl] = useState<string | null>(null);
+  const [cargandoDocumento, setCargandoDocumento] = useState(false);
 
   // ✅ Función para cargar datos del backend
   const cargarDatos = useCallback(async () => {
@@ -993,6 +999,133 @@ export function ExpedientesElectronicosWorldClass() {
     XLSX.writeFile(wb, `IndiceElectronico_${expediente.radicado}.xlsx`);
   };
 
+  // ✅ HELPER: Detectar tipo de archivo por extensión
+  const getFileType = (filename: string): 'pdf' | 'video' | 'audio' | 'image' | 'document' | 'spreadsheet' | 'html' | 'other' => {
+    if (!filename) return 'other';
+    const ext = filename.toLowerCase().split('.').pop() || '';
+    if (ext === 'pdf') return 'pdf';
+    if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) return 'video';
+    if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return 'audio';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'image';
+    if (['doc', 'docx', 'odt', 'txt', 'rtf'].includes(ext)) return 'document';
+    if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) return 'spreadsheet';
+    if (['html', 'htm'].includes(ext)) return 'html';
+    return 'other';
+  };
+
+  // ✅ HELPER: Obtener color según tipo de archivo
+  const getFileTypeColor = (filename: string): string => {
+    const type = getFileType(filename);
+    const colors: Record<string, string> = {
+      pdf: '#EF4444',     // Rojo
+      video: '#8B5CF6',   // Morado
+      audio: '#EC4899',   // Rosa
+      image: '#10B981',   // Verde
+      document: '#3B82F6', // Azul
+      spreadsheet: '#F59E0B', // Amarillo
+      html: '#06B6D4',    // Cyan
+      other: '#6B7280'    // Gris
+    };
+    return colors[type] || colors.other;
+  };
+
+  // ✅ HELPER: Obtener nombre para mostrar según tipo de archivo
+  const getFileTypeDisplayName = (filename: string): string => {
+    const type = getFileType(filename);
+    const names: Record<string, string> = {
+      pdf: 'PDF',
+      video: 'Video',
+      audio: 'Audio',
+      image: 'Imagen',
+      document: 'Documento',
+      spreadsheet: 'Hoja de Cálculo',
+      html: 'HTML',
+      other: 'Archivo'
+    };
+    return names[type] || names.other;
+  };
+
+  // ✅ HELPER: Abrir archivo según su tipo - abre el modal con visor
+  const abrirArchivo = async (doc: Documento) => {
+    setDocumentoParaVer(doc);
+    setCargandoDocumento(true);
+    setShowModalVisor(true);
+    
+    try {
+      // Construir la URL del documento
+      const baseUrl = 'http://localhost:3001/api/v1';
+      const downloadUrl = `${baseUrl}/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      const token = localStorage.getItem('esap_access_token');
+      const fullUrl = token ? `${downloadUrl}?token=${token}` : downloadUrl;
+      
+      // Cargar el documento como blob para crear una URL local
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      setDocumentoUrl(url);
+      
+      toast.info(`Abriendo ${getFileTypeDisplayName(doc.archivoAcceso)}...`);
+    } catch (error: any) {
+      console.error('Error al cargar documento:', error);
+      toast.error('Error al cargar documento', {
+        description: error.message || 'No se pudo cargar el documento'
+      });
+    } finally {
+      setCargandoDocumento(false);
+    }
+  };
+
+  // ✅ HELPER: Descargar documento según su tipo
+  const descargarDocumento = async (doc: Documento) => {
+    try {
+      toast.loading('Descargando documento...', { id: 'download' });
+      
+      // Construir la URL del documento
+      const baseUrl = 'http://localhost:3001/api/v1';
+      const downloadUrl = `${baseUrl}/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+      const token = localStorage.getItem('esap_access_token');
+      const fullUrl = token ? `${downloadUrl}?token=${token}` : downloadUrl;
+      
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.archivoAcceso;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Descarga completada', {
+        id: 'download',
+        description: doc.archivoAcceso
+      });
+    } catch (error: any) {
+      console.error('Error al descargar:', error);
+      toast.error('Error al descargar', {
+        id: 'download',
+        description: error.message || 'No se pudo descargar el documento'
+      });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* ✅ Header World-Class - Compacto Desktop-First */}
@@ -1313,10 +1446,25 @@ export function ExpedientesElectronicosWorldClass() {
                                     >
                                       <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />
                                     </button>
-                                    <button className="p-1.5 rounded-md hover:bg-gray-100" title="Ver documento">
-                                      <Eye className="w-3.5 h-3.5 text-gray-600" />
+                                    {/* ✅ Botón único con lógica condicional para abrir archivo */}
+                                    <button 
+                                      onClick={() => abrirArchivo(doc)}
+                                      className="p-1.5 rounded-md hover:bg-gray-100" 
+                                      title={`Ver ${getFileTypeDisplayName(doc.archivoAcceso)}`}
+                                    >
+                                      {getFileType(doc.archivoAcceso) === 'video' || getFileType(doc.archivoAcceso) === 'audio' ? (
+                                        <Play className="w-3.5 h-3.5" style={{ color: getFileTypeColor(doc.archivoAcceso) }} />
+                                      ) : getFileType(doc.archivoAcceso) === 'image' ? (
+                                        <Eye className="w-3.5 h-3.5" style={{ color: getFileTypeColor(doc.archivoAcceso) }} />
+                                      ) : (
+                                        <Eye className="w-3.5 h-3.5" style={{ color: getFileTypeColor(doc.archivoAcceso) }} />
+                                      )}
                                     </button>
-                                    <button className="p-1.5 rounded-md hover:bg-gray-100" title="Descargar documento">
+                                    <button 
+                                      onClick={() => descargarDocumento(doc)}
+                                      className="p-1.5 rounded-md hover:bg-gray-100" 
+                                      title="Descargar documento"
+                                    >
                                       <Download className="w-3.5 h-3.5 text-gray-600" />
                                     </button>
                                   </div>
@@ -1512,6 +1660,187 @@ export function ExpedientesElectronicosWorldClass() {
                   <p className="text-xs text-gray-900 pl-4">{campo.value}</p>
                 </div>
               ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ✅ MODAL: VISOR DE DOCUMENTOS - Showing documents in modal based on file type */}
+      {showModalVisor && documentoParaVer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4" onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }}>
+          <motion.div 
+            initial={{ scale: 0.9 }} 
+            animate={{ scale: 1 }} 
+            className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+                  {getFileType(documentoParaVer.archivoAcceso) === 'video' || getFileType(documentoParaVer.archivoAcceso) === 'audio' ? (
+                    <Play className="w-5 h-5 text-white" />
+                  ) : getFileType(documentoParaVer.archivoAcceso) === 'image' ? (
+                    <FileText className="w-5 h-5 text-white" />
+                  ) : (
+                    <Eye className="w-5 h-5 text-white" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{getFileTypeDisplayName(documentoParaVer.archivoAcceso)}</h3>
+                  <p className="text-xs text-blue-100">{documentoParaVer.descripcionPrincipal.substring(0, 60)}...</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {documentoUrl && (
+                  <button
+                    onClick={() => window.open(documentoUrl, '_blank')}
+                    className="px-3 py-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Nueva pestaña
+                  </button>
+                )}
+                <button 
+                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }} 
+                  className="p-1.5 hover:bg-white/20 rounded-md"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Content - Viewer based on file type */}
+            <div className="flex-1 overflow-auto" style={{ minHeight: '400px', maxHeight: '70vh' }}>
+              {cargandoDocumento ? (
+                <div className="flex flex-col items-center justify-center h-64">
+                  <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                  <p className="text-sm font-bold text-gray-700">Cargando documento...</p>
+                  <p className="text-xs text-gray-500 mt-1">Por favor espere</p>
+                </div>
+              ) : documentoUrl ? (
+                <>
+                  {/* PDF Viewer */}
+                  {getFileType(documentoParaVer.archivoAcceso) === 'pdf' && (
+                    <iframe
+                      src={documentoUrl}
+                      className="w-full h-full"
+                      title="Visor PDF"
+                    />
+                  )}
+                  
+                  {/* Video Player */}
+                  {getFileType(documentoParaVer.archivoAcceso) === 'video' && (
+                    <video
+                      src={documentoUrl}
+                      controls
+                      autoPlay
+                      className="w-full h-full max-h-[70vh]"
+                    >
+                      Tu navegador no soporta la reproducción de video.
+                    </video>
+                  )}
+                  
+                  {/* Audio Player */}
+                  {getFileType(documentoParaVer.archivoAcceso) === 'audio' && (
+                    <div className="flex flex-col items-center justify-center h-64 bg-gray-100">
+                      <Play className="w-16 h-16 text-purple-600 mb-4" />
+                      <audio
+                        src={documentoUrl}
+                        controls
+                        autoPlay
+                        className="w-full max-w-md"
+                      >
+                        Tu navegador no soporta la reproducción de audio.
+                      </audio>
+                    </div>
+                  )}
+                  
+                  {/* Image Viewer */}
+                  {getFileType(documentoParaVer.archivoAcceso) === 'image' && (
+                    <div className="flex items-center justify-center h-full p-4 bg-gray-100">
+                      <img
+                        src={documentoUrl}
+                        alt={documentoParaVer.descripcionPrincipal}
+                        className="max-w-full max-h-[65vh] object-contain"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* HTML Viewer */}
+                  {getFileType(documentoParaVer.archivoAcceso) === 'html' && (
+                    <iframe
+                      src={documentoUrl}
+                      className="w-full h-full"
+                      title="Visor HTML"
+                    />
+                  )}
+                  
+                  {/* Document/Other - Show in iframe or offer download */}
+                  {['document', 'spreadsheet', 'other'].includes(getFileType(documentoParaVer.archivoAcceso)) && (
+                    <div className="flex flex-col items-center justify-center h-64 p-8">
+                      <FileText className="w-16 h-16 text-gray-400 mb-4" />
+                      <p className="text-lg font-semibold text-gray-700 mb-2">
+                        Vista previa no disponible
+                      </p>
+                      <p className="text-sm text-gray-600 mb-6 text-center">
+                        El tipo de archivo "{getFileTypeDisplayName(documentoParaVer.archivoAcceso)}" no tiene vista previa en el navegador.
+                      </p>
+                      <button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = documentoUrl;
+                          link.download = documentoParaVer.archivoAcceso;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold flex items-center gap-2 hover:bg-blue-700"
+                      >
+                        <Download className="w-4 h-4" />
+                        Descargar archivo
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64">
+                  <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+                  <p className="text-lg font-semibold text-gray-700 mb-2">Error al cargar</p>
+                  <p className="text-sm text-gray-500">No se pudo cargar el documento</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="px-4 py-3 border-t bg-gray-50 flex justify-between items-center flex-shrink-0">
+              <div className="text-xs text-gray-500">
+                <span className="font-semibold">{documentoParaVer.tipoNombre}</span> • {documentoParaVer.tamanoKB}
+              </div>
+              <div className="flex gap-2">
+                {documentoUrl && (
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = documentoUrl;
+                      link.download = documentoParaVer.archivoAcceso;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold flex items-center gap-2 hover:bg-green-700"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar
+                  </button>
+                )}
+                <button
+                  onClick={() => { setShowModalVisor(false); setDocumentoUrl(null); }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-semibold hover:bg-gray-600"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
