@@ -22,7 +22,6 @@ import { Checkbox } from '../ui/checkbox';
 import { VisorPDFCertificado } from './VisorPDFCertificado';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { certificadosService } from '../../services/api/certificados.service';
-import { obtenerPreferenciasCertificadoLaboral } from '../../utils/certificadosLaboralesPreferencias';
 
 interface GenerarCertificadoModalProps {
   isOpen: boolean;
@@ -307,13 +306,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             : cert.status === 'EXPIRED'
               ? 'expirado'
               : employmentEstado;
-        const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
-          id: cert.id,
-          consecutivo: cert.certificate_number,
-          qrCode: cert.verification_code,
-          certificateHash: cert.verification_code,
-        });
-        const incluyeSalario = preferenciasPersistidas?.includeSalary ?? normalizarBoolean(
+        const incluyeSalario = normalizarBoolean(
           cert.include_salary ??
             cert.includeSalary ??
             cert.incluyeSalario ??
@@ -322,14 +315,14 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           true,
         );
         const incluyePrimaTecnica = incluyeSalario
-          ? (preferenciasPersistidas?.includeTechnicalBonus ?? normalizarBoolean(
+          ? normalizarBoolean(
               cert.include_technical_bonus ??
                 cert.includeTechnicalBonus ??
                 cert.incluyePrimaTecnica ??
                 cert.request?.include_technical_bonus ??
                 cert.request?.includeTechnicalBonus,
               false,
-            ))
+            )
           : false;
         return {
           id: cert.id,
@@ -347,7 +340,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cod_cargo: dependenciaPadreRaw,
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
-          technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus ?? preferenciasPersistidas?.technicalBonus,
+          technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
           incluyeSalario,
           incluyePrimaTecnica,
           templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,

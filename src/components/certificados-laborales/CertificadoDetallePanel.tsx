@@ -27,7 +27,6 @@ import { HistorialVerificacionesQR } from './HistorialVerificacionesQR';
 import { getPublicBaseUrl } from '../../config/environment';
 import { certificadosService } from '../../services/api/certificados.service';
 import { formatCargoDisplay } from '../../utils/cargoFormatter';
-import { obtenerPreferenciasCertificadoLaboral } from '../../utils/certificadosLaboralesPreferencias';
 
 interface CertificadoDetallePanelProps {
   certificado: {
@@ -96,20 +95,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     '',
   ).trim();
   const verificationUrl = `${verificationBase}${verificationPath}/${encodeURIComponent(codigoVerificacion)}`;
-  const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
-    id: certificado.id,
-    consecutivo: certificado.consecutivo,
-    qrCode: certificado.qrCode || certificado.certificateHash || certificado.verification_code,
-    certificateHash: certificado.certificateHash || certificado.verification_code,
-  });
-  const incluyeSalarioCertificado =
-    (preferenciasPersistidas?.includeSalary ?? certificado.incluyeSalario) !== false;
+  const incluyeSalarioCertificado = certificado.incluyeSalario !== false;
   const incluyePrimaTecnicaCertificado = incluyeSalarioCertificado && (
-    preferenciasPersistidas?.includeTechnicalBonus ?? certificado.incluyePrimaTecnica ?? false
+    certificado.incluyePrimaTecnica ?? false
   );
   const primaTecnicaCertificado = Number(
-    preferenciasPersistidas?.technicalBonus ??
-      certificado.technical_bonus ??
+    certificado.technical_bonus ??
       (certificado.empleado.salario || 0) * 0.2,
   );
   const normalizarDependencia = (value?: string | null) => {
@@ -1093,7 +1084,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
               ...certificado,
               incluyeSalario: incluyeSalarioCertificado,
               incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
-              technical_bonus: certificado.technical_bonus ?? preferenciasPersistidas?.technicalBonus,
+              technical_bonus: primaTecnicaCertificado,
             }}
           />
 

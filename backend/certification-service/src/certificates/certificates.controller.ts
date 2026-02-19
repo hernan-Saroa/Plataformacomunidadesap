@@ -249,10 +249,22 @@ export class CertificatesController {
   @Post('autoservicio/validar-codigo')
   @Public()
   @HttpCode(HttpStatus.CREATED)
-  async validarCodigoYGenerar(@Body() data: { documento: string; codigo: string }) {
+  async validarCodigoYGenerar(
+    @Body()
+    data: {
+      documento: string;
+      codigo: string;
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    },
+  ) {
     return await this.certificatesService.validarCodigoYGenerarCertificado(
       data.documento,
       data.codigo,
+      {
+        includeSalary: data.includeSalary,
+        includeTechnicalBonus: data.includeTechnicalBonus,
+      },
     );
   }
 }

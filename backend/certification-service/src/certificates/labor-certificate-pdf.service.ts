@@ -35,6 +35,17 @@ export class LaborCertificatePdfService {
     return sanitized;
   }
 
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  }
+
   async generateCertificatePdf(
     certificate: Certificate,
     options: PdfOptions = {},
@@ -50,8 +61,18 @@ export class LaborCertificatePdfService {
       (certificateWithTemplate.template_type as TemplateType) ||
       options.templateType ||
       this.resolveTemplateType(certificate);
-    const includeSalary = options.includeSalary !== false;
-    const includeTechnicalBonus = options.includeTechnicalBonus === true;
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
 
     const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
     const typographyFont = this.sanitizeTypographyFont(

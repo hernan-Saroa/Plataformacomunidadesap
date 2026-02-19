@@ -64,6 +64,17 @@ export class CertificatesService {
       .trim();
   }
 
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  }
+
   private resolveTemplateTypeFromText(value: string): TemplateType {
     const text = this.normalizeTemplateText(value);
     if (!text) {
@@ -346,9 +357,22 @@ export class CertificatesService {
       throw new BadRequestException('No hay un email registrado para enviar el certificado');
     }
 
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
+
     const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
-      includeSalary: options.includeSalary,
-      includeTechnicalBonus: options.includeTechnicalBonus,
+      includeSalary,
+      includeTechnicalBonus,
       templateType: options.templateType,
       publicBaseUrl: options.publicBaseUrl,
     });
@@ -664,7 +688,13 @@ export class CertificatesService {
     return certificate;
   }
 
-  async createCertificado(solicitudId: string) {
+  async createCertificado(
+    solicitudId: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
     const request = await this.findSolicitudById(solicitudId);
     const signer = await this.signerRepo.findOne({
       where: { is_primary: true, is_active: true },
@@ -696,6 +726,11 @@ export class CertificatesService {
       this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
     }
 
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+
     const certificate = this.certificateRepo.create({
       verification_code,
       certificate_number,
@@ -708,6 +743,8 @@ export class CertificatesService {
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
       technical_bonus: Number(request.monthly_salary || 0) * 0.2,
+      include_salary: includeSalary,
+      include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,
       department: request.department,
       cod_cargo: request.cod_cargo,
@@ -1474,7 +1511,14 @@ export class CertificatesService {
   /**
    * Validar codigo y generar certificado
    */
-  async validarCodigoYGenerarCertificado(documento: string, codigo: string) {
+  async validarCodigoYGenerarCertificado(
+    documento: string,
+    codigo: string,
+    options: {
+      includeSalary?: boolean;
+      includeTechnicalBonus?: boolean;
+    } = {},
+  ) {
     const documentoTrim = (documento || '').trim();
     const codigoTrim = (codigo || '').trim();
     // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
@@ -1506,7 +1550,14 @@ export class CertificatesService {
     }
 
     // Generar el certificado
-    const nuevoCertificado = await this.createCertificado(solicitud.id);
+    const includeSalary = this.normalizeBoolean(options.includeSalary, true);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, false)
+      : false;
+    const nuevoCertificado = await this.createCertificado(solicitud.id, {
+      includeSalary,
+      includeTechnicalBonus,
+    });
 
     // Limpia el codigo y expiracion en la solicitud
     await this.requestRepo.update(solicitud.id, {

@@ -27,10 +27,6 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { getPublicBaseUrl } from '../../config/environment';
 import { useIsMobile } from '../ui/use-mobile';
 import { formatCargoDisplay } from '../../utils/cargoFormatter';
-import {
-  guardarPreferenciasCertificadoLaboral,
-  obtenerPreferenciasCertificadoLaboral,
-} from '../../utils/certificadosLaboralesPreferencias';
 // import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { PublicNavbar } from './PublicNavbar';
 // import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
@@ -291,36 +287,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     return fallback;
   };
 
-  const resolverLlavesCertificado = (cert: any) => ({
-    id: cert?.id ?? cert?.certificado_completo?.id,
-    consecutivo:
-      cert?.numero_radicado ??
-      cert?.consecutivo ??
-      cert?.certificate_number ??
-      cert?.certificado_completo?.consecutivo,
-    qrCode:
-      cert?.qr_code ??
-      cert?.qrCode ??
-      cert?.verification_code ??
-      cert?.certificateHash ??
-      cert?.certificado_completo?.qrCode,
-    certificateHash: cert?.certificateHash ?? cert?.verification_code,
-  });
-
-  const guardarPreferenciasLocal = (
-    cert: any,
-    includeSalary: boolean,
-    includeTechnicalBonus: boolean,
-    technicalBonus?: number,
-  ) => {
-    const keys = resolverLlavesCertificado(cert);
-    guardarPreferenciasCertificadoLaboral(keys, {
-      includeSalary,
-      includeTechnicalBonus,
-      technicalBonus,
-    });
-  };
-
   const construirCargoVisual = (
     cargoFuente?: string | null,
     codCargo?: string | number | null,
@@ -342,21 +308,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       templateSnapshot?.templateType ||
       templateSnapshot?.template_type ||
       resolverTemplateType(cert);
-    const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
-      id: cert?.id,
-      consecutivo: cert?.certificate_number || cert?.verification_code,
-      qrCode: cert?.verification_code,
-      certificateHash: cert?.verification_code,
-    });
     const salarioBase = normalizarMonto(cert.monthly_salary);
     const salarioTextoBase = cert.salary_text;
     const bonusBase = normalizarMonto(
       cert.technical_bonus ??
         cert.request?.technical_bonus ??
-        preferenciasPersistidas?.technicalBonus ??
         salarioBase * 0.2,
     );
-    const incluyeSalarioBackend = preferenciasPersistidas?.includeSalary ?? normalizarBoolean(
+    const incluyeSalarioBackend = normalizarBoolean(
       cert.include_salary ??
         cert.includeSalary ??
         cert.incluyeSalario ??
@@ -365,14 +324,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       true,
     );
     const incluyePrimaBackend = incluyeSalarioBackend
-      ? (preferenciasPersistidas?.includeTechnicalBonus ?? normalizarBoolean(
+      ? normalizarBoolean(
           cert.include_technical_bonus ??
             cert.includeTechnicalBonus ??
             cert.incluyePrimaTecnica ??
             cert.request?.include_technical_bonus ??
             cert.request?.includeTechnicalBonus,
           false,
-        ))
+        )
       : false;
     const cargoFormateado = construirCargoVisual(
       cert.career_category || cert.position_category,
@@ -581,15 +540,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const registrarCertificado = (cert: CertificadoGenerado) => {
     const incluirSalarioInicial = cert.incluyeSalario ?? incluirSalario;
     const incluirPrimaInicial = incluirSalarioInicial ? (cert.incluyePrimaTecnica ?? incluirPrimaTecnica) : false;
-    const primaTecnicaBase = normalizarMonto(
-      cert.prima_tecnica ??
-        cert.certificado_completo?.technical_bonus ??
-        (cert.salario_original ?? cert.salario_actual ?? 0) * 0.2,
-    );
     certificadoBaseRef.current = cert;
     setIncluirSalario(incluirSalarioInicial);
     setIncluirPrimaTecnica(incluirPrimaInicial);
-    guardarPreferenciasLocal(cert, incluirSalarioInicial, incluirPrimaInicial, primaTecnicaBase);
     setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalarioInicial, incluirPrimaInicial));
   };
 
@@ -809,18 +762,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           templateSnapshot?.templateType ||
           templateSnapshot?.template_type ||
           resolverTemplateType(cert);
-        const preferenciasPersistidas = obtenerPreferenciasCertificadoLaboral({
-          id: cert?.id,
-          consecutivo: cert?.certificate_number || cert?.verification_code,
-          qrCode: cert?.verification_code,
-          certificateHash: cert?.verification_code,
-        });
         const salarioBase = normalizarMonto(cert.monthly_salary ?? empleadoEncontrado?.salario_actual ?? 0);
         const salarioTextoBase = cert.salary_text;
         const bonusBase = normalizarMonto(
           cert.technical_bonus ??
             cert.request?.technical_bonus ??
-            preferenciasPersistidas?.technicalBonus ??
             salarioBase * 0.2,
         );
         const incluyeSalarioFinal = incluirSalario;
@@ -1117,16 +1063,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       setCertificadoGenerado(aplicarPreferenciasCertificado(certificadoBaseRef.current, incluirSalario, incluirPrimaTecnica));
     }
   }, [incluirSalario, incluirPrimaTecnica]);
-
-  useEffect(() => {
-    if (!certificadoGenerado) return;
-    const primaTecnicaBase = normalizarMonto(
-      certificadoGenerado.prima_tecnica ??
-        certificadoGenerado.certificado_completo?.technical_bonus ??
-        (certificadoGenerado.salario_original ?? certificadoGenerado.salario_actual ?? 0) * 0.2,
-    );
-    guardarPreferenciasLocal(certificadoGenerado, incluirSalario, incluirPrimaTecnica, primaTecnicaBase);
-  }, [certificadoGenerado, incluirSalario, incluirPrimaTecnica]);
 
   // Paso visual para el stepper: si ya hay certificado, mostrar siempre el paso 3 activo
   const pasoActivoUI: Paso =
