@@ -565,8 +565,10 @@ export class CertificatesService {
     }
 
     qb
-      .orderBy('COALESCE(cert.issuance_timestamp, cert.created_at)', 'DESC')
-      .addOrderBy('COALESCE(cert.issue_date, cert.created_at)', 'DESC')
+      .addSelect('COALESCE(cert.issuance_timestamp, cert.created_at)', 'sort_issuance_date')
+      .addSelect('COALESCE(cert.issue_date, cert.created_at)', 'sort_issue_date')
+      .orderBy('sort_issuance_date', 'DESC')
+      .addOrderBy('sort_issue_date', 'DESC')
       .addOrderBy('cert.created_at', 'DESC');
 
     const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
