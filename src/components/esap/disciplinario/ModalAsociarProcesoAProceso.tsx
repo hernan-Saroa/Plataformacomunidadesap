@@ -245,6 +245,7 @@ export function ModalAsociarProcesoAProceso({
       onClose={handleClose}
       title="Asociar Proceso a Proceso Existente"
       size="lg"
+      zIndex={200}
       disableBackdropClick={isSubmitting}
       disableEscapeKey={isSubmitting}
       footer={
