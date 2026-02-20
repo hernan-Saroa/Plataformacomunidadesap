@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS certification.certificates (
   position_location VARCHAR(150),
   monthly_salary DECIMAL(12, 2) NOT NULL,
   technical_bonus DECIMAL(12, 2) DEFAULT 0,
+  include_salary BOOLEAN DEFAULT TRUE,
+  include_technical_bonus BOOLEAN DEFAULT FALSE,
   salary_text VARCHAR(255),
   department_parent VARCHAR(255) DEFAULT 'Registro padre',
   department VARCHAR(255),

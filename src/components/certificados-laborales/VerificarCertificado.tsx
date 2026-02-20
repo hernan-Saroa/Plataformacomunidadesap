@@ -197,6 +197,9 @@ export function VerificarCertificado() {
           certificado?.codGrade ||
           certificado?.request?.cod_grade ||
           certificado?.request?.codGrade,
+        observations:
+          certificado?.request?.observations ||
+          certificado?.observations,
         templateType: certificado?.template_type || certificado?.templateType,
         includeCodeLabel: true,
         codeLabel: 'Codigo',

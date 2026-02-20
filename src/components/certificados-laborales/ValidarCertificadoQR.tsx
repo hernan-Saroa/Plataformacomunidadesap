@@ -150,6 +150,9 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           response?.codGrade ||
           response?.request?.cod_grade ||
           response?.request?.codGrade,
+        observations:
+          response?.request?.observations ||
+          response?.observations,
         templateType: response?.template_type || response?.templateType,
         includeCodeLabel: true,
         codeLabel: 'Codigo',
@@ -395,7 +398,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                 {validationResult.isValid && validationResult.certificado ? (
                   <>
                     {/* Logo ESAP en Header del Certificado */}
-                    <div className="flex justify-center pt-4 pb-2">
+                    <div className="flex justify-center">
                       <ESAPLogo 
                         variant="color"
                         className="h-16 sm:h-20 w-auto"
@@ -403,7 +406,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                     </div>
 
                     {/* Header de Éxito */}
-                    <div className="text-center py-6">
+                    <div className="text-center">
                       <div 
                         className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
                         style={{
@@ -415,11 +418,11 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
                         }}
                       >
                         {validationResult.certificado.estado === 'VIGENTE' ? (
-                          <CheckCircle className="w-8 h-8 text-green-600" strokeWidth={2.5} />
+                          <CheckCircle className="w-12 h-12 text-green-600" strokeWidth={2.5} />
                         ) : validationResult.certificado.estado === 'VENCIDO' ? (
-                          <AlertCircle className="w-8 h-8 text-yellow-600" strokeWidth={2.5} />
+                          <AlertCircle className="w-12 h-12 text-yellow-600" strokeWidth={2.5} />
                         ) : (
-                          <XCircle className="w-8 h-8 text-red-600" strokeWidth={2.5} />
+                          <XCircle className="w-12 h-12 text-red-600" strokeWidth={2.5} />
                         )}
                       </div>
                       

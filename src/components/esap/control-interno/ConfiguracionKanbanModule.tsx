@@ -12,7 +12,7 @@
  * ✅ Notificaciones y alertas configurables
  * ✅ Vista previa en tiempo real
  * 
- * ÚLTIMA ACTUALIZACIÓN: 24 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 19 Febrero 2026 - CONECTADO CON BACKEND
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -21,166 +21,41 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Columns, Settings, Plus, Edit2, Trash2, Save, X, ArrowUp, ArrowDown,
   Clock, AlertTriangle, CheckCircle2, Layers, Zap, Bell, Eye, Palette,
-  ChevronRight, Info, TrendingUp, Layout
+  ChevronRight, Info, TrendingUp, Layout, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
-// ════════════════════════════════════════════════════════════════════════════
-// TIPOS
-// ════════════════════════════════════════════════════════════════════════════
-
-interface EtapaKanban {
-  id: string;
-  nombre: string;
-  descripcion: string;
-  orden: number;
-  color: string;
-  limiteWIP: number;
-  slaDias: number;
-  slaHoras: number;
-  alertaPrevia: number; // Días antes de vencer el SLA para alertar
-  notificacionesActivas: boolean;
-  esInicial: boolean;
-  esFinal: boolean;
-  reglaTransicionAutomatica: boolean;
-  condicionTransicion?: string;
-}
-
-interface ConfiguracionGeneral {
-  mostrarContadores: boolean;
-  mostrarTiempos: boolean;
-  alertasSLA: boolean;
-  alertasWIP: boolean;
-  transicionesAutomaticas: boolean;
-  compactarVista: boolean;
-  mostrarAvatar: boolean;
-  permitirDragDrop: boolean;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK INICIALES - CONFIGURACIÓN ACTUAL DEL KANBAN
-// ════════════════════════════════════════════════════════════════════════════
-
-const ETAPAS_INICIALES: EtapaKanban[] = [
-  {
-    id: 'etapa-1',
-    nombre: 'Plan Anual',
-    descripcion: 'Auditorías planificadas en el programa anual',
-    orden: 1,
-    color: '#10B981', // Verde
-    limiteWIP: 20,
-    slaDias: 30,
-    slaHoras: 0,
-    alertaPrevia: 7,
-    notificacionesActivas: true,
-    esInicial: true,
-    esFinal: false,
-    reglaTransicionAutomatica: false
-  },
-  {
-    id: 'etapa-2',
-    nombre: 'Planeación',
-    descripcion: 'Planeación detallada de la auditoría',
-    orden: 2,
-    color: '#3B82F6', // Azul
-    limiteWIP: 8,
-    slaDias: 15,
-    slaHoras: 0,
-    alertaPrevia: 3,
-    notificacionesActivas: true,
-    esInicial: false,
-    esFinal: false,
-    reglaTransicionAutomatica: true,
-    condicionTransicion: 'Todos los documentos de planeación aprobados'
-  },
-  {
-    id: 'etapa-3',
-    nombre: 'Ejecución',
-    descripcion: 'Ejecución del trabajo de campo',
-    orden: 3,
-    color: '#8B5CF6', // Morado
-    limiteWIP: 6,
-    slaDias: 30,
-    slaHoras: 0,
-    alertaPrevia: 5,
-    notificacionesActivas: true,
-    esInicial: false,
-    esFinal: false,
-    reglaTransicionAutomatica: false
-  },
-  {
-    id: 'etapa-4',
-    nombre: 'Comunicación',
-    descripcion: 'Elaboración y comunicación del informe',
-    orden: 4,
-    color: '#F59E0B', // Amarillo
-    limiteWIP: 5,
-    slaDias: 10,
-    slaHoras: 0,
-    alertaPrevia: 2,
-    notificacionesActivas: true,
-    esInicial: false,
-    esFinal: false,
-    reglaTransicionAutomatica: true,
-    condicionTransicion: 'Informe firmado y notificado'
-  },
-  {
-    id: 'etapa-5',
-    nombre: 'Seguimiento',
-    descripcion: 'Seguimiento a planes de mejoramiento',
-    orden: 5,
-    color: '#06B6D4', // Cyan
-    limiteWIP: 10,
-    slaDias: 90,
-    slaHoras: 0,
-    alertaPrevia: 15,
-    notificacionesActivas: true,
-    esInicial: false,
-    esFinal: false,
-    reglaTransicionAutomatica: false
-  },
-  {
-    id: 'etapa-6',
-    nombre: 'Cierre',
-    descripcion: 'Auditorías completadas y cerradas',
-    orden: 6,
-    color: '#EF4444', // Rojo
-    limiteWIP: 999,
-    slaDias: 5,
-    slaHoras: 0,
-    alertaPrevia: 1,
-    notificacionesActivas: false,
-    esInicial: false,
-    esFinal: true,
-    reglaTransicionAutomatica: false
-  }
-];
-
-const CONFIG_GENERAL_INICIAL: ConfiguracionGeneral = {
-  mostrarContadores: true,
-  mostrarTiempos: true,
-  alertasSLA: true,
-  alertasWIP: true,
-  transicionesAutomaticas: true,
-  compactarVista: false,
-  mostrarAvatar: true,
-  permitirDragDrop: true
-};
+// ✅ Hook para conexión con backend
+import { useConfiguracionKanban, type EtapaKanbanFrontend as EtapaKanban, type ConfiguracionGeneralKanban as ConfiguracionGeneral } from './services/useConfiguracionKanban';
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ConfiguracionKanbanModule() {
-  const [etapas, setEtapas] = useState<EtapaKanban[]>(ETAPAS_INICIALES);
-  const [configGeneral, setConfigGeneral] = useState<ConfiguracionGeneral>(CONFIG_GENERAL_INICIAL);
+  // ✅ Usar hook para conectar con backend
+  const {
+    tableroId,
+    etapas,
+    configGeneral,
+    loading,
+    error,
+    crearEtapa,
+    actualizarEtapa,
+    eliminarEtapa,
+    moverEtapa,
+    actualizarConfigGeneral,
+    recargarDatos,
+  } = useConfiguracionKanban();
+
   const [etapaEditando, setEtapaEditando] = useState<EtapaKanban | null>(null);
   const [mostrarModalEtapa, setMostrarModalEtapa] = useState(false);
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [tabActiva, setTabActiva] = useState<'etapas' | 'general' | 'reglas'>('etapas');
+  const [guardando, setGuardando] = useState(false);
 
   // ════════════════════════════════════════════════════════════════════════════
-  // HANDLERS - ETAPAS
+  // HANDLERS - ETAPAS (conectados al backend)
   // ════════════════════════════════════════════════════════════════════════════
 
   const handleAgregarEtapa = () => {
@@ -207,22 +82,29 @@ export function ConfiguracionKanbanModule() {
     setMostrarModalEtapa(true);
   };
 
-  const handleGuardarEtapa = (etapa: EtapaKanban) => {
-    const existe = etapas.find(e => e.id === etapa.id);
-    
-    if (existe) {
-      setEtapas(etapas.map(e => e.id === etapa.id ? etapa : e));
-      toast.success('✅ Etapa actualizada exitosamente');
-    } else {
-      setEtapas([...etapas, etapa]);
-      toast.success('✅ Etapa creada exitosamente');
+  const handleGuardarEtapa = async (etapa: EtapaKanban) => {
+    setGuardando(true);
+    try {
+      const existe = etapas.find(e => e.id === etapa.id);
+      
+      if (existe) {
+        // Actualizar etapa existente en el backend
+        await actualizarEtapa(etapa.id, etapa);
+      } else {
+        // Crear nueva etapa en el backend
+        await crearEtapa(etapa);
+      }
+      
+      setMostrarModalEtapa(false);
+      setEtapaEditando(null);
+    } catch (error) {
+      console.error('Error guardando etapa:', error);
+    } finally {
+      setGuardando(false);
     }
-    
-    setMostrarModalEtapa(false);
-    setEtapaEditando(null);
   };
 
-  const handleEliminarEtapa = (id: string) => {
+  const handleEliminarEtapa = async (id: string) => {
     const etapa = etapas.find(e => e.id === id);
     
     if (etapa?.esInicial || etapa?.esFinal) {
@@ -230,42 +112,59 @@ export function ConfiguracionKanbanModule() {
       return;
     }
     
-    setEtapas(etapas.filter(e => e.id !== id));
-    toast.success('✅ Etapa eliminada exitosamente');
+    await eliminarEtapa(id);
   };
 
-  const handleMoverEtapa = (id: string, direccion: 'arriba' | 'abajo') => {
-    const index = etapas.findIndex(e => e.id === id);
-    if (index === -1) return;
-
-    const nuevasEtapas = [...etapas];
-    const nuevoIndex = direccion === 'arriba' ? index - 1 : index + 1;
-
-    if (nuevoIndex < 0 || nuevoIndex >= etapas.length) return;
-
-    // Intercambiar
-    [nuevasEtapas[index], nuevasEtapas[nuevoIndex]] = [nuevasEtapas[nuevoIndex], nuevasEtapas[index]];
-
-    // Reordenar números
-    nuevasEtapas.forEach((etapa, idx) => {
-      etapa.orden = idx + 1;
-    });
-
-    setEtapas(nuevasEtapas);
-    toast.success('✅ Orden actualizado');
+  const handleMoverEtapa = async (id: string, direccion: 'arriba' | 'abajo') => {
+    await moverEtapa(id, direccion);
   };
 
   const handleGuardarConfiguracion = () => {
-    toast.success('💾 Configuración guardada exitosamente', {
+    recargarDatos();
+    toast.success('💾 Configuración sincronizada', {
       description: 'Los cambios se aplicarán en el tablero Kanban'
     });
   };
 
   const handleRestaurarDefecto = () => {
-    setEtapas(ETAPAS_INICIALES);
-    setConfigGeneral(CONFIG_GENERAL_INICIAL);
-    toast.info('🔄 Configuración restaurada a valores por defecto');
+    recargarDatos();
+    toast.info('🔄 Configuración recargada desde el servidor');
   };
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ESTADOS DE CARGA Y ERROR
+  // ════════════════════════════════════════════════════════════════════════════
+
+  if (loading) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <p className="text-gray-600">Cargando configuración del Kanban...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500" />
+          <div>
+            <p className="text-gray-900 font-semibold">Error cargando configuración</p>
+            <p className="text-gray-600 text-sm">{error}</p>
+          </div>
+          <button
+            onClick={recargarDatos}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -279,9 +178,16 @@ export function ConfiguracionKanbanModule() {
               <Columns className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
-                Configuración del Kanban
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
+                  Configuración del Kanban
+                </h1>
+                {tableroId && (
+                  <span className="px-2 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
+                    Conectado
+                  </span>
+                )}
+              </div>
               <p className="text-sm sm:text-base text-gray-600 mt-1">
                 Personaliza etapas, SLA, límites WIP y reglas de transición
               </p>
@@ -371,7 +277,7 @@ export function ConfiguracionKanbanModule() {
           <TabGeneral
             key="general"
             config={configGeneral}
-            onChange={setConfigGeneral}
+            onChange={actualizarConfigGeneral}
           />
         )}
         {tabActiva === 'reglas' && (

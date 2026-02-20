@@ -36,6 +36,7 @@ export enum PrioridadAuditoria {
 }
 
 export enum EstadoKanban {
+  PLAN_ANUAL = 'Plan Anual',
   PLANEACION = 'Planeación',
   EJECUCION = 'Ejecución',
   COMUNICACION = 'Comunicación',

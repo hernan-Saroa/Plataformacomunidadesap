@@ -2257,13 +2257,11 @@ export function GestionAuditoriasKanbanSimple() {
         )
       );
       
-      toast.success('Auditoría actualizada correctamente', {
-        description: `"${data.titulo}" ha sido modificada exitosamente`
-      });
+      // Solo cerrar el modal si fue exitoso
+      setModalEdicionOpen(false);
+      setAuditoriaParaEditar(null);
     }
-    
-    setModalEdicionOpen(false);
-    setAuditoriaParaEditar(null);
+    // Si hay error, el toast lo muestra el hook y el modal permanece abierto
   };
 
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
@@ -2348,28 +2346,11 @@ export function GestionAuditoriasKanbanSimple() {
     setModalCambiarEstadoOpen(true);
   };
 
-  // ✅ Mapeo de estados Kanban UI a fases del backend
-  // Acepta tanto EstadoAuditoria ('Planeación') como EstadoKanban ('planeacion')
-  // Backend FaseAuditoria: 'planeacion', 'en-curso', 'revision', 'completada'
+  // ✅ MEJORADO: Ahora envía el estado Kanban directamente al backend
+  // El backend soporta todos los estados: 'Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
   const mapearEstadoAFaseBackend = (estado: string): string => {
-    // Normalizar a minúsculas sin acentos para comparación
-    const estadoNorm = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    
-    // Mapeo a valores válidos del enum FaseAuditoria del backend
-    if (estadoNorm.includes('plan anual') || estadoNorm.includes('plan-anual') || estadoNorm.includes('planeacion') || estadoNorm.includes('backlog')) {
-      return 'planeacion';
-    }
-    if (estadoNorm.includes('ejecucion') || estadoNorm.includes('curso')) {
-      return 'en-curso';
-    }
-    if (estadoNorm.includes('comunicacion') || estadoNorm.includes('informe') || estadoNorm.includes('revision')) {
-      return 'revision';
-    }
-    if (estadoNorm.includes('seguimiento') || estadoNorm.includes('finalizada') || estadoNorm.includes('cerrado') || estadoNorm.includes('completada')) {
-      return 'completada';
-    }
-    
-    return 'planeacion';
+    // Ahora enviamos el estado Kanban directamente, el backend lo normaliza
+    return estado;
   };
 
   // Guardar cambio de estado con comentario - ✅ CONECTADO AL BACKEND

@@ -33,6 +33,8 @@ interface CertificadoDetallePanelProps {
     id: string;
     consecutivo: string;
     qrCode: string;
+    certificateHash?: string;
+    verification_code?: string;
     cantidadEscaneos: number;
     empleado: {
       nombre: string;
@@ -56,6 +58,13 @@ interface CertificadoDetallePanelProps {
     campus?: string;
     cod_cargo?: string;
     cod_grade?: string;
+    observations?: string;
+    request?: {
+      observations?: string;
+    };
+    technical_bonus?: number;
+    incluyeSalario?: boolean;
+    incluyePrimaTecnica?: boolean;
     templateSnapshot?: any;
     templateType?: 'docente' | 'administrador';
     solicitante?: {
@@ -82,7 +91,22 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
   const [showHistorialVerificaciones, setShowHistorialVerificaciones] = React.useState(false);
   const verificationBase = getPublicBaseUrl();
   const verificationPath = '/verificar-certificado';
-  const verificationUrl = `${verificationBase}${verificationPath}/${certificado.qrCode}`;
+  const codigoVerificacion = String(
+    certificado.qrCode ||
+    certificado.certificateHash ||
+    certificado.verification_code ||
+    certificado.consecutivo ||
+    '',
+  ).trim();
+  const verificationUrl = `${verificationBase}${verificationPath}/${encodeURIComponent(codigoVerificacion)}`;
+  const incluyeSalarioCertificado = certificado.incluyeSalario !== false;
+  const incluyePrimaTecnicaCertificado = incluyeSalarioCertificado && (
+    certificado.incluyePrimaTecnica ?? false
+  );
+  const primaTecnicaCertificado = Number(
+    certificado.technical_bonus ??
+      (certificado.empleado.salario || 0) * 0.2,
+  );
   const normalizarDependencia = (value?: string | null) => {
     const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
     if (!cleaned) return '';
@@ -103,7 +127,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       cargoSource: certificado.empleado.cargo,
       codCargo: certificado.cod_cargo,
       codGrade: certificado.cod_grade,
+      observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     }) ||
     certificado.empleado.cargo
   );
@@ -360,8 +387,16 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     setCargandoHistorial(true);
     setHistorialError(null);
 
+    if (!codigoVerificacion) {
+      setHistorialError('No hay un codigo de verificacion disponible para este certificado.');
+      setVerificaciones([]);
+      setHistorialCargado(true);
+      setCargandoHistorial(false);
+      return;
+    }
+
     try {
-      const response = await certificadosService.validacion.historialValidaciones(certificado.qrCode);
+      const response = await certificadosService.validacion.historialValidaciones(codigoVerificacion);
       const historialRemoto =
         response?.validation_history ||
         response?.validationHistory ||
@@ -489,6 +524,8 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
 
     try {
       const response = await certificadosService.laborales.reenviar(certificado.id, {
+        includeSalary: incluyeSalarioCertificado,
+        includeTechnicalBonus: incluyePrimaTecnicaCertificado,
         publicBaseUrl: getPublicBaseUrl(),
       });
       toast.success('Correo reenviado', {
@@ -574,6 +611,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
+    }
+  };
+
+  const handleCopiarCodigoQR = async () => {
+    if (!codigoVerificacion) {
+      toast.error('No hay codigo QR disponible para copiar');
+      return;
+    }
+    const copiado = await copiarAlPortapapeles(codigoVerificacion);
+    if (copiado) {
+      toast.success('Codigo QR copiado', {
+        description: 'El codigo de verificacion completo fue copiado al portapapeles'
+      });
+    } else {
+      toast.error('No se pudo copiar el codigo QR');
     }
   };
 
@@ -667,7 +719,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Grado */}
+                    {/* Fecha Vinculación y Correo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -680,10 +732,11 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Grado
+                          Correo Electrónico
                         </label>
-                        <p className="text-sm text-gray-900">
-                          {certificado.empleado.grado || certificado.cod_grade || 'No definido'}
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5 break-all">
+                          <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          {certificado.empleado.email}
                         </p>
                       </div>
                     </div>
@@ -702,23 +755,24 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Salario
                         </label>
-                        <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
-                          <DollarSign className="w-3.5 h-3.5 text-green-600" />
-                          ${Number(certificado.empleado.salario || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
-                        </p>
+                        {incluyeSalarioCertificado ? (
+                          <>
+                            <p className="text-sm text-gray-900 font-bold flex items-center gap-1.5">
+                              <DollarSign className="w-3.5 h-3.5 text-green-600" />
+                              ${Number(certificado.empleado.salario || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                            </p>
+                            {incluyePrimaTecnicaCertificado && primaTecnicaCertificado > 0 && (
+                              <p className="text-xs text-emerald-700 mt-1 pl-5">
+                                Prima Tecnica: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-amber-700 font-medium">No incluido en este certificado</p>
+                        )}
                       </div>
                     </div>
 
-                    {/* Correo */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Correo Electrónico
-                      </label>
-                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {certificado.empleado.email}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -792,10 +846,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
                           Código QR
                         </label>
-                        <p className="text-sm text-blue-600 font-mono flex items-center gap-1.5">
-                          <QrCode className="w-3.5 h-3.5" />
-                          QR-{certificado.qrCode.slice(-6)}
-                        </p>
+                        <div className="flex items-start gap-2">
+                          <p className="text-xs text-blue-600 font-mono flex items-start gap-1.5 break-all leading-5">
+                            <QrCode className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            {codigoVerificacion || 'No disponible'}
+                          </p>
+                          {!!codigoVerificacion && (
+                            <button
+                              onClick={handleCopiarCodigoQR}
+                              className="text-gray-400 hover:text-[#003DA5] transition-colors"
+                              title="Copiar codigo QR completo"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -1013,7 +1078,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
             autoAction={autoPDFAction || undefined}
             hiddenMode={!!autoPDFAction}
             onAutoActionComplete={handleAutoActionComplete}
-            certificado={certificado}
+            certificado={{
+              ...certificado,
+              incluyeSalario: incluyeSalarioCertificado,
+              incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
+              technical_bonus: primaTecnicaCertificado,
+            }}
           />
 
           {/* Modal Código QR */}

@@ -349,6 +349,8 @@ CREATE TABLE certification.certificates (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     cod_cargo character varying(255),
     technical_bonus numeric(12,2) DEFAULT 0,
+    include_salary boolean DEFAULT true,
+    include_technical_bonus boolean DEFAULT false,
     cod_grade character varying(255)
 );
 

@@ -276,17 +276,32 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       maximumFractionDigits: 0,
     });
 
+  const normalizarBoolean = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  };
+
   const construirCargoVisual = (
     cargoFuente?: string | null,
     codCargo?: string | number | null,
     codGrade?: string | number | null,
     templateType?: 'docente' | 'administrador',
+    observations?: string | null,
   ) =>
     formatCargoDisplay({
       cargoSource: cargoFuente,
       codCargo,
       codGrade,
+      observations,
       templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
@@ -299,12 +314,35 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       resolverTemplateType(cert);
     const salarioBase = normalizarMonto(cert.monthly_salary);
     const salarioTextoBase = cert.salary_text;
-    const bonusBase = normalizarMonto(cert.technical_bonus ?? salarioBase * 0.2);
+    const bonusBase = normalizarMonto(
+      cert.technical_bonus ??
+        cert.request?.technical_bonus ??
+        salarioBase * 0.2,
+    );
+    const incluyeSalarioBackend = normalizarBoolean(
+      cert.include_salary ??
+        cert.includeSalary ??
+        cert.incluyeSalario ??
+        cert.request?.include_salary ??
+        cert.request?.includeSalary,
+      true,
+    );
+    const incluyePrimaBackend = incluyeSalarioBackend
+      ? normalizarBoolean(
+          cert.include_technical_bonus ??
+            cert.includeTechnicalBonus ??
+            cert.incluyePrimaTecnica ??
+            cert.request?.include_technical_bonus ??
+            cert.request?.includeTechnicalBonus,
+          false,
+        )
+      : false;
     const cargoFormateado = construirCargoVisual(
       cert.career_category || cert.position_category,
       cert.cod_cargo || cert.codCargo,
       cert.cod_grade || cert.codGrade,
       templateType,
+      cert.request?.observations || cert.observations,
     );
 
     return {
@@ -319,8 +357,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       prima_tecnica: bonusBase,
       salario_original: salarioBase,
       salario_texto_original: salarioTextoBase,
-      incluyeSalario: true,
-      incluyePrimaTecnica: false,
+      incluyeSalario: incluyeSalarioBackend,
+      incluyePrimaTecnica: incluyePrimaBackend,
       qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
       nombre_completo: cert.full_name || 'N/A',
         certificado_completo: {
@@ -328,13 +366,15 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           consecutivo: cert.certificate_number || cert.verification_code,
           qrCode: cert.verification_code,
           cantidadEscaneos: 0,
-          incluyeSalario: true,
-          incluyePrimaTecnica: false,
+          incluyeSalario: incluyeSalarioBackend,
+          incluyePrimaTecnica: incluyePrimaBackend,
           technical_bonus: bonusBase,
           career_category: cert.career_category,
           position_category: cert.position_category,
           cod_cargo: cert.cod_cargo || cert.codCargo,
           cod_grade: cert.cod_grade || cert.codGrade,
+          observations: cert.request?.observations || cert.observations,
+          request: cert.request,
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
@@ -360,7 +400,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location: cert.department || cert.position_location,
+        position_location:
+          cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '',
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -376,7 +421,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   const [pasoActual, setPasoActual] = useState<Paso>('ingreso-documento');
   const [certificadoExistente, setCertificadoExistente] = useState(false);
   const [incluirSalario, setIncluirSalario] = useState(true);
-  const incluirPrimaTecnica = false;
+  const [incluirPrimaTecnica, setIncluirPrimaTecnica] = useState(false);
   const certificadoBaseRef = useRef<CertificadoGenerado | null>(null);
   
   // Paso 1: Ingreso de documento
@@ -449,6 +494,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
+  const actualizarPreferenciasSalario = (ocultarSalarioChecked: boolean | 'indeterminate') => {
+    const incluirSalarioActualizado = ocultarSalarioChecked !== true;
+    setIncluirSalario(incluirSalarioActualizado);
+    if (!incluirSalarioActualizado) {
+      setIncluirPrimaTecnica(false);
+    }
+  };
+
   const aplicarPreferenciasCertificado = (cert: CertificadoGenerado | null, incluir: boolean, incluirPrima: boolean): CertificadoGenerado | null => {
     if (!cert) return cert;
 
@@ -497,8 +550,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
   };
 
   const registrarCertificado = (cert: CertificadoGenerado) => {
+    const incluirSalarioInicial = cert.incluyeSalario ?? incluirSalario;
+    const incluirPrimaInicial = incluirSalarioInicial ? (cert.incluyePrimaTecnica ?? incluirPrimaTecnica) : false;
     certificadoBaseRef.current = cert;
-    setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalario, incluirPrimaTecnica));
+    setIncluirSalario(incluirSalarioInicial);
+    setIncluirPrimaTecnica(incluirPrimaInicial);
+    setCertificadoGenerado(aplicarPreferenciasCertificado(cert, incluirSalarioInicial, incluirPrimaInicial));
   };
 
   const handleCodigoExpirado = useCallback(() => {
@@ -638,6 +695,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         solicitud.cod_cargo || solicitud.codCargo,
         solicitud.cod_grade || solicitud.codGrade,
         templateType,
+        solicitud.observations,
       );
       const vinculoNormalizado =
         solicitud.position_category ||
@@ -697,7 +755,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       // Llamar al backend para validar código y generar certificado
       const response = await certificadosService.autoservicio.validarCodigoYGenerarCertificado(
         numeroDocumento,
-        codigoValidacion
+        codigoValidacion,
+        {
+          includeSalary: incluirSalario,
+          includeTechnicalBonus: incluirPrimaTecnica,
+        }
       );
       const cert = response?.certificado;
       if (!cert) {
@@ -715,12 +777,19 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           resolverTemplateType(cert);
         const salarioBase = normalizarMonto(cert.monthly_salary ?? empleadoEncontrado?.salario_actual ?? 0);
         const salarioTextoBase = cert.salary_text;
-        const bonusBase = normalizarMonto(cert.technical_bonus ?? salarioBase * 0.2);
+        const bonusBase = normalizarMonto(
+          cert.technical_bonus ??
+            cert.request?.technical_bonus ??
+            salarioBase * 0.2,
+        );
+        const incluyeSalarioFinal = incluirSalario;
+        const incluyePrimaFinal = incluyeSalarioFinal ? incluirPrimaTecnica : false;
         const cargoFormateado = construirCargoVisual(
           cert.career_category || cert.position_category || empleadoEncontrado?.cargo,
           cert.cod_cargo || cert.codCargo,
           cert.cod_grade || cert.codGrade,
           templateType,
+          cert.request?.observations || cert.observations,
         );
 
       // Construir objeto de certificado completo desde la respuesta del backend
@@ -736,8 +805,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         prima_tecnica: bonusBase,
         salario_original: salarioBase,
         salario_texto_original: salarioTextoBase,
-        incluyeSalario: true,
-        incluyePrimaTecnica: false,
+        incluyeSalario: incluyeSalarioFinal,
+        incluyePrimaTecnica: incluyePrimaFinal,
         qr_code: cert.verification_code || `QR-CERT-${cert.id}`,
         nombre_completo: cert.full_name || empleadoEncontrado?.nombre_completo || 'N/A',
         // Datos completos del certificado para el visor
@@ -746,13 +815,15 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         consecutivo: cert.certificate_number || cert.verification_code,
         qrCode: cert.verification_code,
         cantidadEscaneos: 0,
-        incluyeSalario: true,
-        incluyePrimaTecnica: false,
+        incluyeSalario: incluyeSalarioFinal,
+        incluyePrimaTecnica: incluyePrimaFinal,
         technical_bonus: bonusBase,
         career_category: cert.career_category,
         position_category: cert.position_category,
         cod_cargo: cert.cod_cargo || cert.codCargo,
         cod_grade: cert.cod_grade || cert.codGrade,
+        observations: cert.request?.observations || cert.observations,
+        request: cert.request,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
@@ -778,7 +849,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location: cert.department || cert.position_location,
+          position_location:
+            cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '',
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,
@@ -905,6 +981,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setPasoActual('ingreso-documento');
     setTipoDocumento('');
     setNumeroDocumento('');
+    setIncluirSalario(true);
+    setIncluirPrimaTecnica(false);
     setDigitosCodigo(['', '', '', '', '', '']);
     setCodigoEnviado('');
     setEmpleadoEncontrado(null);
@@ -937,7 +1015,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     try {
       const response = await certificadosService.laborales.reenviar(certificadoId, {
         includeSalary: incluirSalario,
-        includeTechnicalBonus: false,
+        includeTechnicalBonus: incluirPrimaTecnica,
         templateType: certificadoGenerado?.certificado_completo?.templateType,
         publicBaseUrl: getPublicBaseUrl(),
       });
@@ -992,7 +1070,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setIsSendingEmail(true);
     toast.loading('Enviando certificado a tu correo...', { id: 'auto-email-cert' });
     void enviarCertificadoPorEmail(cert.certificado_completo.id);
-  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario]);
+  }, [certificadoGenerado, empleadoEncontrado, isSendingEmail, incluirSalario, incluirPrimaTecnica]);
 
   // Si se marca certificado existente, asegura que el paso sea certificado
   useEffect(() => {
@@ -1005,7 +1083,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     if (certificadoBaseRef.current) {
       setCertificadoGenerado(aplicarPreferenciasCertificado(certificadoBaseRef.current, incluirSalario, incluirPrimaTecnica));
     }
-  }, [incluirSalario]);
+  }, [incluirSalario, incluirPrimaTecnica]);
 
   // Paso visual para el stepper: si ya hay certificado, mostrar siempre el paso 3 activo
   const pasoActivoUI: Paso =
@@ -1222,7 +1300,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         <Checkbox
                           id="sin-salario"
                           checked={!incluirSalario}
-                          onCheckedChange={(checked) => setIncluirSalario(!checked)}
+                          onCheckedChange={actualizarPreferenciasSalario}
                           className="mt-1"
                         />
                         <div>
@@ -1232,6 +1310,37 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           <p className="text-xs text-gray-600 mt-1">
                             Oculta el salario en el PDF y en la vista previa. Puedes cambiarlo en cualquier momento.
                           </p>
+                        </div>
+                      </div>
+
+                      <div className={`flex items-start gap-3 p-4 border rounded-lg ${
+                        incluirSalario
+                          ? 'bg-blue-50 border-blue-200'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        <Checkbox
+                          id="incluir-prima-tecnica-paso1"
+                          checked={incluirSalario && incluirPrimaTecnica}
+                          disabled={!incluirSalario}
+                          onCheckedChange={(checked) => setIncluirPrimaTecnica(checked === true && incluirSalario)}
+                          className="mt-1"
+                        />
+                        <div>
+                          <Label htmlFor="incluir-prima-tecnica-paso1" className={`text-sm font-semibold cursor-pointer ${
+                            incluirSalario ? 'text-gray-800' : 'text-gray-500'
+                          }`}>
+                            Incluir prima tecnica en el certificado
+                          </Label>
+                          <p className={`text-xs mt-1 ${
+                            incluirSalario ? 'text-gray-600' : 'text-gray-500'
+                          }`}>
+                            Agrega la prima tecnica mensual como valor adicional en el PDF y en la vista previa.
+                          </p>
+                          {!incluirSalario && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              Debes habilitar la informacion salarial para activar esta opcion.
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1546,7 +1655,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                     <Checkbox
                       id="toggle-salario"
                       checked={!incluirSalario}
-                      onCheckedChange={(checked) => setIncluirSalario(!checked)}
+                      onCheckedChange={actualizarPreferenciasSalario}
                       className="mt-1"
                     />
                     <div>
@@ -1556,6 +1665,37 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       <p className="text-xs text-gray-600 mt-1">
                         Si prefieres el certificado sin salario, marca esta opción. Se aplica también al PDF y a las impresiones.
                       </p>
+                    </div>
+                  </div>
+
+                  <div className={`mt-3 flex items-start gap-3 p-4 border rounded-lg ${
+                    incluirSalario
+                      ? 'bg-blue-50 border-blue-200'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <Checkbox
+                      id="toggle-prima-tecnica"
+                      checked={incluirSalario && incluirPrimaTecnica}
+                      disabled={!incluirSalario}
+                      onCheckedChange={(checked) => setIncluirPrimaTecnica(checked === true && incluirSalario)}
+                      className="mt-1"
+                    />
+                    <div>
+                      <Label htmlFor="toggle-prima-tecnica" className={`text-sm font-semibold cursor-pointer ${
+                        incluirSalario ? 'text-gray-800' : 'text-gray-500'
+                      }`}>
+                        Incluir prima tecnica en este certificado
+                      </Label>
+                      <p className={`text-xs mt-1 ${
+                        incluirSalario ? 'text-gray-600' : 'text-gray-500'
+                      }`}>
+                        Incluye un valor adicional de prima tecnica en el contenido del certificado y en el PDF.
+                      </p>
+                      {!incluirSalario && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Debes incluir la informacion salarial para habilitar la prima tecnica.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1605,6 +1745,21 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                                 <Shield className="w-4 h-4" />
                                 El certificado se generará sin información salarial.
                               </div>
+                            </div>
+                          )}
+                          {incluirSalario && incluirPrimaTecnica && (
+                            <div className="sm:col-span-2">
+                              <p className="text-gray-600 mb-1">Prima Tecnica</p>
+                              <p className="font-bold text-gray-900">
+                                $
+                                {formatearMonto(
+                                  certificadoGenerado.prima_tecnica ??
+                                    normalizarMonto(
+                                      (certificadoGenerado.salario_original ?? certificadoGenerado.salario_actual ?? 0) * 0.2,
+                                    ),
+                                )}{' '}
+                                COP
+                              </p>
                             </div>
                           )}
                         </div>

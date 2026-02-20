@@ -21,222 +21,75 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, Save, Plus, Edit2, Trash2, AlertCircle, CheckCircle2,
   Clock, TrendingUp, Settings, UserPlus, Activity, Target,
-  BarChart3, X, Info, Search, Filter, UserCheck
+  BarChart3, X, Info, Search, Filter, UserCheck, Wifi, WifiOff,
+  Loader2, RefreshCw, Check, ChevronsUpDown
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from '@/components/ui/popover';
 import { toast } from 'sonner@2.0.3';
+import { 
+  useConfiguracionProfesionales,
+  type UsuarioSistema,
+  type ConfiguracionOCIG,
+  type ProfesionalOCIG,
+  ESPECIALIDADES_DISPONIBLES,
+  ROLES_OCIG
+} from './services/useConfiguracionProfesionales';
 
 // ════════════════════════════════════════════════════════════════════════════
-// TIPOS
+// TIPOS (importados desde el hook)
 // ════════════════════════════════════════════════════════════════════════════
 
-// Usuario del sistema (viene de Administración - Perfiles)
-interface UsuarioSistema {
-  id: string;
-  nombre: string;
-  identificacion: string;
-  email: string;
-  cargo?: string;
-  area?: string;
-  activo: boolean;
-}
-
-// Configuración OCIG del profesional
-interface ConfiguracionOCIG {
-  usuarioId: string;
-  rolOCIG: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
-  especialidades: string[];
-  capacidadMaximaAuditorias: number;
-  horasMensualesDisponibles: number;
-  puedeSerLider: boolean;
-  activo: boolean;
-  fechaAsignacion: string;
-  observaciones?: string;
-}
-
-// Profesional OCIG (Usuario + Configuración)
-interface ProfesionalOCIG {
-  usuario: UsuarioSistema;
-  configuracion: ConfiguracionOCIG;
-  estadisticas: {
-    auditoriasTotales: number;
-    auditoriasComoLider: number;
-    auditoriasComoEquipo: number;
-    cargaPonderada: number;
-    porcentajeCarga: number;
-    horasAsignadas: number;
-  };
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// MOCK DATA - USUARIOS DEL SISTEMA
-// ════════════════════════════════════════════════════════════════════════════
-
-const USUARIOS_SISTEMA_MOCK: UsuarioSistema[] = [
-  { id: 'USR-001', nombre: 'Mario Oswaldo Bernal Rodríguez', identificacion: '79123456', email: 'mario.bernal@esap.edu.co', cargo: 'Profesional Especializado', area: 'Control Interno', activo: true },
-  { id: 'USR-002', nombre: 'Ana María López Gómez', identificacion: '52987654', email: 'ana.lopez@esap.edu.co', cargo: 'Profesional Universitario', area: 'Control Interno', activo: true },
-  { id: 'USR-003', nombre: 'Carlos Andrés Mendoza Silva', identificacion: '80456789', email: 'carlos.mendoza@esap.edu.co', cargo: 'Profesional Universitario', area: 'Control Interno', activo: true },
-  { id: 'USR-004', nombre: 'Laura Patricia Rodríguez Pérez', identificacion: '53654321', email: 'laura.rodriguez@esap.edu.co', cargo: 'Tecnólogo', area: 'Control Interno', activo: true },
-  { id: 'USR-005', nombre: 'Juan Pablo García Martínez', identificacion: '1020304050', email: 'juan.garcia@esap.edu.co', cargo: 'Contratista', area: 'Control Interno', activo: true },
-  { id: 'USR-006', nombre: 'Sandra Patricia Montero Díaz', identificacion: '52123789', email: 'sandra.montero@esap.edu.co', cargo: 'Profesional Universitario', area: 'Planeación', activo: true },
-  { id: 'USR-007', nombre: 'Diego Fernando Castro López', identificacion: '79987123', email: 'diego.castro@esap.edu.co', cargo: 'Contratista', area: 'Sistemas', activo: true },
-  { id: 'USR-008', nombre: 'Patricia Elena Vargas Torres', identificacion: '53789456', email: 'patricia.vargas@esap.edu.co', cargo: 'Profesional Especializado', area: 'Financiera', activo: true }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// MOCK DATA - PROFESIONALES YA ASIGNADOS A OCIG
-// ════════════════════════════════════════════════════════════════════════════
-
-const CONFIGURACIONES_OCIG_MOCK: ConfiguracionOCIG[] = [
-  {
-    usuarioId: 'USR-001',
-    rolOCIG: 'Jefe OCIG',
-    especialidades: ['Gestión Pública', 'Estrategia', 'Control Interno'],
-    capacidadMaximaAuditorias: 3,
-    horasMensualesDisponibles: 120,
-    puedeSerLider: true,
-    activo: true,
-    fechaAsignacion: '2024-01-15',
-    observaciones: 'Jefe de la Oficina de Control Interno de Gestión'
-  },
-  {
-    usuarioId: 'USR-002',
-    rolOCIG: 'Auditor Sénior',
-    especialidades: ['Auditoría Financiera', 'Cumplimiento Normativo', 'Gestión de Riesgos'],
-    capacidadMaximaAuditorias: 5,
-    horasMensualesDisponibles: 160,
-    puedeSerLider: true,
-    activo: true,
-    fechaAsignacion: '2024-02-01'
-  },
-  {
-    usuarioId: 'USR-003',
-    rolOCIG: 'Auditor',
-    especialidades: ['Auditoría TI', 'Seguridad de la Información', 'Gestión Tecnológica'],
-    capacidadMaximaAuditorias: 4,
-    horasMensualesDisponibles: 150,
-    puedeSerLider: true,
-    activo: true,
-    fechaAsignacion: '2024-03-10'
-  },
-  {
-    usuarioId: 'USR-004',
-    rolOCIG: 'Auditor',
-    especialidades: ['Cumplimiento Normativo', 'Auditoría de Gestión'],
-    capacidadMaximaAuditorias: 4,
-    horasMensualesDisponibles: 150,
-    puedeSerLider: true,
-    activo: true,
-    fechaAsignacion: '2024-04-05'
-  },
-  {
-    usuarioId: 'USR-005',
-    rolOCIG: 'Auditor Júnior',
-    especialidades: ['Auditoría de Gestión'],
-    capacidadMaximaAuditorias: 3,
-    horasMensualesDisponibles: 140,
-    puedeSerLider: false,
-    activo: true,
-    fechaAsignacion: '2024-06-20'
-  }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// MOCK DATA - AUDITORÍAS ASIGNADAS (para calcular carga)
-// ════════════════════════════════════════════════════════════════════════════
-
-const AUDITORIAS_ASIGNADAS_MOCK = [
-  { id: 'AUD-001', auditorLider: 'Ana María López Gómez', equipo: ['Carlos Andrés Mendoza Silva'], horasEstimadas: 140 },
-  { id: 'AUD-002', auditorLider: 'Mario Oswaldo Bernal Rodríguez', equipo: ['Laura Patricia Rodríguez Pérez'], horasEstimadas: 120 },
-  { id: 'AUD-003', auditorLider: 'Ana María López Gómez', equipo: ['Laura Patricia Rodríguez Pérez', 'Juan Pablo García Martínez'], horasEstimadas: 160 },
-  { id: 'AUD-004', auditorLider: 'Carlos Andrés Mendoza Silva', equipo: ['Laura Patricia Rodríguez Pérez'], horasEstimadas: 150 },
-  { id: 'AUD-005', auditorLider: 'Carlos Andrés Mendoza Silva', equipo: ['Juan Pablo García Martínez'], horasEstimadas: 120 }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// CONSTANTES
-// ════════════════════════════════════════════════════════════════════════════
-
-const ESPECIALIDADES_DISPONIBLES = [
-  'Auditoría Financiera',
-  'Auditoría de Gestión',
-  'Auditoría TI',
-  'Cumplimiento Normativo',
-  'Gestión de Riesgos',
-  'Control Interno',
-  'Seguridad de la Información',
-  'Gestión Tecnológica',
-  'Gestión Pública',
-  'Estrategia',
-  'Contratación Pública',
-  'Gestión Presupuestal'
-];
-
-const ROLES_OCIG = [
-  'Jefe OCIG',
-  'Auditor Sénior',
-  'Auditor',
-  'Auditor Júnior',
-  'Apoyo Técnico'
-] as const;
+// Los tipos UsuarioSistema, ConfiguracionOCIG y ProfesionalOCIG se importan
+// desde useConfiguracionProfesionales
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function ConfiguracionProfesionalesModule() {
-  const [configuracionesOCIG, setConfiguracionesOCIG] = useState<ConfiguracionOCIG[]>(CONFIGURACIONES_OCIG_MOCK);
+  // Hook para conectar con backend
+  const {
+    loading,
+    saving,
+    error,
+    profesionalesOCIG,
+    usuariosDisponiblesParaOCIG,
+    estadisticasGlobales,
+    cargarDatos,
+    agregarProfesional,
+    actualizarProfesional,
+    eliminarProfesional
+  } = useConfiguracionProfesionales();
+
+  // Estado local del UI
   const [mostrarModalAgregar, setMostrarModalAgregar] = useState(false);
   const [profesionalEditando, setProfesionalEditando] = useState<ProfesionalOCIG | null>(null);
   const [busqueda, setBusqueda] = useState('');
   const [filtroRol, setFiltroRol] = useState<string>('TODOS');
 
   // ════════════════════════════════════════════════════════════════════════════
-  // CALCULAR PROFESIONALES OCIG CON ESTADÍSTICAS
+  // FILTRAR PROFESIONALES
   // ════════════════════════════════════════════════════════════════════════════
 
-  const profesionalesOCIG: ProfesionalOCIG[] = useMemo(() => {
-    return configuracionesOCIG
-      .filter(config => config.activo)
-      .map(config => {
-        const usuario = USUARIOS_SISTEMA_MOCK.find(u => u.id === config.usuarioId);
-        if (!usuario) return null;
-
-        // Calcular estadísticas de carga
-        const auditoriasComoLider = AUDITORIAS_ASIGNADAS_MOCK.filter(
-          a => a.auditorLider === usuario.nombre
-        ).length;
-
-        const auditoriasComoEquipo = AUDITORIAS_ASIGNADAS_MOCK.filter(
-          a => a.equipo.includes(usuario.nombre) && a.auditorLider !== usuario.nombre
-        ).length;
-
-        // Carga ponderada: Líder = 1.0, Equipo = 0.3
-        const cargaPonderada = auditoriasComoLider + (auditoriasComoEquipo * 0.3);
-        const porcentajeCarga = Math.round((cargaPonderada / config.capacidadMaximaAuditorias) * 100);
-
-        // Calcular horas asignadas
-        const auditoriasParticipando = AUDITORIAS_ASIGNADAS_MOCK.filter(
-          a => a.auditorLider === usuario.nombre || a.equipo.includes(usuario.nombre)
-        );
-        const horasAsignadas = auditoriasParticipando.reduce((sum, a) => sum + a.horasEstimadas, 0);
-
-        return {
-          usuario,
-          configuracion: config,
-          estadisticas: {
-            auditoriasTotales: auditoriasComoLider + auditoriasComoEquipo,
-            auditoriasComoLider,
-            auditoriasComoEquipo,
-            cargaPonderada,
-            porcentajeCarga,
-            horasAsignadas
-          }
-        };
-      })
-      .filter((p): p is ProfesionalOCIG => p !== null);
-  }, [configuracionesOCIG]);
-
-  // Filtrar profesionales
   const profesionalesFiltrados = useMemo(() => {
     return profesionalesOCIG.filter(p => {
       const cumpleBusqueda = busqueda === '' || 
@@ -249,55 +102,38 @@ export function ConfiguracionProfesionalesModule() {
     });
   }, [profesionalesOCIG, busqueda, filtroRol]);
 
-  // Usuarios disponibles para agregar (no asignados a OCIG)
-  const usuariosDisponibles = useMemo(() => {
-    const idsAsignados = new Set(configuracionesOCIG.map(c => c.usuarioId));
-    return USUARIOS_SISTEMA_MOCK.filter(u => !idsAsignados.has(u.id) && u.activo);
-  }, [configuracionesOCIG]);
-
   // ════════════════════════════════════════════════════════════════════════════
   // HANDLERS
   // ════════════════════════════════════════════════════════════════════════════
 
-  const handleAgregarProfesional = (config: ConfiguracionOCIG) => {
-    setConfiguracionesOCIG([...configuracionesOCIG, config]);
+  const handleAgregarProfesional = async (config: ConfiguracionOCIG) => {
+    await agregarProfesional(config);
     setMostrarModalAgregar(false);
-    toast.success('✅ Profesional agregado al equipo OCIG');
   };
 
-  const handleActualizarProfesional = (usuarioId: string, cambios: Partial<ConfiguracionOCIG>) => {
-    setConfiguracionesOCIG(prev =>
-      prev.map(c => (c.usuarioId === usuarioId ? { ...c, ...cambios } : c))
-    );
+  const handleActualizarProfesional = async (usuarioId: string, cambios: Partial<ConfiguracionOCIG>) => {
+    await actualizarProfesional(usuarioId, cambios);
     setProfesionalEditando(null);
-    toast.success('✅ Configuración actualizada exitosamente');
   };
 
-  const handleEliminarProfesional = (usuarioId: string) => {
-    setConfiguracionesOCIG(prev => prev.filter(c => c.usuarioId !== usuarioId));
-    toast.success('🗑️ Profesional removido del equipo OCIG');
+  const handleEliminarProfesional = async (usuarioId: string) => {
+    await eliminarProfesional(usuarioId);
   };
 
-  // Estadísticas globales
-  const estadisticasGlobales = useMemo(() => {
-    const totalProfesionales = profesionalesOCIG.length;
-    const capacidadTotal = profesionalesOCIG.reduce((sum, p) => sum + p.configuracion.capacidadMaximaAuditorias, 0);
-    const horasTotales = profesionalesOCIG.reduce((sum, p) => sum + p.configuracion.horasMensualesDisponibles, 0);
-    const auditoriasTotales = profesionalesOCIG.reduce((sum, p) => sum + p.estadisticas.auditoriasTotales, 0);
-    const cargaPromedio = totalProfesionales > 0
-      ? Math.round(profesionalesOCIG.reduce((sum, p) => sum + p.estadisticas.porcentajeCarga, 0) / totalProfesionales)
-      : 0;
-    const sobrecargados = profesionalesOCIG.filter(p => p.estadisticas.porcentajeCarga > 90).length;
+  // ════════════════════════════════════════════════════════════════════════════
+  // LOADING STATE
+  // ════════════════════════════════════════════════════════════════════════════
 
-    return {
-      totalProfesionales,
-      capacidadTotal,
-      horasTotales,
-      auditoriasTotales,
-      cargaPromedio,
-      sobrecargados
-    };
-  }, [profesionalesOCIG]);
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Cargando profesionales...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -311,15 +147,39 @@ export function ConfiguracionProfesionalesModule() {
               <Users className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
-                Profesionales OCIG
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-black text-gray-900">
+                  Profesionales OCIG
+                </h1>
+                {/* Badge de conexión */}
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+                  <Wifi className="w-3 h-3" />
+                  Conectado
+                </span>
+              </div>
               <p className="text-sm sm:text-base text-gray-600 mt-1">
                 Gestiona el equipo de Control Interno y su capacidad de trabajo
               </p>
             </div>
           </div>
-          
+          {/* Botones de acciones */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={cargarDatos}
+              className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Recargar datos"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span className="text-sm font-medium hidden sm:inline">Actualizar</span>
+            </button>
+            <button
+              onClick={() => setMostrarModalAgregar(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition-colors"
+            >
+              <UserPlus className="w-5 h-5" />
+              <span className="hidden sm:inline">Agregar Profesional</span>
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -334,16 +194,17 @@ export function ConfiguracionProfesionalesModule() {
               className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
             />
           </div>
-          <select
-            value={filtroRol}
-            onChange={(e) => setFiltroRol(e.target.value)}
-            className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-          >
-            <option value="TODOS">Todos los roles</option>
-            {ROLES_OCIG.map(rol => (
-              <option key={rol} value={rol}>{rol}</option>
-            ))}
-          </select>
+          <Select value={filtroRol} onValueChange={setFiltroRol}>
+            <SelectTrigger className="w-[200px] font-semibold">
+              <SelectValue placeholder="Todos los roles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">Todos los roles</SelectItem>
+              {ROLES_OCIG.map(rol => (
+                <SelectItem key={rol} value={rol}>{rol}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -461,7 +322,7 @@ export function ConfiguracionProfesionalesModule() {
       {/* ═══════════════════════════════════════════════════════════════ */}
       {mostrarModalAgregar && (
         <ModalAgregarProfesional
-          usuariosDisponibles={usuariosDisponibles}
+          usuariosDisponibles={usuariosDisponiblesParaOCIG}
           onAgregar={handleAgregarProfesional}
           onCerrar={() => setMostrarModalAgregar(false)}
         />
@@ -522,15 +383,16 @@ function TarjetaProfesional({
           {/* Rol OCIG */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCIG</label>
-            <select
-              value={form.rolOCIG}
-              onChange={(e) => setForm({ ...form, rolOCIG: e.target.value as any })}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-            >
-              {ROLES_OCIG.map(rol => (
-                <option key={rol} value={rol}>{rol}</option>
-              ))}
-            </select>
+            <Select value={form.rolOCIG} onValueChange={(value) => setForm({ ...form, rolOCIG: value as any })}>
+              <SelectTrigger className="w-full font-semibold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES_OCIG.map(rol => (
+                  <SelectItem key={rol} value={rol}>{rol}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Grid de capacidades */}
@@ -739,6 +601,8 @@ interface ModalAgregarProfesionalProps {
 
 function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: ModalAgregarProfesionalProps) {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
+  const [openCombobox, setOpenCombobox] = useState(false);
+  const [openEspecialidades, setOpenEspecialidades] = useState(false);
   const [rolOCIG, setRolOCIG] = useState<ConfiguracionOCIG['rolOCIG']>('Auditor');
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [capacidad, setCapacidad] = useState(4);
@@ -759,8 +623,16 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
       return;
     }
 
+    // Obtener el usuario para conseguir idTercero
+    const usuario = usuariosDisponibles.find(u => u.id === usuarioSeleccionado);
+    if (!usuario) {
+      toast.error('❌ Usuario no encontrado');
+      return;
+    }
+
     const nuevaConfig: ConfiguracionOCIG = {
       usuarioId: usuarioSeleccionado,
+      idTercero: usuario.idTercero,
       rolOCIG,
       especialidades,
       capacidadMaximaAuditorias: capacidad,
@@ -830,19 +702,56 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               <label className="block text-sm font-bold text-gray-900 mb-2">
                 Profesional <span className="text-red-600">*</span>
               </label>
-              <select
-                value={usuarioSeleccionado}
-                onChange={(e) => setUsuarioSeleccionado(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-                required
-              >
-                <option value="">-- Seleccionar profesional --</option>
-                {usuariosDisponibles.map(usuario => (
-                  <option key={usuario.id} value={usuario.id}>
-                    {usuario.nombre} - {usuario.email}
-                  </option>
-                ))}
-              </select>
+              <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    role="combobox"
+                    aria-expanded={openCombobox}
+                    className="w-full flex items-center justify-between px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-400 focus:border-blue-500 focus:outline-none font-semibold bg-white text-left"
+                  >
+                    {usuarioSeleccionado
+                      ? usuariosDisponibles.find(u => u.id === usuarioSeleccionado)?.nombre || 'Usuario seleccionado'
+                      : '-- Buscar profesional --'}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="p-0" 
+                  align="start" 
+                  sideOffset={4}
+                  style={{ width: 'var(--radix-popover-trigger-width)' }}
+                >
+                  <Command className="border rounded-lg">
+                    <CommandInput placeholder="Buscar por nombre, email o identificación..." className="h-11 w-full" />
+                    <CommandList className="max-h-[280px]">
+                      <CommandEmpty>No se encontraron profesionales.</CommandEmpty>
+                      <CommandGroup>
+                        {usuariosDisponibles.map(usuario => (
+                          <CommandItem
+                            key={usuario.id}
+                            value={`${usuario.nombre} ${usuario.email} ${usuario.identificacion}`}
+                            onSelect={(currentValue) => {
+                              console.log('📌 Seleccionado:', usuario.id, usuario.nombre, currentValue);
+                              setUsuarioSeleccionado(usuario.id);
+                              setOpenCombobox(false);
+                            }}
+                            className="py-3 px-3 cursor-pointer"
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 shrink-0 ${usuarioSeleccionado === usuario.id ? 'opacity-100' : 'opacity-0'}`}
+                            />
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="font-semibold truncate">{usuario.nombre}</span>
+                              <span className="text-xs text-gray-500 truncate">{usuario.email}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {usuariosDisponibles.length === 0 && (
                 <p className="text-sm text-yellow-600 mt-2">
                   ⚠️ No hay usuarios disponibles. Todos los profesionales activos ya están asignados a OCIG.
@@ -855,15 +764,16 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
               <label className="block text-sm font-bold text-gray-900 mb-2">
                 Rol en OCIG <span className="text-red-600">*</span>
               </label>
-              <select
-                value={rolOCIG}
-                onChange={(e) => setRolOCIG(e.target.value as any)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
-              >
-                {ROLES_OCIG.map(rol => (
-                  <option key={rol} value={rol}>{rol}</option>
-                ))}
-              </select>
+              <Select value={rolOCIG} onValueChange={(value) => setRolOCIG(value as any)}>
+                <SelectTrigger className="w-full font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES_OCIG.map(rol => (
+                    <SelectItem key={rol} value={rol}>{rol}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Especialidades */}
@@ -894,29 +804,36 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                 )}
 
                 {/* Buscar especialidad */}
-                <input
-                  type="text"
-                  placeholder="Buscar especialidad..."
-                  value={busquedaEspecialidad}
-                  onChange={(e) => setBusquedaEspecialidad(e.target.value)}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Click para agregar especialidad..."
+                    value={busquedaEspecialidad}
+                    onChange={(e) => setBusquedaEspecialidad(e.target.value)}
+                    onFocus={() => setOpenEspecialidades(true)}
+                    onBlur={() => setTimeout(() => setOpenEspecialidades(false), 200)}
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                  />
 
-                {/* Lista de especialidades disponibles */}
-                {busquedaEspecialidad && especialidadesFiltradas.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto border-2 border-gray-200 rounded-lg">
-                    {especialidadesFiltradas.map(esp => (
-                      <button
-                        key={esp}
-                        type="button"
-                        onClick={() => agregarEspecialidad(esp)}
-                        className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors text-sm"
-                      >
-                        {esp}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  {/* Lista de especialidades disponibles */}
+                  {openEspecialidades && especialidadesFiltradas.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 max-h-40 overflow-y-auto border-2 border-gray-200 rounded-lg bg-white shadow-lg">
+                      {especialidadesFiltradas.map(esp => (
+                        <button
+                          key={esp}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            agregarEspecialidad(esp);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors text-sm border-b border-gray-100 last:border-0"
+                        >
+                          + {esp}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

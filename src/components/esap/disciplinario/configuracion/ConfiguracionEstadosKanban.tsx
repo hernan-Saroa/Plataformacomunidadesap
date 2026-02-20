@@ -4,9 +4,10 @@
  * Control Interno Disciplinario
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Trash2, GripVertical, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import {
   DndContext,
   closestCenter,
@@ -47,6 +48,46 @@ const ESTADOS_KANBAN_DEFECTO: EstadoKanban[] = [
 export function ConfiguracionEstadosKanban() {
   const [estadosKanban, setEstadosKanban] = useState<EstadoKanban[]>(ESTADOS_KANBAN_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Cargar configuración del backend al montar
+  useEffect(() => {
+    cargarConfiguracion();
+  }, []);
+
+  const cargarConfiguracion = async () => {
+    try {
+      setLoading(true);
+      const response = await disciplinaryService.getStageConfiguration();
+      console.log('📥 Respuesta del backend al cargar:', response);
+
+      if (response && Array.isArray(response) && response.length > 0) {
+        // Mapear la respuesta del backend al formato del componente
+        const estadosMapeados: EstadoKanban[] = response.map((stage: any, index: number) => ({
+          id: stage.id || `estado-${index}`,
+          nombre: stage.etapa || stage.nombre || 'Sin nombre',
+          color: stage.color || '#3B82F6',
+          dias: stage.diasHabiles || stage.dias || 10,
+          alertaDias: stage.alertaDias || 3,
+          orden: stage.orden || index + 1,
+          activo: stage.activo !== false
+        }));
+        setEstadosKanban(estadosMapeados);
+      } else {
+        // Si no hay datos en el backend, usar los valores por defecto
+        setEstadosKanban(ESTADOS_KANBAN_DEFECTO);
+      }
+    } catch (error) {
+      console.error('Error cargando configuración de estados:', error);
+      toast.error('Error al cargar configuración', {
+        description: 'Se usarán valores por defecto'
+      });
+      // Usar valores por defecto en caso de error
+      setEstadosKanban(ESTADOS_KANBAN_DEFECTO);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -99,14 +140,39 @@ export function ConfiguracionEstadosKanban() {
     setCambiosPendientes(true);
   };
 
-  const guardarConfiguraciones = () => {
+  const guardarConfiguraciones = async () => {
+    console.log('🔵 Guardando configuración de estados Kanban...');
+    console.log('🔵 Estados a guardar:', estadosKanban);
+
     try {
-      localStorage.setItem('disciplinario-estados-kanban', JSON.stringify(estadosKanban));
+
+      // Preparar payload para el backend
+      const stagesPayload = estadosKanban.map(e => ({
+        id: e.id,
+        etapa: e.nombre,
+        diasHabiles: e.dias,
+        alertaDias: e.alertaDias,
+        color: e.color,
+        orden: e.orden,
+        activo: e.activo,
+        descripcion: `Etapa de ${e.nombre}`
+      }));
+
+      console.log('🔵 Payload para backend:', stagesPayload);
+
+      // Guardar en el backend
+      await disciplinaryService.updateStageConfiguration(stagesPayload);
+
+      console.log('✅ Configuración guardada en el backend');
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente');
+      toast.success('Configuración guardada exitosamente', {
+        description: 'Los cambios se han guardado en el servidor'
+      });
     } catch (error) {
-      console.error('❌ Error al guardar:', error);
-      toast.error('Error al guardar configuraciones');
+      console.error('❌ Error al guardar configuración:', error);
+      toast.error('Error al guardar configuración', {
+        description: 'No se pudieron guardar los cambios en el servidor'
+      });
     }
   };
 
@@ -117,6 +183,17 @@ export function ConfiguracionEstadosKanban() {
       toast.success('Configuraciones restablecidas');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">

@@ -35,6 +35,17 @@ export class LaborCertificatePdfService {
     return sanitized;
   }
 
+  private normalizeBoolean(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'si', 'yes', 'y'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    }
+    return fallback;
+  }
+
   async generateCertificatePdf(
     certificate: Certificate,
     options: PdfOptions = {},
@@ -50,8 +61,18 @@ export class LaborCertificatePdfService {
       (certificateWithTemplate.template_type as TemplateType) ||
       options.templateType ||
       this.resolveTemplateType(certificate);
-    const includeSalary = options.includeSalary !== false;
-    const includeTechnicalBonus = options.includeTechnicalBonus === true;
+    const includeSalaryPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonusPersisted = this.normalizeBoolean(
+      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      false,
+    );
+    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      : false;
 
     const config = snapshot || await this.templateConfigService.getActiveConfig(templateType);
     const typographyFont = this.sanitizeTypographyFont(
@@ -171,6 +192,25 @@ export class LaborCertificatePdfService {
       .trim();
   }
 
+  private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) return null;
+    if (normalized === 'E' || normalized.startsWith('E')) return 'E';
+    if (normalized === 'N' || normalized.startsWith('N')) return 'N';
+    return null;
+  }
+
+  private appendEncargoSuffix(cargo: string, encargoType: 'E' | 'N' | null): string {
+    const base = this.normalizeSpaces(cargo);
+    if (!base || base === 'N/A' || encargoType !== 'E') {
+      return base;
+    }
+    if (/\bE$/i.test(base)) {
+      return base;
+    }
+    return `${base} E`;
+  }
+
   private isZeroValue(value: string): boolean {
     return Boolean(value) && /^0+$/.test(value);
   }
@@ -183,9 +223,14 @@ export class LaborCertificatePdfService {
       templateType?: TemplateType;
       includeCodeLabel?: boolean;
       codeLabel?: string;
+      observations?: string | null;
+      encargoFlag?: string | null;
     },
   ): string {
     const careerRaw = this.normalizeSpaces(careerCategory);
+    const encargoType = this.normalizeEncargoType(
+      options?.observations ?? options?.encargoFlag,
+    );
     const leadingMatch = careerRaw.match(/^(\d+)\s+(.+)$/);
     const leadingCode = this.normalizeCodeValue(leadingMatch?.[1]);
     let baseText = this.normalizeSpaces(leadingMatch ? leadingMatch[2] : careerRaw);
@@ -271,7 +316,10 @@ export class LaborCertificatePdfService {
       parts.push(`Grado ${codGradeRaw || '0'}`);
     }
 
-    return this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A';
+    return this.appendEncargoSuffix(
+      this.normalizeSpaces(parts.join(' ')) || careerRaw || 'N/A',
+      encargoType,
+    );
   }
 
   private async generateQrCodeDataUrl(value: string): Promise<string | null> {
@@ -382,6 +430,7 @@ export class LaborCertificatePdfService {
         templateType,
         includeCodeLabel: true,
         codeLabel: 'Codigo',
+        observations: requestObservations,
       }) ||
       cargoTexto ||
       tipoVinculacion ||
@@ -448,7 +497,8 @@ export class LaborCertificatePdfService {
       '[GRUPO]': grupoVariable,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dependenciaPadre,
+      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA_PADRE]': dependenciaPadre,
       '[FECHA_INICIO]': fechaVinculacion,
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': includeSalary && salarioBase
@@ -943,3 +993,4 @@ export class LaborCertificatePdfService {
     return resultado.trim();
   }
 }
+

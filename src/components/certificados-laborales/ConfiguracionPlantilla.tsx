@@ -589,13 +589,12 @@ const descripcionVariables: Record<string, string> = {
   '[CARGO]': 'Cargo calculado (categoria + palabra Codigo + codigo + grado)',
   '[GRUPO]': 'Grupo (position_location de la solicitud)',
   '[TIPO_DATO]': 'Tipo de vinculación',
-  '[DEPENDENCIA]': 'Dependencia donde trabaja',
+  '[DEPENDENCIA]': 'Dependencia',
   '[DATO1]': 'Dato 1 (nombre empleado)',
   '[DATO2]': 'Dato 2 (documento)',
   '[DATO4]': 'Dato 4 (fecha de inicio)',
   '[DATO5]': 'Cargo del empleado',
   '[DATO6]': 'Dato 6 (dato adicional)',
-  '[UBICACIÓN]': 'Ubicacion',
   '[DATO8]': 'Dato 8 (salario en letras)',
   '[FECHA_INICIO]': 'Fecha de inicio del contrato',
   '[FECHA_FIN]': 'Fecha de finalizacion',
@@ -611,7 +610,7 @@ const descripcionVariables: Record<string, string> = {
 
 
 
-const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [UBICACIÓN].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
+const defaultContenidoCertificado = '<p>Que<b>&nbsp;</b>[NOMBRE_EMPLEADO] identificado(a) con c\u00E9dula de ciudadan\u00EDa No. [DOCUMENTO], se encuentra vinculado(a) con la Escuela Superior de Administraci\u00F3n P\u00FAblica \u2013 ESAP, mediante nombramiento Docente [TIPO_DATO] desde el [FECHA_INICIO], en la categor\u00EDa [CARGO] ubicado en [DEPENDENCIA].</p><p>Que [NOMBRE_EMPLEADO] percibe mensualmente una asignaci\u00F3n salarial de [SALARIO] [SALARIO_LETRAS] pesos m/cte.</p><p>Se expide en la ciudad de Bogot\u00E1 D.C., a solicitud del interesado(a) a los&nbsp;[FECHA_EXPEDICION_COMPLETA].</p>';
 
 
 
@@ -856,6 +855,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     if (!html) return html;
 
     let resultado = html;
+    // Renombra token legado para mostrar solo [DEPENDENCIA] en la configuracion.
+    resultado = resultado.replace(/\[UBICACI[^\]]*N\]/gi, '[DEPENDENCIA]');
 
     // Paso 1: Colapsar todos los spans anidados repetidamente (15 veces para asegurar)
     for (let i = 0; i < 15; i++) {
@@ -8066,3 +8067,4 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     </div>
   );
 }
+

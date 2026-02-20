@@ -705,6 +705,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         style={{
           background: 'linear-gradient(to bottom, #1e5da8 0%, #154a85 100%)',
           boxShadow: '0 0 40px rgba(30, 93, 168, 0.3)',
+          zIndex: 999,
         }}
         role="navigation"
         aria-label="Navegación principal"
@@ -732,8 +733,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     className="w-14 h-14 flex items-center justify-center"
                   >
                     {/* Isotipo oficial ESAP */}
-                    <IsotipoESAP 
-                      className="w-12 h-12 object-contain drop-shadow-lg filter brightness-0 invert"
+                    <ESAPLogo 
+                      variant="icon"
+                      className="w-10 h-10 object-contain drop-shadow-lg filter brightness-0"
                     />
                   </motion.div>
                 ) : (

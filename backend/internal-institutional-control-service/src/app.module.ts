@@ -49,6 +49,7 @@ import { ItemListaChequeo } from './esap/listas-chequeo/entities/item-lista-cheq
 import { TableroKanban } from './esap/tableros-kanban/entities/tablero-kanban.entity';
 import { EtapaKanban } from './esap/tableros-kanban/entities/etapa-kanban.entity';
 import { TareaAuditoria } from './esap/tareas-auditoria/entities/tarea-auditoria.entity';
+import { ConfiguracionProfesionalOCIG } from './esap/configuraciones/entities/configuracion-profesional-ocig.entity';
 
 @Module({
   imports: [
@@ -127,6 +128,7 @@ import { TareaAuditoria } from './esap/tareas-auditoria/entities/tarea-auditoria
             TableroKanban,
             EtapaKanban,
             TareaAuditoria,
+            ConfiguracionProfesionalOCIG,
           ],
           synchronize: false, // Deshabilitado - usar migraciones manuales
           // synchronize: process.env.NODE_ENV !== 'production', // Solo en desarrollo

@@ -29,6 +29,8 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 // URL base del servicio de Control Interno
 const BASE_URL = getServiceUrl('control-institucional');
 // Prefijo completo dependiendo del modo
+// En gateway: http://localhost:3000/control-institucional/api/v1
+// En direct: http://localhost:3007 (sin prefijo porque el microservicio no tiene prefijo global)
 const API_BASE_URL = API_MODE === 'gateway' 
   ? `${BASE_URL}/control-institucional/api/v1` 
   : BASE_URL;
@@ -661,6 +663,126 @@ export const informesLeyApi = {
   },
 };
 
+// ==================== CONFIGURACIONES PROFESIONALES OCIG ====================
+
+export interface ConfiguracionProfesionalOCIG {
+  id: string;
+  idTercero: number;
+  rolOcig: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  especialidades: string[];
+  capacidadMaximaAuditorias: number;
+  horasMensualesDisponibles: number;
+  puedeSerLider: boolean;
+  activo: boolean;
+  fechaAsignacion: string;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched data
+  nombre?: string;
+  email?: string;
+  identificacion?: string;
+}
+
+export interface CreateConfiguracionProfesionalOCIGDto {
+  idTercero: number;
+  rolOcig: string;
+  especialidades: string[];
+  capacidadMaximaAuditorias?: number;
+  horasMensualesDisponibles?: number;
+  puedeSerLider?: boolean;
+  observaciones?: string;
+}
+
+export interface UpdateConfiguracionProfesionalOCIGDto {
+  rolOcig?: string;
+  especialidades?: string[];
+  capacidadMaximaAuditorias?: number;
+  horasMensualesDisponibles?: number;
+  puedeSerLider?: boolean;
+  activo?: boolean;
+  observaciones?: string;
+}
+
+export const configuracionesProfesionalesOCIGApi = {
+  /**
+   * Obtener todas las configuraciones de profesionales OCIG
+   */
+  getAll: async (includeInactive: boolean = false): Promise<ApiResponse<ConfiguracionProfesionalOCIG[]>> => {
+    const params = includeInactive ? '?includeInactive=true' : '';
+    return apiRequest<ConfiguracionProfesionalOCIG[]>(`/configuraciones/profesionales-ocig${params}`);
+  },
+
+  /**
+   * Obtener configuración por ID
+   */
+  getById: async (id: string): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/${id}`);
+  },
+
+  /**
+   * Obtener configuración por ID de tercero
+   */
+  getByIdTercero: async (idTercero: number): Promise<ApiResponse<ConfiguracionProfesionalOCIG | null>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG | null>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`);
+  },
+
+  /**
+   * Obtener profesionales que pueden ser líderes
+   */
+  getLideresPotenciales: async (): Promise<ApiResponse<ConfiguracionProfesionalOCIG[]>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG[]>('/configuraciones/profesionales-ocig/lideres');
+  },
+
+  /**
+   * Crear configuración de profesional OCIG
+   */
+  create: async (data: CreateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG>('/configuraciones/profesionales-ocig', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Actualizar configuración por ID
+   */
+  update: async (id: string, data: UpdateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Actualizar configuración por ID de tercero
+   */
+  updateByIdTercero: async (idTercero: number, data: UpdateConfiguracionProfesionalOCIGDto): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {
+    return apiRequest<ConfiguracionProfesionalOCIG>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Eliminar configuración (desactivar)
+   */
+  delete: async (id: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/configuraciones/profesionales-ocig/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Eliminar configuración por ID de tercero
+   */
+  deleteByIdTercero: async (idTercero: number): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/configuraciones/profesionales-ocig/tercero/${idTercero}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Exportar todo
 export const controlInternoApi = {
   auditorias: auditoriasApi,
@@ -671,4 +793,5 @@ export const controlInternoApi = {
   planAnual5Roles: planAnual5RolesApi,
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
+  configuracionesProfesionalesOCIG: configuracionesProfesionalesOCIGApi,
 };

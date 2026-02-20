@@ -25,7 +25,8 @@ const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 
 // Prefijo del servicio para el API Gateway
 // En modo gateway se usa: /control-institucional/api/v1
-// En modo direct no se usa prefijo porque se conecta directo al microservicio
+// En modo direct NO se usa prefijo - el microservicio no tiene prefijo global
+// El gateway maneja: /control-institucional/api/v1/auditorias -> microservicio:3007/auditorias
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============================================================================
@@ -218,7 +219,7 @@ class ControlInternoAPIClient {
     options: RequestInit = {}
   ): Promise<T> {
     // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
-    // En modo direct: http://localhost:3007/plan-anual-5-roles
+    // En modo direct: http://localhost:3007/plan-anual-5-roles (sin prefijo /api/v1)
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     
     const defaultHeaders: HeadersInit = {
@@ -728,6 +729,18 @@ class ControlInternoService {
    */
   async agregarItemLista(id: string, item: any): Promise<any> {
     return client.post(`/listas-chequeo/${id}/items`, item);
+  }
+
+  /**
+   * Actualiza un item de una lista (marcar completado/pendiente)
+   */
+  async actualizarItemLista(listaId: string, itemId: string, data: {
+    completado?: boolean;
+    responsable?: string;
+    fechaCompletado?: string;
+    observaciones?: string;
+  }): Promise<any> {
+    return client.patch(`/listas-chequeo/${listaId}/items/${itemId}`, data);
   }
 
   /**
@@ -1500,6 +1513,14 @@ class ControlInternoService {
   }
 
   /**
+   * Actualiza el estado Kanban de una auditoría (para drag & drop)
+   * Soporta todos los estados: 'Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento', 'Finalizada'
+   */
+  async updateEstadoKanbanAuditoria(id: string, estadoKanban: string): Promise<any> {
+    return client.patch<any>(`/auditorias/${id}/estado-kanban`, { estadoKanban });
+  }
+
+  /**
    * Obtiene auditorías por fase
    */
   async getAuditoriasByFase(fase: string): Promise<any[]> {
@@ -1652,6 +1673,105 @@ class ControlInternoService {
         actividadesRecientes: [],
       };
     }
+  }
+
+  // ==========================================================================
+  // NOTIFICACIONES - CONFIGURACIÓN
+  // ==========================================================================
+
+  /**
+   * Obtiene las preferencias de notificación de un usuario
+   */
+  async getPreferenciasNotificacion(usuarioId: string): Promise<any> {
+    return client.get(`/notificaciones/preferencias/${usuarioId}`);
+  }
+
+  /**
+   * Actualiza las preferencias de notificación de un usuario
+   */
+  async updatePreferenciasNotificacion(usuarioId: string, preferencias: any): Promise<any> {
+    return client.put(`/notificaciones/preferencias/${usuarioId}`, preferencias);
+  }
+
+  /**
+   * Obtiene todas las notificaciones de un usuario
+   */
+  async getNotificacionesUsuario(usuarioId: string, filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }): Promise<any> {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    return client.get(`/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * Obtiene el conteo de notificaciones no leídas
+   */
+  async getConteoNotificacionesNoLeidas(usuarioId: string): Promise<{ count: number }> {
+    return client.get(`/notificaciones/usuario/${usuarioId}/conteo`);
+  }
+
+  /**
+   * Marca una notificación como leída
+   */
+  async marcarNotificacionLeida(notificacionId: string, usuarioId: string): Promise<any> {
+    return client.put(`/notificaciones/${notificacionId}/leida`, { usuarioId });
+  }
+
+  /**
+   * Marca todas las notificaciones como leídas
+   */
+  async marcarTodasNotificacionesLeidas(usuarioId: string): Promise<any> {
+    return client.put(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {});
+  }
+
+  /**
+   * Crea una nueva notificación personalizada
+   */
+  async crearNotificacion(data: {
+    usuarioId: string;
+    titulo: string;
+    mensaje: string;
+    tipo?: string;
+    prioridad?: string;
+    canal?: string;
+    accion?: { texto: string; url: string };
+  }): Promise<any> {
+    return client.post('/notificaciones', data);
+  }
+
+  /**
+   * Obtiene todas las notificaciones (admin)
+   */
+  async getTodasNotificaciones(filtros?: {
+    estado?: string;
+    tipo?: string;
+    leida?: boolean;
+    prioridad?: string;
+  }): Promise<any> {
+    const params = new URLSearchParams();
+    if (filtros?.estado) params.append('estado', filtros.estado);
+    if (filtros?.tipo) params.append('tipo', filtros.tipo);
+    if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
+    if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
+    
+    const queryString = params.toString();
+    return client.get(`/notificaciones/todas${queryString ? `?${queryString}` : ''}`);
+  }
+
+  /**
+   * Ejecuta el job de notificaciones automáticas (admin/testing)
+   */
+  async ejecutarJobNotificaciones(): Promise<any> {
+    return client.post('/notificaciones/ejecutar-job-automatico', {});
   }
 }
 

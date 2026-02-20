@@ -7,9 +7,9 @@
  * - Tipos de Auditoría (5 tipos principales)
  * - Listas de Chequeo (plantillas de verificación)
  * 
- * ÚLTIMA ACTUALIZACIÓN: 4 Enero 2026 - FUNCIONALIDAD COMPLETA
- * ✅ CRUD completo de tipos de auditoría
- * ✅ CRUD completo de listas de chequeo
+ * ÚLTIMA ACTUALIZACIÓN: 19 Febrero 2026 - CONECTADO CON BACKEND
+ * ✅ CRUD completo de tipos de auditoría (backend)
+ * ✅ CRUD completo de listas de chequeo (backend)
  * ✅ Guardar cambios con confirmación
  * ✅ Modales de edición y creación
  */
@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Target, CheckSquare, List, ChevronRight, Info, Save,
   Plus, Edit, Eye, Clock, Users, HelpCircle, X, Trash2, AlertCircle,
-  FileText, Check, GripVertical
+  FileText, Check, GripVertical, Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Badge } from '../../ui/badge';
@@ -30,8 +30,11 @@ import { toast } from 'sonner@2.0.3';
 // ✅ DÍA 4: Container4K para padding adaptativo
 import { Container4K } from '../../ui/container-4k';
 
+// ✅ Hook para conexión con backend
+import { useConfiguracionAuditorias, type TipoAuditoriaFrontend as TipoAuditoria } from './services/useConfiguracionAuditorias';
+
 // ====================================
-// TIPOS
+// TIPOS (algunos locales, otros del hook)
 // ====================================
 
 type TabActiva = 'tipos';
@@ -45,34 +48,7 @@ interface TabConfig {
   badge?: number;
 }
 
-const TABS_CONFIG: TabConfig[] = [
-  {
-    id: 'tipos',
-    label: 'Tipos de Auditoría',
-    description: 'Gestión, Financiera, Cumplimiento, TI, Territorial',
-    icon: CheckSquare,
-    color: '#10B981',
-    badge: 5
-  }
-];
-
-// ====================================
-// DATOS MOCK
-// ====================================
-
-interface TipoAuditoria {
-  id: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  alcance: string;
-  duracionPromedio: number;
-  equipoPromedio: number;
-  color: string;
-  activa: boolean;
-  auditoriasProgramadas: number;
-}
-
+// Interface para listas de chequeo (usada localmente)
 interface ItemChequeo {
   id: string;
   texto: string;
@@ -92,177 +68,14 @@ interface ListaChequeo {
   ultimaActualizacion: string;
 }
 
-const TIPOS_AUDITORIA_INICIAL: TipoAuditoria[] = [
+// Configuración de tabs
+const TABS_CONFIG: TabConfig[] = [
   {
-    id: 'tipo-001',
-    codigo: 'AUD-GEST',
-    nombre: 'Auditoría de Gestión',
-    descripcion: 'Evaluación de la eficiencia y eficacia de los procesos',
-    alcance: 'Procesos administrativos, académicos y financieros',
-    duracionPromedio: 30,
-    equipoPromedio: 3,
-    color: '#3B82F6',
-    activa: true,
-    auditoriasProgramadas: 8
-  },
-  {
-    id: 'tipo-002',
-    codigo: 'AUD-FIN',
-    nombre: 'Auditoría Financiera',
-    descripcion: 'Revisión de estados financieros y manejo de recursos',
-    alcance: 'Presupuesto, contabilidad y tesorería',
-    duracionPromedio: 45,
-    equipoPromedio: 4,
+    id: 'tipos',
+    label: 'Tipos de Auditoría',
+    description: 'Gestión, Financiera, Cumplimiento, TI, Territorial',
+    icon: CheckSquare,
     color: '#10B981',
-    activa: true,
-    auditoriasProgramadas: 4
-  },
-  {
-    id: 'tipo-003',
-    codigo: 'AUD-COMP',
-    nombre: 'Auditoría de Cumplimiento',
-    descripcion: 'Verificación del cumplimiento normativo',
-    alcance: 'Normas legales, decretos y resoluciones',
-    duracionPromedio: 20,
-    equipoPromedio: 2,
-    color: '#F59E0B',
-    activa: true,
-    auditoriasProgramadas: 12
-  },
-  {
-    id: 'tipo-004',
-    codigo: 'AUD-TI',
-    nombre: 'Auditoría de Sistemas de Información',
-    descripcion: 'Evaluación de controles en sistemas TI',
-    alcance: 'Infraestructura tecnológica y seguridad',
-    duracionPromedio: 25,
-    equipoPromedio: 3,
-    color: '#8B5CF6',
-    activa: true,
-    auditoriasProgramadas: 3
-  },
-  {
-    id: 'tipo-005',
-    codigo: 'AUD-TERR',
-    nombre: 'Auditoría Territorial',
-    descripcion: 'Auditoría a sedes territoriales',
-    alcance: 'Procesos de territoriales',
-    duracionPromedio: 19,
-    equipoPromedio: 3,
-    color: '#EC4899',
-    activa: true,
-    auditoriasProgramadas: 16
-  }
-];
-
-const LISTAS_CHEQUEO_INICIAL: ListaChequeo[] = [
-  {
-    id: 'lista-001',
-    nombre: 'Lista de Chequeo #1',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Verificación de procesos administrativos',
-    items: [
-      { id: 'item-1', texto: '¿Existe documentación de procesos?', categoria: 'Documentación', obligatorio: true },
-      { id: 'item-2', texto: '¿Se cumplen los tiempos establecidos?', categoria: 'Cumplimiento', obligatorio: true },
-      { id: 'item-3', texto: '¿Hay registro de actividades?', categoria: 'Control', obligatorio: false }
-    ],
-    activa: true,
-    usosProgramados: 3,
-    fechaCreacion: '2025-01-01',
-    ultimaActualizacion: '2025-01-04'
-  },
-  {
-    id: 'lista-002',
-    nombre: 'Lista de Chequeo #2',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Control de calidad en servicios',
-    items: [
-      { id: 'item-4', texto: '¿Se miden indicadores de calidad?', categoria: 'Medición', obligatorio: true },
-      { id: 'item-5', texto: '¿Existe plan de mejora?', categoria: 'Mejora', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 2,
-    fechaCreacion: '2025-01-02',
-    ultimaActualizacion: '2025-01-03'
-  },
-  {
-    id: 'lista-003',
-    nombre: 'Lista de Chequeo #3',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Revisión de recursos humanos',
-    items: [
-      { id: 'item-6', texto: '¿Personal capacitado?', categoria: 'Capacitación', obligatorio: true },
-      { id: 'item-7', texto: '¿Evaluaciones periódicas?', categoria: 'Evaluación', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 1,
-    fechaCreacion: '2024-12-28',
-    ultimaActualizacion: '2025-01-02'
-  },
-  {
-    id: 'lista-004',
-    nombre: 'Lista de Chequeo #4',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Verificación financiera básica',
-    items: [
-      { id: 'item-8', texto: '¿Presupuesto documentado?', categoria: 'Financiero', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 0,
-    fechaCreacion: '2024-12-20',
-    ultimaActualizacion: '2024-12-30'
-  },
-  {
-    id: 'lista-005',
-    nombre: 'Lista de Chequeo #5',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Control de inventarios',
-    items: [
-      { id: 'item-9', texto: '¿Inventario actualizado?', categoria: 'Inventario', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 4,
-    fechaCreacion: '2024-12-15',
-    ultimaActualizacion: '2024-12-29'
-  },
-  {
-    id: 'lista-006',
-    nombre: 'Lista de Chequeo #6',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Seguridad y salud en el trabajo',
-    items: [
-      { id: 'item-10', texto: '¿Plan de emergencias?', categoria: 'Seguridad', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 2,
-    fechaCreacion: '2024-12-10',
-    ultimaActualizacion: '2024-12-28'
-  },
-  {
-    id: 'lista-007',
-    nombre: 'Lista de Chequeo #7',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Gestión documental',
-    items: [
-      { id: 'item-11', texto: '¿Sistema de archivo adecuado?', categoria: 'Documental', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 1,
-    fechaCreacion: '2024-12-05',
-    ultimaActualizacion: '2024-12-27'
-  },
-  {
-    id: 'lista-008',
-    nombre: 'Lista de Chequeo #8',
-    tipoAuditoria: 'Auditoría de Gestión',
-    descripcion: 'Atención al usuario',
-    items: [
-      { id: 'item-12', texto: '¿Protocolo de atención definido?', categoria: 'Servicio', obligatorio: true }
-    ],
-    activa: true,
-    usosProgramados: 3,
-    fechaCreacion: '2024-12-01',
-    ultimaActualizacion: '2024-12-26'
   }
 ];
 
@@ -282,28 +95,57 @@ const COLORES_DISPONIBLES = [
 // ====================================
 
 export function ConfiguracionAuditoriasModule() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('tipos'); // ✅ Solo mostrar Tipos de Auditoría
-  const [tipos, setTipos] = useState<TipoAuditoria[]>(TIPOS_AUDITORIA_INICIAL);
-  const [listas, setListas] = useState<ListaChequeo[]>(LISTAS_CHEQUEO_INICIAL);
-  const [cambiosSinGuardar, setCambiosSinGuardar] = useState(false);
+  const [tabActiva, setTabActiva] = useState<TabActiva>('tipos');
+  
+  // ✅ Usar hook para conectar con backend
+  const {
+    tiposAuditoria: tipos,
+    listasChequeo: listas,
+    loading,
+    error,
+    crearTipo,
+    actualizarTipo,
+    eliminarTipo,
+    recargarDatos,
+  } = useConfiguracionAuditorias();
 
   const handleGuardarCambios = () => {
-    // Simular guardado en backend
-    toast.success('✅ Configuración guardada exitosamente', {
-      description: `Se guardaron ${tipos.length} tipos y ${listas.length} listas de chequeo`
+    // Los cambios ya se guardan automáticamente en el backend
+    recargarDatos();
+    toast.success('✅ Configuración sincronizada con el servidor', {
+      description: `${tipos.length} tipos de auditoría disponibles`
     });
-    setCambiosSinGuardar(false);
   };
 
-  const handleActualizarTipos = (nuevosTipos: TipoAuditoria[]) => {
-    setTipos(nuevosTipos);
-    setCambiosSinGuardar(true);
-  };
+  // Mostrar estado de carga
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#003DA5]" />
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const handleActualizarListas = (nuevasListas: ListaChequeo[]) => {
-    setListas(nuevasListas);
-    setCambiosSinGuardar(true);
-  };
+  // Mostrar error si existe
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <div>
+            <p className="text-gray-900 font-semibold">Error cargando configuración</p>
+            <p className="text-gray-600 text-sm">{error}</p>
+          </div>
+          <Button onClick={recargarDatos} variant="outline">
+            Reintentar
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
@@ -331,24 +173,15 @@ export function ConfiguracionAuditoriasModule() {
             </div>
 
             <div className="flex items-center gap-3">
-              {cambiosSinGuardar && (
-                <motion.div
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-center gap-2 text-orange-600 text-sm"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Cambios sin guardar</span>
-                </motion.div>
-              )}
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                Conectado al servidor
+              </Badge>
               <Button 
                 onClick={handleGuardarCambios} 
-                style={{ background: '#003DA5' }}
-                disabled={!cambiosSinGuardar}
-                className={!cambiosSinGuardar ? 'opacity-50 cursor-not-allowed' : ''}
+                variant="outline"
               >
                 <Save className="w-4 h-4 mr-2" />
-                Guardar
+                Sincronizar
               </Button>
             </div>
           </div>
@@ -358,6 +191,8 @@ export function ConfiguracionAuditoriasModule() {
             {TABS_CONFIG.map((tab) => {
               const isActive = tabActiva === tab.id;
               const Icon = tab.icon;
+              // Mostrar contador real de tipos
+              const badgeCount = tab.id === 'tipos' ? tipos.length : undefined;
 
               return (
                 <motion.button
@@ -389,8 +224,8 @@ export function ConfiguracionAuditoriasModule() {
                     </span>
                     <p className="text-xs text-gray-500">{tab.description}</p>
                   </div>
-                  {tab.badge && (
-                    <Badge variant={isActive ? 'default' : 'outline'} className="text-xs">{tab.badge}</Badge>
+                  {badgeCount !== undefined && badgeCount > 0 && (
+                    <Badge variant={isActive ? 'default' : 'outline'} className="text-xs">{badgeCount}</Badge>
                   )}
                 </motion.button>
               );
@@ -407,10 +242,12 @@ export function ConfiguracionAuditoriasModule() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
-            {/* ✅ Solo mostrar Tipos de Auditoría */}
+            {/* ✅ Tipos de Auditoría conectados al backend */}
             <SeccionTiposAuditoria 
-              tipos={tipos} 
-              onActualizar={handleActualizarTipos}
+              tipos={tipos}
+              onCrear={crearTipo}
+              onActualizar={actualizarTipo}
+              onEliminar={eliminarTipo}
             />
           </motion.div>
         </AnimatePresence>
@@ -425,12 +262,15 @@ export function ConfiguracionAuditoriasModule() {
 
 interface SeccionTiposAuditoriaProps {
   tipos: TipoAuditoria[];
-  onActualizar: (tipos: TipoAuditoria[]) => void;
+  onCrear: (tipo: Omit<TipoAuditoria, 'id' | 'auditoriasProgramadas'>) => Promise<TipoAuditoria | null>;
+  onActualizar: (id: string, tipo: Partial<TipoAuditoria>) => Promise<TipoAuditoria | null>;
+  onEliminar: (id: string) => Promise<boolean>;
 }
 
-function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaProps) {
+function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: SeccionTiposAuditoriaProps) {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [tipoEditando, setTipoEditando] = useState<TipoAuditoria | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
   const handleNuevoTipo = () => {
     setTipoEditando(null);
@@ -442,27 +282,26 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
     setModalAbierto(true);
   };
 
-  const handleGuardarTipo = (tipoNuevo: TipoAuditoria) => {
-    if (tipoEditando) {
-      const tiposActualizados = tipos.map(t => 
-        t.id === tipoEditando.id ? tipoNuevo : t
-      );
-      onActualizar(tiposActualizados);
-      toast.success('✅ Tipo de auditoría actualizado');
-    } else {
-      const nuevoTipo = {
-        ...tipoNuevo,
-        id: `tipo-${Date.now()}`,
-        auditoriasProgramadas: 0
-      };
-      onActualizar([...tipos, nuevoTipo]);
-      toast.success('✅ Nuevo tipo de auditoría creado');
+  const handleGuardarTipo = async (tipoNuevo: TipoAuditoria) => {
+    setGuardando(true);
+    try {
+      if (tipoEditando) {
+        // Actualizar tipo existente
+        await onActualizar(tipoEditando.id, tipoNuevo);
+      } else {
+        // Crear nuevo tipo  
+        await onCrear(tipoNuevo);
+      }
+      setModalAbierto(false);
+      setTipoEditando(null);
+    } catch (error) {
+      console.error('Error guardando tipo:', error);
+    } finally {
+      setGuardando(false);
     }
-    setModalAbierto(false);
-    setTipoEditando(null);
   };
 
-  const handleEliminarTipo = (tipoId: string) => {
+  const handleEliminarTipo = async (tipoId: string) => {
     const tipo = tipos.find(t => t.id === tipoId);
     if (tipo && tipo.auditoriasProgramadas > 0) {
       toast.error('❌ No se puede eliminar un tipo con auditorías programadas', {
@@ -471,8 +310,7 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
       return;
     }
 
-    onActualizar(tipos.filter(t => t.id !== tipoId));
-    toast.success('✅ Tipo de auditoría eliminado');
+    await onEliminar(tipoId);
   };
 
   return (
@@ -550,6 +388,15 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
             </motion.div>
           ))}
         </div>
+
+        {/* Mensaje si no hay tipos */}
+        {tipos.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p>No hay tipos de auditoría configurados</p>
+            <p className="text-sm">Crea el primer tipo para empezar</p>
+          </div>
+        )}
       </Card>
 
       <AnimatePresence>
@@ -561,6 +408,7 @@ function SeccionTiposAuditoria({ tipos, onActualizar }: SeccionTiposAuditoriaPro
               setModalAbierto(false);
               setTipoEditando(null);
             }}
+            guardando={guardando}
           />
         )}
       </AnimatePresence>
@@ -576,9 +424,10 @@ interface ModalTipoAuditoriaProps {
   tipo: TipoAuditoria | null;
   onGuardar: (tipo: TipoAuditoria) => void;
   onCerrar: () => void;
+  guardando?: boolean;
 }
 
-function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaProps) {
+function ModalTipoAuditoria({ tipo, onGuardar, onCerrar, guardando = false }: ModalTipoAuditoriaProps) {
   const [formData, setFormData] = useState<TipoAuditoria>(
     tipo || {
       id: '',
@@ -758,6 +607,7 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
               variant="outline"
               onClick={onCerrar}
               className="flex-1"
+              disabled={guardando}
             >
               Cancelar
             </Button>
@@ -765,9 +615,19 @@ function ModalTipoAuditoria({ tipo, onGuardar, onCerrar }: ModalTipoAuditoriaPro
               type="submit"
               style={{ background: '#003DA5' }}
               className="flex-1"
+              disabled={guardando}
             >
-              <Save className="w-4 h-4 mr-2" />
-              {tipo ? 'Actualizar' : 'Crear Tipo'}
+              {guardando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  {tipo ? 'Actualizar' : 'Crear Tipo'}
+                </>
+              )}
             </Button>
           </div>
         </form>

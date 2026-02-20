@@ -23,7 +23,7 @@ import { UpdateNotaDto } from './dto/update-nota.dto';
 import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dto';
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
-import { FaseAuditoria } from './entities/auditoria.entity';
+import { FaseAuditoria, EstadoKanban } from './entities/auditoria.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -347,6 +347,19 @@ export class AuditoriasController {
     @Body('fase') fase: FaseAuditoria,
   ) {
     return this.auditoriasService.updateFase(id, fase);
+  }
+
+  /**
+   * PATCH /esap/auditorias/:id/estado-kanban
+   * Actualiza el estado Kanban de una auditoría (para drag & drop)
+   * Acepta tanto valores en español ('Plan Anual', 'Planeación') como normalizados
+   */
+  @Patch(':id/estado-kanban')
+  updateEstadoKanban(
+    @Param('id') id: string,
+    @Body('estadoKanban') estadoKanban: string,
+  ) {
+    return this.auditoriasService.updateEstadoKanban(id, estadoKanban);
   }
 
   /**
