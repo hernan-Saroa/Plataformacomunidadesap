@@ -191,6 +191,15 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
   };
   const etapa = tipoToEtapa[lista?.tipo] || tipoToEtapa[lista?.etapaKanban] || 'PLANEACION';
 
+  // ✅ Reconstruir fasesImpactadas basándose en el tipo del backend
+  const tipoLower = (lista?.tipo || '').toLowerCase();
+  const fasesImpactadas = {
+    planeacion: tipoLower === 'planeacion',
+    ejecucion: tipoLower === 'ejecucion',
+    comunicacion: tipoLower === 'comunicacion',
+    seguimiento: tipoLower === 'seguimiento'
+  };
+
   return {
     id: lista?.id || `lista-${Date.now()}`,
     nombre: lista?.nombre || 'Lista sin nombre',
@@ -204,7 +213,8 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     completitud: lista?.completitud || (items.length > 0 ? Math.round(items.filter((i: any) => i.completado).length / items.length * 100) : 0),
     activa: lista?.activa !== false,
     auditoriaId: lista?.auditoriaId,
-    auditoriaCodigoNombre: lista?.auditoriaCodigoNombre
+    auditoriaCodigoNombre: lista?.nombreAuditoria || lista?.auditoriaCodigoNombre,
+    fasesImpactadas
   };
 };
 
@@ -853,7 +863,10 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           categoria: 'General',
           obligatorio: true,
           orden: idx + 1
-        }))
+        })),
+        // ✅ VINCULACIÓN CON AUDITORÍA
+        auditoriaId: listaCompleta.auditoriaId,
+        nombreAuditoria: listaCompleta.auditoriaCodigoNombre,
       });
 
       setListas(prev => [mapApiListaToUI(creadaApi), ...prev]);

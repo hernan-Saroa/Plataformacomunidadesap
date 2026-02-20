@@ -49,6 +49,24 @@ interface ProcesoAuditable {
   frecuenciaSugerida: string;
   horasEstimadas: number;
   auditable: boolean;
+  // ✅ Datos de evaluación del backend para cargar en el modal DAFP
+  _evaluacionRiesgo?: {
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
+    fechaUltimaAuditoria?: string;
+    resultadoUltimaAuditoria?: string;
+    ponderacionRiesgo?: string;
+    decisionFinal?: string;
+    motivoDecision?: string;
+    prioridadRegla?: number;
+  };
+  ultimaAuditoria?: string;
+  resultadoUltimaAuditoria?: string;
 }
 
 interface Estadisticas {
@@ -72,6 +90,8 @@ interface TabUniversoAuditableResponsiveProps {
   onAgregarProceso: () => void;
   onEditarProceso: (proceso: ProcesoAuditable) => void;
   onEliminarProceso: (id: string) => void;
+  // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
+  onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -103,7 +123,8 @@ export function TabUniversoAuditableResponsive({
   onFiltroTipoChange,
   onAgregarProceso,
   onEditarProceso,
-  onEliminarProceso
+  onEliminarProceso,
+  onGuardarEvaluacion
 }: TabUniversoAuditableResponsiveProps) {
   
   const { isMobile, isTablet } = useResponsive();
@@ -128,19 +149,46 @@ export function TabUniversoAuditableResponsive({
   };
   
   // Handler para guardar evaluación DAFP
+  // ✅ CONECTADO DIRECTAMENTE CON BACKEND via onGuardarEvaluacion
   const handleGuardarEvaluacionDafp = async (evaluacion: Partial<EvaluacionDafpCompleta>) => {
-    // TODO: Integrar con backend cuando esté listo
-    console.log('Guardar evaluación DAFP:', evaluacion);
+    if (!procesoSeleccionadoDafp) return;
     
-    // Simular guardado
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Convertir evaluación DAFP al formato del formulario que espera el backend
+    const datosActualizados = {
+      // Mantener datos básicos del proceso
+      nombre: procesoSeleccionadoDafp.nombre,
+      codigo: procesoSeleccionadoDafp.codigo,
+      macroproceso: procesoSeleccionadoDafp.macroproceso,
+      tipoProceso: procesoSeleccionadoDafp.tipoProceso,
+      dependenciaResponsable: procesoSeleccionadoDafp.dependenciaResponsable,
+      // Agregar campos de evaluación DAFP
+      riesgosExtremos: evaluacion.riesgosExtremos || 0,
+      riesgosAltos: evaluacion.riesgosAltos || 0,
+      riesgosModerados: evaluacion.riesgosModerados || 0,
+      riesgosBajos: evaluacion.riesgosBajos || 0,
+      totalRiesgos: (evaluacion.riesgosExtremos || 0) + (evaluacion.riesgosAltos || 0) + 
+                    (evaluacion.riesgosModerados || 0) + (evaluacion.riesgosBajos || 0),
+      requerimientoComite: evaluacion.requerimientoComite || false,
+      requerimientoEntesReg: evaluacion.requerimientoEntesReg || false,
+      fechaUltimaAuditoria: evaluacion.fechaUltimaAuditoria || null,
+      resultadoUltimaAuditoria: evaluacion.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
+      // Campos calculados
+      ponderacionRiesgo: evaluacion.ponderacionRiesgo || 'BAJO',
+      decisionFinal: evaluacion.decisionFinal || 'AUDITORÍA POSTERIOR',
+      motivoDecision: evaluacion.motivoDecision || '',
+      prioridadRegla: evaluacion.prioridadRegla || 5,
+    };
+    
+    // ✅ Guardar directamente al backend usando la función editarProceso del hook
+    if (onGuardarEvaluacion) {
+      await onGuardarEvaluacion(procesoSeleccionadoDafp.id, datosActualizados);
+    } else {
+      console.warn('[TabUniversoAuditableResponsive] onGuardarEvaluacion no está definido');
+    }
     
     // Cerrar modal
     setModalDafpAbierto(false);
     setProcesoSeleccionadoDafp(null);
-    
-    // Mostrar notificación (puedes agregar toast aquí)
-    alert('✅ Evaluación DAFP guardada exitosamente');
   };
 
   /**
@@ -148,6 +196,35 @@ export function TabUniversoAuditableResponsive({
    * TODO: Eliminar cuando se unifiquen los tipos
    */
   const convertirProceso = (proceso: ProcesoAuditable): ProcesoAuditableType => {
+    // ✅ Solo crear evaluacionDafp si hay datos REALES de evaluación DAFP
+    // Los campos distintivos de DAFP son: riesgosExtremos, riesgosAltos, etc.
+    // Si solo tiene probabilidad/impacto (del formulario Editar), NO es evaluación DAFP
+    const tieneEvaluacionDafp = proceso._evaluacionRiesgo && (
+      (proceso._evaluacionRiesgo.riesgosExtremos ?? 0) > 0 ||
+      (proceso._evaluacionRiesgo.riesgosAltos ?? 0) > 0 ||
+      (proceso._evaluacionRiesgo.riesgosModerados ?? 0) > 0 ||
+      (proceso._evaluacionRiesgo.riesgosBajos ?? 0) > 0 ||
+      (proceso._evaluacionRiesgo.totalRiesgos ?? 0) > 0 ||
+      proceso._evaluacionRiesgo.ponderacionRiesgo ||
+      proceso._evaluacionRiesgo.decisionFinal
+    );
+    
+    const evaluacionDafp = tieneEvaluacionDafp && proceso._evaluacionRiesgo ? {
+      riesgosExtremos: proceso._evaluacionRiesgo.riesgosExtremos ?? 0,
+      riesgosAltos: proceso._evaluacionRiesgo.riesgosAltos ?? 0,
+      riesgosModerados: proceso._evaluacionRiesgo.riesgosModerados ?? 0,
+      riesgosBajos: proceso._evaluacionRiesgo.riesgosBajos ?? 0,
+      totalRiesgos: proceso._evaluacionRiesgo.totalRiesgos ?? 0,
+      requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
+      requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
+      fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
+      resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
+      ponderacionRiesgo: proceso._evaluacionRiesgo.ponderacionRiesgo || '',
+      decisionFinal: proceso._evaluacionRiesgo.decisionFinal || '',
+      motivoDecision: proceso._evaluacionRiesgo.motivoDecision || '',
+      prioridadRegla: proceso._evaluacionRiesgo.prioridadRegla || 0,
+    } : undefined;
+    
     return {
       id: proceso.id,
       codigo: proceso.codigo,
@@ -171,6 +248,7 @@ export function TabUniversoAuditableResponsive({
         horasEstimadas: proceso.horasEstimadas || 0,
         fechaEvaluacion: new Date().toISOString()
       },
+      evaluacionDafp, // ✅ Ahora se incluyen los datos de evaluación DAFP
       auditable: proceso.auditable ?? true,
       frecuenciaAuditoria: proceso.frecuenciaSugerida || 'Anual',
       prioridad: 1

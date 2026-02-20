@@ -37,4 +37,40 @@ export class UpdateListaChequeoDto {
   @IsOptional()
   @IsBoolean()
   activa?: boolean;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VINCULACIÓN CON AUDITORÍA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  @IsUUID()
+  auditoriaId?: string;
+
+  @IsOptional()
+  @IsString()
+  nombreAuditoria?: string;
+
+  @IsOptional()
+  @IsString()
+  auditorResponsable?: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FASES QUE IMPACTA LA LISTA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  @IsBoolean()
+  fasePlaneacion?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  faseEjecucion?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  faseComunicacion?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  faseSeguimiento?: boolean;
 }

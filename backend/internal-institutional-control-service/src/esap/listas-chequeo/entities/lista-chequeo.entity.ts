@@ -68,6 +68,47 @@ export class ListaChequeo {
   @Column({ name: 'usos_programados', type: 'integer', default: 0 })
   usosProgramados: number;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VINCULACIÓN CON AUDITORÍA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'auditoria_id', type: 'uuid', nullable: true })
+  auditoriaId?: string;
+
+  @Column({ name: 'nombre_auditoria', type: 'varchar', length: 500, nullable: true })
+  nombreAuditoria?: string;
+
+  @Column({ name: 'auditor_responsable', type: 'varchar', length: 255, nullable: true })
+  auditorResponsable?: string;
+
+  @Column({ name: 'fecha_aplicacion', type: 'date', nullable: true })
+  fechaAplicacion?: Date;
+
+  @Column({ name: 'fecha_diligenciamiento', type: 'date', nullable: true })
+  fechaDiligenciamiento?: Date;
+
+  @Column({ name: 'items_completados', type: 'integer', default: 0 })
+  itemsCompletados: number;
+
+  @Column({ name: 'cumplimiento', type: 'integer', default: 0 })
+  cumplimiento: number;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FASES QUE IMPACTA LA LISTA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ name: 'fase_planeacion', type: 'boolean', default: false })
+  fasePlaneacion: boolean;
+
+  @Column({ name: 'fase_ejecucion', type: 'boolean', default: false })
+  faseEjecucion: boolean;
+
+  @Column({ name: 'fase_comunicacion', type: 'boolean', default: false })
+  faseComunicacion: boolean;
+
+  @Column({ name: 'fase_seguimiento', type: 'boolean', default: false })
+  faseSeguimiento: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

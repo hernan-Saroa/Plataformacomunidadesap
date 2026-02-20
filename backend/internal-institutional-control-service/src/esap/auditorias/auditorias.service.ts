@@ -20,6 +20,7 @@ import { Documento } from '../documentos/entities/documento.entity';
 import { AuditoriaKanbanDto, PersonaDto, ObjetivoDto } from './dto/auditoria-kanban.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { ConfiguracionesProfesionalesOCIGService } from '../configuraciones/configuraciones-profesionales-ocig.service';
 
 @Injectable()
 export class AuditoriasService {
@@ -44,6 +45,7 @@ export class AuditoriasService {
     private readonly documentoRepository: Repository<Documento>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
+    private readonly profesionalesOCIGService: ConfiguracionesProfesionalesOCIGService,
   ) {}
 
   /**
@@ -406,8 +408,9 @@ export class AuditoriasService {
       progreso: createDto.progreso ?? 0,
       hallazgos: 0,
       activa: true, // CRÍTICO: Asegurar que la auditoría esté activa para que aparezca en el Kanban
-      // Establecer estadoKanban inicial a 'Planeación' por defecto
-      estadoKanban: EstadoKanban.PLANEACION,
+      // Establecer estadoKanban inicial - si viene del DTO usarlo, sino 'Plan Anual' por defecto
+      // El DTO puede enviar el string directamente que corresponde al valor del enum
+      estadoKanban: (createDto.estadoKanban as EstadoKanban) || EstadoKanban.PLAN_ANUAL,
     };
 
     // Incluir campos opcionales si tienen valor
@@ -2621,62 +2624,41 @@ export class AuditoriasService {
   }
 
   /**
-   * Obtiene personas que tienen roles de Control Interno y pueden ser auditores
-   * Solo muestra usuarios con roles: JEFE_OCI, JEFE_CONTROL_INTERNO, AUDITOR_LIDER, 
-   * CONTROL_INTERNO, PROFESIONAL_AUDITOR, AUXILIAR_AUDITORIA
+   * Obtiene personas configuradas como profesionales OCIG que pueden ser auditores
+   * Los profesionales se configuran desde el módulo de Configuración OCIG
    */
   async obtenerPersonasDisponibles(): Promise<any[]> {
     try {
-      // Roles de Control Interno válidos para ser auditores
-      const rolesControlInterno = [
-        'JEFE_OCI',
-        'JEFE_CONTROL_INTERNO', 
-        'AUDITOR_LIDER',
-        'CONTROL_INTERNO',
-        'PROFESIONAL_AUDITOR',
-        'AUXILIAR_AUDITORIA'
-      ];
+      // Obtener profesionales OCIG configurados (solo activos)
+      const profesionalesOCIG = await this.profesionalesOCIGService.findAll(false);
+      
+      console.log(`[obtenerPersonasDisponibles] ${profesionalesOCIG.length} profesionales OCIG configurados`);
+      
+      if (profesionalesOCIG.length === 0) {
+        console.warn('[obtenerPersonasDisponibles] No hay profesionales OCIG configurados. Configure profesionales en el módulo de Configuración.');
+        return [];
+      }
 
-      const personas = await this.auditoriaRepository.query(
-        `SELECT DISTINCT
-          p.id_tercero,
-          p.num_identificacion,
-          p.tip_identificacion,
-          p.nom_largo,
-          p.nom_tercero,
-          p.pri_apellido,
-          p.seg_apellido,
-          p.dir_email,
-          r.name as rol_nombre,
-          r.code as rol_code
-         FROM auth.personas p
-         INNER JOIN auth."user" u ON u.id_tercero = p.id_tercero
-         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
-         INNER JOIN auth.role r ON r.id = ur.id_rol
-         WHERE r.code = ANY($1)
-           AND ur.is_active = true
-           AND u.is_active = true
-           AND p.id_tercero IS NOT NULL
-         ORDER BY p.nom_largo ASC`,
-        [rolesControlInterno]
-      );
-
-      return personas.map((p: any) => ({
-        id: String(p.id_tercero),
-        idPersona: Number(p.id_tercero),
-        nombre: p.nom_largo || 'Usuario Sin Nombre',
-        iniciales: this.getIniciales(p.nom_largo || 'US'),
-        tipoIdentificacion: p.tip_identificacion || 'CC',
-        numeroIdentificacion: p.num_identificacion || '',
-        email: p.dir_email || '',
-        cargo: p.rol_nombre || 'Auditor',
-        rolCode: p.rol_code || '',
-        especialidad: 'General',
+      return profesionalesOCIG.map((p: any) => ({
+        id: String(p.idTercero),
+        idPersona: Number(p.idTercero),
+        nombre: p.nombre || 'Usuario Sin Nombre',
+        iniciales: this.getIniciales(p.nombre || 'US'),
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: p.identificacion || '',
+        email: p.email || '',
+        cargo: p.rolOcig || 'Auditor',
+        rolCode: p.rolOcig || '',
+        especialidad: p.especialidades?.join(', ') || 'General',
+        especialidades: p.especialidades || [],
+        puedeSerLider: p.puedeSerLider || false,
+        capacidadMaximaAuditorias: p.capacidadMaximaAuditorias || 4,
+        horasMensualesDisponibles: p.horasMensualesDisponibles || 150,
         auditoriasConducto: 0,
-        disponibilidad: 'Disponible'
+        disponibilidad: p.activo ? 'Disponible' : 'No disponible'
       }));
     } catch (error) {
-      console.error('Error al obtener personas disponibles:', error);
+      console.error('Error al obtener profesionales OCIG:', error);
       return [];
     }
   }

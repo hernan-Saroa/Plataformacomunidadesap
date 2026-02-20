@@ -2172,6 +2172,8 @@ export function GestionAuditoriasKanbanSimple() {
         objetivos: data.objetivos || [],
         criteriosAuditoria: data.criteriosAuditoria || [], // El backend usa criteriosAuditoria
         equipoAuditores: data.equipoAuditores || [],
+        // ✅ NUEVO: Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
+        estadoKanban: 'Plan Anual',
       };
       
       console.log('[handleCrearAuditoria] Enviando al backend:', datosBackend);

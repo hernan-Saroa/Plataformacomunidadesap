@@ -61,22 +61,27 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
     ? ETIQUETAS_RESULTADO[evalDafp.resultadoUltimaAuditoria]
     : null;
   
-  const etiquetaEstado = ETIQUETAS_ESTADO[evalDafp.estado];
+  // ✅ Validación segura para etiquetaEstado
+  const etiquetaEstado = evalDafp.estado 
+    ? ETIQUETAS_ESTADO[evalDafp.estado] 
+    : { label: 'Pendiente', color: '#6B7280', bgColor: '#F3F4F6' };
   
   return (
     <div className="space-y-6">
       {/* Header con estado */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h3 className="text-2xl font-bold text-gray-900">Evaluación DAFP Completa</h3>
-        <div
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-          style={{
-            color: etiquetaEstado.color,
-            backgroundColor: etiquetaEstado.bgColor
-          }}
-        >
-          {etiquetaEstado.label}
-        </div>
+        {etiquetaEstado && (
+          <div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+            style={{
+              color: etiquetaEstado.color,
+              backgroundColor: etiquetaEstado.bgColor
+            }}
+          >
+            {etiquetaEstado.label}
+          </div>
+        )}
       </div>
       
       {/* Ponderación de Riesgo - Destacada */}
