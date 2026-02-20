@@ -128,13 +128,13 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
                 <div className="flex items-center justify-between mb-1 text-sm">
                   <span className="font-medium text-gray-700">Extremos</span>
                   <span className="font-bold text-gray-900">
-                    {evalDafp.riesgosExtremos} ({evalDafp.detalleCalculo.porcentajeExtremos}%)
+                    {evalDafp.riesgosExtremos} ({evalDafp.totalRiesgos > 0 ? Math.round((evalDafp.riesgosExtremos / evalDafp.totalRiesgos) * 100) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-red-600 to-red-500 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${(evalDafp.riesgosExtremos / evalDafp.totalRiesgos) * 100}%` }}
+                    style={{ width: `${evalDafp.totalRiesgos > 0 ? (evalDafp.riesgosExtremos / evalDafp.totalRiesgos) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -144,13 +144,13 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
                 <div className="flex items-center justify-between mb-1 text-sm">
                   <span className="font-medium text-gray-700">Altos</span>
                   <span className="font-bold text-gray-900">
-                    {evalDafp.riesgosAltos} ({Math.round((evalDafp.riesgosAltos / evalDafp.totalRiesgos) * 100)}%)
+                    {evalDafp.riesgosAltos} ({evalDafp.totalRiesgos > 0 ? Math.round((evalDafp.riesgosAltos / evalDafp.totalRiesgos) * 100) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-[#F57C00] to-orange-500 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${(evalDafp.riesgosAltos / evalDafp.totalRiesgos) * 100}%` }}
+                    style={{ width: `${evalDafp.totalRiesgos > 0 ? (evalDafp.riesgosAltos / evalDafp.totalRiesgos) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -160,13 +160,13 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
                 <div className="flex items-center justify-between mb-1 text-sm">
                   <span className="font-medium text-gray-700">Moderados</span>
                   <span className="font-bold text-gray-900">
-                    {evalDafp.riesgosModerados} ({Math.round((evalDafp.riesgosModerados / evalDafp.totalRiesgos) * 100)}%)
+                    {evalDafp.riesgosModerados} ({evalDafp.totalRiesgos > 0 ? Math.round((evalDafp.riesgosModerados / evalDafp.totalRiesgos) * 100) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-yellow-500 to-yellow-400 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${(evalDafp.riesgosModerados / evalDafp.totalRiesgos) * 100}%` }}
+                    style={{ width: `${evalDafp.totalRiesgos > 0 ? (evalDafp.riesgosModerados / evalDafp.totalRiesgos) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -176,13 +176,13 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
                 <div className="flex items-center justify-between mb-1 text-sm">
                   <span className="font-medium text-gray-700">Bajos</span>
                   <span className="font-bold text-gray-900">
-                    {evalDafp.riesgosBajos} ({Math.round((evalDafp.riesgosBajos / evalDafp.totalRiesgos) * 100)}%)
+                    {evalDafp.riesgosBajos} ({evalDafp.totalRiesgos > 0 ? Math.round((evalDafp.riesgosBajos / evalDafp.totalRiesgos) * 100) : 0}%)
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-green-600 to-green-500 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${(evalDafp.riesgosBajos / evalDafp.totalRiesgos) * 100}%` }}
+                    style={{ width: `${evalDafp.totalRiesgos > 0 ? (evalDafp.riesgosBajos / evalDafp.totalRiesgos) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -201,7 +201,7 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
           <div className="space-y-3">
             <div>
               <div className="text-sm text-blue-700 mb-1">Período recomendado</div>
-              <div className="text-2xl font-bold text-blue-900">{evalDafp.planRotacion}</div>
+              <div className="text-2xl font-bold text-blue-900">{evalDafp.planRotacion || 'Por determinar'}</div>
             </div>
             {evalDafp.fechaUltimaAuditoria && (
               <>
@@ -215,7 +215,7 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
                     })}
                   </div>
                 </div>
-                {evalDafp.diasDesdeUltimaAuditoria !== null && (
+                {evalDafp.diasDesdeUltimaAuditoria != null && evalDafp.diasDesdeUltimaAuditoria > 0 && (
                   <div>
                     <div className="text-sm text-blue-700 mb-1">Tiempo transcurrido</div>
                     <div className="font-semibold text-blue-900">
@@ -285,14 +285,14 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
             <div className={`text-sm ${
               evalDafp.decisionFinal === 'INCLUIR_PLAN_ANUAL' ? 'text-green-700' : 'text-yellow-700'
             }`}>
-              {evalDafp.motivoInclusion}
+              {evalDafp.motivoInclusion || evalDafp.motivoDecision || 'Sin motivo especificado'}
             </div>
           </div>
         </div>
       </div>
       
       {/* Banderas de Inclusión Automática */}
-      {(evalDafp.inclusionAutomatica.porComite || 
+      {evalDafp.inclusionAutomatica && (evalDafp.inclusionAutomatica.porComite || 
         evalDafp.inclusionAutomatica.porRiesgoExtremo || 
         evalDafp.inclusionAutomatica.porEntesReguladores || 
         evalDafp.inclusionAutomatica.porRotacion) && (
@@ -398,18 +398,22 @@ export function VisualizadorResultadosDafp({ proceso, showComparativa = true }: 
       
       {/* Metadata */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        <div>
-          <div className="text-gray-500 mb-1">Fecha de evaluación</div>
-          <div className="font-semibold text-gray-900">
-            {new Date(evalDafp.fechaEvaluacion).toLocaleDateString('es-ES')}
+        {evalDafp.fechaEvaluacion && (
+          <div>
+            <div className="text-gray-500 mb-1">Fecha de evaluación</div>
+            <div className="font-semibold text-gray-900">
+              {new Date(evalDafp.fechaEvaluacion).toLocaleDateString('es-ES')}
+            </div>
           </div>
-        </div>
-        <div>
-          <div className="text-gray-500 mb-1">Fecha de corte</div>
-          <div className="font-semibold text-gray-900">
-            {new Date(evalDafp.fechaCorte).toLocaleDateString('es-ES')}
+        )}
+        {evalDafp.fechaCorte && (
+          <div>
+            <div className="text-gray-500 mb-1">Fecha de corte</div>
+            <div className="font-semibold text-gray-900">
+              {new Date(evalDafp.fechaCorte).toLocaleDateString('es-ES')}
+            </div>
           </div>
-        </div>
+        )}
         {evalDafp.evaluadoPor && (
           <div>
             <div className="text-gray-500 mb-1">Evaluado por</div>
