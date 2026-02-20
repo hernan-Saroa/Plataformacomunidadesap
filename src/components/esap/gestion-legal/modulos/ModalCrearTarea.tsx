@@ -18,7 +18,7 @@ import {
   X, Target, Calendar, User, Flag,
   AlertCircle, CheckCircle, Clock, Plus
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
@@ -40,13 +40,35 @@ export function ModalCrearTarea({
   onGuardar,
   modoEdicion = false
 }: ModalCrearTareaProps) {
-  const [titulo, setTitulo] = useState(tareaInicial?.titulo || '');
-  const [descripcion, setDescripcion] = useState(tareaInicial?.descripcion || '');
-  const [fechaVencimiento, setFechaVencimiento] = useState(tareaInicial?.vencimiento || '');
-  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>(tareaInicial?.prioridad || 'Media');
-  const [responsableSeleccionado, setResponsableSeleccionado] = useState(tareaInicial?.responsable || '');
-  const [estado, setEstado] = useState<'Pendiente' | 'En proceso' | 'Completado'>(tareaInicial?.estado || 'Pendiente');
+  const [titulo, setTitulo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [fechaVencimiento, setFechaVencimiento] = useState('');
+  const [prioridad, setPrioridad] = useState<'Alta' | 'Media' | 'Baja'>('Media');
+  const [responsableSeleccionado, setResponsableSeleccionado] = useState('');
+  const [estado, setEstado] = useState<'Pendiente' | 'En proceso'>('Pendiente');
   const [enviandoTarea, setEnviandoTarea] = useState(false);
+
+  // Limpiar campos al abrir el modal (o cargar datos si es edición)
+  useEffect(() => {
+    if (isOpen) {
+      if (modoEdicion && tareaInicial) {
+        setTitulo(tareaInicial.titulo || '');
+        setDescripcion(tareaInicial.descripcion || '');
+        setFechaVencimiento(tareaInicial.vencimiento || '');
+        setPrioridad(tareaInicial.prioridad || 'Media');
+        setResponsableSeleccionado(tareaInicial.responsable || '');
+        setEstado(tareaInicial.estado === 'Completado' ? 'Pendiente' : (tareaInicial.estado || 'Pendiente'));
+      } else {
+        setTitulo('');
+        setDescripcion('');
+        setFechaVencimiento('');
+        setPrioridad('Media');
+        setResponsableSeleccionado('');
+        setEstado('Pendiente');
+      }
+      setEnviandoTarea(false);
+    }
+  }, [isOpen, modoEdicion, tareaInicial]);
 
   // Usuarios disponibles para asignar
   const usuariosDisponibles = [
@@ -335,7 +357,7 @@ export function ModalCrearTarea({
                 📊 Estado de la tarea
               </Label>
               <div className="flex gap-2">
-                {(['Pendiente', 'En proceso', 'Completado'] as const).map((estadoOpcion) => (
+                {(['Pendiente', 'En proceso'] as const).map((estadoOpcion) => (
                   <Button
                     key={estadoOpcion}
                     type="button"
@@ -346,12 +368,12 @@ export function ModalCrearTarea({
                     style={
                       estado === estadoOpcion
                         ? {
-                          background: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          background: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
                           color: '#FFFFFF'
                         }
                         : {
-                          borderColor: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
-                          color: estadoOpcion === 'Completado' ? '#10B981' : estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
+                          borderColor: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B',
+                          color: estadoOpcion === 'En proceso' ? '#3B82F6' : '#F59E0B'
                         }
                     }
                   >
@@ -369,7 +391,7 @@ export function ModalCrearTarea({
               ⚡ Estado inicial
             </Label>
             <div className="flex gap-2">
-              {(['Pendiente', 'En proceso', 'Completado'] as const).map((estadoOpt) => (
+              {(['Pendiente', 'En proceso'] as const).map((estadoOpt) => (
                 <Button
                   key={estadoOpt}
                   type="button"

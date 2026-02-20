@@ -24,6 +24,7 @@ import { authService } from './services/api/authService';
 import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
+import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
 
 // Importar Demo de Control Disciplinario
 import { ControlDisciplinarioDemo } from './components/esap/ControlDisciplinarioDemo';
@@ -1051,6 +1052,10 @@ export default function App() {
           <Route
             path="/editor-plantillas"
             element={<EditorPlantillasPage />}
+          />
+          <Route
+            path="/expediente-compartido/:token"
+            element={<ExpedienteCompartidoPage />}
           />
           <Route path="*" element={renderVista()} />
         </Routes>

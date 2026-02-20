@@ -5,6 +5,7 @@ import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { ConsultaJuridicaHistorial } from '../entities/consulta-juridica-historial.entity';
 import { TerminosService } from './terminos.service';
 import { DiasHabilesService } from './dias-habiles.service';
+import { DocumentosConsultaService } from './documentos-consulta.service';
 
 import { OnModuleInit } from '@nestjs/common';
 
@@ -16,7 +17,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
         @InjectRepository(ConsultaJuridicaHistorial)
         private readonly historialRepository: Repository<ConsultaJuridicaHistorial>,
         private readonly terminosService: TerminosService,
-        private readonly diasHabilesService: DiasHabilesService
+        private readonly diasHabilesService: DiasHabilesService,
+        private readonly documentosService: DocumentosConsultaService
     ) { }
 
     async onModuleInit() {
@@ -68,7 +70,13 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return consulta;
     }
 
-    async create(data: Partial<ConsultaJuridica>): Promise<ConsultaJuridica> {
+    async create(data: Partial<ConsultaJuridica>, file?: {
+        filename: string;
+        path: string;
+        mimetype: string;
+        size: number;
+        originalname: string;
+    }): Promise<ConsultaJuridica> {
         // Generate radicado number - Find max radicado for current year robustly
         const year = new Date().getFullYear();
         const prefix = `CJ-${year}-`;
@@ -103,6 +111,26 @@ export class ConsultasJuridicasService implements OnModuleInit {
         });
 
         const savedConsulta = await this.consultaRepository.save(nuevaConsulta);
+
+        // Si hay archivo adjunto, crearlo en DocumentosConsulta
+        if (file) {
+            try {
+                await this.documentosService.create({
+                    consultaId: savedConsulta.id,
+                    nombre: file.originalname,
+                    tipoDocumento: 'adjunto',
+                    descripcion: 'Documento adjunto al radicar la consulta',
+                    archivoUrl: `files/${file.filename}`, // Ruta relativa compatible con sistema existente
+                    archivoNombreOriginal: file.originalname,
+                    tamanoBytes: file.size,
+                    mimeType: file.mimetype,
+                    subidoPor: data.nombreSolicitante || 'Sistema'
+                });
+            } catch (error) {
+                console.error('Error guardando documento inicial:', error);
+                // No lanzar error para no interrumpir la creación de la consulta, pero loguear
+            }
+        }
 
         // Sync with Control de Términos
         await this.terminosService.createAutomatico(

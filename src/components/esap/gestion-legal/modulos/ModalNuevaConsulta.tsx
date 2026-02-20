@@ -52,7 +52,8 @@ export interface NuevaConsultaData {
   antecedentes?: string;
   prioridad: PrioridadConsulta;
   abogadoAsignadoId: string;
-  documentosAdjuntos?: File[];
+  abogadoAsignadoId: string;
+  documentoAdjunto?: File;
 }
 
 interface Abogado {
@@ -252,7 +253,22 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
         terminoLegalDias: 30 // Default 30 business days
       };
 
-      await legalService.createConsultaJuridica(payload);
+      // Create FormData to handle file upload
+      const formDataToSend = new FormData();
+
+      // Append all fields from payload to FormData
+      Object.keys(payload).forEach(key => {
+        if (key !== 'documentoAdjunto' && payload[key] !== undefined && payload[key] !== null) {
+          formDataToSend.append(key, payload[key].toString());
+        }
+      });
+
+      // Append file if exists
+      if (formData.documentoAdjunto) {
+        formDataToSend.append('file', formData.documentoAdjunto);
+      }
+
+      await legalService.createConsultaJuridica(formDataToSend);
 
       // const consecutivo = `CJ-2025-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`;
 
@@ -584,6 +600,36 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess }: ModalNuevaCon
                   placeholder="Antecedentes relevantes si los hay..."
                   rows={3}
                 />
+              </div>
+
+              {/* ✅ ADJUNTAR DOCUMENTO */}
+              <div className="mt-4">
+                <Label className="text-sm font-bold text-gray-700 flex items-center gap-1 mb-2">
+                  <FileText className="w-4 h-4 text-gray-500" />
+                  Documento Adjunto (Opcional)
+                </Label>
+                <Input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // Validar tamaño (ej. 10MB)
+                      if (file.size > 10 * 1024 * 1024) {
+                        toast.error('El archivo excede el tamaño máximo permitido (10MB)');
+                        e.target.value = ''; // Reset input
+                        return;
+                      }
+                      updateField('documentoAdjunto', file);
+                    } else {
+                      updateField('documentoAdjunto', undefined);
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Formatos permitidos: PDF, Word, Imágenes. Máximo 10MB.
+                </p>
               </div>
             </FormSection>
 

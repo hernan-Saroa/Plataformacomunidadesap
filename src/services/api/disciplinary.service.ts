@@ -883,6 +883,85 @@ class DisciplinaryService {
             justificacion
         });
     }
+
+    // ==================== COMPARTIR EXPEDIENTE ====================
+
+    /**
+     * Crear un enlace compartido para un expediente
+     */
+    async crearEnlaceCompartido(
+        procesoId: string,
+        data: {
+            tipoCompartido?: 'LINK' | 'QR' | 'EMAIL';
+            requiereClave?: boolean;
+            clave?: string;
+            tiempoExpiracionHoras?: number;
+            emailDestinatario?: string;
+            mensajeAdicional?: string;
+            esPublico?: boolean;
+        }
+    ): Promise<{
+        id: string;
+        token: string;
+        url: string;
+        urlQR: string;
+        tipoCompartido: string;
+        requiereClave: boolean;
+        tiempoExpiracionHoras: number;
+        fechaExpiracion: string;
+        emailDestinatario: string;
+        createdAt: string;
+    }> {
+        // Debug: verificar que hay token disponible
+        const token = localStorage.getItem('esap_auth_token');
+        console.log('[DEBUG] Token available:', !!token);
+        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
+        
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
+    }
+
+    /**
+     * Listar enlaces compartidos de un proceso
+     */
+    async listarEnlacesCompartidos(procesoId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/compartir-expediente/proceso/${procesoId}`);
+    }
+
+    /**
+     * Desactivar un enlace compartido
+     */
+    async desactivarEnlaceCompartido(id: string): Promise<{ message: string }> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${id}/desactivar`, {});
+    }
+
+    /**
+     * Verificar acceso a un enlace compartido (público)
+     */
+    async verificarAccesoCompartido(token: string, clave?: string): Promise<{
+        tieneAcceso: boolean;
+        requiereClave: boolean;
+        expediente?: { id: string; radicado: string };
+        mensaje?: string;
+    }> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar`, { token, clave });
+    }
+
+    /**
+     * Obtener datos públicos del expediente compartido (público)
+     */
+    async obtenerExpedientePublico(token: string): Promise<{
+        token: string;
+        requiereClave: boolean;
+        proceso: {
+            id: string;
+            radicado: string;
+            etapaActual: string;
+            estado: string;
+            fechaVencimientoEtapa: string;
+        };
+    }> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`);
+    }
 }
 
 const disciplinaryService = new DisciplinaryService();

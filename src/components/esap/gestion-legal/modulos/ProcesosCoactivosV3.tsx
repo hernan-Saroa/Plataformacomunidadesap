@@ -31,7 +31,8 @@ import {
 import { ModalGestionarPagos } from '../procesos-coactivos/ModalGestionarPagos';
 import { ModalHistorialCoactivo } from '../procesos-coactivos/ModalHistorialCoactivo';
 import { VistaArchivados, ItemArchivado, EstadoArchivado } from '../design-system/VistaArchivados';
-import { usePermisos, PERMISOS } from '../config/PermisosContext'
+import { ModalArchivarProceso } from './procesos-coactivos/ModalArchivarProceso';
+import { usePermisos, PERMISOS } from '../config/PermisosContext';
 
 // ============ TIPOS ============
 interface ProcesoCoactivo {
@@ -59,6 +60,11 @@ interface ProcesoCoactivo {
   documentosAdjuntos: number;
   notificacionesEnviadas: number;
   observaciones?: string;
+  // Propiedades de archivo (opcionales porque no siempre vienen llenas o necesarias en vista principal)
+  estadoArchivo?: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO';
+  fechaArchivo?: Date;
+  usuarioArchivo?: string;
+  motivoArchivo?: string;
 }
 
 // Función helper para mapear datos del API al formato del componente
@@ -91,7 +97,11 @@ const mapApiToLocal = (apiProceso: ProcesoCoactivoAPI): ProcesoCoactivo => {
     responsable: apiProceso.responsable || 'Sin asignar',
     documentosAdjuntos: apiProceso.documentosAdjuntos || 0,
     notificacionesEnviadas: apiProceso.notificacionesEnviadas || 0,
-    observaciones: apiProceso.observaciones
+    observaciones: apiProceso.observaciones,
+    estadoArchivo: apiProceso.estadoArchivo,
+    fechaArchivo: apiProceso.fechaArchivo ? new Date(apiProceso.fechaArchivo) : undefined,
+    usuarioArchivo: apiProceso.usuarioArchivo,
+    motivoArchivo: apiProceso.motivoArchivo
   };
 };
 
@@ -120,56 +130,78 @@ export function ModuloProcesosCoactivosV3() {
   const [procesoParaPago, setProcesoParaPago] = useState<ProcesoCoactivo | null>(null);
   const [procesoParaHistorial, setProcesoParaHistorial] = useState<ProcesoCoactivo | null>(null);
   // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'PC-2024-999',
-      codigo: 'COA-2024-00099',
-      nombre: 'Cobro matrícula semestre 2023-2 - José Martínez (CC 1.001.001.001) - $2.800.000',
-      tipo: 'Proceso Coactivo',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-20T14:30:00'),
-      usuarioArchivo: 'Dr. Carlos Mendoza',
-      motivoArchivo: 'Obligación cancelada en su totalidad con intereses moratorios. Proceso finalizado exitosamente mediante acuerdo de pago',
-      metadatos: {
-        'Deudor': 'José Martínez López',
-        'Identificación': '1.001.001.001',
-        'Concepto': 'Matrícula Semestre 2023-2',
-        'Valor': '$2.800.000',
-        'Estado Final': 'Finalizado - Pago completo',
-        'Responsable': 'Dr. Carlos Mendoza García',
-        'Fecha Finalización': '20/12/2024'
-      }
-    },
-    {
-      id: 'PC-2024-888',
-      codigo: 'COA-2024-00088',
-      nombre: 'Reintegro beca - María González (CC 1.002.002.002) - $8.500.000',
-      tipo: 'Proceso Coactivo',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-11-10T09:15:00'),
-      usuarioArchivo: 'Admin Sistema',
-      motivoArchivo: 'Proceso duplicado por error del sistema. El proceso oficial es COA-2024-00089',
-      metadatos: {
-        'Deudor': 'María González Pérez',
-        'Motivo Eliminación': 'Registro duplicado',
-        'Proceso Oficial': 'COA-2024-00089',
-        'Fecha Detección': '10/11/2024'
-      }
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+  const [loadingArchivados, setLoadingArchivados] = useState(false);
+
+  // Estados para modal de archivo
+  const [modalArchivar, setModalArchivar] = useState(false);
+  const [procesoParaArchivar, setProcesoParaArchivar] = useState<ProcesoCoactivo | null>(null);
+
+  // Cargar archivados
+  const loadArchivados = async () => {
+    try {
+      setLoadingArchivados(true);
+      const data = await procesosCoactivosService.getArchivados();
+
+      // Mapear a formato ItemArchivado
+      const items: ItemArchivado[] = data.map(p => ({
+        id: p.id,
+        codigo: p.radicado,
+        nombre: `${p.radicado} - ${p.deudor.nombre}`,
+        tipo: 'Proceso Coactivo',
+        estado: (p.estadoArchivo as any) || 'ARCHIVADO',
+        fechaArchivado: p.fechaArchivo ? new Date(p.fechaArchivo) : new Date(),
+        usuarioArchivo: p.usuarioArchivo || 'Desconocido',
+        motivoArchivo: p.motivoArchivo || 'Sin motivo',
+        metadatos: {
+          'Deudor': p.deudor.nombre,
+          'Identificación': p.deudor.identificacion,
+          'Concepto': p.obligacion.concepto,
+          'Valor': `$${p.obligacion.valor.toLocaleString('es-CO')}`,
+          'Saldo': `$${(p.saldoPendiente || 0).toLocaleString('es-CO')}`
+        }
+      }));
+      setItemsArchivados(items);
+    } catch (error) {
+      console.error('Error cargando archivados:', error);
+      toast.error('Error al cargar items archivados');
+    } finally {
+      setLoadingArchivados(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    if (vistaActual === 'archivados') {
+      loadArchivados();
+    }
+  }, [vistaActual]);
 
   // ✅ Función para restaurar un proceso archivado
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando proceso coactivo:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Proceso restaurado exitosamente');
+    try {
+      await procesosCoactivosService.restaurar(itemId, usuario?.nombre || 'Usuario');
+      toast.success('Proceso restaurado exitosamente');
+      loadArchivados(); // Recargar lista
+      loadProcesos(); // Recargar contadores principales si es necesario
+    } catch (error) {
+      console.error('Error restaurando:', error);
+      toast.error('Error al restaurar proceso');
+    }
   };
 
   // ✅ Función para eliminar permanentemente un proceso
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente proceso:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Proceso eliminado permanentemente');
+    if (!confirm('¿Está seguro de eliminar permanentemente este proceso? Esta acción NO se puede deshacer.')) return;
+
+    try {
+      // Usamos 'Eliminación definitiva desde papelera' como motivo automático
+      await procesosCoactivosService.eliminarPermanente(itemId, usuario?.nombre || 'Usuario', 'Eliminación definitiva desde papelera');
+      toast.success('Proceso eliminado permanentemente');
+      loadArchivados();
+    } catch (error) {
+      console.error('Error eliminando permanentemente:', error);
+      toast.error('Error al eliminar proceso permanentemente');
+    }
   };
 
   const handlePagar = (proceso: ProcesoCoactivo) => {
@@ -251,22 +283,42 @@ export function ModuloProcesosCoactivosV3() {
     setModalNuevoProceso(true);
   };
 
+  // ✅ Iniciar flujo de archivo (Archive)
+  const handleArchivarProceso = async (proceso: ProcesoCoactivo) => {
+    setProcesoParaArchivar(proceso);
+    setModalArchivar(true);
+  };
+
+  // ✅ Iniciar flujo de eliminación (Soft Delete / Trash)
   const handleEliminarProceso = async (procesoId: string) => {
     const proceso = procesos.find(p => p.id === procesoId);
     if (!proceso) return;
 
-    if (confirm(`¿Está seguro de eliminar el proceso "${proceso.radicado}"?\n\nEsta acción no se puede deshacer.`)) {
+    if (confirm(`¿Está seguro de enviar a la papelera el proceso "${proceso.radicado}"?\n\nPodrá restaurarlo desde la vista de Archivados.`)) {
       try {
-        await procesosCoactivosService.delete(procesoId);
-        toast.success('Proceso eliminado', {
-          description: `El proceso ${proceso.radicado} ha sido eliminado`,
-          duration: 3000
-        });
+        // Usamos eliminarPermanente que en backend hace soft delete si no está ya eliminado
+        await procesosCoactivosService.eliminarPermanente(procesoId, usuario?.nombre || 'Usuario', 'Eliminación desde lista activa');
+        toast.success('Proceso movido a papelera');
         loadProcesos(); // Recargar lista y stats
       } catch (error) {
         console.error('Error eliminando proceso:', error);
-        toast.error('Error al eliminar el proceso');
+        toast.error('Error al mover a papelera');
       }
+    }
+  };
+
+  // ✅ Confirmar archivo
+  const confirmArchivar = async (motivo: string) => {
+    if (!procesoParaArchivar) return;
+    try {
+      await procesosCoactivosService.archivar(procesoParaArchivar.id, motivo, usuario?.nombre || 'Usuario');
+      toast.success('Proceso movido a papelera');
+      setModalArchivar(false);
+      setProcesoParaArchivar(null);
+      loadProcesos(); // Recargar lista activa
+    } catch (error) {
+      console.error('Error archivando:', error);
+      toast.error('Error al mover a papelera');
     }
   };
 
@@ -380,7 +432,8 @@ export function ModuloProcesosCoactivosV3() {
                   <TarjetaProceso
                     proceso={proceso}
                     onVerDetalle={handleVerDetalle}
-                    onEliminar={handleEliminarProceso}
+                    onEliminar={handleEliminarProceso} // Eliminar -> Soft Delete (Trash)
+                    onArchivar={handleArchivarProceso} // Archivar -> Archive
                     onEditar={handleEditarProceso}
                     onPagar={handlePagar}
                     onHistorial={handleHistorial}
@@ -450,6 +503,16 @@ export function ModuloProcesosCoactivosV3() {
               radicado={procesoParaHistorial.radicado}
             />
           )}
+
+          {/* Modal Archivar */}
+          {procesoParaArchivar && (
+            <ModalArchivarProceso
+              isOpen={modalArchivar}
+              onClose={() => setModalArchivar(false)}
+              onConfirm={confirmArchivar}
+              proceso={procesoParaArchivar}
+            />
+          )}
         </>
       )}
     </div>
@@ -465,7 +528,8 @@ function TarjetaProceso({
   onEliminar,
   onEditar,
   onPagar,
-  onHistorial
+  onHistorial,
+  onArchivar
 }: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
@@ -473,6 +537,7 @@ function TarjetaProceso({
   onEditar: (proceso: ProcesoCoactivo) => void;
   onPagar: (proceso: ProcesoCoactivo) => void;
   onHistorial: (proceso: ProcesoCoactivo) => void;
+  onArchivar: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -621,8 +686,18 @@ function TarjetaProceso({
             Editar
           </button>
           <button
+            onClick={() => onArchivar(proceso)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-orange-200 text-orange-700 hover:bg-orange-50 transition-all"
+            title="Mover a Archivo"
+          >
+            <Archive className="w-4 h-4" />
+            Archivar
+          </button>
+
+          <button
             onClick={() => onEliminar(proceso.id)}
             className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+            title="Mover a Papelera"
           >
             <Trash2 className="w-4 h-4" />
             Eliminar

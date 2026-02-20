@@ -31,6 +31,50 @@ export class ProcesoCoactivoController {
         }
     }
 
+    // ============ SISTEMA DE ARCHIVO ============
+
+    @Get('archivados/all')
+    async findAllArchivados() {
+        try {
+            return await this.procesoCoactivoService.findAllArchivados();
+        } catch (error) {
+            console.error('Error obteniendo archivados:', error);
+            throw new HttpException('Error al obtener procesos archivados', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Put(':id/archivar')
+    async archivar(@Param('id') id: string, @Body() body: { motivo: string; usuario: string }) {
+        try {
+            console.log(`Solicitud de archivo para proceso ${id}`);
+            return await this.procesoCoactivoService.archivar(id, body.motivo, body.usuario);
+        } catch (error) {
+            console.error('Error archivando proceso:', error);
+            throw new HttpException('Error al archivar proceso', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Put(':id/restaurar')
+    async restaurar(@Param('id') id: string, @Body() body: { usuario: string }) {
+        try {
+            return await this.procesoCoactivoService.restaurar(id, body.usuario);
+        } catch (error) {
+            console.error('Error restaurando proceso:', error);
+            throw new HttpException('Error al restaurar proceso', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Post(':id/eliminar')
+    async eliminarPermanente(@Param('id') id: string, @Body() body: { usuario: string; motivo: string }) {
+        try {
+            await this.procesoCoactivoService.eliminarPermanente(id, body.usuario, body.motivo);
+            return { message: 'Proceso eliminado permanentemente' };
+        } catch (error) {
+            console.error('Error eliminando proceso permanentemente:', error);
+            throw new HttpException('Error al eliminar proceso permanentemente', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         try {
@@ -74,6 +118,8 @@ export class ProcesoCoactivoController {
             throw new HttpException('Error al eliminar proceso', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+
 
     // ============ PAGOS Y AUDITORÍA ============
 

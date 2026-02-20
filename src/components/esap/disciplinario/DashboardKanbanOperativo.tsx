@@ -85,7 +85,7 @@ interface Proceso {
   denunciante: Persona | string; // ✅ Puede ser objeto Persona o string
   denunciado: Persona | string; // ✅ Puede ser objeto Persona o string
   cedula: string; // Mantener por compatibilidad
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
+  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo' | 'Segunda Instancia';
   estadoActual: string;
   profesionalAsignado: Persona | string; // ✅ Puede ser objeto Persona o string
   profesionalAsignadoId?: string; // ID del profesional para filtrado
@@ -2164,6 +2164,8 @@ export function DashboardKanbanOperativo({
         return 'Juzgamiento';
       case 'FALLO':
         return 'Fallo';
+      case 'SEGUNDA_INSTANCIA':
+        return 'Segunda Instancia';
       default:
         return 'Recepción';
     }
@@ -2245,7 +2247,7 @@ export function DashboardKanbanOperativo({
         numeroIdentificacion: denunciadoRaw.cedula || 'N/A'
       },
       cedula: denunciadoRaw.cedula || 'N/A',
-      etapaActual: mapStageToUi((proceso as any).kanbanStage || (proceso as any).etapaActual),
+      etapaActual: mapStageToUi((proceso as any).etapaActual || (proceso as any).kanbanStage),
       estadoActual: (proceso as any).estado || 'ACTIVO',
       profesionalAsignado: {
         nombre: (proceso as any).abogadoAsignadoNombre || 'Sin asignar',

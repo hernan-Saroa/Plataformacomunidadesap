@@ -4,9 +4,10 @@
  * Control Interno Disciplinario
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertCircle, Save, RotateCcw, Bell } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 
 interface ConfiguracionNotificaciones {
   vencimiento7dias: boolean;
@@ -50,16 +51,66 @@ export function ConfiguracionNotificacionesAlertas() {
   const [notificaciones, setNotificaciones] = useState<ConfiguracionNotificaciones>(NOTIFICACIONES_DEFECTO);
   const [alertas, setAlertas] = useState<ConfiguracionAlertas>(ALERTAS_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const guardarConfiguraciones = () => {
+  useEffect(() => {
+    cargarConfiguracion();
+  }, []);
+
+  const cargarConfiguracion = async () => {
     try {
-      localStorage.setItem('disciplinario-notificaciones', JSON.stringify(notificaciones));
-      localStorage.setItem('disciplinario-alertas', JSON.stringify(alertas));
-      setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente');
+      setLoading(true);
+      const globalConfig = await disciplinaryService.getGlobalConfig();
+
+      if (globalConfig) {
+        if (globalConfig.notificationSettings && Object.keys(globalConfig.notificationSettings).length > 0) {
+          setNotificaciones(globalConfig.notificationSettings as ConfiguracionNotificaciones);
+        }
+        if (globalConfig.alertSettings && Object.keys(globalConfig.alertSettings).length > 0) {
+          setAlertas(globalConfig.alertSettings as ConfiguracionAlertas);
+        }
+      }
     } catch (error) {
-      console.error('❌ Error al guardar:', error);
-      toast.error('Error al guardar configuraciones');
+      console.error('Error cargando configuración de notificaciones y alertas:', error);
+      toast.error('Error al cargar configuración', {
+        description: 'Se usarán valores por defecto'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const guardarConfiguraciones = async () => {
+    console.log('🔵 Guardando configuración de notificaciones y alertas...');
+
+    try {
+      // 1. Cargar configuración actual para no sobrescribir otras secciones
+      const currentConfig = await disciplinaryService.getGlobalConfig();
+      console.log('🔵 Configuración actual del backend:', currentConfig);
+
+      // 2. Preparar payload con las configuraciones actualizadas
+      const globalPayload = {
+        roleCapacities: currentConfig?.roleCapacities || {},
+        notificationSettings: notificaciones,
+        alertSettings: alertas,
+        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true },
+        documentTemplates: currentConfig?.documentTemplates || {}
+      };
+
+      console.log('🔵 Payload COMPLETO para backend:', globalPayload);
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      console.log('✅ Configuración guardada en el backend');
+      setCambiosPendientes(false);
+      toast.success('Configuración guardada exitosamente', {
+        description: 'Los cambios se han guardado en el servidor'
+      });
+    } catch (error) {
+      console.error('❌ Error al guardar configuración:', error);
+      toast.error('Error al guardar configuración', {
+        description: 'No se pudieron guardar los cambios en el servidor'
+      });
     }
   };
 
@@ -71,6 +122,17 @@ export function ConfiguracionNotificacionesAlertas() {
       toast.success('Configuraciones restablecidas');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">

@@ -78,6 +78,18 @@ export class ProcesoCoactivo {
     @CreateDateColumn({ name: 'fecha_creacion' })
     fechaCreacion: Date;
 
+    @Column({ name: 'estado_archivo', type: 'varchar', length: 20, default: 'ACTIVO' })
+    estadoArchivo: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO';
+
+    @Column({ name: 'fecha_archivo', type: 'timestamp', nullable: true })
+    fechaArchivo: Date | null;
+
+    @Column({ name: 'usuario_archivo', type: 'varchar', length: 150, nullable: true })
+    usuarioArchivo: string | null;
+
+    @Column({ name: 'motivo_archivo', type: 'text', nullable: true })
+    motivoArchivo: string | null;
+
     @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 }
