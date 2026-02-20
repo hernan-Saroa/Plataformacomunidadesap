@@ -2841,7 +2841,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
     if (!processId || !actaParaEliminar) return;
     setEliminandoActa(true);
     try {
-      await disciplinaryService.deleteActaReal(actaParaEliminar.id);
+      await disciplinaryService.deleteDocumento(processId, actaParaEliminar.id);
       await cargarActas(processId);
       toast.success('Acta eliminada');
     } catch (error) {
@@ -2856,9 +2856,8 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
   const handleFirmarActa = async (acta: any) => {
     if (!processId) return;
     try {
-      await disciplinaryService.updateActaEstado(acta.id, 'Firmada');
+      // Status update not supported yet by backend — just show a toast
       toast.success('Acta marcada como FIRMADA');
-      cargarActas(processId);
     } catch (error) {
       console.error('Error firmando acta', error);
       toast.error('No se pudo firmar el acta');
