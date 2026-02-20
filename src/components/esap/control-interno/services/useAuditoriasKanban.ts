@@ -519,11 +519,12 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
   const actualizarAuditoria = useCallback(async (id: string, data: any): Promise<boolean> => {
     try {
       await controlInternoService.updateAuditoria(id, data);
-      toast.success('Auditoría actualizada');
+      toast.success('Auditoría actualizada correctamente');
       await fetchAuditorias();
       return true;
-    } catch (err) {
-      toast.error('Error al actualizar auditoría');
+    } catch (err: any) {
+      const mensaje = err?.message || 'Error al actualizar auditoría';
+      toast.error('Error al actualizar', { description: mensaje });
       return false;
     }
   }, [fetchAuditorias]);

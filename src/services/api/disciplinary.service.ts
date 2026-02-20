@@ -723,28 +723,75 @@ class DisciplinaryService {
         return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-processes/documents/${evidenciaId}`);
     }
 
-    // --- ACTAS ---
-    async getActas(expedienteId: string): Promise<any[]> {
-        return apiClient.get<any[]>(`/legal/api/v1/actas/expediente/${expedienteId}`);
+    // --- OFICIOS ---
+    async getOficios(processId: string): Promise<any[]> {
+        try {
+            const response = await apiClient.get<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+            const documentos = response.documentos || [];
+            return documentos.filter((doc: any) => doc.tipo === 'oficio');
+        } catch (error) {
+            console.error('Error cargando oficios:', error);
+            return [];
+        }
     }
 
-    async createActa(expedienteId: string, data: any, file: File): Promise<any> {
+    async createOficio(processId: string, data: { nombre?: string; destinatario?: string; asunto?: string; descripcion?: string; etapa?: string; categoria?: string; usuarioCarga?: string }, file: File): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
-        Object.keys(data).forEach(key => {
-            if (data[key] !== undefined && data[key] !== null) {
-                formData.append(key, data[key]);
-            }
-        });
-        return apiClient.upload<any>(`/legal/api/v1/actas/${expedienteId}`, formData);
+        formData.append('tipo', 'OFICIO');
+        formData.append('nombre', data.nombre || file.name);
+        if (data.destinatario) formData.append('destinatario', data.destinatario);
+        if (data.asunto) formData.append('asunto', data.asunto);
+        if (data.descripcion) formData.append('descripcion', data.descripcion);
+        if (data.etapa) formData.append('etapa', data.etapa);
+        if (data.categoria) formData.append('categoria', data.categoria);
+        formData.append('usuarioCarga', data.usuarioCarga || 'Sistema');
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
-    async updateActaEstado(id: string, estado: string): Promise<any> {
-        return apiClient.patch<any>(`/legal/api/v1/actas/${id}/estado`, { estado });
+    async deleteOficio(processId: string, oficioId: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents/${oficioId}`);
     }
 
-    async deleteActaReal(id: string): Promise<void> {
-        return apiClient.delete<void>(`/legal/api/v1/actas/${id}`);
+    // --- ACTAS ---
+    async getActas(processId: string): Promise<any[]> {
+        try {
+            const response = await apiClient.get<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`);
+            const documentos = response.documentos || [];
+            return documentos.filter((doc: any) => doc.tipo === 'acta');
+        } catch (error) {
+            console.error('Error cargando actas:', error);
+            return [];
+        }
+    }
+
+    async createActa(processId: string, data: any, file: File): Promise<any> {
+        // Build a structured description containing all acta-specific fields
+        const parts: string[] = [];
+        if (data.tipo) parts.push(`Tipo: ${data.tipo}`);
+        if (data.horario) parts.push(`Horario: ${data.horario}`);
+        if (data.duracion) parts.push(`Duración: ${data.duracion}`);
+        if (data.lugar) parts.push(`Lugar: ${data.lugar}`);
+        if (data.presidente) parts.push(`Presidente: ${data.presidente}`);
+        if (data.participantes) parts.push(`Participantes: ${data.participantes}`);
+        if (data.resumen) parts.push(`Resumen: ${data.resumen}`);
+        if (data.decisionesTomadas) parts.push(`Decisiones: ${data.decisionesTomadas}`);
+        const descripcion = parts.join(' | ');
+
+        const nombre = data.numeroActa || data.nombre || file.name;
+        return this.uploadDocumento(
+            processId,
+            file,
+            'ACTA',
+            descripcion,
+            nombre,
+            data.etapa || undefined,
+            data.usuarioCarga || 'Sistema',
+        );
+    }
+
+    async deleteActa(processId: string, actaId: string): Promise<void> {
+        return apiClient.delete<void>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents/${actaId}`);
     }
 
     // ==================== CONFIGURACIÓN DE AUTOS ====================
@@ -835,6 +882,85 @@ class DisciplinaryService {
             tipoAsociacion,
             justificacion
         });
+    }
+
+    // ==================== COMPARTIR EXPEDIENTE ====================
+
+    /**
+     * Crear un enlace compartido para un expediente
+     */
+    async crearEnlaceCompartido(
+        procesoId: string,
+        data: {
+            tipoCompartido?: 'LINK' | 'QR' | 'EMAIL';
+            requiereClave?: boolean;
+            clave?: string;
+            tiempoExpiracionHoras?: number;
+            emailDestinatario?: string;
+            mensajeAdicional?: string;
+            esPublico?: boolean;
+        }
+    ): Promise<{
+        id: string;
+        token: string;
+        url: string;
+        urlQR: string;
+        tipoCompartido: string;
+        requiereClave: boolean;
+        tiempoExpiracionHoras: number;
+        fechaExpiracion: string;
+        emailDestinatario: string;
+        createdAt: string;
+    }> {
+        // Debug: verificar que hay token disponible
+        const token = localStorage.getItem('esap_auth_token');
+        console.log('[DEBUG] Token available:', !!token);
+        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
+        
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${procesoId}`, data);
+    }
+
+    /**
+     * Listar enlaces compartidos de un proceso
+     */
+    async listarEnlacesCompartidos(procesoId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/compartir-expediente/proceso/${procesoId}`);
+    }
+
+    /**
+     * Desactivar un enlace compartido
+     */
+    async desactivarEnlaceCompartido(id: string): Promise<{ message: string }> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/${id}/desactivar`, {});
+    }
+
+    /**
+     * Verificar acceso a un enlace compartido (público)
+     */
+    async verificarAccesoCompartido(token: string, clave?: string): Promise<{
+        tieneAcceso: boolean;
+        requiereClave: boolean;
+        expediente?: { id: string; radicado: string };
+        mensaje?: string;
+    }> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/compartir-expediente/verificar`, { token, clave });
+    }
+
+    /**
+     * Obtener datos públicos del expediente compartido (público)
+     */
+    async obtenerExpedientePublico(token: string): Promise<{
+        token: string;
+        requiereClave: boolean;
+        proceso: {
+            id: string;
+            radicado: string;
+            etapaActual: string;
+            estado: string;
+            fechaVencimientoEtapa: string;
+        };
+    }> {
+        return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`);
     }
 }
 

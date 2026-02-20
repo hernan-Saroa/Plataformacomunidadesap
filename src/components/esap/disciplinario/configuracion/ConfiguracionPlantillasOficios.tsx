@@ -4,9 +4,10 @@
  * Control Interno Disciplinario
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import { SeccionPlantillasOficiosUnificada, type TipoOficio, type PlantillaArchivo } from './SeccionPlantillasOficiosUnificada';
 import { ModalNuevoTipoOficio } from './ModalNuevoTipoOficio';
 import { ModalGestionarPlantillasOficio } from './ModalGestionarPlantillasOficio';
@@ -318,11 +319,37 @@ const TIPOS_OFICIOS_DEFECTO: TipoOficio[] = [
 export function ConfiguracionPlantillasOficios() {
   const [tiposOficios, setTiposOficios] = useState<TipoOficio[]>(TIPOS_OFICIOS_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
-  
+  const [loading, setLoading] = useState(true);
+
   const [mostrarModalTipoOficio, setMostrarModalTipoOficio] = useState(false);
   const [tipoOficioEdicion, setTipoOficioEdicion] = useState<TipoOficio | null>(null);
   const [tipoOficioGestionando, setTipoOficioGestionando] = useState<TipoOficio | null>(null);
   const [mostrarModalGestionarPlantillas, setMostrarModalGestionarPlantillas] = useState(false);
+
+  useEffect(() => {
+    cargarConfiguracion();
+  }, []);
+
+  const cargarConfiguracion = async () => {
+    try {
+      setLoading(true);
+      const globalConfig = await disciplinaryService.getGlobalConfig();
+
+      if (globalConfig && globalConfig.documentTemplates?.oficios) {
+        setTiposOficios(globalConfig.documentTemplates.oficios);
+      } else {
+        setTiposOficios(TIPOS_OFICIOS_DEFECTO);
+      }
+    } catch (error) {
+      console.error('Error cargando configuración de plantillas de oficios:', error);
+      toast.error('Error al cargar configuración', {
+        description: 'Se usarán valores por defecto'
+      });
+      setTiposOficios(TIPOS_OFICIOS_DEFECTO);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const abrirModalNuevoTipoOficio = () => {
     setTipoOficioEdicion(null);
@@ -391,14 +418,46 @@ export function ConfiguracionPlantillasOficios() {
     setTipoOficioGestionando(null);
   };
 
-  const guardarConfiguraciones = () => {
+  const guardarConfiguraciones = async () => {
+    console.log('🔵 Guardando configuración de plantillas de oficios...');
+    console.log('🔵 Total de tipos de oficios a guardar:', tiposOficios.length);
+
     try {
-      localStorage.setItem('disciplinario-tipos-oficios', JSON.stringify(tiposOficios));
+      // 1. Cargar configuración actual para no sobrescribir otras secciones
+      const currentConfig = await disciplinaryService.getGlobalConfig();
+      console.log('🔵 Configuración actual del backend:', currentConfig);
+
+      // 2. Preparar documentTemplates con los tipos de oficios
+      const documentTemplates = {
+        ...currentConfig?.documentTemplates,
+        oficios: tiposOficios
+      };
+
+      console.log('🔵 documentTemplates preparado:', documentTemplates);
+
+      // 3. Mantener las configuraciones existentes de otras secciones
+      const globalPayload = {
+        roleCapacities: currentConfig?.roleCapacities || {},
+        notificationSettings: currentConfig?.notificationSettings || {},
+        alertSettings: currentConfig?.alertSettings || {},
+        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true },
+        documentTemplates
+      };
+
+      console.log('🔵 Payload COMPLETO para backend:', globalPayload);
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      console.log('✅ Configuración guardada en el backend');
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente');
+      toast.success('Configuración guardada exitosamente', {
+        description: 'Los cambios se han guardado en el servidor'
+      });
     } catch (error) {
-      console.error('❌ Error al guardar:', error);
-      toast.error('Error al guardar configuraciones');
+      console.error('❌ Error al guardar configuración:', error);
+      toast.error('Error al guardar configuración', {
+        description: 'No se pudieron guardar los cambios en el servidor'
+      });
     }
   };
 
@@ -409,6 +468,17 @@ export function ConfiguracionPlantillasOficios() {
       toast.success('Configuraciones restablecidas');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">

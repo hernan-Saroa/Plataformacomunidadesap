@@ -3,6 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { HttpModule } from '@nestjs/axios';
 
+// Auth
+import { AuthModule } from './auth/auth.module';
+
 // Entities
 import { DisciplinaryNews } from './entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from './entities/disciplinary-process.entity';
@@ -61,10 +64,14 @@ import { FilesController } from './controllers/files.controller';
 
 import { DisciplinaryExportController } from './controllers/disciplinary-export.controller';
 import { DisciplinaryExportService } from './services/disciplinary-export.service';
+import { CompartirExpedienteController } from './controllers/compartir-expediente.controller';
+import { CompartirExpedienteService } from './services/compartir-expediente.service';
+import { ExpedienteCompartido } from './entities/expediente-compartido.entity';
 
 @Module({
   imports: [
     HttpModule,
+    AuthModule,
     TypeOrmModule.forRoot(databaseConfig),
     TypeOrmModule.forFeature([
       DisciplinaryNews,
@@ -82,6 +89,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
       ReglaAlerta,
       AlertaEnviada,
       AutoConfiguration,
+      ExpedienteCompartido,
     ]),
   ],
   controllers: [
@@ -100,6 +108,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     JobsController,
     DisciplinaryExportController,
     AutosConfigurationController,
+    CompartirExpedienteController,
   ],
   providers: [
     AppService,
@@ -120,6 +129,7 @@ import { DisciplinaryExportService } from './services/disciplinary-export.servic
     OnlyOfficeService,
     PdfModifierService,
     AutosConfigurationService,
+    CompartirExpedienteService,
   ],
 })
 export class AppModule { }
