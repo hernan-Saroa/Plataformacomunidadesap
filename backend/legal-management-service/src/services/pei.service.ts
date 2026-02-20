@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull, Not } from 'typeorm';
 import { PeiIndicador } from '../entities/pei-indicador.entity';
 import { PeiRegistroAvance } from '../entities/pei-registro-avance.entity';
 
@@ -16,7 +16,7 @@ export class PeiService {
     async getDashboard() {
         // 1. Get all active indicators with their latest records
         const indicadores = await this.indicadorRepo.find({
-            where: { estado: 'ACTIVO' },
+            where: { estado: 'ACTIVO', archivedAt: IsNull() },
             relations: ['registros'],
             order: { id: 'ASC' } // Stable order
         });
@@ -107,6 +107,43 @@ export class PeiService {
         registro.porcentajeAvance = (valorReportado / meta) * 100;
 
         return this.registroRepo.save(registro);
+    }
+
+    // ==================== ARCHIVADO ====================
+    async getArchivados() {
+        return this.indicadorRepo.find({
+            where: { archivedAt: Not(IsNull()) },
+            relations: ['registros'],
+            order: { id: 'DESC' },
+        });
+    }
+
+    async archivar(id: number) {
+        const indicador = await this.findOne(id);
+        indicador.archivedAt = new Date();
+        indicador.archivedBy = 'System'; // In a real app, pass user from controller
+        indicador.archiveReason = 'Archivado manualmente';
+        return this.indicadorRepo.save(indicador);
+    }
+
+    async restaurar(id: number) {
+        const indicador = await this.indicadorRepo.findOne({
+            where: { id },
+            relations: ['registros'],
+            withDeleted: true // just in case we used softDelete from typeorm, but we are using manual column
+        });
+        if (!indicador) throw new NotFoundException(`Indicador ${id} no encontrado`);
+
+        indicador.archivedAt = null;
+        indicador.archivedBy = null;
+        indicador.archiveReason = null;
+        return this.indicadorRepo.save(indicador);
+    }
+
+    async eliminar(id: number) {
+        const indicador = await this.indicadorRepo.findOne({ where: { id } });
+        if (!indicador) throw new NotFoundException(`Indicador ${id} no encontrado`);
+        await this.indicadorRepo.remove(indicador);
     }
 
     async exportIndicatorsToZip(): Promise<any> {

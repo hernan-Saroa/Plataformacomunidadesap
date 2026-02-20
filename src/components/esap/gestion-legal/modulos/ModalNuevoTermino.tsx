@@ -31,7 +31,10 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
         setLoading(true);
 
         try {
-            await legalService.createTerminoManual(formData);
+            await legalService.createTerminoManual({
+                ...formData,
+                responsableId: formData.responsableId || null
+            });
             toast.success('Término creado exitosamente');
             onSuccess();
             onOpenChange(false);

@@ -421,6 +421,19 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/actas/${id}/archivo`, formData);
     }
 
+    // ==================== COMENTARIOS DE EXPEDIENTE ====================
+    async getComentariosExpediente(expedienteId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/comentarios`);
+    }
+
+    async createComentarioExpediente(expedienteId: string, data: { contenido: string; tipo?: string; usuarioId?: string; autorNombre?: string }): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/comentarios`, data);
+    }
+
+    async deleteComentarioExpediente(comentarioId: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/expedientes/comentarios/${comentarioId}`);
+    }
+
     // ==================== EXCEPCIONES PROCESALES ====================
     async getJuzgamientoExcepciones(radicado: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/excepciones`);
@@ -629,7 +642,22 @@ export class LegalService {
         return apiClient.getBlob(`${SERVICE_PREFIX}/pei/export/zip`);
     }
 
-    // Duplicate removed
+    // ==================== PEI - ARCHIVADO ====================
+    async getPeiArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/pei/archivados`);
+    }
+
+    async archivarPeiIndicador(id: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/archivar`, {});
+    }
+
+    async restaurarPeiIndicador(id: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/pei/indicador/${id}/restaurar`, {});
+    }
+
+    async eliminarPeiIndicador(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/pei/indicador/${id}`);
+    }
 
 
     // Método Wrapper para Requerimientos OC (por si acaso el componente llama a legalService.getRequerimientosOC)
@@ -693,6 +721,23 @@ export class LegalService {
 
     async addEvidenciaPlan(id: string, data: any): Promise<any> {
         return apiClient.post<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/evidencias`, data);
+    }
+
+    // ==================== PLANES MEJORAMIENTO - ARCHIVADO ====================
+    async getPlanesMejoramientoArchivados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/planes-mejoramiento/archivados/all`);
+    }
+
+    async archivarPlanMejoramiento(id: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/archivar`, {});
+    }
+
+    async restaurarPlanMejoramiento(id: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/planes-mejoramiento/${id}/restaurar`, {});
+    }
+
+    async eliminarPlanMejoramiento(id: string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/planes-mejoramiento/${id}`);
     }
 }
 

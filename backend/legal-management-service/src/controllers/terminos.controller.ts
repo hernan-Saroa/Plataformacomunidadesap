@@ -7,6 +7,30 @@ export class TerminosController {
     constructor(private readonly terminosService: TerminosService) { }
 
 
+    @Post('manual')
+    async createManual(@Body() body: any) {
+        // Defaults for manual creation
+        const fechaBase = body.fechaBase ? new Date(body.fechaBase) : new Date();
+        const fechaVencimiento = body.fechaVencimiento ? new Date(body.fechaVencimiento) : null;
+
+        // Calculate days if dates exist
+        let diasTermino = body.diasTermino || 0;
+        if (fechaVencimiento && !diasTermino) {
+            const diffTime = Math.abs(fechaVencimiento.getTime() - fechaBase.getTime());
+            diasTermino = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        return this.terminosService.create({
+            ...body,
+            origenModulo: 'MANUAL',
+            fechaBase,
+            fechaVencimiento,
+            diasTermino,
+            estado: body.estado || 'PENDIENTE',
+            prioridad: body.prioridad || 'MEDIA',
+            tipoDias: body.tipoDias || 'CALENDARIO'
+        });
+    }
 
     @Post('sincronizar')
     async sincronizar() {

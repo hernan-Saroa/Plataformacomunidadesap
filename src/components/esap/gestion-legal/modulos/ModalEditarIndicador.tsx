@@ -38,9 +38,10 @@ interface ModalEditarIndicadorProps {
 }
 
 export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: ModalEditarIndicadorProps) {
-  // Obtener ejes estratégicos desde el Context
-  const { getEjesEstrategicosActivos } = useConfiguracionesSIGL();
+  // Obtener ejes estratégicos y tipos indicador desde el Context
+  const { getEjesEstrategicosActivos, getTiposIndicadoresActivos } = useConfiguracionesSIGL();
   const ejesActivos = getEjesEstrategicosActivos();
+  const tiposIndicadorActivos = getTiposIndicadoresActivos();
 
   const [formData, setFormData] = useState({
     codigo: '',
@@ -67,7 +68,7 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
         responsable: indicador.responsable,
         meta: indicador.meta.toString(),
         unidadMedida: indicador.unidadMedida,
-        fechaInicio: indicador.fechaInicio instanceof Date 
+        fechaInicio: indicador.fechaInicio instanceof Date
           ? indicador.fechaInicio.toISOString().split('T')[0]
           : '',
         fechaFin: indicador.fechaFin instanceof Date
@@ -82,7 +83,7 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.nombre.trim()) {
       toast.error('El nombre del indicador es obligatorio');
       return;
@@ -266,10 +267,9 @@ export function ModalEditarIndicador({ isOpen, onClose, indicador, onGuardar }: 
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:outline-none"
                     required
                   >
-                    <option value="EFICIENCIA">⚡ Eficiencia</option>
-                    <option value="EFICACIA">🎯 Eficacia</option>
-                    <option value="GESTION">📊 Gestión</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
+                    {tiposIndicadorActivos.map(tipo => (
+                      <option key={tipo.id} value={tipo.id}>{tipo.icono} {tipo.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { SolicitudInforme, EtapaSolicitudInforme } from '../core/types';
 import { solicitudesConsolidadas, estadisticasTerminosInformes } from '../data/datosSolicitudesInformes';
 import { ModalDetalleSolicitudInforme } from './ModalDetalleSolicitudInforme';
-import { ModalNuevaSolicitudInforme } from './ModalNuevaSolicitudInforme';
+
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModuleHeader } from '../design-system/ModuleHeader';
 import { ModuleMetrics } from '../design-system/ModuleMetrics';
@@ -40,7 +40,7 @@ type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 export function ModuloTerminosInformesV3() {
   // ========== PERMISOS ==========
   const { usuario } = usePermisos();
-  
+
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
   const [vistaActual, setVistaActual] = useState<VistaModulo>('timeline');
@@ -68,7 +68,7 @@ export function ModuloTerminosInformesV3() {
     setSelectedSolicitud(solicitud);
     setModalDetalleOpen(true);
   };
-  
+
   // ✅ Estado para items archivados/eliminados
   const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
     {
@@ -242,41 +242,8 @@ export function ModuloTerminosInformesV3() {
     setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
     toast.success('Solicitud eliminada permanentemente');
   };
-  
-  const handleNuevaSolicitud = (data: NuevaSolicitudData) => {
-    console.log('📝 Nueva solicitud registrada:', data);
-    
-    // Calcular días restantes
-    const fechaLimite = new Date(data.fechaLimite);
-    const hoy = new Date();
-    const diasRestantes = Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-    const diasTotales = diasRestantes;
-    
-    // Crear nueva solicitud
-    const nuevaSolicitud: SolicitudInforme = {
-      id: `SI-2025-${String(solicitudes.length + 1).padStart(3, '0')}`,
-      etapa: 'RECIBIDA',
-      tipoInforme: data.entregable,
-      enteSolicitante: data.areaSolicitante,
-      radicadoExterno: `RAD-2025-${Math.floor(Math.random() * 9999)}`,
-      asunto: data.asunto,
-      descripcion: data.descripcion,
-      responsable: data.solicitante,
-      fechaSolicitud: new Date(),
-      fechaVencimiento: fechaLimite,
-      diasTotales: diasTotales,
-      diasRestantes: diasRestantes,
-      datosRequeridos: []
-    };
-    
-    setSolicitudes(prev => [nuevaSolicitud, ...prev]);
-    
-    toast.success('Solicitud registrada exitosamente', {
-      description: `Se ha creado la solicitud ${nuevaSolicitud.id}`,
-      icon: <CheckCircle className="w-4 h-4" />
-    });
-    setModalNuevaSolicitudOpen(false);
-  };
+
+
 
   const handleOpenDocumentos = (solicitud?: SolicitudInforme) => {
     if (solicitud) {
@@ -529,7 +496,8 @@ export function ModuloTerminosInformesV3() {
               { value: 'JUZGAMIENTO', label: 'Juzgamiento' },
               { value: 'ASESORIA', label: 'Asesoría' },
               { value: 'ORGANOS_CONTROL', label: 'Órganos de Control' },
-              { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' }
+              { value: 'PROCESOS_COACTIVOS', label: 'Procesos Coactivos' },
+              { value: 'MANUAL', label: 'Manual' }
             ]
           }
         ]}
@@ -556,12 +524,12 @@ export function ModuloTerminosInformesV3() {
           onEliminarPermanente={handleEliminarPermanente}
         />
       )}
-      
+
       {/* Modal Nueva Solicitud */}
-      <ModalNuevaSolicitudInforme
-        isOpen={modalNuevaSolicitudOpen}
-        onClose={() => setModalNuevaSolicitudOpen(false)}
-        onSubmit={handleNuevaSolicitud}
+      <ModalNuevoTermino
+        open={modalNuevaSolicitudOpen}
+        onOpenChange={setModalNuevaSolicitudOpen}
+        onSuccess={fetchData}
       />
 
       {/* We can use this modal for specific calls if we lift state later */}
@@ -677,8 +645,8 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                   <button
                     onClick={() => onVerDetalle(solicitud)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
-                    style={{ 
-                      background: '#003DA5', 
+                    style={{
+                      background: '#003DA5',
                       color: '#FFFFFF',
                       border: 'none'
                     }}
@@ -691,8 +659,8 @@ function VistaTimeline({ solicitudes, onVerDetalle, onVerDocumentos }: VistaTime
                   <button
                     onClick={() => toast.info('Documentos', { description: solicitud.id })}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
-                    style={{ 
-                      background: '#FFFFFF', 
+                    style={{
+                      background: '#FFFFFF',
                       color: '#003DA5',
                       border: '1.5px solid #003DA5'
                     }}
@@ -876,8 +844,8 @@ function VistaLista({ solicitudes, onVerDetalle, onVerDocumentos }: VistaListaPr
                     <button
                       onClick={() => onVerDetalle(solicitud)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95"
-                      style={{ 
-                        background: '#003DA5', 
+                      style={{
+                        background: '#003DA5',
                         color: '#FFFFFF',
                         border: 'none'
                       }}

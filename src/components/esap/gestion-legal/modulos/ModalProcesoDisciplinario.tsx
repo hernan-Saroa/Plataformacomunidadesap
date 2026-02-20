@@ -9,8 +9,8 @@
 import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
-  Eye, Download, Upload, Plus, Edit, Trash2, Send, Bell, Share2,
-  FileDown, ExternalLink, Scale
+  Eye, Download, Upload, Plus, Edit, Trash2, Send,
+  FileDown, Scale
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
@@ -28,7 +28,6 @@ import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { FormularioRegistrarDecision } from './FormularioRegistrarDecision';
 import { FormularioExcepcionProcesal } from './FormularioExcepcionProcesal';
-import { copyToClipboard } from '../../../../utils/clipboard';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '../../../../enums/permissions';
@@ -223,10 +222,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
 
 
   // ==================== ESTADOS RECUPERADOS (POST-MERGE) ====================
-  const [mostrarModalNotificar, setMostrarModalNotificar] = useState(false);
-  const [mostrarModalPortales, setMostrarModalPortales] = useState(false);
-  const [mostrarModalCompartir, setMostrarModalCompartir] = useState(false);
-  const [enlaceCompartir, setEnlaceCompartir] = useState('');
 
   // Implementación Real de Carga de Archivos
   const handleFileUpload = async (e: any, tipo: string) => {
@@ -266,9 +261,189 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   };
 
-  const confirmarNotificacion = () => {
-    toast.success('Notificación enviada a los destinatarios');
-    setMostrarModalNotificar(false);
+
+
+  // ==================== GENERAR PDF PARA UNA ACTUACIÓN ====================
+  const handleGenerarPDFActuacion = (act: any) => {
+    try {
+      const doc = new jsPDF();
+
+      // Header
+      doc.setFontSize(16);
+      doc.setFont('times', 'bold');
+      doc.text('REPÚBLICA DE COLOMBIA', 105, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', 105, 28, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text('OFICINA DE CONTROL DISCIPLINARIO INTERNO', 105, 36, { align: 'center' });
+      doc.line(20, 40, 190, 40);
+
+      // Title
+      doc.setFontSize(14);
+      doc.text('ACTUACIÓN PROCESAL', 105, 55, { align: 'center' });
+
+      // Info
+      doc.setFontSize(11);
+      doc.setFont('times', 'normal');
+      doc.text(`RADICADO: ${proceso.id}`, 20, 70);
+      doc.text(`FECHA: ${act.fecha || act.fechaActuacion || 'N/A'}`, 20, 78);
+      doc.text(`TIPO: ${act.tipo || act.tipoActuacion || 'N/A'}`, 20, 86);
+      doc.text(`RESPONSABLE: ${act.responsable || 'N/A'}`, 20, 94);
+      doc.text(`ESTADO: ${act.estado || 'N/A'}`, 20, 102);
+
+      let yPos = 116;
+      doc.setFont('times', 'bold');
+      doc.text('DESCRIPCIÓN:', 20, yPos);
+      yPos += 7;
+      doc.setFont('times', 'normal');
+      const splitDesc = doc.splitTextToSize(act.descripcion || 'Sin descripción', 170);
+      doc.text(splitDesc, 20, yPos);
+      yPos += (splitDesc.length * 6) + 15;
+
+      // Footer
+      doc.setFontSize(10);
+      doc.text(`Generado el ${new Date().toLocaleDateString('es-CO')}`, 105, 285, { align: 'center' });
+
+      doc.save(`Actuacion_${(act.tipo || 'actuacion').replace(/ /g, '_')}_${Date.now()}.pdf`);
+      toast.success('✅ PDF de actuación generado exitosamente');
+    } catch (error) {
+      console.error('PDF Generation Error:', error);
+      toast.error('Error al generar el PDF de la actuación');
+    }
+  };
+
+  // ==================== DESCARGAR PDF COMPLETO DEL PROCESO ====================
+  const handleDescargarPDF = () => {
+    try {
+      const doc = new jsPDF();
+
+      // Helper for wrapped text sections with page break awareness
+      const addWrappedSection = (label: string, text: string, yStart: number): number => {
+        let y = yStart;
+        doc.setFont('times', 'bold');
+        doc.text(label, 20, y);
+        y += 7;
+        doc.setFont('times', 'normal');
+        const splitText = doc.splitTextToSize(text || 'No registrado', 170);
+        doc.text(splitText, 20, y);
+        y += (splitText.length * 6) + 8;
+        if (y > 270) { doc.addPage(); y = 30; }
+        return y;
+      };
+
+      // ===== PÁGINA 1: CARÁTULA =====
+      doc.setFontSize(16);
+      doc.setFont('times', 'bold');
+      doc.text('REPÚBLICA DE COLOMBIA', 105, 20, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', 105, 28, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text('OFICINA DE CONTROL DISCIPLINARIO INTERNO', 105, 36, { align: 'center' });
+      doc.line(20, 42, 190, 42);
+
+      doc.setFontSize(18);
+      doc.text('EXPEDIENTE DISCIPLINARIO', 105, 60, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text(`RADICADO: ${proceso.id}`, 105, 72, { align: 'center' });
+
+      doc.setFontSize(11);
+      doc.setFont('times', 'normal');
+      let y = 90;
+      doc.text(`Investigado: ${proceso.investigado || proceso.disciplinado || 'N/A'}`, 20, y); y += 8;
+      doc.text(`Cargo: ${proceso.cargo || 'No registrado'}`, 20, y); y += 8;
+      doc.text(`Dependencia: ${proceso.dependencia || 'No registrado'}`, 20, y); y += 8;
+      doc.text(`Tipo de Falta: ${proceso.tipoFalta}`, 20, y); y += 8;
+      doc.text(`Etapa Actual: ${proceso.etapa}`, 20, y); y += 8;
+      doc.text(`Investigador: ${proceso.abogadoAsignado || 'Sin asignar'}`, 20, y); y += 8;
+      doc.text(`Días Restantes: ${proceso.diasRestantes}`, 20, y); y += 8;
+      doc.text(`Fecha Generación: ${new Date().toLocaleDateString('es-CO')}`, 20, y); y += 15;
+
+      // Hechos
+      y = addWrappedSection('DESCRIPCIÓN DE LOS HECHOS:', proceso.descripcionHechos || proceso.hechos || 'No se han registrado hechos.', y);
+
+      // ===== SECCIÓN: ACTUACIONES =====
+      doc.addPage();
+      y = 20;
+      doc.setFontSize(14);
+      doc.setFont('times', 'bold');
+      doc.text('HISTORIAL DE ACTUACIONES', 105, y, { align: 'center' });
+      doc.line(20, y + 4, 190, y + 4);
+      y += 15;
+
+      if (actuaciones.length === 0) {
+        doc.setFontSize(11);
+        doc.setFont('times', 'italic');
+        doc.text('No hay actuaciones registradas en este proceso.', 20, y);
+      } else {
+        const sortedActs = [...actuaciones].sort((a: any, b: any) =>
+          new Date(a.fechaActuacion || a.fecha).getTime() - new Date(b.fechaActuacion || b.fecha).getTime()
+        );
+        sortedActs.forEach((act: any, idx: number) => {
+          if (y > 255) { doc.addPage(); y = 30; }
+          doc.setFontSize(11);
+          doc.setFont('times', 'bold');
+          doc.text(`${idx + 1}. ${act.tipo || act.tipoActuacion || 'Actuación'}`, 20, y);
+          y += 6;
+          doc.setFont('times', 'normal');
+          doc.text(`Fecha: ${act.fecha || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString('es-CO') : 'N/A')}  |  Responsable: ${act.responsable || 'N/A'}  |  Estado: ${act.estado || 'N/A'}`, 25, y);
+          y += 6;
+          const descLines = doc.splitTextToSize(act.descripcion || 'Sin descripción', 160);
+          doc.text(descLines, 25, y);
+          y += (descLines.length * 6) + 8;
+        });
+      }
+
+      // ===== SECCIÓN: DECISIONES =====
+      if (decisiones.length > 0) {
+        doc.addPage();
+        y = 20;
+        doc.setFontSize(14);
+        doc.setFont('times', 'bold');
+        doc.text('DECISIONES', 105, y, { align: 'center' });
+        doc.line(20, y + 4, 190, y + 4);
+        y += 15;
+
+        decisiones.forEach((decision: any, idx: number) => {
+          if (y > 240) { doc.addPage(); y = 30; }
+          doc.setFontSize(12);
+          doc.setFont('times', 'bold');
+          doc.text(`${idx + 1}. ${decision.tipoDecision || 'Decisión'}`, 20, y);
+          y += 7;
+          doc.setFontSize(11);
+          doc.setFont('times', 'normal');
+          doc.text(`Fecha: ${decision.fecha || 'N/A'}  |  Fallo: ${decision.tipoFallo || 'N/A'}`, 25, y);
+          y += 6;
+          if (decision.sancion) {
+            doc.text(`Sanción: ${decision.sancion}`, 25, y);
+            y += 6;
+          }
+          y = addWrappedSection('Consideraciones:', decision.consideraciones || '', y);
+          if (decision.fundamentosJuridicos) {
+            y = addWrappedSection('Fundamentos Jurídicos:', decision.fundamentosJuridicos, y);
+          }
+          doc.text(`Responsable: ${decision.responsable || 'N/A'} - ${decision.cargoResponsable || ''}`, 25, y);
+          y += 10;
+        });
+      }
+
+      // ===== FOOTER EN TODAS LAS PÁGINAS =====
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(9);
+        doc.setFont('times', 'normal');
+        doc.text(
+          `Expediente ${proceso.id} — Página ${i} de ${pageCount} — Generado el ${new Date().toLocaleDateString('es-CO')}`,
+          105, 290, { align: 'center' }
+        );
+      }
+
+      doc.save(`Expediente_Disciplinario_${proceso.id.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+      toast.success('✅ PDF del expediente completo generado exitosamente');
+    } catch (error) {
+      console.error('PDF Generation Error:', error);
+      toast.error('Error al generar el PDF del expediente');
+    }
   };
 
 
@@ -319,14 +494,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     });
   };
 
-  const handleDescargarPDF = () => {
-    const ultimaActuacion = actuacionesTotales[0];
-    if (ultimaActuacion && (ultimaActuacion.documentoUrl || ultimaActuacion.url)) {
-      handleDescargarActuacion(ultimaActuacion);
-    } else {
-      toast.error('No hay documento adjunto disponible para la última actuación');
-    }
-  };
+
 
   const handleAgregarDocumento = () => {
     const input = document.createElement('input');
@@ -351,26 +519,28 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
   // The UI calls handleDescargarDocumento for documents, maybe handleVerPrueba is just for viewing.
   // ==================== FUNCIONES PARA ACTUACIONES ====================
 
-  const handleGuardarActuacion = (nuevaActuacion: NuevaActuacionData) => {
-    const actuacion = {
-      id: actuaciones.length + 1,
-      fecha: nuevaActuacion.fecha,
-      tipo: nuevaActuacion.tipo,
-      descripcion: nuevaActuacion.descripcion,
-      responsable: nuevaActuacion.responsable,
-      estado: nuevaActuacion.estado,
-      colorBorde: nuevaActuacion.estado === 'COMPLETADA' ? '#10B981' : '#F59E0B'
-    };
-
-    setActuaciones([actuacion, ...actuaciones]);
-    setHasChanges(true);
+  const handleGuardarActuacion = async (nuevaActuacion: NuevaActuacionData) => {
+    try {
+      toast.loading('Guardando actuación...', { id: 'saving-actuacion' });
+      const res = await legalService.createJuzgamientoActuacion(proceso.id, {
+        tipoActuacion: nuevaActuacion.tipo,
+        descripcion: nuevaActuacion.descripcion,
+        fechaActuacion: nuevaActuacion.fecha,
+        responsable: nuevaActuacion.responsable,
+        estado: nuevaActuacion.estado,
+      });
+      // Refetch all actuaciones from backend to ensure consistency
+      const data = await legalService.getJuzgamientoActuaciones(proceso.id);
+      setActuaciones(Array.isArray(data) ? data : []);
+      setHasChanges(true);
+      toast.success('Actuación registrada correctamente', { id: 'saving-actuacion' });
+    } catch (error) {
+      console.error('Error saving actuacion:', error);
+      toast.error('Error al guardar la actuación', { id: 'saving-actuacion' });
+    }
   };
 
   // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
-
-  const handleNotificar = () => {
-    setMostrarModalNotificar(true);
-  };
 
   const handleGuardarCambios = () => {
     toast.info('Los documentos se guardan automáticamente al subir.');
@@ -378,33 +548,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     onClose();
   };
 
-  const handleCompartir = () => {
-    toast.loading('🔗 Generando enlace seguro de compartir...', {
-      id: 'compartir-actuacion',
-      duration: 1500
-    });
 
-    setTimeout(async () => {
-      const enlace = `https://esap.gov.co/procesos/${proceso.id}/actuacion-ultima`;
-      setEnlaceCompartir(enlace);
-      const copiado = await copyToClipboard(enlace);
-      setMostrarModalCompartir(true);
-
-      if (copiado) {
-        toast.success('✅ Enlace generado y copiado al portapapeles', {
-          id: 'compartir-actuacion',
-          description: 'Puedes pegar el enlace donde desees compartirlo',
-          duration: 4000
-        });
-      } else {
-        toast.info('🔗 Enlace generado', {
-          id: 'compartir-actuacion',
-          description: 'Copia el enlace desde el modal',
-          duration: 3000
-        });
-      }
-    }, 1500);
-  };
 
   const handleGuardarNuevaDecision = async (decision: any) => {
     try {
@@ -537,26 +681,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
     }
   };
 
-  const handleAbrirEnPortales = () => {
-    setMostrarModalPortales(true);
-  };
 
-  const confirmarAbrirPortales = () => {
-    const urlPortal = 'https://consultaprocesos.ramajudicial.gov.co/';
-    toast.loading('🌐 Abriendo Portal de Notificaciones Judiciales...', {
-      id: 'abrir-portales',
-      duration: 1500
-    });
-    setTimeout(() => {
-      window.open(urlPortal, '_blank', 'noopener,noreferrer');
-      toast.success('✅ Portal abierto en nueva ventana', {
-        id: 'abrir-portales',
-        description: 'Sistema de Portales de la Rama Judicial',
-        duration: 3000
-      });
-      setMostrarModalPortales(false);
-    }, 1500);
-  };
 
   // Document Handler Logic
 
@@ -773,24 +898,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {/* <Button 
-                  onClick={() => setMostrarModalNotificar(true)}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <Bell className="w-4 h-4 mr-1.5" />
-                  Notificar
-                </Button> */}
-                {/* <Button 
-                  onClick={handleCompartir}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#F57C00', color: '#FFFFFF' }}
-                >
-                  <Share2 className="w-4 h-4 mr-1.5" />
-                  Compartir
-                </Button> */}
                 <Button
                   onClick={handleDescargarPDF}
                   size="sm"
@@ -800,15 +907,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <FileText className="w-4 h-4 mr-1.5" />
                   Descargar PDF
                 </Button>
-                {/* <Button 
-                  onClick={handleAbrirEnPortales}
-                  size="sm"
-                  className="font-semibold"
-                  style={{ background: '#1e5da8', color: '#FFFFFF' }}
-                >
-                  <ExternalLink className="w-4 h-4 mr-1.5" />
-                  Abrir en Portales
-                </Button> */}
               </div>
             </Card>
           </TabsContent>
@@ -901,11 +999,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                   <Card
                     key={act.id}
                     className="p-4 border-l-4 hover:shadow-md transition-all"
-                    style={{ borderLeftColor: act.colorBorde }}
+                    style={{ borderLeftColor: act.colorBorde || (act.estado === 'COMPLETADA' ? '#10B981' : '#F59E0B') }}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg" style={{ background: `${act.colorBorde}15` }}>
-                        <Clock className="w-5 h-5" style={{ color: act.colorBorde }} />
+                      <div className="p-2 rounded-lg" style={{ background: `${act.colorBorde || '#F59E0B'}15` }}>
+                        <Clock className="w-5 h-5" style={{ color: act.colorBorde || '#F59E0B' }} />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-start justify-between gap-2 mb-2">
@@ -914,13 +1012,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                               <span
                                 className="px-2 py-0.5 text-xs font-bold rounded-full"
                                 style={{
-                                  background: `${act.colorBorde}20`,
-                                  color: act.colorBorde
+                                  background: `${act.colorBorde || '#F59E0B'}20`,
+                                  color: act.colorBorde || '#F59E0B'
                                 }}
                               >
-                                {act.tipo}
+                                {act.tipo || act.tipoActuacion}
                               </span>
-                              <span className="text-xs text-gray-500">📅 {act.fecha}</span>
+                              <span className="text-xs text-gray-500">📅 {act.fecha || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString('es-CO') : '')}</span>
                             </div>
                             <p className="font-bold text-sm text-gray-900 mb-1">{act.descripcion}</p>
                             <p className="text-xs text-gray-600">
@@ -939,45 +1037,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                               act.estado === 'EN_REVISION' ? '🔍 En Revisión' : '⏳ Pendiente'}
                           </span>
                         </div>
+                        {/* ✅ Botones de acción por actuación */}
+                        <div className="flex gap-2 mt-2">
+                          {(act.documentoUrl || act.url) && (
+                            <Button size="sm" variant="outline" className="text-xs font-semibold" onClick={() => handleDescargarActuacion(act)}>
+                              <Download className="w-3 h-3 mr-1" /> Descargar Archivo
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" className="text-xs font-semibold" onClick={() => handleGenerarPDFActuacion(act)}>
+                            <FileDown className="w-3 h-3 mr-1" /> Generar PDF
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </Card>
                 ))}
               </div>
             )}
-
-
-            {/* ==================== ACCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ==================== */}
-            <div className="mt-6 flex gap-2">
-              <Button
-                onClick={handleNotificar}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Bell className="w-4 h-4 mr-2" />
-                Notificar
-              </Button>
-              <Button
-                onClick={handleCompartir}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <Share2 className="w-4 h-4 mr-2" />
-                Compartir
-              </Button>
-              <Button
-                onClick={handleDescargarPDF}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <FileDown className="w-4 h-4 mr-2" />
-                Descargar PDF
-              </Button>
-              <Button
-                onClick={handleAbrirEnPortales}
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Abrir en Portales
-              </Button>
-            </div>
           </TabsContent>
 
           {/* ==================== TAB: DECISIONES ==================== */}
@@ -1075,12 +1151,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
                           <Download className="w-3.5 h-3.5 mr-1.5" />
                           Descargar
                         </Button>
-                        {authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION_NOTIFICAR) && (
-                          <Button size="sm" variant="outline" className="font-semibold text-orange-600 border-orange-300 hover:bg-orange-50" onClick={() => setMostrarModalNotificar(true)}>
-                            <Bell className="w-3.5 h-3.5 mr-1.5" />
-                            Notificar
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </Card>
@@ -1232,185 +1302,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso }: ModalPro
           </div>
         </div>
       </DialogContent>
-
-      {/* ==================== MODALES COMPLEMENTARIOS ==================== */}
-      {mostrarModalNotificar && (
-        <Dialog open={mostrarModalNotificar} onOpenChange={setMostrarModalNotificar}>
-          <DialogContent hideCloseButton className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <Bell className="w-6 h-6" />
-              Notificar Última Actuación Procesal
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Confirmación para enviar notificaciones por correo electrónico a los destinatarios del proceso disciplinario
-            </DialogDescription>
-
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Destinatarios</p>
-                <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
-                  <li>{proceso.disciplinado} (Disciplinado)</li>
-                  <li>{proceso.abogadoAsignado} (Investigador)</li>
-                  <li>Oficina Jurídica ESAP</li>
-                </ul>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Notificación Exitosa</p>
-                <p className="text-sm text-green-700">
-                  Las notificaciones se enviarán por correo electrónico a los destinatarios indicados.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Las notificaciones incluyen la última actuación procesal</li>
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  onClick={confirmarNotificacion}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Notificar
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalNotificar(false)}
-                  style={{ background: '#9CA3AF', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {mostrarModalPortales && (
-        <Dialog open={mostrarModalPortales} onOpenChange={setMostrarModalPortales}>
-          <DialogContent hideCloseButton className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <ExternalLink className="w-6 h-6" />
-              Abrir en Portales
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Confirmación para abrir el Portal de Notificaciones Judiciales en una nueva ventana
-            </DialogDescription>
-
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Portal de Notificaciones Judiciales</p>
-                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
-                  https://consultaprocesos.ramajudicial.gov.co/
-                </p>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Portal Abierto Exitosamente</p>
-                <p className="text-sm text-green-700">
-                  El Portal de Notificaciones Judiciales se abrirá en una nueva ventana.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  onClick={confirmarAbrirPortales}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Abrir Portal
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalPortales(false)}
-                  style={{ background: '#9CA3AF', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {mostrarModalCompartir && (
-        <Dialog open={mostrarModalCompartir} onOpenChange={setMostrarModalCompartir}>
-          <DialogContent hideCloseButton className="max-w-2xl">
-            <DialogTitle className="text-2xl font-black flex items-center gap-2" style={{ color: '#003DA5' }}>
-              <Share2 className="w-6 h-6" />
-              Enlace de Compartir Generado
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Enlace seguro para compartir la última actuación procesal
-            </DialogDescription>
-
-            <div className="space-y-4 mt-4">
-              <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                <p className="text-sm font-bold text-blue-900 mb-2">🔗 Enlace Seguro</p>
-                <p className="text-sm text-gray-700 break-all font-mono bg-white p-3 rounded border">
-                  {enlaceCompartir}
-                </p>
-              </div>
-
-              <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                <p className="text-sm font-bold text-green-900 mb-2">✅ Enlace Copiado al Portapapeles</p>
-                <p className="text-sm text-green-700">
-                  El enlace ha sido copiado automáticamente. Puedes pegarlo en un correo, mensaje o documento.
-                </p>
-              </div>
-
-              <div className="p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-                <p className="text-sm font-bold text-orange-900 mb-2">⚠️ Información Importante</p>
-                <ul className="text-sm text-orange-700 space-y-1 list-disc list-inside">
-                  <li>Este enlace permite consultar la última actuación procesal</li>
-                  <li>Es válido por 30 días desde su generación</li>
-                  <li>Requiere autenticación para acceder al contenido</li>
-                </ul>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    const copiado = await copyToClipboard(enlaceCompartir);
-                    if (copiado) {
-                      toast.success('✅ Enlace copiado nuevamente');
-                    } else {
-                      toast.info('📋 No se pudo copiar', {
-                        description: enlaceCompartir
-                      });
-                    }
-                  }}
-                  className="font-semibold"
-                >
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Copiar Nuevamente
-                </Button>
-                <Button
-                  onClick={() => setMostrarModalCompartir(false)}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
-                  className="font-semibold"
-                >
-                  Cerrar
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
 
       <FormularioRegistrarDecision
         isOpen={mostrarFormularioDecision}

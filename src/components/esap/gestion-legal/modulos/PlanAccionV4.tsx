@@ -20,7 +20,7 @@ import {
   Target, BarChart3, Activity, TrendingUp, Award, CheckCircle, AlertCircle,
   Calendar, Eye, Plus, Search, Filter, List, Clock, User, Download,
   MoreVertical, Edit, Trash2, TrendingDown, AlertTriangle, Grid3x3,
-  ChevronDown, ChevronRight, FileText, PieChart, LayoutGrid
+  ChevronDown, ChevronRight, FileText, PieChart, LayoutGrid, Archive
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModuleHeader } from '../design-system/ModuleHeader';
@@ -226,7 +226,7 @@ const getSemaforoColor = (avance: number) => {
 export function ModuloPlanAccionV4() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
-  
+
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEje, setFiltroEje] = useState<string>('TODOS');
@@ -288,42 +288,67 @@ export function ModuloPlanAccionV4() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'IND-999',
-      codigo: 'GI-999',
-      nombre: 'Reducción tiempo respuesta PQRS judiciales - Meta alcanzada 100%',
-      tipo: 'Indicador Plan de Acción',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-30T18:00:00'),
-      usuarioArchivo: 'Coordinador Planeación',
-      motivoArchivo: 'Indicador completado exitosamente con cumplimiento del 100%. Meta superada en 5%. Cierre de vigencia 2024',
-      metadatos: {
-        'Código': 'GI-999',
-        'Eje Estratégico': '🏛️ Gestión Institucional',
-        'Responsable': 'Dr. Carlos Mendoza Torres',
-        'Meta': '90%',
-        'Alcanzado': '95%',
-        'Cumplimiento': '100%',
-        'Periodo': 'Enero - Diciembre 2024',
-        'Estado Final': 'Completado'
-      }
-    }
-  ]);
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
 
-  // ✅ Función para restaurar un indicador archivado
+  // Cargar archivados desde backend
+  useEffect(() => {
+    legalService.getPeiArchivados()
+      .then((data: any[]) => {
+        if (Array.isArray(data)) {
+          const mapped: ItemArchivado[] = data.map((ind: any) => ({
+            id: ind.id.toString(),
+            codigo: ind.id.toString(),
+            nombre: ind.nombre || 'Sin nombre',
+            tipo: 'Indicador Plan de Acción',
+            estado: 'ARCHIVADO' as EstadoArchivado,
+            fechaArchivado: ind.updatedAt ? new Date(ind.updatedAt) : new Date(),
+            usuarioArchivo: ind.responsableNombre || 'Sistema',
+            motivoArchivo: 'Archivado por usuario',
+            metadatos: {
+              'Eje': ind.ejeEstrategico || 'N/A',
+              'Responsable': ind.responsableNombre || 'N/A',
+            },
+          }));
+          setItemsArchivados(mapped);
+        }
+      })
+      .catch(() => { });
+  }, []);
+
+  // Restaurar un indicador archivado
   const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando indicador:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Indicador restaurado exitosamente');
+    try {
+      await legalService.restaurarPeiIndicador(itemId);
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      toast.success('Indicador restaurado exitosamente');
+      fetchData();
+    } catch (error) {
+      console.error('Error restoring indicator:', error);
+      toast.error('Error al restaurar el indicador');
+    }
   };
 
-  // ✅ Función para eliminar permanentemente un indicador
+  // Eliminar permanentemente un indicador
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente indicador:', itemId);
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-    toast.success('Indicador eliminado permanentemente');
+    try {
+      await legalService.eliminarPeiIndicador(itemId);
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      toast.success('Indicador eliminado permanentemente');
+    } catch (error) {
+      console.error('Error deleting indicator:', error);
+      toast.error('Error al eliminar el indicador');
+    }
+  };
+
+  const handleArchivar = async (indicador: Indicador) => {
+    try {
+      await legalService.archivarPeiIndicador(indicador.id);
+      toast.success('Indicador archivado exitosamente');
+      fetchData(); // Refresh list
+    } catch (error) {
+      console.error('Error archiving indicator:', error);
+      toast.error('Error al archivar el indicador');
+    }
   };
 
   // Handlers para modales
@@ -702,6 +727,7 @@ export function ModuloPlanAccionV4() {
               onVerDetalles={handleVerDetalles}
               onEditarIndicador={handleEditarIndicador}
               onCargarAvance={handleCargarAvance}
+              onArchivar={handleArchivar}
             />
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
@@ -765,6 +791,7 @@ interface VistaListaProps {
   onVerDetalles: (indicador: Indicador) => void;
   onEditarIndicador: (indicador: Indicador) => void;
   onCargarAvance: (indicador: Indicador) => void;
+  onArchivar: (indicador: Indicador) => void;
 }
 
 function VistaLista({
@@ -773,7 +800,8 @@ function VistaLista({
   toggleGroup,
   onVerDetalles,
   onEditarIndicador,
-  onCargarAvance
+  onCargarAvance,
+  onArchivar
 }: VistaListaProps) {
   return (
     <div className="space-y-3">
@@ -920,6 +948,10 @@ function VistaLista({
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
                                     <Edit className="w-4 h-4 mr-2" /> Editar
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                    <Archive className="w-4 h-4 mr-2" /> Archivar
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
