@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Patch,
+  Put,
   Param,
   Delete,
   Query,
@@ -74,10 +75,19 @@ export class ListasChequeoController {
 
   /**
    * PATCH /listas-chequeo/:id
-   * Actualizar una lista de chequeo
+   * Actualizar una lista de chequeo (parcial)
    */
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDto: UpdateListaChequeoDto) {
+    return this.listasChequeoService.update(id, updateDto);
+  }
+
+  /**
+   * PUT /listas-chequeo/:id
+   * Actualizar una lista de chequeo (completa)
+   */
+  @Put(':id')
+  updateFull(@Param('id') id: string, @Body() updateDto: UpdateListaChequeoDto) {
     return this.listasChequeoService.update(id, updateDto);
   }
 

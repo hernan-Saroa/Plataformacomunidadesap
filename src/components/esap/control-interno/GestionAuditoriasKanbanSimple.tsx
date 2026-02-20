@@ -2257,13 +2257,11 @@ export function GestionAuditoriasKanbanSimple() {
         )
       );
       
-      toast.success('Auditoría actualizada correctamente', {
-        description: `"${data.titulo}" ha sido modificada exitosamente`
-      });
+      // Solo cerrar el modal si fue exitoso
+      setModalEdicionOpen(false);
+      setAuditoriaParaEditar(null);
     }
-    
-    setModalEdicionOpen(false);
-    setAuditoriaParaEditar(null);
+    // Si hay error, el toast lo muestra el hook y el modal permanece abierto
   };
 
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {

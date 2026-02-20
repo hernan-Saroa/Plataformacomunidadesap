@@ -29,6 +29,8 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 // URL base del servicio de Control Interno
 const BASE_URL = getServiceUrl('control-institucional');
 // Prefijo completo dependiendo del modo
+// En gateway: http://localhost:3000/control-institucional/api/v1
+// En direct: http://localhost:3007 (sin prefijo porque el microservicio no tiene prefijo global)
 const API_BASE_URL = API_MODE === 'gateway' 
   ? `${BASE_URL}/control-institucional/api/v1` 
   : BASE_URL;

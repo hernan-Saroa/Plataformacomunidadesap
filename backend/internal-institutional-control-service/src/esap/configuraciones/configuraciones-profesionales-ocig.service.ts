@@ -256,20 +256,30 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     // Obtener datos de personas desde auth.personas
     const idsTerceros = configs.map((c) => c.idTercero);
-    const personas = await this.configRepository.query(
-      `SELECT 
+    
+    console.log('[enrichWithPersonaData] idsTerceros:', idsTerceros);
+    
+    // Usar IN con placeholders dinámicos y cast a bigint para compatibilidad
+    const placeholders = idsTerceros.map((_, i) => `$${i + 1}::bigint`).join(', ');
+    const query = `SELECT 
         id_tercero,
         nom_largo,
         dir_email,
         num_identificacion
        FROM auth.personas 
-       WHERE id_tercero = ANY($1)`,
-      [idsTerceros],
-    );
+       WHERE id_tercero IN (${placeholders})`;
+    
+    console.log('[enrichWithPersonaData] Query:', query);
+    console.log('[enrichWithPersonaData] Params:', idsTerceros);
+    
+    const personas = await this.configRepository.query(query, idsTerceros);
+    
+    console.log('[enrichWithPersonaData] Personas encontradas:', personas);
 
+    // Convertir id_tercero a número porque PostgreSQL bigint viene como string
     const personasMap = new Map<number, { nombre: string; email: string; identificacion: string }>(
       personas.map((p: any) => [
-        p.id_tercero,
+        Number(p.id_tercero),
         {
           nombre: p.nom_largo || 'Usuario Sin Nombre',
           email: p.dir_email || '',

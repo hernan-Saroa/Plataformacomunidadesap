@@ -304,7 +304,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                 tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
                 {new Set(
-                  auditoriasProgramadas.flatMap((a) => [a.auditorLider, ...(a.equipo || [])].filter(Boolean))
+                  auditoriasProgramadas.flatMap((a) => {
+                    const lider = typeof a.auditorLider === 'string' ? a.auditorLider : (a.auditorLider as any)?.nombre || '';
+                    const equipoNombres = (a.equipo || []).map(m => typeof m === 'string' ? m : (m as any)?.nombre || '');
+                    return [lider, ...equipoNombres].filter(Boolean);
+                  })
                 ).size}
               </span>
             </button>
@@ -755,7 +759,14 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     const mapa = new Map<string, { lider: number; apoyo: number; horas: number }>();
 
     auditorias.forEach((a) => {
-      const lider = (a.auditorLider || '').trim();
+      // Extraer nombre del auditor líder (puede ser string u objeto)
+      const liderRaw = a.auditorLider;
+      const lider = typeof liderRaw === 'string' 
+        ? liderRaw.trim() 
+        : (liderRaw && typeof liderRaw === 'object' && 'nombre' in liderRaw) 
+          ? String((liderRaw as any).nombre || '').trim()
+          : '';
+      
       if (lider) {
         const actual = mapa.get(lider) || { lider: 0, apoyo: 0, horas: 0 };
         actual.lider += 1;
@@ -763,8 +774,13 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         mapa.set(lider, actual);
       }
 
-      (a.equipo || []).forEach((nombre) => {
-        const apoyo = (nombre || '').trim();
+      // Procesar equipo (puede ser array de strings u objetos)
+      (a.equipo || []).forEach((miembro) => {
+        const apoyo = typeof miembro === 'string'
+          ? miembro.trim()
+          : (miembro && typeof miembro === 'object' && 'nombre' in miembro)
+            ? String((miembro as any).nombre || '').trim()
+            : '';
         if (!apoyo) return;
         const actual = mapa.get(apoyo) || { lider: 0, apoyo: 0, horas: 0 };
         actual.apoyo += 1;

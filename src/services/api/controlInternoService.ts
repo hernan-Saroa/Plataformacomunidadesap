@@ -25,7 +25,8 @@ const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 
 // Prefijo del servicio para el API Gateway
 // En modo gateway se usa: /control-institucional/api/v1
-// En modo direct no se usa prefijo porque se conecta directo al microservicio
+// En modo direct NO se usa prefijo - el microservicio no tiene prefijo global
+// El gateway maneja: /control-institucional/api/v1/auditorias -> microservicio:3007/auditorias
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============================================================================
@@ -218,7 +219,7 @@ class ControlInternoAPIClient {
     options: RequestInit = {}
   ): Promise<T> {
     // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
-    // En modo direct: http://localhost:3007/plan-anual-5-roles
+    // En modo direct: http://localhost:3007/plan-anual-5-roles (sin prefijo /api/v1)
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     
     const defaultHeaders: HeadersInit = {
