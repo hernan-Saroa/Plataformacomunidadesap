@@ -71,23 +71,7 @@ export interface Requerimiento {
   areaResponsable?: string;
 }
 
-// Datos mock - REDUCIDO
-const MOCK_DATA: Requerimiento[] = [
-  {
-    id: 'REQ-CGR-2024-001',
-    numeroOficio: 'CGR-OF-2024-00125',
-    organismo: 'CGR',
-    asunto: 'Solicitud de información sobre contratación 2024',
-    responsable: 'Dra. María Fernández',
-    fechaRadicacion: new Date('2024-12-10'),
-    fechaVencimiento: new Date('2024-12-30'),
-    diasRestantes: 5,
-    diasTotales: 20,
-    etapa: 'EN_RESPUESTA',
-    ultimaActuacion: 'Proyecto de respuesta en revisión',
-    documentos: 8
-  }
-];
+// MOCK_DATA Eliminado - Se usan datos reales del backend
 
 // Función auxiliar para colores de semáforo
 const getSemaforoColor = (dias: number) => {

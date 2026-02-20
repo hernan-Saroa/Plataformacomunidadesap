@@ -58,7 +58,18 @@ export class ProcesoCoactivoService {
 
     async findAll(): Promise<ProcesoCoactivo[]> {
         return this.procesoCoactivoRepository.find({
+            where: { estadoArchivo: 'ACTIVO' },
             order: { fechaCreacion: 'DESC' }
+        });
+    }
+
+    async findAllArchivados(): Promise<ProcesoCoactivo[]> {
+        return this.procesoCoactivoRepository.find({
+            where: [
+                { estadoArchivo: 'ARCHIVADO' },
+                { estadoArchivo: 'ELIMINADO' }
+            ],
+            order: { fechaArchivo: 'DESC' }
         });
     }
 
@@ -99,7 +110,8 @@ export class ProcesoCoactivoService {
             documentosAdjuntos: 0,
             notificacionesEnviadas: 0,
             valorPagado: 0,
-            saldoPendiente: Number(dto.obligacion.valor)
+            saldoPendiente: Number(dto.obligacion.valor),
+            estadoArchivo: 'ACTIVO'
         });
 
         const savedProceso = await this.procesoCoactivoRepository.save(proceso);
@@ -151,8 +163,59 @@ export class ProcesoCoactivoService {
     }
 
     async delete(id: string): Promise<void> {
+        // Deprecated: use eliminarPermanente or archivar instead
+        // Kept for backward compatibility if needed, performing hard delete
         const proceso = await this.findOne(id);
         await this.procesoCoactivoRepository.remove(proceso);
+    }
+
+    // ============ SISTEMA DE ARCHIVO ============
+
+    async archivar(id: string, motivo: string, usuario: string): Promise<ProcesoCoactivo> {
+        const proceso = await this.findOne(id);
+        proceso.estadoArchivo = 'ARCHIVADO';
+        proceso.fechaArchivo = new Date();
+        proceso.usuarioArchivo = usuario;
+        proceso.motivoArchivo = motivo;
+        // Opcional: cambiar estado a FINALIZADO? No necesariamente.
+
+        await this.registrarHistorial(id, 'ARCHIVADO', 'estadoArchivo', 'ACTIVO', 'ARCHIVADO', usuario, `Proceso archivado. Motivo: ${motivo}`);
+
+        return this.procesoCoactivoRepository.save(proceso);
+    }
+
+    async restaurar(id: string, usuario: string): Promise<ProcesoCoactivo> {
+        const proceso = await this.findOne(id);
+        const estadoAnterior = proceso.estadoArchivo;
+
+        proceso.estadoArchivo = 'ACTIVO';
+        proceso.fechaArchivo = null;
+        proceso.usuarioArchivo = null;
+        proceso.motivoArchivo = null;
+
+        await this.registrarHistorial(id, 'RESTAURADO', 'estadoArchivo', estadoAnterior, 'ACTIVO', usuario, 'Proceso restaurado del archivo');
+
+        return this.procesoCoactivoRepository.save(proceso);
+    }
+
+    async eliminarPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        const proceso = await this.findOne(id);
+
+        // Si ya está eliminado (soft delete), procedemos a borrarlo físicamente (hard delete)
+        if (proceso.estadoArchivo === 'ELIMINADO') {
+            await this.procesoCoactivoRepository.remove(proceso);
+            return;
+        }
+
+        // Si no, hacemos Soft Delete (marcar como ELIMINADO para auditoría/papelera)
+        proceso.estadoArchivo = 'ELIMINADO';
+        proceso.fechaArchivo = new Date();
+        proceso.usuarioArchivo = usuario;
+        proceso.motivoArchivo = motivo;
+
+        await this.registrarHistorial(id, 'ELIMINADO', 'estadoArchivo', 'ACTIVO/ARCHIVADO', 'ELIMINADO', usuario, `Proceso movido a papelera. Motivo: ${motivo}`);
+
+        await this.procesoCoactivoRepository.save(proceso);
     }
 
     async getStats(): Promise<ProcesoCoactivoStats> {

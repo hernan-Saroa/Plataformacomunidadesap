@@ -9,6 +9,7 @@ import { ComentariosDocumentosOCService } from './comentarios-documentos-oc.serv
 import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
+import { DiasHabilesService } from './dias-habiles.service';
 
 @Injectable()
 export class RequerimientosOCService {
@@ -27,6 +28,7 @@ export class RequerimientosOCService {
         private readonly tipoRequerimientoRepo: Repository<TipoRequerimientoOC>,
         private readonly correosService: CorreosJuridicosService,
         private readonly comentariosService: ComentariosDocumentosOCService,
+        private readonly diasHabilesService: DiasHabilesService,
     ) { }
 
     // ============================================
@@ -90,27 +92,53 @@ export class RequerimientosOCService {
     }
 
     async create(data: Partial<RequerimientoOC>): Promise<RequerimientoOC> {
-        // Generar radicado interno automático
-        const year = new Date().getFullYear();
-        const count = await this.requerimientoRepo.count();
-        data.radicadoInterno = `REQ-OC-${year}-${String(count + 1).padStart(4, '0')}`;
+        try {
+            // Generar radicado interno automático de forma robusta
+            const year = new Date().getFullYear();
+            const prefix = `REQ-OC-${year}-`;
 
-        // Calcular fecha de vencimiento si no viene
-        if (!data.fechaVencimiento && data.fechaRecepcion && data.plazoOtorgado) {
-            data.fechaVencimiento = this.calcularFechaVencimiento(
-                new Date(data.fechaRecepcion),
-                data.plazoOtorgado,
-                data.unidadTiempo || 'DIAS_HABILES'
-            );
+            // Buscar el último radicado de este año para incrementar
+            const qb = this.requerimientoRepo.createQueryBuilder('req');
+            qb.select('MAX(req.radicadoInterno)', 'max');
+            qb.where('req.radicadoInterno LIKE :prefix', { prefix: `${prefix}%` });
+
+            const result = await qb.getRawOne();
+            const maxRadicado = result ? result.max : null;
+
+            let nextNumber = 1;
+            if (maxRadicado) {
+                // Extraer el número final: REQ-OC-2025-0005 -> 5
+                const parts = maxRadicado.split('-');
+                const numPart = parts[parts.length - 1];
+                nextNumber = parseInt(numPart) + 1;
+            }
+
+            data.radicadoInterno = `${prefix}${String(nextNumber).padStart(4, '0')}`;
+
+            // Calcular fecha de vencimiento si no viene
+            if (!data.fechaVencimiento && data.fechaRecepcion && data.plazoOtorgado) {
+                data.fechaVencimiento = this.calcularFechaVencimiento(
+                    new Date(data.fechaRecepcion),
+                    data.plazoOtorgado,
+                    data.unidadTiempo || 'DIAS_HABILES'
+                );
+            }
+
+            // Calcular prioridad automáticamente basándose en el tiempo
+            if (data.fechaVencimiento && data.plazoOtorgado) {
+                data.prioridad = this.calcularPrioridadAutomatica(data.plazoOtorgado, data.unidadTiempo || 'DIAS_HABILES');
+            }
+
+            const req = this.requerimientoRepo.create(data);
+            return await this.requerimientoRepo.save(req);
+        } catch (error) {
+            console.error('Error creando Requerimiento OC:', error);
+            // Re-throw con mensaje más claro si es constraint violation
+            if (error.code === '23505') { // Postgres unique violation
+                throw new Error('Error de duplicidad: Ya existe un requerimiento con este radicado interno. Por favor intente nuevamente.');
+            }
+            throw error;
         }
-
-        // Calcular prioridad automáticamente basándose en el tiempo
-        if (data.fechaVencimiento && data.plazoOtorgado) {
-            data.prioridad = this.calcularPrioridadAutomatica(data.plazoOtorgado, data.unidadTiempo || 'DIAS_HABILES');
-        }
-
-        const req = this.requerimientoRepo.create(data);
-        return this.requerimientoRepo.save(req);
     }
 
     async update(id: string, data: Partial<RequerimientoOC>): Promise<RequerimientoOC> {
@@ -356,13 +384,8 @@ export class RequerimientosOCService {
         } else if (unidad === 'DIAS_CALENDARIO') {
             fecha.setDate(fecha.getDate() + plazo);
         } else {
-            // DIAS_HABILES - agregar días saltando fines de semana
-            let diasAgregados = 0;
-            while (diasAgregados < plazo) {
-                fecha.setDate(fecha.getDate() + 1);
-                const dia = fecha.getDay();
-                if (dia !== 0 && dia !== 6) diasAgregados++;
-            }
+            // DIAS_HABILES - usar servicio robusto (Ley 1437)
+            return this.diasHabilesService.agregarDiasHabiles(fecha, plazo);
         }
 
         return fecha;

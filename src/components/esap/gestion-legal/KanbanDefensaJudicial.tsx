@@ -866,6 +866,23 @@ export function KanbanDefensaJudicial() {
     // Guard to prevent unnecessary updates
     if (item.etapa === nuevaEtapa) return;
 
+    // Validar tareas pendientes antes de cambiar etapa
+    try {
+      const tareas = await legalService.getTareasByExpediente(item.id);
+      const tareasPendientes = (tareas || []).filter(
+        (t: any) => t.estado !== 'completada' && t.estado !== 'cancelada'
+      );
+      if (tareasPendientes.length > 0) {
+        toast.error('No se puede cambiar de etapa', {
+          description: `El expediente tiene ${tareasPendientes.length} tarea(s) pendiente(s). Complete o cancele todas las tareas antes de cambiar de etapa.`
+        });
+        return;
+      }
+    } catch (error) {
+      // Si falla la consulta de tareas, permitir el cambio (fallo silencioso)
+      console.warn('No se pudieron verificar tareas:', error);
+    }
+
     // Optimistic Update
     const previousExpedientes = [...expedientes];
     setExpedientes(prevExpedientes =>

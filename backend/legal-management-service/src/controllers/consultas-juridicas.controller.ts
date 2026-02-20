@@ -59,7 +59,15 @@ export class ConsultasJuridicasController {
             abogadoAsignadoId: body.abogadoAsignadoId || null
         };
 
-        return this.consultasService.create(consultaData);
+        const fileData = file ? {
+            filename: file.filename,
+            path: file.path,
+            mimetype: file.mimetype,
+            size: file.size,
+            originalname: file.originalname
+        } : undefined;
+
+        return this.consultasService.create(consultaData, fileData);
     }
 
     @Patch(':id')

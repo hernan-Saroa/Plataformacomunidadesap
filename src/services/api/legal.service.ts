@@ -176,6 +176,11 @@ export class LegalService {
         await apiClient.delete(`${SERVICE_PREFIX}/expedientes/${id}`);
     }
 
+    // ==================== ABOGADOS ====================
+    async getAbogados(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+    }
+
     // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
     async getExpedientesArchivados(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/estado/archivados`);
@@ -1241,6 +1246,11 @@ export interface ProcesoCoactivo {
     fechaCreacion: string;
     valorPagado?: number;
     saldoPendiente?: number;
+    // Archive fields
+    estadoArchivo?: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO';
+    fechaArchivo?: string;
+    usuarioArchivo?: string;
+    motivoArchivo?: string;
 }
 
 export interface PagoCoactivo {
@@ -1374,6 +1384,24 @@ export class ProcesosCoactivosService {
 
         const blob = await response.blob();
         return window.URL.createObjectURL(blob);
+    }
+
+    // ============ SISTEMA DE ARCHIVO ============
+
+    async getArchivados(): Promise<ProcesoCoactivo[]> {
+        return apiClient.get<ProcesoCoactivo[]>(`${SERVICE_PREFIX}/procesos-coactivos/archivados/all`);
+    }
+
+    async archivar(id: string, motivo: string, usuario: string): Promise<ProcesoCoactivo> {
+        return apiClient.put<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}/archivar`, { motivo, usuario });
+    }
+
+    async restaurar(id: string, usuario: string): Promise<ProcesoCoactivo> {
+        return apiClient.put<ProcesoCoactivo>(`${SERVICE_PREFIX}/procesos-coactivos/${id}/restaurar`, { usuario });
+    }
+
+    async eliminarPermanente(id: string, usuario: string, motivo: string): Promise<void> {
+        return apiClient.post(`${SERVICE_PREFIX}/procesos-coactivos/${id}/eliminar`, { usuario, motivo });
     }
 }
 
