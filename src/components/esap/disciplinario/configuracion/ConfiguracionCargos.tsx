@@ -4,15 +4,17 @@
  * Control Interno Disciplinario
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Trash2, Save, RotateCcw } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 
 interface Cargo {
   id: string;
   nombre: string;
   capacidad: number;
   activo: boolean;
+  rolId?: string;
 }
 
 const CARGOS_DEFECTO: Cargo[] = [
@@ -25,6 +27,68 @@ const CARGOS_DEFECTO: Cargo[] = [
 export function ConfiguracionCargos() {
   const [cargos, setCargos] = useState<Cargo[]>(CARGOS_DEFECTO);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cargarConfiguracion();
+  }, []);
+
+  const cargarConfiguracion = async () => {
+    try {
+      setLoading(true);
+      const [globalConfig, availableRoles] = await Promise.all([
+        disciplinaryService.getGlobalConfig(),
+        disciplinaryService.getAvailableRoles().catch(() => [])
+      ]);
+
+      if (globalConfig) {
+        const roleCapacities = globalConfig.roleCapacities || {};
+        const normalizeKey = (name: string) => name.toLowerCase().replace(/ /g, '_');
+
+        let mergedCargos: Cargo[] = [];
+
+        // Procesar roleCapacities con NUEVA ESTRUCTURA
+        // { "cargo_key": { "nombre": string, "capacidad": number, "activo": boolean } }
+        Object.entries(roleCapacities).forEach(([key, value]: [string, any]) => {
+          // Detectar si es nueva estructura (objeto) o vieja (número)
+          if (typeof value === 'object' && value !== null) {
+            // Nueva estructura
+            mergedCargos.push({
+              id: `cargo-${mergedCargos.length + 1}`,
+              nombre: value.nombre || key.replace(/_/g, ' ').toUpperCase(),
+              capacidad: Number(value.capacidad) || 10,
+              activo: value.activo !== false,
+              rolId: key
+            });
+          } else {
+            // Estructura antigua (fallback por compatibilidad)
+            mergedCargos.push({
+              id: `cargo-${mergedCargos.length + 1}`,
+              nombre: key.replace(/_/g, ' ').toUpperCase(),
+              capacidad: Number(value) || 10,
+              activo: true,
+              rolId: key
+            });
+          }
+        });
+
+        // Si no hay ninguno, usar valores por defecto
+        if (mergedCargos.length > 0) {
+          setCargos(mergedCargos);
+        } else {
+          setCargos(CARGOS_DEFECTO);
+        }
+      }
+    } catch (error) {
+      console.error('Error cargando configuración de cargos:', error);
+      toast.error('Error al cargar configuración', {
+        description: 'Se usarán valores por defecto'
+      });
+      setCargos(CARGOS_DEFECTO);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const agregarCargo = () => {
     const nuevoCargo: Cargo = {
@@ -53,14 +117,57 @@ export function ConfiguracionCargos() {
     setCambiosPendientes(true);
   };
 
-  const guardarConfiguraciones = () => {
+  const guardarConfiguraciones = async () => {
+    console.log('🔵 Guardando configuración de cargos...');
+    console.log('🔵 Total de cargos a guardar:', cargos.length);
+    console.log('🔵 Cargos completos:', cargos);
+
     try {
-      localStorage.setItem('disciplinario-cargos', JSON.stringify(cargos));
+      // 1. Cargar configuración actual para no sobrescribir otras secciones
+      const currentConfig = await disciplinaryService.getGlobalConfig();
+      console.log('🔵 Configuración actual del backend:', currentConfig);
+
+      // 2. Preparar roleCapacities en NUEVA ESTRUCTURA
+      const roleCapacities: Record<string, any> = {};
+      cargos.forEach((c, index) => {
+        const key = c.rolId || c.nombre.toLowerCase().replace(/ /g, '_');
+        roleCapacities[key] = {
+          nombre: c.nombre,
+          capacidad: c.capacidad,
+          activo: c.activo
+        };
+        console.log(`🔵 Procesando cargo ${index + 1}:`, {
+          key,
+          nombre: c.nombre,
+          capacidad: c.capacidad,
+          activo: c.activo
+        });
+      });
+
+      console.log('🔵 roleCapacities preparado (nueva estructura):', roleCapacities);
+
+      // 3. Mantener las configuraciones existentes de otras secciones
+      const globalPayload = {
+        roleCapacities,
+        notificationSettings: currentConfig?.notificationSettings || {},
+        alertSettings: currentConfig?.alertSettings || {},
+        securitySettings: currentConfig?.securitySettings || { auditEnabled: true, digitalSignature: true, backupEnabled: true }
+      };
+
+      console.log('🔵 Payload COMPLETO para backend:', globalPayload);
+
+      await disciplinaryService.updateGlobalConfig(globalPayload);
+
+      console.log('✅ Configuración guardada en el backend');
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente');
+      toast.success('Configuración guardada exitosamente', {
+        description: 'Los cambios se han guardado en el servidor'
+      });
     } catch (error) {
-      console.error('❌ Error al guardar:', error);
-      toast.error('Error al guardar configuraciones');
+      console.error('❌ Error al guardar configuración:', error);
+      toast.error('Error al guardar configuración', {
+        description: 'No se pudieron guardar los cambios en el servidor'
+      });
     }
   };
 
@@ -71,6 +178,17 @@ export function ConfiguracionCargos() {
       toast.success('Configuraciones restablecidas');
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando configuración...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-6">
