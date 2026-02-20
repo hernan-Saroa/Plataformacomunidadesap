@@ -58,6 +58,10 @@ interface CertificadoDetallePanelProps {
     campus?: string;
     cod_cargo?: string;
     cod_grade?: string;
+    observations?: string;
+    request?: {
+      observations?: string;
+    };
     technical_bonus?: number;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
@@ -123,7 +127,10 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       cargoSource: certificado.empleado.cargo,
       codCargo: certificado.cod_cargo,
       codGrade: certificado.cod_grade,
+      observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     }) ||
     certificado.empleado.cargo
   );
@@ -712,7 +719,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Fecha Vinculación y Grado */}
+                    {/* Fecha Vinculación y Correo */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
@@ -725,10 +732,11 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                       <div>
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                          Grado
+                          Correo Electrónico
                         </label>
-                        <p className="text-sm text-gray-900">
-                          {certificado.empleado.grado || certificado.cod_grade || 'No definido'}
+                        <p className="text-sm text-gray-900 flex items-center gap-1.5 break-all">
+                          <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          {certificado.empleado.email}
                         </p>
                       </div>
                     </div>
@@ -765,16 +773,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       </div>
                     </div>
 
-                    {/* Correo */}
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">
-                        Correo Electrónico
-                      </label>
-                      <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                        <Mail className="w-3.5 h-3.5 text-gray-400" />
-                        {certificado.empleado.email}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>

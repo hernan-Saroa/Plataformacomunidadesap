@@ -2,7 +2,7 @@
  * MÓDULO: CERTIFICADOS LABORALES - SOLO AUTOSERVICIO
  * - Certificados laborales solicitados únicamente por el interesado
  * - El documento se envía automáticamente al correo registrado en la plataforma
- * - Campos: Nombre, Identificación, Tipo vinculación, Fecha vinculación, Cargo, Grado, Dependencia, Salario, Fecha solicitud
+ * - Campos: Nombre, Identificación, Tipo vinculación, Fecha vinculación, Cargo, Dependencia, Salario, Fecha solicitud
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -192,7 +192,10 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cargoSource: cert.request?.career_category || cert.career_category || cert.position_category || '',
       codCargo: cert.request?.cod_cargo || cert.cod_cargo || cert.codCargo,
       codGrade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
+      observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
     const employmentStatusRaw = String(
@@ -230,6 +233,13 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cert.positionLocation ||
       '',
     );
+    const grupoRaw = normalizarDependencia(
+      cert.request?.position_location ||
+      cert.request?.positionLocation ||
+      cert.position_location ||
+      cert.positionLocation ||
+      '',
+    );
     const incluyeSalario = normalizarBoolean(
       cert.include_salary ??
         cert.includeSalary ??
@@ -254,7 +264,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       consecutivo: cert.certificate_number,
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
-      position_location: ubicacionRaw,
+      position_location: grupoRaw,
       observations: cert.observations || cert.request?.observations,
       department: ubicacionRaw,
       cod_cargo: dependenciaPadreRaw || cert.cod_cargo || cert.codCargo,
@@ -1145,11 +1155,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                     </th>
                     <th className="px-4 py-4 text-left">
                       <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                        GRADO
-                      </span>
-                    </th>
-                    <th className="px-4 py-4 text-left">
-                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                         FECHA SOLICITUD
                       </span>
                     </th>
@@ -1224,11 +1229,6 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                           <p className="text-sm text-gray-900">{cert.empleado.dependencia || cert.department || cert.position_location || ''}</p>
                         </td>
 
-                        {/* Grado */}
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <p className="text-sm text-gray-900">{cert.empleado.grado || cert.cod_grade || ''}</p>
-                        </td>
-
                         {/* Fecha Solicitud */}
                         <td className="px-4 py-4 whitespace-nowrap">
                           <p className="text-sm text-gray-900">
@@ -1299,7 +1299,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                       {/* Panel Desplegable - debajo de la fila */}
                       {expandedCertId === cert.id && (
                         <tr>
-                          <td colSpan={10} className="p-0 bg-gray-50">
+                          <td colSpan={9} className="p-0 bg-gray-50">
                             <CertificadoDetallePanel
                               certificado={cert}
                               isOpen={true}

@@ -163,13 +163,18 @@ export function SolicitarCertificado() {
       cargoSource: cert.career_category || cert.position_category,
       codCargo: cert.cod_cargo || cert.codCargo,
       codGrade: cert.cod_grade || cert.codGrade,
+      observations: cert.request?.observations || cert.observations,
       templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
     return {
       consecutivo: cert.certificate_number || cert.consecutivo || 'N/A',
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
+      observations: cert.request?.observations || cert.observations,
+      request: cert.request,
       templateSnapshot,
       templateType,
       empleado: {

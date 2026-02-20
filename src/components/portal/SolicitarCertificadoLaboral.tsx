@@ -292,12 +292,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     codCargo?: string | number | null,
     codGrade?: string | number | null,
     templateType?: 'docente' | 'administrador',
+    observations?: string | null,
   ) =>
     formatCargoDisplay({
       cargoSource: cargoFuente,
       codCargo,
       codGrade,
+      observations,
       templateType,
+      includeCodeLabel: true,
+      codeLabel: 'Codigo',
     });
 
   const mapCertificadoExistente = (cert: any): CertificadoGenerado => {
@@ -338,6 +342,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       cert.cod_cargo || cert.codCargo,
       cert.cod_grade || cert.codGrade,
       templateType,
+      cert.request?.observations || cert.observations,
     );
 
     return {
@@ -368,6 +373,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           position_category: cert.position_category,
           cod_cargo: cert.cod_cargo || cert.codCargo,
           cod_grade: cert.cod_grade || cert.codGrade,
+          observations: cert.request?.observations || cert.observations,
+          request: cert.request,
           empleado: {
             nombre: cert.full_name,
             documento: cert.id_number,
@@ -393,7 +400,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           nombre: cert.full_name,
           tipo: 'autoservicio' as const
         },
-        position_location: cert.department || cert.position_location,
+        position_location:
+          cert.request?.position_location ||
+          cert.request?.positionLocation ||
+          cert.position_location ||
+          cert.positionLocation ||
+          '',
         department: cert.department,
         campus: cert.campus,
         signer_name: cert.signer_name,
@@ -683,6 +695,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         solicitud.cod_cargo || solicitud.codCargo,
         solicitud.cod_grade || solicitud.codGrade,
         templateType,
+        solicitud.observations,
       );
       const vinculoNormalizado =
         solicitud.position_category ||
@@ -776,6 +789,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           cert.cod_cargo || cert.codCargo,
           cert.cod_grade || cert.codGrade,
           templateType,
+          cert.request?.observations || cert.observations,
         );
 
       // Construir objeto de certificado completo desde la respuesta del backend
@@ -808,6 +822,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         position_category: cert.position_category,
         cod_cargo: cert.cod_cargo || cert.codCargo,
         cod_grade: cert.cod_grade || cert.codGrade,
+        observations: cert.request?.observations || cert.observations,
+        request: cert.request,
         empleado: {
           nombre: cert.full_name,
           documento: cert.id_number,
@@ -833,7 +849,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
             nombre: cert.full_name,
             tipo: 'autoservicio' as const
           },
-          position_location: cert.department || cert.position_location,
+          position_location:
+            cert.request?.position_location ||
+            cert.request?.positionLocation ||
+            cert.position_location ||
+            cert.positionLocation ||
+            '',
           department: cert.department,
           campus: cert.campus,
             signer_name: cert.signer_name,

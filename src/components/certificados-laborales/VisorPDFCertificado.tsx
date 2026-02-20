@@ -143,11 +143,13 @@ export function VisorPDFCertificado({
     careerCategory?: string | null,
     codCargo?: string | number | null,
     codGrade?: string | number | null,
+    observations?: string | null,
   ) =>
     formatCargoDisplay({
       cargoSource: careerCategory,
       codCargo,
       codGrade,
+      observations,
       templateType,
       includeCodeLabel: true,
       codeLabel: 'Codigo',
@@ -269,6 +271,11 @@ export function VisorPDFCertificado({
     const tipoVinculacion = certificado.empleado.tipoVinculacion || '';
     const cargoTexto = certificado.empleado.cargo || '';
     const grado = certificado.empleado.grado || '';
+    const requestData = (certificado as any)?.request || {};
+    const observationsEncargo =
+      requestData?.observations ||
+      certificado.observations ||
+      '';
     const normalizarDependencia = (value?: string | null) => {
       const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
       if (!cleaned) return '';
@@ -297,7 +304,7 @@ export function VisorPDFCertificado({
     const dato6 =
       templateType === 'docente'
         ? ubicacionCargo
-        : (certificado.observations || '');
+        : observationsEncargo;
 
     const dato7 = dependenciaHijo || certificado.position_location || '';
     const cargoDato6 = tipoVinculacion;
@@ -309,7 +316,6 @@ export function VisorPDFCertificado({
       new Date().toISOString();
     const fechaExpedicionCompleta = formatearFecha(fechaExpedicionSource);
 
-    const requestData = (certificado as any)?.request || {};
     const grupoVariable = normalizarDependencia(
       requestData?.position_location ||
       requestData?.positionLocation ||
@@ -328,6 +334,7 @@ export function VisorPDFCertificado({
         (certificado as any)?.codGrade ||
         (certificado.empleado as any)?.cod_grade ||
         (certificado.empleado as any)?.codGrade,
+      observationsEncargo,
     ) || cargoTexto;
 
     const reemplazos: Record<string, string> = {
@@ -347,7 +354,8 @@ export function VisorPDFCertificado({
       '[GRUPO]': grupoVariable,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
-      '[DEPENDENCIA]': dependenciaPlantilla,
+      '[DEPENDENCIA]': dato7,
+      '[DEPENDENCIA_PADRE]': dependenciaPlantilla,
       '[FECHA_INICIO]': formatearFecha(certificado.empleado.fechaVinculacion),
       '[FECHA_FIN]': 'la actualidad',
       '[SALARIO]': incluirSalario && salarioBase ? `($${formatearMonto(salarioBase)})` : '',
@@ -1165,20 +1173,6 @@ export function VisorPDFCertificado({
         </p>
       </div>
 
-      {/* Footer legal */}
-      <div style={{
-        position: 'absolute',
-        left: '72px',
-        right: '72px',
-        bottom: '10px',
-        textAlign: 'center',
-        fontSize: '7pt',
-        color: '#6b7280',
-        lineHeight: '1.3',
-        fontFamily: typographyFont
-      }}>
-        Este documento es válido sin necesidad de firma autógrafa según el Decreto 2150 de 1995 y la Ley 527 de 1999
-      </div>
     </div>
   );
 
@@ -1341,4 +1335,5 @@ export function VisorPDFCertificado({
 
   return modalContent;
 }
+
 
