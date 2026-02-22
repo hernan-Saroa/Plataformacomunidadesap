@@ -79,6 +79,9 @@ interface Actividad {
   // ✅ NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
+  
+  // Soft delete
+  activo?: boolean;
 }
 
 interface ArchivoAdjunto {
@@ -253,7 +256,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
 
 interface WizardCreacionProps {
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[]) => void;
+  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => void;
 }
 
 export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
@@ -282,7 +285,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
           const profesionales: Auditor[] = response.data
             .filter((config: any) => config.activo)
             .map((config: any) => ({
-              id: String(config.idTercero),
+              id: config.id, // UUID de configuracion_profesionales_ocig
               nombre: config.nombre || `Profesional ${config.idTercero}`,
               cargo: config.rolOcig || 'Auditor',
               email: config.email || ''
@@ -473,7 +476,13 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return;
     }
     
-    onCrear(vigencia, jefeSeleccionado, rolesConfig);
+    // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
+    if (!jefeSeleccionado) {
+      toast.error('Debe seleccionar un Jefe de Control Interno');
+      return;
+    }
+    
+    onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin);
   };
 
   return (
@@ -1709,7 +1718,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           const auditoresMapeados: Auditor[] = response.data
             .filter((p) => p.activo && p.nombre)
             .map((p) => ({
-              id: String(p.idTercero),
+              id: p.id, // UUID de configuracion_profesionales_ocig
               nombre: p.nombre || '',
               cargo: p.cargo || 'Profesional OCIG',
               email: p.email || ''
@@ -2177,6 +2186,14 @@ function SeccionGestionYSeguimiento({
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
+  // Modal de confirmación para desactivar/activar actividades
+  const [modalConfirmacion, setModalConfirmacion] = useState<{
+    visible: boolean;
+    tipo: 'desactivar' | 'activar';
+    rolNumero: number;
+    actividadId: number | string;
+    actividadNombre: string;
+  } | null>(null);
   // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>({});
   const [formulario, setFormulario] = useState({
@@ -2237,6 +2254,96 @@ function SeccionGestionYSeguimiento({
     setNuevaObservacion('');
     setMostrarSelectorApoyo(false);
     setActividadExpandida(actividad.id);
+  };
+
+  // Función para desactivar una actividad (soft delete)
+  const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      const res = await actividadesApi.delete(String(actividadId));
+      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como inactiva
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
+        
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
+    }
+  };
+
+  // Función para REACTIVAR una actividad
+  const reactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('✅ [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      // Llamar al endpoint de actualización para cambiar activo a true
+      const res = await actividadesApi.update(String(actividadId), { activo: true } as any);
+      console.log('✅ [reactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como activa
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: true } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad reactivada', { description: 'La actividad está activa nuevamente' });
+        
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al reactivar', { description: res.error || 'No se pudo reactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error reactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo reactivar la actividad' });
+    }
+  };
+
+  // Handler para confirmar acción desde modal
+  const confirmarAccionActividad = () => {
+    console.log('✅ confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
+    if (!modalConfirmacion) return;
+    
+    if (modalConfirmacion.tipo === 'desactivar') {
+      desactivarActividad(modalConfirmacion.rolNumero, modalConfirmacion.actividadId);
+    } else {
+      reactivarActividad(modalConfirmacion.rolNumero, modalConfirmacion.actividadId);
+    }
+    setModalConfirmacion(null);
   };
 
   const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
@@ -2795,16 +2902,21 @@ function SeccionGestionYSeguimiento({
               >
                 <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
                 {/* Header */}
-                <div className="p-4 bg-gray-50">
+                <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="w-6 h-6 bg-gray-200 rounded-lg flex items-center justify-center text-xs font-bold">
                           {idx + 1}
                         </span>
-                        <p className="font-semibold text-gray-900">{actividad.nombre}</p>
+                        <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                        {actividad.activo === false && (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                            Inactiva
+                          </span>
+                        )}
                         {/* INDICADOR: Configuración de Evidencias */}
                         {actividad.configuracionEvidencias ? (
                           <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-green-100 text-green-700 border border-green-300" title={`Adj: ${actividad.configuracionEvidencias.adjuntosRequeridos || 'N/A'} | Obs: ${actividad.configuracionEvidencias.observacionRequerida || 'N/A'}`}>
@@ -2873,20 +2985,58 @@ function SeccionGestionYSeguimiento({
                         showIcon={true}
                       />
                     </div>
-                    <button
-                      onClick={() => {
-                        if (actividadExpandida === actividad.id) {
-                          setActividadExpandida(null);
-                          setNuevaObservacion('');
-                          setMostrarSelectorApoyo(false);
-                        } else {
-                          abrirSeguimiento(actividad);
-                        }
-                      }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                    >
-                      {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (actividadExpandida === actividad.id) {
+                            setActividadExpandida(null);
+                            setNuevaObservacion('');
+                            setMostrarSelectorApoyo(false);
+                          } else {
+                            abrirSeguimiento(actividad);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                      >
+                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                      </button>
+                      {/* Botón Desactivar/Activar actividad */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('🔘 Click en botón desactivar/activar:', {
+                            actividadId: actividad.id,
+                            actividadNombre: actividad.nombre,
+                            activo: actividad.activo,
+                            rolNumero: rol.numero
+                          });
+                          setModalConfirmacion({
+                            visible: true,
+                            tipo: actividad.activo === false ? 'activar' : 'desactivar',
+                            rolNumero: rol.numero,
+                            actividadId: actividad.id,
+                            actividadNombre: actividad.nombre
+                          });
+                        }}
+                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all ${
+                          actividad.activo === false 
+                            ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
+                            : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
+                        }`}
+                        title={actividad.activo === false ? 'Reactivar actividad' : 'Desactivar actividad'}
+                      >
+                        {actividad.activo === false ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                          </svg>
+                        )}
+                        {actividad.activo === false ? 'Reactivar' : 'Desactivar'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -3241,6 +3391,128 @@ function SeccionGestionYSeguimiento({
           }}
         />
       )}
+
+      {/* Modal de confirmación para desactivar/reactivar actividad */}
+      <AnimatePresence>
+        {modalConfirmacion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+            onClick={() => setModalConfirmacion(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            >
+              {/* Header del modal */}
+              <div className={`px-6 py-4 ${
+                modalConfirmacion.tipo === 'desactivar' 
+                  ? 'bg-gradient-to-r from-red-600 to-red-700' 
+                  : 'bg-gradient-to-r from-green-600 to-green-700'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    {modalConfirmacion.tipo === 'desactivar' ? (
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                    ) : (
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    {modalConfirmacion.tipo === 'desactivar' ? 'Desactivar Actividad' : 'Reactivar Actividad'}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Contenido del modal */}
+              <div className="p-6">
+                <p className="text-gray-700 mb-4">
+                  {modalConfirmacion.tipo === 'desactivar' 
+                    ? '¿Estás seguro de desactivar esta actividad?' 
+                    : '¿Quieres reactivar esta actividad?'}
+                </p>
+                
+                <div className={`p-4 rounded-lg border-2 mb-4 ${
+                  modalConfirmacion.tipo === 'desactivar' 
+                    ? 'bg-red-50 border-red-200' 
+                    : 'bg-green-50 border-green-200'
+                }`}>
+                  <p className="font-semibold text-gray-800">
+                    {modalConfirmacion.actividadNombre}
+                  </p>
+                </div>
+
+                {modalConfirmacion.tipo === 'desactivar' ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-amber-800 flex items-start gap-2">
+                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span>
+                        <strong>Importante:</strong> La actividad quedará marcada como inactiva y no contará para los cálculos de avance del plan. Podrás reactivarla en cualquier momento.
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-blue-800 flex items-start gap-2">
+                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>
+                        La actividad volverá a contar en los cálculos de avance del plan.
+                      </span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Botones de acción */}
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setModalConfirmacion(null)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarAccionActividad}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                      modalConfirmacion.tipo === 'desactivar'
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-green-600 hover:bg-green-700 text-white'
+                    }`}
+                  >
+                    {modalConfirmacion.tipo === 'desactivar' ? (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                        Sí, Desactivar
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Sí, Reactivar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -3396,38 +3668,40 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
   };
 
   const eliminarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🗑️ [eliminarActividad] Eliminando actividad:', { rolNumero, actividadId });
+    console.log('🗑️ [eliminarActividad] Desactivando actividad:', { rolNumero, actividadId });
     
     try {
-      // Eliminar del backend
+      // Soft delete en backend (marca activo = false)
       const res = await actividadesApi.delete(String(actividadId));
       console.log('🗑️ [eliminarActividad] Respuesta del backend:', res);
 
       if (res.success) {
-        // Actualizar estado local
+        // Actualizar estado local - marcar como inactiva
         const planActualizado = {
           ...plan,
           roles: plan.roles.map(rol => {
             if (rol.numero === rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.filter(act => act.id !== actividadId)
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
               };
             }
             return rol;
           })
         };
         onActualizar(planActualizado);
-        toast.success('Actividad eliminada', { description: 'La actividad ha sido eliminada del backend' });
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
         
         // Refrescar plan completo desde el backend
         onRefetchPlan?.();
       } else {
-        toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar del servidor' });
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
       }
     } catch (error) {
-      console.error('Error eliminando actividad:', error);
-      toast.error('Error', { description: 'No se pudo eliminar la actividad' });
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
     }
   };
 
@@ -3496,12 +3770,19 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                       </div>
                     ) : (
                       rol.actividades.map((actividad, index) => (
-                        <div key={`${rol.numero}-${index}-${actividad.id}`} className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                        <div key={`${rol.numero}-${index}-${actividad.id}`} className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}>
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
                             {index + 1}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 mb-1">{actividad.nombre}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                              {actividad.activo === false && (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                  Inactiva
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
                             <div className="flex items-center gap-4 text-xs text-gray-500">
                               <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
@@ -3526,20 +3807,6 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                                 </option>
                               ))}
                             </select>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm('¿Estás seguro de eliminar esta actividad?')) {
-                                  eliminarActividad(rol.numero, actividad.id);
-                                }
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Eliminar actividad"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
                           </div>
                         </div>
                       ))
@@ -3726,6 +3993,41 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
     setNuevaObservacion(''); // Limpiar el campo de nueva observación
     setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
     setActividadExpandida(actividad.id);
+  };
+
+  // Función para desactivar una actividad (soft delete)
+  const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      const res = await actividadesApi.delete(String(actividadId));
+      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como inactiva
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
+      } else {
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
+    }
   };
 
   const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
@@ -4025,16 +4327,21 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
           <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
                 {/* Header */}
-                <div className="p-4 bg-gray-50">
+                <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="w-6 h-6 bg-gray-200 rounded-lg flex items-center justify-center text-xs font-bold">
                           {idx + 1}
                         </span>
-                        <p className="font-semibold text-gray-900">{actividad.nombre}</p>
+                        <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                        {actividad.activo === false && (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                            Inactiva
+                          </span>
+                        )}
                         {actividad.requiereAutorizacionJefeOCIG && (
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
                             actividad.autorizadaPorJefeOCIG
@@ -4091,20 +4398,45 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                         showIcon={true}
                       />
                     </div>
-                    <button
-                      onClick={() => {
-                        if (actividadExpandida === actividad.id) {
-                          setActividadExpandida(null);
-                          setNuevaObservacion(''); // Limpiar al cerrar
-                          setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
-                        } else {
-                          abrirSeguimiento(actividad);
-                        }
-                      }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                    >
-                      {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (actividadExpandida === actividad.id) {
+                            setActividadExpandida(null);
+                            setNuevaObservacion(''); // Limpiar al cerrar
+                            setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
+                          } else {
+                            abrirSeguimiento(actividad);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                      >
+                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                      </button>
+                      {/* Botón Desactivar - siempre visible si activo no es false */}
+                      <button
+                        onClick={() => {
+                          if (actividad.activo === false) {
+                            toast.info('Esta actividad ya está inactiva');
+                            return;
+                          }
+                          if (confirm('¿Desactivar esta actividad? Quedará marcada como inactiva y no contará en los avances.')) {
+                            desactivarActividad(rol.numero, actividad.id);
+                          }
+                        }}
+                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 ${
+                          actividad.activo === false 
+                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' 
+                            : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
+                        }`}
+                        title={actividad.activo === false ? 'Actividad ya inactiva' : 'Desactivar actividad'}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                        {actividad.activo === false ? 'Inactiva' : 'Desactivar'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

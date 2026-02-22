@@ -39,6 +39,7 @@ export interface Actividad {
   porcentaje_avance: number;
   observaciones?: string;
   prioridad: PrioridadActividad;
+  activo?: boolean; // Soft delete
   // Campos extendidos (migración 129)
   control?: string;
   evaluacion?: string;
@@ -85,7 +86,10 @@ export interface PlanAnual {
   id: string;
   año: number;
   fecha_creacion: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
   responsable: string;
+  responsable_id?: string;
   estado: EstadoPlan;
   porcentaje_cumplimiento_general: number;
   total_actividades: number;
@@ -103,11 +107,17 @@ export interface PlanAnual {
 export interface CreatePlanAnualDto {
   año: number;
   responsable: string;
+  responsable_id?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
 }
 
 export interface UpdatePlanAnualDto {
   estado?: EstadoPlan;
   responsable?: string;
+  responsable_id?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
 }
 
 export interface CreateActividadDto {
