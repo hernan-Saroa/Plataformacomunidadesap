@@ -174,72 +174,79 @@ const FASES_AUDITORIA = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK
+// MAPEO DE FASE BACKEND A FRONTEND
 // ════════════════════════════════════════════════════════════════════════════
 
-const EXPEDIENTES_MOCK: Expediente[] = [
-  {
-    id: 'exp-1',
-    codigoAuditoria: 'AU-2025-001',
-    nombreAuditoria: 'Auditoría Gestión Contractual',
-    tipoAuditoria: 'Auditoría de Gestión',
-    fechaInicio: '2025-01-15',
-    estado: 'EN_PROCESO',
-    responsable: 'Fernando Ávila',
-    totalDocumentos: 6,
-    documentos: [
-      { 
-        id: 'd1', 
-        nombre: 'Programa de Auditoría AU-2025-001', 
-        nombreArchivo: 'Programa de Auditoría AU-2025-001.pdf',
-        tipo: 'documento_auditoria', 
-        tipoMime: 'application/pdf',
-        tamanio: '1.2 MB', 
-        tamanioBytes: 1258291,
-        fechaCreacion: '2025-01-15', 
-        autor: 'Fernando Ávila', 
-        fase: 'PLANIFICACION' 
-      },
-      { 
-        id: 'd2', 
-        nombre: 'Informe Final AU-2025-001', 
-        nombreArchivo: 'Informe Final AU-2025-001.pdf',
-        tipo: 'informe', 
-        tipoMime: 'application/pdf',
-        tamanio: '3.5 MB', 
-        tamanioBytes: 3670016,
-        fechaCreacion: '2025-02-20', 
-        autor: 'Fernando Ávila', 
-        fase: 'COMUNICACION_RESULTADOS' 
-      }
-    ]
-  },
-  {
-    id: 'exp-2',
-    codigoAuditoria: 'AU-2024-012',
-    nombreAuditoria: 'Auditoría Control Interno Contable',
-    tipoAuditoria: 'Auditoría de Cumplimiento',
-    fechaInicio: '2024-09-10',
-    fechaFin: '2024-12-20',
-    estado: 'CERRADO',
-    responsable: 'María Rodríguez',
-    totalDocumentos: 3,
-    documentos: [
-      { 
-        id: 'd13', 
-        nombre: 'Programa de Auditoría AU-2024-012', 
-        nombreArchivo: 'Programa de Auditoría AU-2024-012.pdf',
-        tipo: 'documento_auditoria', 
-        tipoMime: 'application/pdf',
-        tamanio: '1.1 MB', 
-        tamanioBytes: 1153434,
-        fechaCreacion: '2024-09-10', 
-        autor: 'María Rodríguez', 
-        fase: 'PLANIFICACION' 
-      }
-    ]
+// Mapea los estados del backend a los estados de expediente
+function mapEstadoAuditoria(fase: string, estadoKanban?: string): 'ABIERTO' | 'EN_PROCESO' | 'CERRADO' {
+  if (estadoKanban === 'Finalizada' || fase === 'CIERRE' || fase === 'cierre') {
+    return 'CERRADO';
   }
-];
+  if (fase === 'PLANIFICACION' || fase === 'planificacion' || estadoKanban === 'Plan Anual' || estadoKanban === 'Planeación') {
+    return 'ABIERTO';
+  }
+  return 'EN_PROCESO';
+}
+
+// Mapea la etapa del documento del backend a FaseAuditoria
+function mapEtapaToFase(etapa: string): FaseAuditoria {
+  const mapa: Record<string, FaseAuditoria> = {
+    'planificacion': 'PLANIFICACION',
+    'PLANIFICACION': 'PLANIFICACION',
+    'Planeación': 'PLANIFICACION',
+    'Plan Anual': 'PLANIFICACION',
+    'ejecucion': 'EJECUCION',
+    'EJECUCION': 'EJECUCION',
+    'Ejecución': 'EJECUCION',
+    'hallazgos': 'HALLAZGOS',
+    'HALLAZGOS': 'HALLAZGOS',
+    'comunicacion': 'COMUNICACION_RESULTADOS',
+    'COMUNICACION_RESULTADOS': 'COMUNICACION_RESULTADOS',
+    'Comunicación': 'COMUNICACION_RESULTADOS',
+    'seguimiento': 'SEGUIMIENTO',
+    'SEGUIMIENTO': 'SEGUIMIENTO',
+    'Seguimiento': 'SEGUIMIENTO',
+    'cierre': 'CIERRE',
+    'CIERRE': 'CIERRE',
+    'Finalizada': 'CIERRE'
+  };
+  return mapa[etapa] || 'PLANIFICACION';
+}
+
+// Convierte datos del backend a la interfaz Documento
+function mapDocumentoBackend(doc: any): Documento {
+  const tamanioBytes = doc.tamanio || doc.size || 0;
+  return {
+    id: doc.id,
+    nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
+    nombreArchivo: doc.nombreArchivo || doc.nombre || 'archivo',
+    tipo: doc.tipoDocumento || doc.tipo || 'otro',
+    tipoMime: doc.tipoMime || doc.mimeType || 'application/octet-stream',
+    tamanio: formatFileSize(tamanioBytes),
+    tamanioBytes: tamanioBytes,
+    fechaCreacion: doc.fechaCreacion?.split('T')[0] || doc.createdAt?.split('T')[0] || '',
+    autor: doc.subidoPor || doc.creadoPor || 'Sistema',
+    fase: mapEtapaToFase(doc.etapa || 'PLANIFICACION'),
+    rutaArchivo: doc.ruta || doc.rutaArchivo,
+    descripcion: doc.descripcion
+  };
+}
+
+// Convierte datos del backend de auditoría a la interfaz Expediente
+function mapAuditoriaToExpediente(auditoria: any, documentos: Documento[]): Expediente {
+  return {
+    id: auditoria.id,
+    codigoAuditoria: auditoria.codigo || `AU-${auditoria.id.slice(0, 8).toUpperCase()}`,
+    nombreAuditoria: auditoria.nombre || auditoria.objetivoGeneral || 'Sin nombre',
+    tipoAuditoria: auditoria.tipoAuditoria || auditoria.tipo || 'Auditoría',
+    fechaInicio: auditoria.fechaInicio?.split('T')[0] || auditoria.createdAt?.split('T')[0] || '',
+    fechaFin: auditoria.fechaFin?.split('T')[0],
+    estado: mapEstadoAuditoria(auditoria.fase, auditoria.estadoKanban),
+    responsable: auditoria.responsable || auditoria.auditorLider || 'Sin asignar',
+    totalDocumentos: documentos.length,
+    documentos: documentos
+  };
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -267,9 +274,51 @@ function VistaExpedientes() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
+  
+  // ✅ Estado para datos reales del backend
+  const [expedientes, setExpedientes] = useState<Expediente[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ✅ Cargar auditorías del backend
+  const cargarExpedientes = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    
+    try {
+      // 1. Obtener todas las auditorías
+      const auditorias = await controlInternoService.getAuditorias();
+      
+      // 2. Para cada auditoría, cargar sus documentos
+      const expedientesConDocs = await Promise.all(
+        auditorias.map(async (auditoria: any) => {
+          try {
+            const docsBackend = await controlInternoService.getDocumentosByAuditoria(auditoria.id);
+            const documentos = docsBackend.map(mapDocumentoBackend);
+            return mapAuditoriaToExpediente(auditoria, documentos);
+          } catch {
+            // Si falla cargar docs, devolver expediente sin docs
+            return mapAuditoriaToExpediente(auditoria, []);
+          }
+        })
+      );
+      
+      setExpedientes(expedientesConDocs);
+    } catch (err: any) {
+      console.error('Error cargando expedientes:', err);
+      setError(err.message || 'Error al cargar los expedientes');
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  // Cargar al montar
+  useEffect(() => {
+    cargarExpedientes();
+  }, [cargarExpedientes]);
 
   const expedientesFiltrados = useMemo(() => {
-    let resultado = EXPEDIENTES_MOCK;
+    let resultado = expedientes;
 
     if (busqueda) {
       const search = busqueda.toLowerCase();
@@ -284,17 +333,17 @@ function VistaExpedientes() {
     }
 
     return resultado;
-  }, [busqueda, filtroEstado]);
+  }, [expedientes, busqueda, filtroEstado]);
 
   const estadisticas = useMemo(() => {
-    const total = EXPEDIENTES_MOCK.length;
-    const abiertos = EXPEDIENTES_MOCK.filter(e => e.estado === 'ABIERTO').length;
-    const enProceso = EXPEDIENTES_MOCK.filter(e => e.estado === 'EN_PROCESO').length;
-    const cerrados = EXPEDIENTES_MOCK.filter(e => e.estado === 'CERRADO').length;
-    const totalDocs = EXPEDIENTES_MOCK.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
+    const total = expedientes.length;
+    const abiertos = expedientes.filter(e => e.estado === 'ABIERTO').length;
+    const enProceso = expedientes.filter(e => e.estado === 'EN_PROCESO').length;
+    const cerrados = expedientes.filter(e => e.estado === 'CERRADO').length;
+    const totalDocs = expedientes.reduce((acc, exp) => acc + exp.totalDocumentos, 0);
 
     return { total, abiertos, enProceso, cerrados, totalDocs };
-  }, []);
+  }, [expedientes]);
 
   return (
     <Container4K className="py-6">
@@ -389,7 +438,51 @@ function VistaExpedientes() {
 
       {/* Lista de Expedientes */}
       <div className="space-y-4">
-        {expedientesFiltrados.map((expediente) => (
+        {/* Estado de carga */}
+        {cargando && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+            <div className="flex flex-col items-center justify-center">
+              <Loader2 className="w-10 h-10 text-[#1e5da8] animate-spin mb-4" />
+              <p className="text-gray-600">Cargando expedientes...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Estado de error */}
+        {error && !cargando && (
+          <div className="bg-white rounded-xl shadow-sm border border-red-200 p-8">
+            <div className="flex flex-col items-center justify-center">
+              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+              <p className="text-gray-900 font-medium mb-2">Error al cargar expedientes</p>
+              <p className="text-gray-600 text-sm mb-4">{error}</p>
+              <button
+                onClick={cargarExpedientes}
+                className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm"
+              >
+                Reintentar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sin expedientes */}
+        {!cargando && !error && expedientesFiltrados.length === 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+            <div className="flex flex-col items-center justify-center">
+              <Folder className="w-16 h-16 text-gray-300 mb-4" />
+              <p className="text-gray-900 font-medium mb-2">No hay expedientes</p>
+              <p className="text-gray-600 text-sm">
+                {busqueda || filtroEstado !== 'TODOS' 
+                  ? 'No se encontraron expedientes con los filtros aplicados' 
+                  : 'No hay auditorías registradas aún'
+                }
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de expedientes */}
+        {!cargando && !error && expedientesFiltrados.map((expediente) => (
           <CardExpediente
             key={expediente.id}
             expediente={expediente}
@@ -397,6 +490,7 @@ function VistaExpedientes() {
             onToggleExpand={() => setExpedienteExpandido(
               expedienteExpandido === expediente.id ? null : expediente.id
             )}
+            onRefresh={cargarExpedientes}
           />
         ))}
       </div>
@@ -412,9 +506,10 @@ interface CardExpedienteProps {
   expediente: Expediente;
   expandido: boolean;
   onToggleExpand: () => void;
+  onRefresh?: () => void;
 }
 
-function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedienteProps) {
+function CardExpediente({ expediente, expandido, onToggleExpand, onRefresh }: CardExpedienteProps) {
   const [modalCargar, setModalCargar] = useState(false);
   
   const estadoConfig = {
@@ -578,6 +673,8 @@ function CardExpediente({ expediente, expandido, onToggleExpand }: CardExpedient
           onCargar={() => {
             setModalCargar(false);
             toast.success('Documento cargado exitosamente');
+            // Refrescar la lista para mostrar el nuevo documento
+            onRefresh?.();
           }}
         />
       )}
@@ -809,13 +906,16 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
 
     try {
       // Llamar al backend real
+      // Convertir fase a minúsculas para el backend
+      const etapaBackend = fase.toLowerCase();
+      
       await controlInternoService.createDocumento(
         archivo,
         {
           nombre: nombreDocumento.trim(),
           descripcion: descripcion.trim() || undefined,
           tipoDocumento: 'documento_auditoria',
-          etapa: fase,
+          etapa: etapaBackend,
           auditoriaId: expediente.id,
           subidoPor: expediente.responsable,
         },

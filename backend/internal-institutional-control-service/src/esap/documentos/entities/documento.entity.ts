@@ -38,9 +38,14 @@ export enum TipoDocumento {
 }
 
 export enum EtapaDocumento {
-  PLANEACION = 'planeacion',
+  PLANIFICACION = 'planificacion',
+  PLANEACION = 'planeacion', // Alias para compatibilidad
   EJECUCION = 'ejecucion',
+  HALLAZGOS = 'hallazgos',
   COMUNICACION = 'comunicacion',
+  COMUNICACION_RESULTADOS = 'comunicacion_resultados',
+  SEGUIMIENTO = 'seguimiento',
+  CIERRE = 'cierre',
 }
 
 @Entity('documento', { schema: 'control_interno' })

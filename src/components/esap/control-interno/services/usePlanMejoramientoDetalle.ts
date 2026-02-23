@@ -134,17 +134,20 @@ interface CreateAccionDto {
   descripcion: string;
   responsable: string;
   fechaInicio: string;
-  fechaVencimiento: string;
+  fechaFin: string;  // Backend usa fechaFin, no fechaVencimiento
   observaciones?: string;
 }
+
+// Estados válidos del backend (minúsculas)
+type EstadoAccionBackend = 'programada' | 'en-progreso' | 'implementada' | 'vencida' | 'completada';
 
 interface UpdateAccionDto {
   descripcion?: string;
   responsable?: string;
   fechaInicio?: string;
-  fechaVencimiento?: string;
-  estado?: 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA';
-  progreso?: number;
+  fechaFin?: string;  // Backend usa fechaFin
+  estado?: EstadoAccionBackend;
+  porcentajeAvance?: number;  // Backend usa porcentajeAvance, no progreso
   observaciones?: string;
 }
 
@@ -180,6 +183,13 @@ function mapearCriticidad(gravedad: string): 'ALTA' | 'MEDIA' | 'BAJA' {
 
 function mapearEstadoAccion(estado: string): 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA' {
   const mapa: Record<string, 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA'> = {
+    // Backend -> UI
+    'programada': 'PENDIENTE',
+    'en-progreso': 'EN_EJECUCION',
+    'implementada': 'COMPLETADA',
+    'completada': 'COMPLETADA',
+    'vencida': 'VENCIDA',
+    // Legacy/otros formatos
     'pendiente': 'PENDIENTE',
     'PENDIENTE': 'PENDIENTE',
     'sin_iniciar': 'PENDIENTE',
@@ -187,10 +197,7 @@ function mapearEstadoAccion(estado: string): 'PENDIENTE' | 'EN_EJECUCION' | 'COM
     'EN_PROCESO': 'EN_EJECUCION',
     'en_ejecucion': 'EN_EJECUCION',
     'EN_EJECUCION': 'EN_EJECUCION',
-    'completada': 'COMPLETADA',
     'COMPLETADA': 'COMPLETADA',
-    'implementada': 'COMPLETADA',
-    'vencida': 'VENCIDA',
     'VENCIDA': 'VENCIDA',
   };
   return mapa[estado] || 'PENDIENTE';
@@ -496,13 +503,51 @@ export function usePlanMejoramientoDetalle(planId: string) {
   // ─────────────────────────────────────────────────────────────────────────
   // Actualizar acción
   // ─────────────────────────────────────────────────────────────────────────
-  const actualizarAccion = useCallback(async (accionId: string, data: UpdateAccionDto): Promise<boolean> => {
+  
+  // Mapeo de estados UI -> Backend
+  const mapearEstadoABackend = (estadoUI: string): EstadoAccionBackend => {
+    const mapa: Record<string, EstadoAccionBackend> = {
+      'PENDIENTE': 'programada',
+      'EN_EJECUCION': 'en-progreso',
+      'COMPLETADA': 'completada',
+      'VENCIDA': 'vencida',
+      'pendiente': 'programada',
+      'en_ejecucion': 'en-progreso',
+      'completada': 'completada',
+      'implementada': 'implementada',
+      'vencida': 'vencida'
+    };
+    return mapa[estadoUI] || 'programada';
+  };
+  
+  const actualizarAccion = useCallback(async (accionId: string, data: any): Promise<boolean> => {
     if (!plan) return false;
 
     try {
       console.log('📝 [usePlanMejoramientoDetalle] Actualizando acción:', { accionId, data });
       
-      await controlInternoService.actualizarAccionPlanMejoramiento(plan.id, accionId, data);
+      // Preparar datos para el backend (mapear nombres de campos y valores)
+      const datosBackend: any = {};
+      if (data.descripcion) datosBackend.descripcion = data.descripcion;
+      if (data.responsable) datosBackend.responsable = data.responsable;
+      if (data.fechaInicio) datosBackend.fechaInicio = data.fechaInicio;
+      if (data.fechaFin) datosBackend.fechaFin = data.fechaFin;
+      if (data.fechaVencimiento) datosBackend.fechaFin = data.fechaVencimiento; // Mapear fechaVencimiento -> fechaFin
+      
+      // Mapear estado de UI a backend
+      if (data.estado) {
+        datosBackend.estado = mapearEstadoABackend(data.estado);
+      }
+      
+      // Mapear progreso -> porcentajeAvance
+      if (data.progreso !== undefined) datosBackend.porcentajeAvance = data.progreso;
+      if (data.porcentajeAvance !== undefined) datosBackend.porcentajeAvance = data.porcentajeAvance;
+      
+      if (data.observaciones !== undefined) datosBackend.observaciones = data.observaciones;
+      
+      console.log('📤 [usePlanMejoramientoDetalle] Datos enviados al backend:', datosBackend);
+      
+      await controlInternoService.actualizarAccionPlanMejoramiento(plan.id, accionId, datosBackend);
       
       // Actualizar estado local
       setPlan(prev => {
