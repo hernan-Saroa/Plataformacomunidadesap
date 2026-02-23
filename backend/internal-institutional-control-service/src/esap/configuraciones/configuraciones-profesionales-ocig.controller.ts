@@ -32,6 +32,17 @@ export class ConfiguracionesProfesionalesOCIGController {
     return this.service.findAll(includeInactive === 'true');
   }
 
+  /**
+   * Buscar personas candidatas de auth.personas que pueden ser configuradas como profesionales OCIG
+   * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
+   */
+  @Get('candidatos')
+  async buscarCandidatos(
+    @Query('busqueda') busqueda?: string,
+  ): Promise<any[]> {
+    return this.service.buscarPersonasCandidatas(busqueda);
+  }
+
   @Get('lideres')
   async findLideresPotenciales(): Promise<
     ConfiguracionProfesionalOCIGResponseDto[]

@@ -714,6 +714,15 @@ export const configuracionesProfesionalesOCIGApi = {
   },
 
   /**
+   * Buscar personas candidatas de auth.personas que pueden ser profesionales OCIG
+   * (personas que AÚN NO están configuradas)
+   */
+  buscarCandidatos: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
+    const params = busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : '';
+    return apiRequest<any[]>(`/configuraciones/profesionales-ocig/candidatos${params}`);
+  },
+
+  /**
    * Obtener configuración por ID
    */
   getById: async (id: string): Promise<ApiResponse<ConfiguracionProfesionalOCIG>> => {

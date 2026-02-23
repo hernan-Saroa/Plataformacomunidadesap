@@ -1340,10 +1340,22 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               descripcion: act.descripcion || '',
               fechaInicio: formatearFecha(act.fecha_inicio) || formatearFecha(act.fechaInicio),
               fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
-              // Responsable: solo buscar en auditores si no es "Por asignar" o está vacío
-              responsable: (act.responsable && act.responsable !== 'Por asignar') 
-                ? auditores.find(a => a.nombre === act.responsable) || null
-                : null,
+              // Responsable: buscar en auditores (case-insensitive) o crear objeto temporal
+              responsable: (() => {
+                if (!act.responsable || act.responsable === 'Por asignar') return null;
+                // Buscar en auditores con comparación case-insensitive
+                const auditorEncontrado = auditores.find(a => 
+                  a.nombre.toLowerCase() === act.responsable.toLowerCase()
+                );
+                if (auditorEncontrado) return auditorEncontrado;
+                // Si no se encuentra, crear un auditor temporal con el nombre del backend
+                return {
+                  id: `temp-${act.responsable}`,
+                  nombre: act.responsable,
+                  cargo: 'Auditor',
+                  email: ''
+                } as Auditor;
+              })(),
               porcentajeAvance: act.porcentaje_avance ?? 0,
               estado: estadoFront,
               control: actExtendido.control || '',

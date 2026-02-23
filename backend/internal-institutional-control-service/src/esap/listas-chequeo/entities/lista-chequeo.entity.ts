@@ -13,11 +13,23 @@ import {
 import { TipoAuditoria } from '../../tipos-auditoria/entities/tipo-auditoria.entity';
 import { ItemListaChequeo } from './item-lista-chequeo.entity';
 
-// Enum para tipo de lista de chequeo
+// Enum para tipo de lista de chequeo (valores compatibles con BD existente)
 export enum TipoListaChequeo {
+  CUMPLIMIENTO = 'cumplimiento',
+  PROCESO = 'proceso',
+  SISTEMA = 'sistema',
+  PROCEDIMIENTO = 'procedimiento',
+  // Valores adicionales para compatibilidad
   PLANEACION = 'planeacion',
   EJECUCION = 'ejecucion',
   COMUNICACION = 'comunicacion',
+}
+
+// Enum para estado de lista
+export enum EstadoListaChequeo {
+  ACTIVA = 'activa',
+  INACTIVA = 'inactiva',
+  OBSOLETA = 'obsoleta',
 }
 
 @Entity('lista_chequeo', { schema: 'control_interno' })
@@ -38,16 +50,67 @@ export class ListaChequeo {
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
 
-  @Column({ type: 'varchar', length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   categoria?: string;
 
-  @Column({
-    type: 'enum',
-    enum: TipoListaChequeo,
-    enumName: 'tipo_lista_chequeo_enum',
-    default: TipoListaChequeo.EJECUCION,
-  })
-  tipo: TipoListaChequeo;
+  // Tipo VARCHAR para compatibilidad con BD existente
+  @Column({ type: 'varchar', length: 50, default: 'cumplimiento' })
+  tipo: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS OBLIGATORIOS EN BD EXISTENTE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'varchar', length: 50, default: '1.0' })
+  version: string;
+
+  @Column({ type: 'varchar', length: 50, default: 'activa' })
+  estado: string;
+
+  @Column({ name: 'aplicable_para', type: 'jsonb', default: '["gestion", "cumplimiento"]' })
+  aplicablePara: any;
+
+  @Column({ name: 'created_by', type: 'varchar', length: 255, default: 'sistema' })
+  createdBy: string;
+
+  // Items como JSONB (para compatibilidad, además de relación)
+  @Column({ type: 'jsonb', nullable: true })
+  items_json?: any;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS OPCIONALES DE CONFIGURACIÓN
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  proceso?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  subproceso?: string;
+
+  @Column({ name: 'categoria_esap', type: 'varchar', length: 100, nullable: true })
+  categoriaEsap?: string;
+
+  @Column({ name: 'normativa_aplicable', type: 'text', nullable: true })
+  normativaAplicable?: string;
+
+  @Column({ type: 'text', nullable: true })
+  objetivo?: string;
+
+  @Column({ name: 'version_base', type: 'varchar', length: 50, nullable: true })
+  versionBase?: string;
+
+  @Column({ name: 'permite_no_aplica', type: 'boolean', default: true })
+  permiteNoAplica: boolean;
+
+  @Column({ name: 'requiere_evidencias', type: 'boolean', default: true })
+  requiereEvidencias: boolean;
+
+  @Column({ name: 'genera_hallazgos_automaticos', type: 'boolean', default: true })
+  generaHallazgosAutomaticos: boolean;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RELACIONES
+  // ═══════════════════════════════════════════════════════════════════════════
 
   @Column({ name: 'tipo_auditoria_id', type: 'uuid', nullable: true })
   tipoAuditoriaId?: string;
@@ -92,6 +155,15 @@ export class ListaChequeo {
 
   @Column({ name: 'cumplimiento', type: 'integer', default: 0 })
   cumplimiento: number;
+
+  @Column({ name: 'no_cumplimientos', type: 'integer', default: 0 })
+  noCumplimientos: number;
+
+  @Column({ name: 'no_aplica', type: 'integer', default: 0 })
+  noAplica: number;
+
+  @Column({ name: 'hallazgos_generados', type: 'integer', default: 0 })
+  hallazgosGenerados: number;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FASES QUE IMPACTA LA LISTA

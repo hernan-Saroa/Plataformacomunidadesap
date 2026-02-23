@@ -1,7 +1,6 @@
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsUUID, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateItemListaChequeoDto } from './create-lista-chequeo.dto';
-import { TipoListaChequeo } from '../entities/lista-chequeo.entity';
 
 export class UpdateListaChequeoDto {
   @IsOptional()
@@ -21,8 +20,24 @@ export class UpdateListaChequeoDto {
   categoria?: string;
 
   @IsOptional()
-  @IsEnum(TipoListaChequeo)
-  tipo?: TipoListaChequeo;
+  @IsIn(['cumplimiento', 'proceso', 'sistema', 'procedimiento', 'planeacion', 'ejecucion', 'comunicacion'])
+  tipo?: string;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CAMPOS OPCIONALES DE BD EXISTENTE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @IsOptional()
+  @IsString()
+  version?: string;
+
+  @IsOptional()
+  @IsIn(['activa', 'inactiva', 'obsoleta'])
+  estado?: string;
+
+  @IsOptional()
+  @IsArray()
+  aplicablePara?: string[];
 
   @IsOptional()
   @IsUUID()

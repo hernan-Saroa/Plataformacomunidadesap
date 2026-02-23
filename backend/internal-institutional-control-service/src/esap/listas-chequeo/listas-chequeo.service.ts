@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { ListaChequeo, TipoListaChequeo } from './entities/lista-chequeo.entity';
+import { ListaChequeo } from './entities/lista-chequeo.entity';
 import { ItemListaChequeo } from './entities/item-lista-chequeo.entity';
 import { CreateListaChequeoDto } from './dto/create-lista-chequeo.dto';
 import { UpdateListaChequeoDto } from './dto/update-lista-chequeo.dto';
@@ -24,55 +24,86 @@ export class ListasChequeoService {
    * Obtener todas las listas de chequeo (excluyendo eliminadas)
    */
   async findAll(includeInactive: boolean = false): Promise<ListaChequeo[]> {
-    const where: any = {
-      deletedAt: IsNull(),
-    };
+    try {
+      const queryBuilder = this.listaChequeoRepository
+        .createQueryBuilder('lista')
+        .leftJoinAndSelect('lista.items', 'items')
+        .where('lista.deleted_at IS NULL');
 
-    if (!includeInactive) {
-      where.activa = true;
+      if (!includeInactive) {
+        queryBuilder.andWhere('lista.activa = :activa', { activa: true });
+      }
+
+      queryBuilder
+        .orderBy('lista.created_at', 'DESC')
+        .addOrderBy('items.orden', 'ASC');
+
+      return await queryBuilder.getMany();
+    } catch (error) {
+      console.error('Error en findAll listas-chequeo:', error);
+      // Intento fallback sin relaciones
+      const where: any = {};
+      if (!includeInactive) {
+        where.activa = true;
+      }
+      return this.listaChequeoRepository.find({
+        where,
+        order: { createdAt: 'DESC' },
+      });
     }
-
-    return this.listaChequeoRepository.find({
-      where,
-      relations: ['items', 'tipoAuditoria'],
-      order: {
-        createdAt: 'DESC',
-        items: {
-          orden: 'ASC',
-        },
-      },
-    });
   }
 
   /**
    * Obtener una lista de chequeo por ID
    */
   async findOne(id: string): Promise<ListaChequeo> {
-    const lista = await this.listaChequeoRepository.findOne({
-      where: { id, deletedAt: IsNull() },
-      relations: ['items', 'tipoAuditoria'],
-      order: {
-        items: {
-          orden: 'ASC',
-        },
-      },
-    });
+    try {
+      const lista = await this.listaChequeoRepository
+        .createQueryBuilder('lista')
+        .leftJoinAndSelect('lista.items', 'items')
+        .where('lista.id = :id', { id })
+        .andWhere('lista.deleted_at IS NULL')
+        .orderBy('items.orden', 'ASC')
+        .getOne();
 
-    if (!lista) {
-      throw new NotFoundException(`Lista de chequeo con ID ${id} no encontrada`);
+      if (!lista) {
+        throw new NotFoundException(`Lista de chequeo con ID ${id} no encontrada`);
+      }
+
+      return lista;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      console.error('Error en findOne lista-chequeo:', error);
+      // Fallback sin relaciones
+      const lista = await this.listaChequeoRepository.findOne({
+        where: { id },
+      });
+      if (!lista) {
+        throw new NotFoundException(`Lista de chequeo con ID ${id} no encontrada`);
+      }
+      return lista;
     }
-
-    return lista;
   }
 
   /**
    * Obtener una lista de chequeo por código
    */
   async findByCodigo(codigo: string): Promise<ListaChequeo | null> {
-    return this.listaChequeoRepository.findOne({
-      where: { codigo, deletedAt: IsNull() },
-      relations: ['items', 'tipoAuditoria'],
-    });
+    try {
+      return await this.listaChequeoRepository
+        .createQueryBuilder('lista')
+        .leftJoinAndSelect('lista.items', 'items')
+        .where('lista.codigo = :codigo', { codigo })
+        .andWhere('lista.deleted_at IS NULL')
+        .getOne();
+    } catch (error) {
+      console.error('Error en findByCodigo:', error);
+      return this.listaChequeoRepository.findOne({
+        where: { codigo },
+      });
+    }
   }
 
   /**
@@ -92,8 +123,13 @@ export class ListasChequeoService {
       codigo: createDto.codigo.toUpperCase(),
       nombre: createDto.nombre,
       descripcion: createDto.descripcion || '',
-      categoria: createDto.categoria || 'General', // Valor por defecto 'General' si no viene
-      tipo: createDto.tipo || TipoListaChequeo.EJECUCION, // Valor por defecto si no viene
+      categoria: createDto.categoria || 'General',
+      tipo: createDto.tipo || 'cumplimiento', // Valor por defecto compatible con BD
+      // Campos obligatorios en BD existente
+      version: createDto.version || '1.0',
+      estado: createDto.estado || 'activa',
+      aplicablePara: createDto.aplicablePara || ['gestion', 'cumplimiento'],
+      createdBy: createDto.createdBy || 'sistema',
       tipoAuditoriaId: createDto.tipoAuditoriaId,
       activa: createDto.activa !== undefined ? createDto.activa : true,
       usosProgramados: 0,
@@ -104,6 +140,9 @@ export class ListasChequeoService {
       fechaAplicacion: createDto.auditoriaId ? new Date() : undefined,
       itemsCompletados: 0,
       cumplimiento: 0,
+      noCumplimientos: 0,
+      noAplica: 0,
+      hallazgosGenerados: 0,
       // ✅ FASES QUE IMPACTA LA LISTA
       fasePlaneacion: createDto.fasePlaneacion || false,
       faseEjecucion: createDto.faseEjecucion || false,

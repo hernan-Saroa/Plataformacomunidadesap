@@ -163,10 +163,19 @@ export function useConfiguracionProfesionales() {
     setError(null);
     
     try {
-      // 1. Cargar usuarios con roles de Control Interno
-      const responseUsuarios = await auditoriasApi.getPersonasDisponibles();
+      // 1. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCIG)
+      const responseUsuarios = await configuracionesProfesionalesOCIGApi.buscarCandidatos();
       const personas = responseUsuarios.data || [];
-      const usuarios = personas.map(convertirPersonaAUsuarioSistema);
+      const usuarios = personas.map((p: any) => ({
+        id: p.id,
+        idTercero: p.idTercero,
+        nombre: p.nombre,
+        identificacion: p.identificacion,
+        email: p.email,
+        cargo: '',
+        area: undefined,
+        activo: true
+      }));
       setUsuariosControlInterno(usuarios);
       
       // 2. Cargar configuraciones OCIG desde el backend
@@ -175,7 +184,7 @@ export function useConfiguracionProfesionales() {
       setConfiguracionesOCIG(configuraciones);
       
       console.log('✅ Profesionales cargados:', {
-        usuariosBackend: usuarios.length,
+        usuariosCandidatos: usuarios.length,
         configuracionesOCIG: configuraciones.length
       });
     } catch (err) {

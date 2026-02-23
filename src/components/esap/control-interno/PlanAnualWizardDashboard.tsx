@@ -3791,9 +3791,9 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                           </div>
                           <div className="flex items-center gap-2">
                             <select
-                              value={actividad.responsable?.id || ''}
+                              value={actividad.responsable?.nombre || ''}
                               onChange={(e) => {
-                                const auditor = auditores.find(a => a.id === e.target.value);
+                                const auditor = auditores.find(a => a.nombre === e.target.value);
                                 if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
                               }}
                               className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
@@ -3802,7 +3802,7 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                             >
                               <option value="">🔹 Sin asignar</option>
                               {auditores.map((auditor) => (
-                                <option key={auditor.id} value={auditor.id}>
+                                <option key={auditor.id} value={auditor.nombre}>
                                   👤 {auditor.nombre} - {auditor.cargo}
                                 </option>
                               ))}
