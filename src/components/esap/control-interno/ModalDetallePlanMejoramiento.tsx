@@ -24,9 +24,12 @@ import {
   X, Calendar, User, Clock, AlertTriangle, CheckCircle2, FileText,
   TrendingUp, Activity, Target, Flag, Plus, Upload, Download,
   Edit2, Trash2, Eye, MessageSquare, Paperclip, History,
-  BarChart3, Users, Building2, AlertCircle, Check, XCircle
+  BarChart3, Users, Building2, AlertCircle, Check, XCircle, Loader2, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
+
+// ✅ HOOK DE BACKEND
+import { usePlanMejoramientoDetalle } from './services/usePlanMejoramientoDetalle';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -88,8 +91,39 @@ interface PlanMejoramientoDetalle {
   acciones: AccionCorrectiva[];
   documentos: DocumentoPlan[];
   timeline: ActividadTimeline[];
+  seguimientos: SeguimientoTrimestral[];
   auditoria: string;
   observaciones?: string;
+}
+
+interface RegistroSeguimiento {
+  id: string;
+  accionId: string;
+  accionDescripcion: string;
+  accionesProgramadas: number;
+  accionesImplementadas: number;
+  puntajeCumplimiento: number;
+  controlesImplementados: 'SI' | 'NO' | 'PARCIAL';
+  hallazgoSeRepite: 'SI' | 'NO';
+  puntajeEfectividad: number;
+  observaciones?: string;
+}
+
+interface SeguimientoTrimestral {
+  id: string;
+  trimestre: number;
+  año: number;
+  fechaInicio: string;
+  fechaFin: string;
+  fechaSeguimiento?: string;
+  avanceGlobal: number;
+  porcentajeCumplimiento: number;
+  porcentajeEfectividad: number;
+  accionesRevisadas: number;
+  accionesTotales: number;
+  observacionesGenerales?: string;
+  registros: RegistroSeguimiento[];
+  createdAt: string;
 }
 
 type TabActiva = 'resumen' | 'hallazgos' | 'acciones' | 'documentos' | 'seguimiento';
@@ -338,22 +372,61 @@ const PLAN_MOCK: PlanMejoramientoDetalle = {
 interface ModalDetallePlanProps {
   planId: string;
   onClose: () => void;
+  onPlanActualizado?: () => void;
 }
 
-export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePlanProps) {
+export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizado }: ModalDetallePlanProps) {
   const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
   const [modalActualizacion, setModalActualizacion] = useState(false);
-  const plan = PLAN_MOCK; // En producción: cargar según planId
+  const [modalCrearAccion, setModalCrearAccion] = useState(false);
+  
+  // ✅ HOOK DE BACKEND - Carga datos reales
+  const {
+    plan,
+    loading,
+    error,
+    refetch,
+    actualizarPlan,
+    crearAccion,
+    actualizarAccion,
+    eliminarAccion
+  } = usePlanMejoramientoDetalle(planId);
 
   // Estado para el formulario de actualización
   const [datosActualizacion, setDatosActualizacion] = useState({
-    estado: plan.estado,
-    fechaVencimiento: plan.fechaVencimiento,
-    responsableGeneral: plan.responsableGeneral,
-    observaciones: plan.observaciones || ''
+    estado: '',
+    fechaVencimiento: '',
+    responsableGeneral: '',
+    observaciones: ''
   });
 
+  // Inicializar datos cuando carga el plan
+  useMemo(() => {
+    if (plan) {
+      setDatosActualizacion({
+        estado: plan.estado,
+        fechaVencimiento: plan.fechaVencimiento,
+        responsableGeneral: plan.responsableGeneral,
+        observaciones: plan.observaciones || ''
+      });
+    }
+  }, [plan?.id]);
+
   const estadisticas = useMemo(() => {
+    if (!plan) {
+      return {
+        totalAcciones: 0,
+        accionesCompletadas: 0,
+        accionesEnEjecucion: 0,
+        accionesPendientes: 0,
+        accionesVencidas: 0,
+        totalHallazgos: 0,
+        hallazgosResueltos: 0,
+        hallazgosCriticosAbiertos: 0,
+        porcentajeCompletado: 0
+      };
+    }
+    
     const totalAcciones = plan.acciones.length;
     const accionesCompletadas = plan.acciones.filter(a => a.estado === 'COMPLETADA').length;
     const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
@@ -381,7 +454,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     setModalActualizacion(true);
   };
 
-  const handleGuardarActualizacion = () => {
+  const handleGuardarActualizacion = async () => {
     // Validaciones básicas
     if (!datosActualizacion.estado) {
       toast.error('Debes seleccionar un estado');
@@ -393,29 +466,22 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
       return;
     }
 
-    // Simular actualización (en producción, aquí se haría el PUT al backend)
-    toast.success('Plan de Mejoramiento Actualizado', {
-      description: `El plan ${plan.codigo} ha sido actualizado exitosamente`,
-      duration: 4000,
+    // ✅ LLAMADA AL BACKEND
+    const exito = await actualizarPlan({
+      estado: datosActualizacion.estado,
+      fechaVencimiento: datosActualizacion.fechaVencimiento,
+      responsableGeneral: datosActualizacion.responsableGeneral,
+      observaciones: datosActualizacion.observaciones
     });
 
-    // Registrar en timeline simulado
-    console.log('📝 Actualizando plan:', {
-      planId: plan.id,
-      estadoAnterior: plan.estado,
-      estadoNuevo: datosActualizacion.estado,
-      observaciones: datosActualizacion.observaciones,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    setModalActualizacion(false);
-    
-    // Aquí podrías actualizar el estado local o refrescar los datos
-    // onPlanActualizado?.();
+    if (exito) {
+      setModalActualizacion(false);
+      onPlanActualizado?.();
+    }
   };
 
   const handleDescargarReporte = () => {
+    if (!plan) return;
     toast.success('Generando Reporte PDF', {
       description: 'El reporte del plan se está descargando...',
       duration: 3000,
@@ -437,6 +503,48 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
     EN_SEGUIMIENTO: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'En Seguimiento' },
     CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
   };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ESTADOS DE CARGA Y ERROR
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4">
+          <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+          <p className="text-gray-700 font-medium">Cargando plan de mejoramiento...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !plan) {
+    return (
+      <div className="fixed inset-0 z-[9998] overflow-y-auto flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 max-w-md">
+          <AlertCircle className="w-12 h-12 text-red-500" />
+          <h3 className="text-lg font-bold text-gray-900">Error al cargar el plan</h3>
+          <p className="text-gray-600 text-center">{error || 'No se pudo obtener la información del plan'}</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => refetch()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium flex items-center gap-2 hover:bg-blue-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const config = estadoConfig[plan.estado];
 
@@ -580,7 +688,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
               onClick={() => setTabActiva('documentos')}
               icon={<FileText className="w-4 h-4" />}
               label="Documentos"
-              badge={plan.documentos.length.toString()}
+              badge="0"
             />
             <TabButton
               active={tabActiva === 'seguimiento'}
@@ -603,7 +711,13 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
             >
               {tabActiva === 'resumen' && <TabResumen plan={plan} estadisticas={estadisticas} />}
               {tabActiva === 'hallazgos' && <TabHallazgos plan={plan} />}
-              {tabActiva === 'acciones' && <TabAcciones plan={plan} />}
+              {tabActiva === 'acciones' && (
+                <TabAcciones 
+                  plan={plan} 
+                  onActualizarAccion={actualizarAccion}
+                  onEliminarAccion={eliminarAccion}
+                />
+              )}
               {tabActiva === 'documentos' && <TabDocumentos plan={plan} />}
               {tabActiva === 'seguimiento' && <TabSeguimiento plan={plan} />}
             </motion.div>
@@ -614,7 +728,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
         <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">
-              Última actualización: {plan.timeline[0]?.fecha}
+              Plan ID: {plan.id?.substring(0, 8)}...
             </div>
             <div className="flex gap-3">
               <button
@@ -742,7 +856,7 @@ export function ModalDetallePlanMejoramiento({ planId, onClose }: ModalDetallePl
             <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  Última actualización: {plan.timeline[0]?.fecha}
+                  Plan ID: {plan.id?.substring(0, 8)}...
                 </div>
                 <div className="flex gap-3">
                   <button
@@ -1036,7 +1150,13 @@ function CardHallazgo({ hallazgo, plan }: { hallazgo: Hallazgo; plan: PlanMejora
 // TAB: ACCIONES
 // ════════════════════════════════════════════════════════════════════════════
 
-function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
+interface TabAccionesProps {
+  plan: PlanMejoramientoDetalle;
+  onActualizarAccion: (accionId: string, data: any) => Promise<boolean>;
+  onEliminarAccion: (accionId: string) => Promise<boolean>;
+}
+
+function TabAcciones({ plan, onActualizarAccion, onEliminarAccion }: TabAccionesProps) {
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | AccionCorrectiva['estado']>('TODOS');
 
   const accionesFiltradas = filtroEstado === 'TODOS'
@@ -1079,13 +1199,26 @@ function TabAcciones({ plan }: { plan: PlanMejoramientoDetalle }) {
       </div>
 
       {accionesFiltradas.map((accion) => (
-        <CardAccion key={accion.id} accion={accion} plan={plan} />
+        <CardAccion 
+          key={accion.id} 
+          accion={accion} 
+          plan={plan}
+          onActualizarAccion={onActualizarAccion}
+          onEliminarAccion={onEliminarAccion}
+        />
       ))}
     </div>
   );
 }
 
-function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejoramientoDetalle }) {
+interface CardAccionProps {
+  accion: AccionCorrectiva;
+  plan: PlanMejoramientoDetalle;
+  onActualizarAccion: (accionId: string, data: any) => Promise<boolean>;
+  onEliminarAccion: (accionId: string) => Promise<boolean>;
+}
+
+function CardAccion({ accion, plan, onActualizarAccion, onEliminarAccion }: CardAccionProps) {
   const [modalEditar, setModalEditar] = useState(false);
   const [modalEvidencia, setModalEvidencia] = useState(false);
   
@@ -1108,7 +1241,7 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
     setModalEvidencia(true);
   };
 
-  const handleMarcarCompletada = () => {
+  const handleMarcarCompletada = async () => {
     // Validar que no esté ya completada
     if (accion.estado === 'COMPLETADA') {
       toast.warning('Acción ya completada', {
@@ -1117,25 +1250,11 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
       return;
     }
 
-    // Simular actualización (en producción: PUT al backend)
-    toast.success('Acción Marcada como Completada', {
-      description: `La acción "${accion.descripcion.substring(0, 50)}..." ha sido completada`,
-      duration: 4000,
+    // ✅ LLAMADA AL BACKEND
+    await onActualizarAccion(accion.id, {
+      estado: 'COMPLETADA',
+      progreso: 100
     });
-
-    // Log para debugging
-    console.log('✅ Marcando acción como completada:', {
-      accionId: accion.id,
-      estadoAnterior: accion.estado,
-      progresoAnterior: accion.progreso,
-      estadoNuevo: 'COMPLETADA',
-      progresoNuevo: 100,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    // Aquí se actualizaría el estado o se refrescarían los datos
-    // onAccionActualizada?.();
   };
 
   return (
@@ -1257,10 +1376,11 @@ function CardAccion({ accion, plan }: { accion: AccionCorrectiva; plan: PlanMejo
         <ModalEditarAccion 
           accion={accion} 
           onClose={() => setModalEditar(false)}
+          onGuardar={onActualizarAccion}
         />
       )}
 
-      {/* Modal Cargar Evidencia */}
+      {/* Modal Cargar Evidencia - Pendiente de implementación */}
       {modalEvidencia && (
         <ModalCargarEvidencia 
           accion={accion} 
@@ -1353,7 +1473,7 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-medium text-gray-900">Documentos y Evidencias</h3>
-          <p className="text-sm text-gray-600">{plan.documentos.length} archivos</p>
+          <p className="text-sm text-gray-600">0 archivos (sección en desarrollo)</p>
         </div>
 
         <button 
@@ -1365,60 +1485,14 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
-        {plan.documentos.map((doc) => (
-          <div key={doc.id} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-
-              <div className="flex-1">
-                <h4 className="text-sm text-gray-900 font-medium mb-1">{doc.nombre}</h4>
-                <div className="flex items-center gap-4 text-xs text-gray-600">
-                  <span>{doc.tipo}</span>
-                  <span>{doc.tamanio}</span>
-                  <span>{doc.fechaCarga}</span>
-                  <span>{doc.autor}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleVerDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Ver documento"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => handleDescargarDocumento(doc)}
-                  className="p-2 text-gray-600 hover:text-[#1e5da8] transition-colors"
-                  title="Descargar documento"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+      {/* Placeholder - Los documentos se cargarán del backend cuando se implemente el endpoint */}
+      <div className="text-center py-8 text-gray-500">
+        <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+        <p className="font-medium">Sin documentos cargados</p>
+        <p className="text-sm">Esta sección estará disponible próximamente</p>
       </div>
 
-      {/* Modal Cargar Documento */}
-      {modalCargarDocumento && (
-        <ModalCargarDocumentoPlan
-          planId={plan.id}
-          onClose={() => setModalCargarDocumento(false)}
-        />
-      )}
-
-      {/* Modal Vista Previa */}
-      {documentoVistaPrevia && (
-        <ModalVistaPreviaDocumento
-          documento={documentoVistaPrevia}
-          onClose={() => setDocumentoVistaPrevia(null)}
-        />
-      )}
+      {/*  Modal Cargar Documento - Pendiente de implementación */}
     </div>
   );
 }
@@ -1428,18 +1502,231 @@ function TabDocumentos({ plan }: { plan: PlanMejoramientoDetalle }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 function TabSeguimiento({ plan }: { plan: PlanMejoramientoDetalle }) {
+  const [seguimientoExpandido, setSeguimientoExpandido] = useState<string | null>(null);
+
+  const seguimientos = plan.seguimientos || [];
+  const haySeguimientos = seguimientos.length > 0;
+
+  // Ordenar por fecha más reciente primero
+  const seguimientosOrdenados = [...seguimientos].sort((a, b) => {
+    const fechaA = new Date(`${a.año}-${String(a.trimestre * 3).padStart(2, '0')}-01`);
+    const fechaB = new Date(`${b.año}-${String(b.trimestre * 3).padStart(2, '0')}-01`);
+    return fechaB.getTime() - fechaA.getTime();
+  });
+
+  const getNombreTrimestre = (trimestre: number) => {
+    const nombres: Record<number, string> = {
+      1: 'Primer Trimestre',
+      2: 'Segundo Trimestre',
+      3: 'Tercer Trimestre',
+      4: 'Cuarto Trimestre'
+    };
+    return nombres[trimestre] || `Trimestre ${trimestre}`;
+  };
+
+  const getColorCumplimiento = (porcentaje: number) => {
+    if (porcentaje >= 80) return 'text-green-600 bg-green-100';
+    if (porcentaje >= 50) return 'text-yellow-600 bg-yellow-100';
+    return 'text-red-600 bg-red-100';
+  };
+
+  const getColorEfectividad = (porcentaje: number) => {
+    if (porcentaje >= 70) return 'text-green-600';
+    if (porcentaje >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
   return (
     <div className="space-y-4">
-      <div className="mb-4">
-        <h3 className="text-base font-medium text-gray-900">Historial de Actividades</h3>
-        <p className="text-sm text-gray-600">{plan.timeline.length} eventos registrados</p>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-base font-medium text-gray-900">Seguimientos Trimestrales</h3>
+          <p className="text-sm text-gray-600">
+            {haySeguimientos 
+              ? `${seguimientos.length} seguimiento${seguimientos.length > 1 ? 's' : ''} registrado${seguimientos.length > 1 ? 's' : ''}`
+              : 'Historial de seguimiento del plan'}
+          </p>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {plan.timeline.map((actividad, index) => (
-          <TimelineItem key={actividad.id} actividad={actividad} isLast={index === plan.timeline.length - 1} />
-        ))}
-      </div>
+      {!haySeguimientos ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <History className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+          <p className="font-medium">Sin seguimientos registrados</p>
+          <p className="text-sm mt-1">
+            Los seguimientos trimestrales aparecerán aquí cuando se registren avances
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {seguimientosOrdenados.map((seguimiento, index) => (
+            <div 
+              key={seguimiento.id} 
+              className="bg-white border border-gray-200 rounded-lg overflow-hidden"
+            >
+              {/* Header del seguimiento */}
+              <button
+                onClick={() => setSeguimientoExpandido(
+                  seguimientoExpandido === seguimiento.id ? null : seguimiento.id
+                )}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span className="text-blue-700 font-semibold text-sm">T{seguimiento.trimestre}</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-gray-900">
+                      {getNombreTrimestre(seguimiento.trimestre)} - {seguimiento.año}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {seguimiento.fechaInicio && seguimiento.fechaFin 
+                        ? `${seguimiento.fechaInicio} al ${seguimiento.fechaFin}`
+                        : seguimiento.fechaSeguimiento 
+                          ? `Realizado: ${seguimiento.fechaSeguimiento}`
+                          : 'Sin fechas'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {/* Indicadores */}
+                  <div className="flex items-center gap-3">
+                    <div className="text-center">
+                      <div className={`text-lg font-bold ${getColorCumplimiento(seguimiento.porcentajeCumplimiento).split(' ')[0]}`}>
+                        {seguimiento.porcentajeCumplimiento}%
+                      </div>
+                      <div className="text-xs text-gray-500">Cumplimiento</div>
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-lg font-bold ${getColorEfectividad(seguimiento.porcentajeEfectividad)}`}>
+                        {seguimiento.porcentajeEfectividad}%
+                      </div>
+                      <div className="text-xs text-gray-500">Efectividad</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-gray-700">
+                        {seguimiento.accionesRevisadas}/{seguimiento.accionesTotales}
+                      </div>
+                      <div className="text-xs text-gray-500">Acciones</div>
+                    </div>
+                  </div>
+
+                  <ChevronDown 
+                    className={`w-5 h-5 text-gray-400 transition-transform ${
+                      seguimientoExpandido === seguimiento.id ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* Detalle expandible */}
+              {seguimientoExpandido === seguimiento.id && (
+                <div className="border-t border-gray-200 px-5 py-4 bg-gray-50">
+                  {/* Barras de progreso */}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <div className="text-xs text-gray-600 mb-1">Cumplimiento</div>
+                      <div className="bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            seguimiento.porcentajeCumplimiento >= 80 ? 'bg-green-500' :
+                            seguimiento.porcentajeCumplimiento >= 50 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${seguimiento.porcentajeCumplimiento}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-600 mb-1">Efectividad</div>
+                      <div className="bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            seguimiento.porcentajeEfectividad >= 70 ? 'bg-green-500' :
+                            seguimiento.porcentajeEfectividad >= 40 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${seguimiento.porcentajeEfectividad}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Observaciones generales */}
+                  {seguimiento.observacionesGenerales && (
+                    <div className="mb-4">
+                      <div className="text-xs font-medium text-gray-700 mb-1">Observaciones Generales</div>
+                      <div className="text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
+                        {seguimiento.observacionesGenerales}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Registros de acciones */}
+                  {seguimiento.registros && seguimiento.registros.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-gray-700 mb-2">
+                        Detalle por Acción ({seguimiento.registros.length})
+                      </div>
+                      <div className="space-y-2">
+                        {seguimiento.registros.map((registro) => (
+                          <div 
+                            key={registro.id}
+                            className="bg-white p-3 rounded border border-gray-200"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-900">{registro.accionDescripcion}</p>
+                                <div className="flex items-center gap-4 mt-2 text-xs">
+                                  <span className="text-gray-500">
+                                    Implementadas: {registro.accionesImplementadas}/{registro.accionesProgramadas}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    registro.controlesImplementados === 'SI' ? 'bg-green-100 text-green-700' :
+                                    registro.controlesImplementados === 'PARCIAL' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    Controles: {registro.controlesImplementados}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    registro.hallazgoSeRepite === 'NO' ? 'bg-green-100 text-green-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>
+                                    {registro.hallazgoSeRepite === 'NO' ? 'No se repite' : 'Se repite'}
+                                  </span>
+                                </div>
+                                {registro.observaciones && (
+                                  <p className="text-xs text-gray-500 mt-2 italic">
+                                    {registro.observaciones}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-gray-500">Puntajes</div>
+                                <div className="text-sm font-medium">
+                                  C: {registro.puntajeCumplimiento} | E: {registro.puntajeEfectividad}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sin registros detallados */}
+                  {(!seguimiento.registros || seguimiento.registros.length === 0) && (
+                    <div className="text-center py-4 text-gray-400 text-sm">
+                      Sin detalle de acciones para este seguimiento
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1549,9 +1836,11 @@ import { ChevronDown } from 'lucide-react';
 interface ModalEditarAccionProps {
   accion: AccionCorrectiva;
   onClose: () => void;
+  onGuardar: (accionId: string, data: any) => Promise<boolean>;
 }
 
-function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
+function ModalEditarAccion({ accion, onClose, onGuardar }: ModalEditarAccionProps) {
+  const [guardando, setGuardando] = useState(false);
   const [datosEdicion, setDatosEdicion] = useState({
     descripcion: accion.descripcion,
     responsable: accion.responsable,
@@ -1562,7 +1851,7 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
     observaciones: accion.observaciones || ''
   });
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     // Validaciones
     if (!datosEdicion.descripcion.trim()) {
       toast.error('La descripción es obligatoria');
@@ -1579,21 +1868,14 @@ function ModalEditarAccion({ accion, onClose }: ModalEditarAccionProps) {
       return;
     }
 
-    // Simular actualización
-    toast.success('Acción Actualizada', {
-      description: 'Los cambios han sido guardados exitosamente',
-      duration: 3000,
-    });
-
-    console.log('📝 Actualizando acción:', {
-      accionId: accion.id,
-      datosAnteriores: accion,
-      datosNuevos: datosEdicion,
-      usuario: 'Usuario Actual',
-      timestamp: new Date().toISOString()
-    });
-
-    onClose();
+    // ✅ LLAMADA AL BACKEND
+    setGuardando(true);
+    const exito = await onGuardar(accion.id, datosEdicion);
+    setGuardando(false);
+    
+    if (exito) {
+      onClose();
+    }
   };
 
   return (

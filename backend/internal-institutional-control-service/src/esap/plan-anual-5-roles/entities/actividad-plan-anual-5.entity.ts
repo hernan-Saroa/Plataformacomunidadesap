@@ -108,6 +108,10 @@ export class ActividadPlanAnual5 {
   @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
   adjuntos: AdjuntoActividadPlanAnual5[];
 
+  // Soft delete
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

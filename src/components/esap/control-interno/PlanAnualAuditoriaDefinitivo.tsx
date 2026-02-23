@@ -80,6 +80,7 @@ interface Actividad {
   verificadaPorDirector?: boolean; // Indica si fue verificada por el Director
   fechaVerificacion?: string; // Fecha de verificación del Director
   observacionesDirector?: string; // Observaciones del Director al verificar
+  activo?: boolean; // Soft delete
 }
 
 interface ArchivoAdjunto {
@@ -1365,7 +1366,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 cargadoPor: adj.cargadoPor || adj.cargado_por || 'Usuario',
                 url: adj.url
               })),
-              bitacoraObservaciones: actExtendido.bitacoraObservaciones || []
+              bitacoraObservaciones: actExtendido.bitacoraObservaciones || [],
+              activo: actExtendido.activo ?? act.activo ?? true
             };
           })
         }))
@@ -1373,6 +1375,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       
       console.log('✅ [DEBUG] Plan transformado para frontend:', planTransformado);
       console.log('✅ [DEBUG] Roles transformados con IDs:', planTransformado.roles.map(r => ({ numero: r.numero, id: r.id, actividades: r.actividades.length })));
+      // Log específico para campo activo
+      console.log('✅ [DEBUG] Campo activo por actividad:', planTransformado.roles.flatMap(r => 
+        r.actividades.map(a => ({ id: a.id, nombre: a.nombre.substring(0, 30), activo: a.activo }))
+      ));
       
       setPlanActual(planTransformado);
       setVista('dashboard'); // Cambiar a dashboard cuando hay datos
@@ -1386,11 +1392,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[]) => {
+  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string) => {
     // Crear plan en backend
     const planCreado = await crearPlanEnBackend({
       año: vigencia,
-      responsable: jefeOCI.nombre
+      responsable: jefeOCI.nombre,
+      responsable_id: jefeOCI.id,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin
     });
 
     if (planCreado && planCreado.roles) {

@@ -50,6 +50,24 @@ export interface ProcesoAuditable {
     riesgoInherente: number;
     riesgoResidual: number;
     nivelRiesgo: 'bajo' | 'medio' | 'alto';
+    // Distribución de riesgos DAFP
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    // Requerimientos especiales
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
+    // Campos DAFP calculados y decisión
+    vigencia?: number;
+    fechaCorte?: string;
+    ponderacionRiesgo?: string;
+    diasRotacion?: number;
+    decisionRotacion?: string;
+    decisionFinal?: string;
+    motivoDecision?: string;
+    prioridadRegla?: number;
   };
   frecuenciaAuditoria: string;
   ultimaAuditoria?: string;
@@ -132,6 +150,13 @@ export interface ListaChequeo {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // ✅ VINCULACIÓN CON AUDITORÍA
+  auditoriaId?: string;
+  nombreAuditoria?: string;
+  auditorResponsable?: string;
+  fechaAplicacion?: string;
+  itemsCompletados?: number;
+  cumplimiento?: number;
 }
 
 export interface PlanIndividual {
@@ -733,12 +758,16 @@ class ControlInternoService {
 
   /**
    * Actualiza un item de una lista (marcar completado/pendiente)
+   * @param listaId - ID de la lista de chequeo
+   * @param itemId - ID del item a actualizar
+   * @param data - Datos a actualizar incluyendo auditoriaId para guardar estado específico
    */
   async actualizarItemLista(listaId: string, itemId: string, data: {
     completado?: boolean;
     responsable?: string;
     fechaCompletado?: string;
     observaciones?: string;
+    auditoriaId?: string; // ID de la auditoría para guardar estado específico
   }): Promise<any> {
     return client.patch(`/listas-chequeo/${listaId}/items/${itemId}`, data);
   }

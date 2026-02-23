@@ -17,6 +17,9 @@ import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 
+// ✅ HOOK DE BACKEND - Planes de mejoramiento para badge
+import { usePlanesMejoramiento } from './services/usePlanesMejoramiento';
+
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
 import { PlanificacionModuleRediseno } from "./PlanificacionModuleRediseno";  // RF001-004
@@ -77,6 +80,9 @@ function ControlInternoContent({
   setNavegacionManual
 }: ControlInternoContentProps) {
   const { auditoriaSeleccionada } = useIntegracionAuditoriaPlanes();
+  
+  // ✅ HOOK DE BACKEND - Total de planes para badge
+  const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
 
   // Calcular menuItems dinámicamente con badge
   const menuItems: MenuItem[] = [
@@ -123,7 +129,7 @@ function ControlInternoContent({
       subtitle: "Formulación • Seguimiento",
       icon: <AlertTriangle className="w-5 h-5" />,
       color: "#EF4444", // Rojo - Hallazgos
-      badge: auditoriaSeleccionada ? auditoriaSeleccionada.hallazgos.length : 0
+      badge: loadingPlanes ? 0 : planesBackend.length // ✅ Total de planes del backend
     },
     
     // ━━━━━━━━━━━ 6. EXPEDIENTES (RF013) ━━━━━━━━━━━

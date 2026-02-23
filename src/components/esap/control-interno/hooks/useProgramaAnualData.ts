@@ -272,6 +272,7 @@ export interface AuditoriaCreateData {
   planAnualId?: string;
   planAnualAño?: number;
   rolDecretoAsociado?: string;
+  estadoKanban?: string; // Estado inicial para el tablero Kanban
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -465,6 +466,7 @@ export function useProgramaAnualData(
         planAnualId: data.planAnualId,
         planAnualAño: data.planAnualAño,
         rolDecretoAsociado: data.rolDecretoAsociado,
+        estadoKanban: data.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
       };
 
       console.log('[useProgramaAnualData] Creando auditoría con servicio:', formData);

@@ -23,8 +23,17 @@ export class PlanAnual5Roles {
   @Column({ type: 'date', default: () => 'CURRENT_DATE', name: 'fecha_creacion' })
   fecha_creacion: Date;
 
+  @Column({ type: 'date', nullable: true, name: 'fecha_inicio' })
+  fecha_inicio?: Date;
+
+  @Column({ type: 'date', nullable: true, name: 'fecha_fin' })
+  fecha_fin?: Date;
+
   @Column({ type: 'varchar', length: 255, nullable: false, name: 'responsable' })
   responsable: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'responsable_id' })
+  responsable_id?: string;
 
   @Column({
     type: 'varchar',

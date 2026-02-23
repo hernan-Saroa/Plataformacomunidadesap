@@ -80,5 +80,9 @@ export class CreateActividadDto {
     tiposAdjuntosPermitidos?: string[];
     longitudMinimaObservacion?: number;
   };
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
 }
 
