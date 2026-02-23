@@ -694,24 +694,30 @@ export function ExpedienteAuditoriaCompleto({
     return documentos.filter((doc) => doc.fase === filtroDocumentos);
   }, [documentos, filtroDocumentos]);
 
-  const exportarExpediente = () => {
-    toast.success('✅ Exportando expediente', {
-      description: 'Se generará un PDF con toda la información de la auditoría',
-      duration: 3000
-    });
-  };
-
   const generarInformePDF = () => {
     // ✅ Guardia: no generar PDF si no hay auditoría
     if (!auditoria) {
       toast.error('❌ Error', { description: 'No hay auditoría cargada para generar el informe' });
       return;
     }
+    
     try {
+      console.log('[PDF] Iniciando generación de PDF...');
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       let yPos = 20;
+      
+      // Verificar si autoTable está disponible
+      const tieneAutoTable = typeof (doc as any).autoTable === 'function';
+      console.log('[PDF] autoTable disponible:', tieneAutoTable);
+
+      const fecha = new Date();
+      const año = fecha.getFullYear();
+      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+      const dia = String(fecha.getDate()).padStart(2, '0');
+      const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+      const nomenclatura = `ESAP-DN-OCIG-IF-${consecutivo}-${año}`;
 
       // Encabezado corporativo ESAP
       doc.setFillColor(0, 61, 165);
@@ -726,13 +732,6 @@ export function ExpedienteAuditoriaCompleto({
       yPos = 25;
       doc.text('INFORME DE AVANCE DE AUDITORÍA', pageWidth / 2, yPos, { align: 'center' });
       
-      const fecha = new Date();
-      const año = fecha.getFullYear();
-      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-      const dia = String(fecha.getDate()).padStart(2, '0');
-      const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
-      const nomenclatura = `ESAP-DN-OCIG-IF-${consecutivo}-${año}`;
-      
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
@@ -740,155 +739,218 @@ export function ExpedienteAuditoriaCompleto({
       doc.text(`Código: ${nomenclatura}`, pageWidth / 2, yPos, { align: 'center' });
       doc.text(`Fecha: ${dia}/${mes}/${año}`, pageWidth / 2, yPos + 5, { align: 'center' });
       
-      yPos = 45;
+      yPos = 50;
       
-      // Sección 1: Información General
-      doc.setFillColor(0, 61, 165);
-      doc.rect(14, yPos, pageWidth - 28, 7, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('1. INFORMACIÓN GENERAL', 16, yPos + 5);
-      
-      yPos += 12;
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(9);
-      
-      const infoGeneral = [
-        ['Código:', auditoria.codigo],
-        ['Nombre:', auditoria.nombre],
-        ['Tipo:', auditoria.tipo],
-        ['Estado:', auditoria.estado.toUpperCase()],
-        ['Área:', auditoria.areaAuditable],
-        ['Proceso:', auditoria.procesoNombre],
-        ['Riesgo:', auditoria.nivelRiesgo]
-      ];
-      
-      (doc as any).autoTable({
-        startY: yPos,
-        body: infoGeneral,
-        theme: 'grid',
-        bodyStyles: { fontSize: 9 },
-        columnStyles: {
-          0: { cellWidth: 50, fontStyle: 'bold', fillColor: [240, 240, 240] },
-          1: { cellWidth: 130 }
-        },
-        margin: { left: 14, right: 14 }
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-      
-      // Sección 2: Equipo Auditor
-      doc.setFillColor(0, 61, 165);
-      doc.rect(14, yPos, pageWidth - 28, 7, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('2. EQUIPO AUDITOR', 16, yPos + 5);
-      
-      yPos += 12;
-      
-      const equipoData = [
-        ['Auditor Líder', auditoria.auditorLider.nombre, auditoria.auditorLider.email],
-        ...auditoria.equipoAuditores.map(a => [a.rol, a.nombre, a.email])
-      ];
-      
-      (doc as any).autoTable({
-        startY: yPos,
-        head: [['Rol', 'Nombre', 'Email']],
-        body: equipoData,
-        theme: 'grid',
-        headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
-        bodyStyles: { fontSize: 9 },
-        margin: { left: 14, right: 14 }
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-      
-      // Sección 3: Progreso
-      if (yPos > pageHeight - 80) {
-        doc.addPage();
-        yPos = 20;
+      // Datos seguros con fallbacks
+      const codigo = auditoria.codigo || 'Sin código';
+      const nombre = auditoria.nombre || 'Sin nombre';
+      const tipo = auditoria.tipo || 'Sin tipo';
+      const estado = (auditoria.estado || 'desconocido').toUpperCase();
+      const area = auditoria.areaAuditable || 'Sin área';
+      const proceso = auditoria.procesoNombre || 'Sin proceso';
+      const riesgo = auditoria.nivelRiesgo || 'Sin riesgo';
+      const auditorLiderNombre = auditoria.auditorLider?.nombre || 'Sin auditor líder';
+      const auditorLiderEmail = auditoria.auditorLider?.email || 'N/A';
+      const progPlaneacion = auditoria.progreso?.planeacion ?? 0;
+      const progEjecucion = auditoria.progreso?.ejecucion ?? 0;
+      const progComunicacion = auditoria.progreso?.comunicacion ?? 0;
+      const progGeneral = auditoria.progreso?.general ?? 0;
+      const hallazgosCriticos = auditoria.estadisticas?.hallazgosCriticos ?? 0;
+      const hallazgosMayores = auditoria.estadisticas?.hallazgosMayores ?? 0;
+      const hallazgosMenores = auditoria.estadisticas?.hallazgosMenores ?? 0;
+      const totalHallazgos = auditoria.estadisticas?.totalHallazgos ?? 0;
+
+      if (tieneAutoTable) {
+        // === VERSIÓN CON TABLAS ===
+        
+        // Sección 1: Información General
+        doc.setFillColor(0, 61, 165);
+        doc.rect(14, yPos, pageWidth - 28, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('1. INFORMACIÓN GENERAL', 16, yPos + 5);
+        
+        yPos += 12;
+        
+        const infoGeneral = [
+          ['Código:', codigo],
+          ['Nombre:', nombre],
+          ['Tipo:', tipo],
+          ['Estado:', estado],
+          ['Área:', area],
+          ['Proceso:', proceso],
+          ['Riesgo:', riesgo]
+        ];
+        
+        (doc as any).autoTable({
+          startY: yPos,
+          body: infoGeneral,
+          theme: 'grid',
+          bodyStyles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 50, fontStyle: 'bold', fillColor: [240, 240, 240] },
+            1: { cellWidth: 130 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+        
+        yPos = (doc as any).lastAutoTable?.finalY + 10 || yPos + 60;
+        
+        // Sección 2: Equipo Auditor
+        doc.setFillColor(0, 61, 165);
+        doc.rect(14, yPos, pageWidth - 28, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text('2. EQUIPO AUDITOR', 16, yPos + 5);
+        
+        yPos += 12;
+        
+        const equipoData = [
+          ['Auditor Líder', auditorLiderNombre, auditorLiderEmail],
+          ...(auditoria.equipoAuditores || []).map(a => [a.rol || 'Auditor', a.nombre || 'N/A', a.email || 'N/A'])
+        ];
+        
+        (doc as any).autoTable({
+          startY: yPos,
+          head: [['Rol', 'Nombre', 'Email']],
+          body: equipoData,
+          theme: 'grid',
+          headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          margin: { left: 14, right: 14 }
+        });
+        
+        yPos = (doc as any).lastAutoTable?.finalY + 10 || yPos + 40;
+        
+        // Sección 3: Progreso
+        if (yPos > pageHeight - 80) {
+          doc.addPage();
+          yPos = 20;
+        }
+        
+        doc.setFillColor(0, 61, 165);
+        doc.rect(14, yPos, pageWidth - 28, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text('3. PROGRESO POR FASES', 16, yPos + 5);
+        
+        yPos += 12;
+        
+        const progresoData = [
+          ['Planeación', `${progPlaneacion}%`, progPlaneacion === 100 ? 'Completada' : 'En progreso'],
+          ['Ejecución', `${progEjecucion}%`, progEjecucion === 100 ? 'Completada' : 'En progreso'],
+          ['Comunicación', `${progComunicacion}%`, progComunicacion > 0 ? 'En progreso' : 'Pendiente'],
+          ['GENERAL', `${progGeneral}%`, '']
+        ];
+        
+        (doc as any).autoTable({
+          startY: yPos,
+          head: [['Fase', 'Avance', 'Estado']],
+          body: progresoData,
+          theme: 'grid',
+          headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+            2: { cellWidth: 80 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+        
+        yPos = (doc as any).lastAutoTable?.finalY + 10 || yPos + 40;
+        
+        // Sección 4: Hallazgos
+        doc.setFillColor(0, 61, 165);
+        doc.rect(14, yPos, pageWidth - 28, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.text('4. HALLAZGOS', 16, yPos + 5);
+        
+        yPos += 12;
+        
+        const hallazgosData = [
+          ['Críticos', hallazgosCriticos.toString()],
+          ['Mayores', hallazgosMayores.toString()],
+          ['Menores', hallazgosMenores.toString()],
+          ['TOTAL', totalHallazgos.toString()]
+        ];
+        
+        (doc as any).autoTable({
+          startY: yPos,
+          head: [['Tipo', 'Cantidad']],
+          body: hallazgosData,
+          theme: 'grid',
+          headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
+          bodyStyles: { fontSize: 9 },
+          columnStyles: {
+            0: { cellWidth: 100 },
+            1: { cellWidth: 80, halign: 'center', fontStyle: 'bold', fontSize: 11 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+        
+      } else {
+        // === VERSIÓN SIN TABLAS (FALLBACK) ===
+        console.log('[PDF] Usando versión sin autoTable');
+        
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('1. INFORMACIÓN GENERAL', 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Código: ${codigo}`, 14, yPos); yPos += 5;
+        doc.text(`Nombre: ${nombre}`, 14, yPos); yPos += 5;
+        doc.text(`Tipo: ${tipo}`, 14, yPos); yPos += 5;
+        doc.text(`Estado: ${estado}`, 14, yPos); yPos += 5;
+        doc.text(`Área: ${area}`, 14, yPos); yPos += 5;
+        doc.text(`Proceso: ${proceso}`, 14, yPos); yPos += 5;
+        doc.text(`Nivel de Riesgo: ${riesgo}`, 14, yPos); yPos += 12;
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('2. EQUIPO AUDITOR', 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Auditor Líder: ${auditorLiderNombre} (${auditorLiderEmail})`, 14, yPos); yPos += 5;
+        (auditoria.equipoAuditores || []).forEach(a => {
+          doc.text(`${a.rol || 'Auditor'}: ${a.nombre || 'N/A'}`, 14, yPos); yPos += 5;
+        });
+        yPos += 7;
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('3. PROGRESO', 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Planeación: ${progPlaneacion}%`, 14, yPos); yPos += 5;
+        doc.text(`Ejecución: ${progEjecucion}%`, 14, yPos); yPos += 5;
+        doc.text(`Comunicación: ${progComunicacion}%`, 14, yPos); yPos += 5;
+        doc.text(`General: ${progGeneral}%`, 14, yPos); yPos += 12;
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('4. HALLAZGOS', 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Críticos: ${hallazgosCriticos}`, 14, yPos); yPos += 5;
+        doc.text(`Mayores: ${hallazgosMayores}`, 14, yPos); yPos += 5;
+        doc.text(`Menores: ${hallazgosMenores}`, 14, yPos); yPos += 5;
+        doc.text(`Total: ${totalHallazgos}`, 14, yPos);
       }
       
-      doc.setFillColor(0, 61, 165);
-      doc.rect(14, yPos, pageWidth - 28, 7, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('3. PROGRESO POR FASES', 16, yPos + 5);
-      
-      yPos += 12;
-      
-      const progresoData = [
-        ['Planeación', `${auditoria.progreso.planeacion}%`, auditoria.progreso.planeacion === 100 ? 'Completada' : 'En progreso'],
-        ['Ejecución', `${auditoria.progreso.ejecucion}%`, auditoria.progreso.ejecucion === 100 ? 'Completada' : 'En progreso'],
-        ['Comunicación', `${auditoria.progreso.comunicacion}%`, auditoria.progreso.comunicacion > 0 ? 'En progreso' : 'Pendiente'],
-        ['GENERAL', `${auditoria.progreso.general}%`, '']
-      ];
-      
-      (doc as any).autoTable({
-        startY: yPos,
-        head: [['Fase', 'Avance', 'Estado']],
-        body: progresoData,
-        theme: 'grid',
-        headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
-        bodyStyles: { fontSize: 9 },
-        columnStyles: {
-          0: { cellWidth: 60 },
-          1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
-          2: { cellWidth: 80 }
-        },
-        didParseCell: function(data: any) {
-          if (data.row.index === 3 && data.section === 'body') {
-            data.cell.styles.fillColor = [0, 61, 165];
-            data.cell.styles.textColor = 255;
-            data.cell.styles.fontStyle = 'bold';
-          }
-        },
-        margin: { left: 14, right: 14 }
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 10;
-      
-      // Sección 4: Hallazgos
-      doc.setFillColor(0, 61, 165);
-      doc.rect(14, yPos, pageWidth - 28, 7, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('4. HALLAZGOS', 16, yPos + 5);
-      
-      yPos += 12;
-      
-      const hallazgosData = [
-        ['Críticos', auditoria.estadisticas.hallazgosCriticos.toString()],
-        ['Mayores', auditoria.estadisticas.hallazgosMayores.toString()],
-        ['Menores', auditoria.estadisticas.hallazgosMenores.toString()],
-        ['TOTAL', auditoria.estadisticas.totalHallazgos.toString()]
-      ];
-      
-      (doc as any).autoTable({
-        startY: yPos,
-        head: [['Tipo', 'Cantidad']],
-        body: hallazgosData,
-        theme: 'grid',
-        headStyles: { fillColor: [0, 61, 165], fontSize: 9 },
-        bodyStyles: { fontSize: 9 },
-        columnStyles: {
-          0: { cellWidth: 100 },
-          1: { cellWidth: 80, halign: 'center', fontStyle: 'bold', fontSize: 11 }
-        },
-        didParseCell: function(data: any) {
-          if (data.row.index === 3 && data.section === 'body') {
-            data.cell.styles.fillColor = [239, 68, 68];
-            data.cell.styles.textColor = 255;
-          }
-        },
-        margin: { left: 14, right: 14 }
-      });
-      
-      yPos = (doc as any).lastAutoTable.finalY + 15;
-      
       // Pie de página
-      const totalPages = (doc as any).internal.getNumberOfPages();
+      const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setDrawColor(0, 61, 165);
@@ -901,16 +963,87 @@ export function ExpedienteAuditoriaCompleto({
         doc.text(nomenclatura, pageWidth / 2, pageHeight - 10, { align: 'center' });
       }
       
-      doc.save(`Informe_Avance_${auditoria.codigo}_${año}${mes}${dia}.pdf`);
+      const nombreArchivo = `Informe_Avance_${codigo.replace(/[^a-zA-Z0-9]/g, '_')}_${año}${mes}${dia}.pdf`;
+      doc.save(nombreArchivo);
       
+      console.log('[PDF] PDF generado exitosamente:', nombreArchivo);
       toast.success('✅ Informe generado exitosamente', {
-        description: `PDF descargado: Informe_Avance_${auditoria.codigo}_${año}${mes}${dia}.pdf`,
+        description: `PDF descargado: ${nombreArchivo}`,
         duration: 4000
       });
       
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[PDF Error]', error);
       toast.error('⚠️ Error al generar informe', {
-        description: 'Ocurrió un error al crear el PDF. Por favor intenta nuevamente',
+        description: error?.message || 'Ocurrió un error al crear el PDF. Por favor intenta nuevamente',
+        duration: 4000
+      });
+    }
+  };
+
+  // ✅ Función para exportar expediente
+  const exportarExpediente = () => {
+    if (!auditoria) {
+      toast.error('❌ Error', { description: 'No hay auditoría cargada para exportar' });
+      return;
+    }
+    
+    try {
+      const expedienteData = {
+        auditoria: {
+          codigo: auditoria.codigo,
+          nombre: auditoria.nombre,
+          tipo: auditoria.tipo,
+          estado: auditoria.estado,
+          areaAuditable: auditoria.areaAuditable,
+          procesoNombre: auditoria.procesoNombre,
+          nivelRiesgo: auditoria.nivelRiesgo,
+        },
+        equipo: {
+          auditorLider: auditoria.auditorLider,
+          equipoAuditores: auditoria.equipoAuditores,
+        },
+        cronograma: {
+          fechaInicio: auditoria.cronograma.fechaInicio,
+          fechaFin: auditoria.cronograma.fechaFin,
+          duracionDias: auditoria.cronograma.duracionDias,
+        },
+        progreso: auditoria.progreso,
+        estadisticas: auditoria.estadisticas,
+        documentos: documentos.map(d => ({
+          nombre: d.nombre,
+          tipo: d.tipo,
+          fase: d.fase,
+          fechaCarga: d.fechaCarga,
+        })),
+        historial: historial.map(h => ({
+          tipo: h.tipo,
+          titulo: h.titulo,
+          descripcion: h.descripcion,
+          usuario: h.usuario,
+          fecha: h.fecha,
+        })),
+        exportadoEl: new Date().toISOString(),
+      };
+      
+      const blob = new Blob([JSON.stringify(expedienteData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Expediente_${auditoria.codigo}_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('✅ Expediente exportado', {
+        description: `Archivo JSON descargado: Expediente_${auditoria.codigo}.json`,
+        duration: 3000
+      });
+    } catch (error: any) {
+      console.error('[Exportar Error]', error);
+      toast.error('⚠️ Error al exportar', {
+        description: error?.message || 'No se pudo exportar el expediente',
         duration: 4000
       });
     }
@@ -1117,7 +1250,7 @@ export function ExpedienteAuditoriaCompleto({
 
             {/* ACCIONES SECUNDARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="font-bold text-xs">
+              <Button size="sm" variant="outline" className="font-bold text-xs" onClick={exportarExpediente}>
                 <Download className="w-3.5 h-3.5 mr-1" />
                 Exportar
               </Button>
