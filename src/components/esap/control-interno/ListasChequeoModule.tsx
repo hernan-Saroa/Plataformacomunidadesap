@@ -219,14 +219,6 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
   const urlPreview = `${baseUrl}/${docId}/preview`;
   const urlDownload = `${baseUrl}/${docId}/download`;
   
-  console.log('📄 Documento mapeado:', {
-    id: docId,
-    nombre,
-    baseUrl,
-    urlPreview,
-    urlDownload
-  });
-  
   // Extraer extensión del tipoMime o del nombreArchivo
   const ext = getMimeTypeLabel(tipoMime);
   
