@@ -18,15 +18,19 @@
  * - Integración con auditorías
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Folder, FolderOpen, FileText, Upload, Download, Search, Eye,
   ChevronRight, ChevronDown, Plus, Filter, Calendar, User,
   Archive, CheckCircle2, AlertCircle, Clock,
-  File, FolderCheck, FileCheck
+  File, FolderCheck, FileCheck, Loader2, X
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
+
+// Servicio API
+import { controlInternoService } from '../../../services/api/controlInternoService';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
@@ -54,11 +58,57 @@ type FaseAuditoria =
 interface Documento {
   id: string;
   nombre: string;
-  tipo: string;
-  tamanio: string;
+  nombreArchivo: string;
+  tipo: string;            // tipoDocumento (categoria)
+  tipoMime: string;        // application/pdf, image/png, etc.
+  tamanio: string;         // formateado para UI
+  tamanioBytes: number;    // bytes reales
   fechaCreacion: string;
   autor: string;
   fase: FaseAuditoria;
+  rutaArchivo?: string;
+  descripcion?: string;
+}
+
+// Mapeo de MIME types a etiquetas legibles
+const TIPO_MIME_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/vnd.ms-excel': 'Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+  'application/msword': 'Word',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+  'application/vnd.ms-powerpoint': 'PowerPoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
+  'image/png': 'Imagen PNG',
+  'image/jpeg': 'Imagen JPEG',
+  'image/gif': 'Imagen GIF',
+  'text/plain': 'Texto',
+  'text/csv': 'CSV',
+};
+
+function getMimeTypeLabel(mimeType: string): string {
+  if (TIPO_MIME_LABELS[mimeType]) return TIPO_MIME_LABELS[mimeType];
+  if (mimeType.startsWith('image/')) return 'Imagen';
+  if (mimeType.startsWith('video/')) return 'Video';
+  if (mimeType.startsWith('audio/')) return 'Audio';
+  return 'Archivo';
+}
+
+// Formatear tamaño de archivo
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Obtener URL base para archivos
+function getFilesBaseUrl(): string {
+  const serviceUrl = getServiceUrl('control-institucional');
+  return API_MODE === 'gateway' 
+    ? `${serviceUrl}/control-institucional/api/v1`
+    : serviceUrl;
 }
 
 interface Expediente {
@@ -138,8 +188,30 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     responsable: 'Fernando Ávila',
     totalDocumentos: 6,
     documentos: [
-      { id: 'd1', nombre: 'Programa de Auditoría AU-2025-001.pdf', tipo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2025-01-15', autor: 'Fernando Ávila', fase: 'PLANIFICACION' },
-      { id: 'd2', nombre: 'Informe Final AU-2025-001.pdf', tipo: 'PDF', tamanio: '3.5 MB', fechaCreacion: '2025-02-20', autor: 'Fernando Ávila', fase: 'COMUNICACION_RESULTADOS' }
+      { 
+        id: 'd1', 
+        nombre: 'Programa de Auditoría AU-2025-001', 
+        nombreArchivo: 'Programa de Auditoría AU-2025-001.pdf',
+        tipo: 'documento_auditoria', 
+        tipoMime: 'application/pdf',
+        tamanio: '1.2 MB', 
+        tamanioBytes: 1258291,
+        fechaCreacion: '2025-01-15', 
+        autor: 'Fernando Ávila', 
+        fase: 'PLANIFICACION' 
+      },
+      { 
+        id: 'd2', 
+        nombre: 'Informe Final AU-2025-001', 
+        nombreArchivo: 'Informe Final AU-2025-001.pdf',
+        tipo: 'informe', 
+        tipoMime: 'application/pdf',
+        tamanio: '3.5 MB', 
+        tamanioBytes: 3670016,
+        fechaCreacion: '2025-02-20', 
+        autor: 'Fernando Ávila', 
+        fase: 'COMUNICACION_RESULTADOS' 
+      }
     ]
   },
   {
@@ -153,7 +225,18 @@ const EXPEDIENTES_MOCK: Expediente[] = [
     responsable: 'María Rodríguez',
     totalDocumentos: 3,
     documentos: [
-      { id: 'd13', nombre: 'Programa de Auditoría AU-2024-012.pdf', tipo: 'PDF', tamanio: '1.1 MB', fechaCreacion: '2024-09-10', autor: 'María Rodríguez', fase: 'PLANIFICACION' }
+      { 
+        id: 'd13', 
+        nombre: 'Programa de Auditoría AU-2024-012', 
+        nombreArchivo: 'Programa de Auditoría AU-2024-012.pdf',
+        tipo: 'documento_auditoria', 
+        tipoMime: 'application/pdf',
+        tamanio: '1.1 MB', 
+        tamanioBytes: 1153434,
+        fechaCreacion: '2024-09-10', 
+        autor: 'María Rodríguez', 
+        fase: 'PLANIFICACION' 
+      }
     ]
   }
 ];
@@ -529,51 +612,22 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
 
   const handleVerDocumento = (doc: Documento) => {
     setDocumentoVisualizando(doc);
-    
-    toast.info('Visualizar documento', {
-      description: doc.nombre,
-      duration: 2000,
-    });
-
-    console.log('👁️ Ver documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      fase: doc.fase,
-      faseNombre: fase.nombre,
-      autor: doc.autor,
-      fechaCreacion: doc.fechaCreacion,
-      accion: 'visualizar',
-      timestamp: new Date().toISOString()
-    });
-
-    // En producción: abrir visor de documentos o nueva pestaña
-    // window.open(`/api/expedientes/documentos/${doc.id}/preview`, '_blank');
   };
 
   const handleDescargarDocumento = (doc: Documento, e: React.MouseEvent) => {
     e.stopPropagation();
     
+    // Construir URL de descarga del backend
+    const baseUrl = getFilesBaseUrl();
+    const downloadUrl = `${baseUrl}/documentos/${doc.id}/download`;
+    
+    // Abrir descarga en nueva ventana
+    window.open(downloadUrl, '_blank');
+    
     toast.success('Descargando documento', {
-      description: `${doc.nombre} (${doc.tamanio})`,
+      description: `${doc.nombre || doc.nombreArchivo}`,
       duration: 3000,
     });
-
-    console.log('⬇️ Descargar documento:', {
-      documentoId: doc.id,
-      nombre: doc.nombre,
-      tipo: doc.tipo,
-      tamanio: doc.tamanio,
-      fase: doc.fase,
-      faseNombre: fase.nombre,
-      autor: doc.autor,
-      fechaCreacion: doc.fechaCreacion,
-      accion: 'descargar',
-      urlDescarga: `/api/expedientes/documentos/${doc.id}/download`,
-      timestamp: new Date().toISOString()
-    });
-
   };
 
   return (
@@ -623,9 +677,10 @@ function CarpetaFase({ fase, documentos, icon }: CarpetaFaseProps) {
                         <div className="flex items-center gap-3 flex-1">
                           <FileText className="w-4 h-4 text-gray-400" />
                           <div className="flex-1">
-                            <div className="text-sm text-gray-900">{doc.nombre}</div>
+                            <div className="text-sm text-gray-900">{doc.nombre || doc.nombreArchivo}</div>
                             <div className="text-xs text-gray-600">
-                              {doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
+                              <span className="text-blue-600 font-medium">{getMimeTypeLabel(doc.tipoMime)}</span>
+                              {' • '}{doc.tamanio} • {doc.fechaCreacion} • {doc.autor}
                             </div>
                           </div>
                         </div>
@@ -711,40 +766,76 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
   const [fase, setFase] = useState<FaseAuditoria>('PLANIFICACION');
   const [nombreDocumento, setNombreDocumento] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [progreso, setProgreso] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCargar = () => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setArchivo(file);
+      // Auto-completar nombre si está vacío
+      if (!nombreDocumento.trim()) {
+        setNombreDocumento(file.name.replace(/\.[^/.]+$/, '')); // Sin extensión
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      setArchivo(file);
+      if (!nombreDocumento.trim()) {
+        setNombreDocumento(file.name.replace(/\.[^/.]+$/, ''));
+      }
+    }
+  };
+
+  const handleCargar = async () => {
     // Validaciones
+    if (!archivo) {
+      toast.error('Selecciona un archivo para cargar');
+      return;
+    }
     if (!nombreDocumento.trim()) {
       toast.error('El nombre del documento es obligatorio');
       return;
     }
 
-    // Simular carga del documento
-    toast.success('Documento Cargado Exitosamente', {
-      description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
-      duration: 4000,
-    });
+    setCargando(true);
+    setProgreso(0);
 
-    console.log('📤 Cargar documento al expediente:', {
-      expedienteId: expediente.id,
-      codigoAuditoria: expediente.codigoAuditoria,
-      nombreAuditoria: expediente.nombreAuditoria,
-      documento: {
-        nombre: nombreDocumento,
-        fase: fase,
-        faseNombre: FASES_AUDITORIA.find(f => f.id === fase)?.nombre,
-        descripcion,
-        fechaCarga: new Date().toISOString(),
-        usuario: expediente.responsable
-      },
-      timestamp: new Date().toISOString()
-    });
+    try {
+      // Llamar al backend real
+      await controlInternoService.createDocumento(
+        archivo,
+        {
+          nombre: nombreDocumento.trim(),
+          descripcion: descripcion.trim() || undefined,
+          tipoDocumento: 'documento_auditoria',
+          etapa: fase,
+          auditoriaId: expediente.id,
+          subidoPor: expediente.responsable,
+        },
+        (progress) => setProgreso(progress)
+      );
 
-    // En producción: llamar al backend para cargar el documento
-    // POST /api/expedientes/${expediente.id}/documentos
-    // FormData con archivo + metadatos
+      toast.success('Documento Cargado Exitosamente', {
+        description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,
+        duration: 4000,
+      });
 
-    onCargar();
+      onCargar();
+    } catch (error: any) {
+      console.error('Error al cargar documento:', error);
+      toast.error('Error al cargar el documento', {
+        description: error.message || 'Intenta de nuevo',
+      });
+    } finally {
+      setCargando(false);
+    }
   };
 
   return (
@@ -833,20 +924,74 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
               />
             </div>
 
-            {/* Selector de Archivo (simulado) */}
+            {/* Selector de Archivo REAL */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Archivo
+                Archivo <span className="text-red-500">*</span>
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#1e5da8] transition-colors cursor-pointer">
-                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600 mb-1">
-                  Haz clic para seleccionar o arrastra el archivo aquí
-                </p>
-                <p className="text-xs text-gray-500">
-                  PDF, DOCX, XLSX, hasta 50MB
-                </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileChange}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.txt,.csv"
+                className="hidden"
+              />
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={(e) => e.preventDefault()}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+                  archivo 
+                    ? 'border-green-400 bg-green-50' 
+                    : 'border-gray-300 hover:border-[#1e5da8]'
+                }`}
+              >
+                {archivo ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <FileCheck className="w-8 h-8 text-green-600" />
+                    <div className="text-left">
+                      <p className="text-sm text-gray-900 font-medium">{archivo.name}</p>
+                      <p className="text-xs text-gray-600">{formatFileSize(archivo.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setArchivo(null);
+                      }}
+                      className="ml-2 p-1 text-gray-400 hover:text-red-500 rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-sm text-gray-600 mb-1">
+                      Haz clic para seleccionar o arrastra el archivo aquí
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      PDF, Word, Excel, PowerPoint, imágenes - hasta 50MB
+                    </p>
+                  </>
+                )}
               </div>
+              
+              {/* Barra de progreso */}
+              {cargando && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <span>Subiendo archivo...</span>
+                    <span>{progreso}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-[#1e5da8] h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${progreso}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -856,16 +1001,27 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
           <div className="flex justify-end gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              disabled={cargando}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               onClick={handleCargar}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2"
+              disabled={cargando || !archivo}
+              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Upload className="w-4 h-4" />
-              Cargar Documento
+              {cargando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Cargando...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Cargar Documento
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -885,6 +1041,39 @@ interface ModalVerDocumentoProps {
 }
 
 function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps) {
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Construir URLs del backend
+  const baseUrl = getFilesBaseUrl();
+  const previewUrl = `${baseUrl}/documentos/${documento.id}/preview`;
+  const downloadUrl = `${baseUrl}/documentos/${documento.id}/download`;
+
+  // Verificar si el documento se puede previsualizar
+  const tipoMime = documento.tipoMime || 'application/octet-stream';
+  const canPreview = tipoMime.startsWith('application/pdf') || 
+                     tipoMime.startsWith('image/');
+  
+  // Para archivos Office, usar Office Online Viewer
+  const isOfficeDoc = tipoMime.includes('word') || 
+                      tipoMime.includes('excel') || 
+                      tipoMime.includes('spreadsheet') ||
+                      tipoMime.includes('powerpoint') ||
+                      tipoMime.includes('presentation');
+
+  const handleDownload = () => {
+    // Abrir URL de descarga en nueva ventana
+    window.open(downloadUrl, '_blank');
+    toast.success('Descargando documento', {
+      description: `${documento.nombre || documento.nombreArchivo}`,
+      duration: 3000,
+    });
+  };
+
+  const handleOpenInNewTab = () => {
+    window.open(previewUrl, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-y-auto">
       <div 
@@ -892,76 +1081,171 @@ function ModalVerDocumento({ documento, fase, onClose }: ModalVerDocumentoProps)
         onClick={onClose}
       />
       
-      <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl z-10 my-8 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white px-6 py-4 rounded-t-xl flex-shrink-0">
-          <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
-          <p className="text-sm text-blue-100 mt-1">{documento.nombre}</p>
-        </div>
-
-        {/* Contenido con scroll */}
-        <div className="px-6 py-6 overflow-y-auto flex-1">
-          <div className="space-y-4">
-            {/* Información del Documento */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Fase del Proceso</div>
-                <div className="text-sm text-blue-900 font-medium">{fase.nombre}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Tipo de Documento</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.tipo}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Tamaño</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.tamanio}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-700 mb-1">Fecha de Creación</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.fechaCreacion}</div>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 col-span-2">
-                <div className="text-xs text-blue-700 mb-1">Autor</div>
-                <div className="text-sm text-blue-900 font-medium">{documento.autor}</div>
-              </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-medium">Vista Previa del Documento</h3>
+              <p className="text-sm text-blue-100 mt-1">{documento.nombre || documento.nombreArchivo}</p>
             </div>
-
-            {/* Simulación de Vista Previa */}
-            <div className="border-2 border-gray-200 rounded-lg bg-gray-50 p-12 text-center min-h-[400px] flex flex-col items-center justify-center">
-              <FileText className="w-20 h-20 text-gray-400 mb-4" />
-              <h4 className="text-lg text-gray-900 font-medium mb-2">Vista Previa del Documento</h4>
-              <p className="text-sm text-gray-600 mb-4 max-w-md">
-                En producción, aquí se mostrará el visor de documentos integrado para visualizar PDFs, Word, Excel, etc.
-              </p>
-              <div className="bg-white border border-gray-200 rounded-lg p-4 text-left max-w-md">
-                <p className="text-xs text-gray-600 mb-2">Endpoint de integración:</p>
-                <code className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">
-                  GET /api/expedientes/documentos/{documento.id}/preview
-                </code>
-              </div>
-            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
+        {/* Info del documento */}
+        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div>
+              <span className="text-gray-600">Fase:</span>
+              <span className="ml-2 text-gray-900 font-medium">{fase.nombre}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Tipo:</span>
+              <span className="ml-2 text-gray-900 font-medium">{getMimeTypeLabel(tipoMime)}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Tamaño:</span>
+              <span className="ml-2 text-gray-900 font-medium">{documento.tamanio}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Fecha:</span>
+              <span className="ml-2 text-gray-900 font-medium">{documento.fechaCreacion}</span>
+            </div>
+            {documento.autor && (
+              <div>
+                <span className="text-gray-600">Autor:</span>
+                <span className="ml-2 text-gray-900 font-medium">{documento.autor}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Vista Previa */}
+        <div className="flex-1 overflow-hidden min-h-[500px]">
+          {canPreview ? (
+            // PDF o Imagen: usar iframe/embed
+            <div className="w-full h-full relative">
+              {cargando && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <div className="text-center">
+                    <Loader2 className="w-8 h-8 text-[#1e5da8] mx-auto animate-spin mb-2" />
+                    <p className="text-sm text-gray-600">Cargando documento...</p>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                  <div className="text-center p-6">
+                    <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
+                    <p className="text-sm text-gray-700 mb-4">{error}</p>
+                    <button
+                      onClick={handleDownload}
+                      className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm"
+                    >
+                      Descargar archivo
+                    </button>
+                  </div>
+                </div>
+              )}
+              {tipoMime.startsWith('image/') ? (
+                <img
+                  src={previewUrl}
+                  alt={documento.nombre}
+                  className="w-full h-full object-contain p-4"
+                  onLoad={() => setCargando(false)}
+                  onError={() => {
+                    setCargando(false);
+                    setError('No se pudo cargar la imagen');
+                  }}
+                />
+              ) : (
+                <iframe
+                  src={previewUrl}
+                  className="w-full h-full border-0"
+                  onLoad={() => setCargando(false)}
+                  onError={() => {
+                    setCargando(false);
+                    setError('No se pudo cargar el documento');
+                  }}
+                  title={`Vista previa: ${documento.nombre}`}
+                />
+              )}
+            </div>
+          ) : isOfficeDoc ? (
+            // Archivos Office: mostrar info y opciones
+            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
+              <FileText className="w-20 h-20 text-[#1e5da8] mb-4" />
+              <h4 className="text-lg text-gray-900 font-medium mb-2">
+                Documento de {getMimeTypeLabel(tipoMime)}
+              </h4>
+              <p className="text-sm text-gray-600 mb-6 text-center max-w-md">
+                Los documentos de Office no se pueden mostrar directamente en el navegador.
+                Puedes descargarlo o abrirlo en Office Online.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDownload}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar
+                </button>
+                <a
+                  href={`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(previewUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Abrir en Office Online
+                </a>
+              </div>
+            </div>
+          ) : (
+            // Otros archivos: solo descargar
+            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50">
+              <File className="w-20 h-20 text-gray-400 mb-4" />
+              <h4 className="text-lg text-gray-900 font-medium mb-2">
+                {getMimeTypeLabel(tipoMime)}
+              </h4>
+              <p className="text-sm text-gray-600 mb-6 text-center max-w-md">
+                Este tipo de archivo no se puede previsualizar en el navegador.
+              </p>
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-colors text-sm flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Descargar archivo
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl">
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-3 rounded-b-xl flex-shrink-0">
           <div className="flex justify-between items-center">
             <div className="text-xs text-gray-600">
               ID: {documento.id}
             </div>
             <div className="flex gap-3">
+              {canPreview && (
+                <button
+                  onClick={handleOpenInNewTab}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
+                >
+                  <Eye className="w-4 h-4" />
+                  Abrir en nueva pestaña
+                </button>
+              )}
               <button
-                onClick={() => {
-                  toast.success('Descargando documento', {
-                    description: `${documento.nombre} (${documento.tamanio})`,
-                    duration: 3000,
-                  });
-                  console.log('⬇️ Descargar desde modal:', {
-                    documentoId: documento.id,
-                    nombre: documento.nombre,
-                    timestamp: new Date().toISOString()
-                  });
-                }}
+                onClick={handleDownload}
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm flex items-center gap-2"
               >
                 <Download className="w-4 h-4" />

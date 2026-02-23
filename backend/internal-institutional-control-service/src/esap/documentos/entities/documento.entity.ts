@@ -13,6 +13,7 @@ import { Hallazgo } from '../../hallazgos/entities/hallazgo.entity';
 import { PlanMejoramiento } from '../../planes-mejoramiento/entities/plan-mejoramiento.entity';
 
 export enum TipoDocumento {
+  // Tipos originales de auditoría
   OFICIO_ANUNCIO = 'oficio_anuncio',
   CARTA_REPRESENTACION = 'carta_representacion',
   CARTA_COMPROMISO = 'carta_compromiso',
@@ -25,6 +26,14 @@ export enum TipoDocumento {
   INFORME_FINAL = 'informe_final',
   INFORME_EJECUTIVO = 'informe_ejecutivo',
   EVIDENCIA_PLAN_MEJORAMIENTO = 'evidencia_plan_mejoramiento',
+  // Tipos para Biblioteca de Plantillas
+  PLANTILLA = 'plantilla',
+  OFICIO = 'oficio',
+  ACTA = 'acta',
+  INFORME = 'informe',
+  EVIDENCIA = 'evidencia',
+  FORMATO = 'formato',
+  GUIA = 'guia',
   OTRO = 'otro',
 }
 

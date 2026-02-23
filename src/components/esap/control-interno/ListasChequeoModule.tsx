@@ -23,9 +23,57 @@ import {
   FolderOpen, File, CheckCircle2, Clock, AlertCircle, Search,
   Filter, X, Save, Paperclip, List, Calendar, Users, Eye
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
-import { controlInternoService } from '../../../services/api/controlInternoService';
+import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONFIGURACIÓN DE URLs PARA DOCUMENTOS
+// ════════════════════════════════════════════════════════════════════════════
+const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
+const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
+
+/**
+ * Obtiene la URL base para documentos del backend
+ */
+const getDocumentosBaseUrl = () => {
+  return `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/documentos`;
+};
+
+/**
+ * Formatea bytes a KB/MB/GB legible
+ */
+const formatFileSize = (bytes: number | string): string => {
+  const num = typeof bytes === 'string' ? parseInt(bytes, 10) : bytes;
+  if (isNaN(num) || num === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(num) / Math.log(k));
+  return `${parseFloat((num / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+/**
+ * Obtiene etiqueta legible del tipo MIME
+ */
+const getMimeTypeLabel = (mimeType: string): string => {
+  const mimeMap: Record<string, string> = {
+    'application/pdf': 'PDF',
+    'application/msword': 'Word',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+    'application/vnd.ms-excel': 'Excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+    'application/vnd.ms-powerpoint': 'PowerPoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
+    'image/jpeg': 'JPEG',
+    'image/png': 'PNG',
+    'image/gif': 'GIF',
+    'text/plain': 'TXT',
+    'application/zip': 'ZIP',
+    'application/x-rar-compressed': 'RAR'
+  };
+  return mimeMap[mimeType] || mimeType?.split('/')[1]?.toUpperCase() || 'FILE';
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -41,10 +89,14 @@ interface DocumentoBiblioteca {
   descripcion: string;
   categoria: CategoriaDocumento;
   archivoUrl: string;
+  urlPreview: string;  // URL del endpoint /documentos/{id}/preview
+  urlDownload: string; // URL del endpoint /documentos/{id}/download
   fechaSubida: string;
   subidoPor: string;
   tamano: string;
   extension: string;
+  tipoMime: string;    // MIME type real del archivo
+  nombreArchivo: string; // Nombre original del archivo con extensión
   descargas: number;
   file?: File;
 }
@@ -152,17 +204,37 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
   const nombre = doc?.nombre || doc?.titulo || 'Documento sin nombre';
   const descripcion = doc?.descripcion || '';
   const tipo = doc?.tipoDocumento || doc?.tipo || doc?.categoria || '';
-  const ext = (doc?.extension || doc?.mimeType?.split('/')[1] || (nombre.includes('.') ? nombre.split('.').pop() : '') || 'FILE').toString().toUpperCase();
+  const tipoMime = doc?.tipoMime || doc?.mimeType || 'application/octet-stream';
+  const nombreArchivo = doc?.nombreArchivo || nombre;
+  const docId = doc?.id || `doc-${Date.now()}`;
+  
+  // Construir URLs reales del backend para preview/download
+  const baseUrl = getDocumentosBaseUrl();
+  const urlPreview = `${baseUrl}/${docId}/preview`;
+  const urlDownload = `${baseUrl}/${docId}/download`;
+  
+  // Extraer extensión del tipoMime o del nombreArchivo
+  const ext = getMimeTypeLabel(tipoMime);
+  
+  // Formatear tamaño desde tamanioBytes
+  const tamano = doc?.tamanioBytes 
+    ? formatFileSize(doc.tamanioBytes)
+    : doc?.tamano || doc?.fileSizeFormatted || 'N/A';
+  
   return {
-    id: doc?.id || `doc-${Date.now()}`,
+    id: docId,
     nombre,
     descripcion,
     categoria: mapApiTipoToCategoria(tipo),
     archivoUrl: doc?.archivoUrl || doc?.url || doc?.fileUrl || doc?.rutaArchivo || '#',
+    urlPreview,
+    urlDownload,
     fechaSubida: typeof fecha === 'string' ? fecha : new Date(fecha).toISOString(),
     subidoPor: doc?.subidoPor || doc?.createdBy || doc?.usuario || 'Sistema',
-    tamano: doc?.tamano || doc?.fileSizeFormatted || (doc?.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : 'N/A'),
+    tamano,
     extension: ext,
+    tipoMime,
+    nombreArchivo,
     descargas: Number(doc?.descargas || doc?.downloads || 0)
   };
 };
@@ -191,13 +263,14 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
   };
   const etapa = tipoToEtapa[lista?.tipo] || tipoToEtapa[lista?.etapaKanban] || 'PLANEACION';
 
-  // ✅ Reconstruir fasesImpactadas basándose en el tipo del backend
+  // ✅ Reconstruir fasesImpactadas desde los campos del backend
+  // Si el backend tiene los campos específicos de fase, usarlos; si no, inferir del tipo
   const tipoLower = (lista?.tipo || '').toLowerCase();
   const fasesImpactadas = {
-    planeacion: tipoLower === 'planeacion',
-    ejecucion: tipoLower === 'ejecucion',
-    comunicacion: tipoLower === 'comunicacion',
-    seguimiento: tipoLower === 'seguimiento'
+    planeacion: lista?.fasePlaneacion ?? (tipoLower === 'planeacion'),
+    ejecucion: lista?.faseEjecucion ?? (tipoLower === 'ejecucion'),
+    comunicacion: lista?.faseComunicacion ?? (tipoLower === 'comunicacion'),
+    seguimiento: lista?.faseSeguimiento ?? (tipoLower === 'seguimiento')
   };
 
   return {
@@ -210,7 +283,7 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     creadoPor: lista?.creadoPor || lista?.createdBy || 'Sistema',
     fechaCreacion: lista?.createdAt || lista?.fechaCreacion || new Date().toISOString(),
     ultimaModificacion: lista?.updatedAt || lista?.ultimaModificacion || new Date().toISOString(),
-    completitud: lista?.completitud || (items.length > 0 ? Math.round(items.filter((i: any) => i.completado).length / items.length * 100) : 0),
+    completitud: lista?.completitud || lista?.cumplimiento || (items.length > 0 ? Math.round(items.filter((i: any) => i.completado).length / items.length * 100) : 0),
     activa: lista?.activa !== false,
     auditoriaId: lista?.auditoriaId,
     auditoriaCodigoNombre: lista?.nombreAuditoria || lista?.auditoriaCodigoNombre,
@@ -377,10 +450,14 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
         )
       );
 
+      // ✅ Usar la URL real del endpoint de descarga del backend
+      const downloadUrl = documento.urlDownload;
+      console.log('📥 Descargando desde:', downloadUrl);
+      
       // Crear un elemento <a> temporal para forzar la descarga
       const link = document.createElement('a');
-      link.href = documento.archivoUrl;
-      link.download = `${documento.nombre}.${documento.extension.toLowerCase()}`;
+      link.href = downloadUrl;
+      link.download = documento.nombreArchivo || `${documento.nombre}.${documento.extension.toLowerCase()}`;
       link.target = '_blank';
       
       // Simular click en el link
@@ -389,7 +466,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, isLoading, loadError 
       document.body.removeChild(link);
 
       toast.success('✅ Descarga iniciada', {
-        description: `Se está descargando: ${documento.nombre}.${documento.extension}`,
+        description: `Se está descargando: ${documento.nombreArchivo || documento.nombre}`,
         duration: 4000
       });
     } catch (error) {
@@ -775,18 +852,28 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   const handleGuardarEdicion = async (listaEditada: Partial<ListaChequeo>) => {
     if (!listaAEditar) return;
     try {
-      const tipo =
-        listaEditada.etapaKanban === 'EJECUCION'
+      const tipo: ListaChequeoService['tipo'] =
+        (listaEditada.etapaKanban === 'EJECUCION'
           ? 'ejecucion'
           : listaEditada.etapaKanban === 'COMUNICACION'
           ? 'comunicacion'
-          : 'planeacion';
+          : listaEditada.etapaKanban === 'SEGUIMIENTO'
+          ? 'seguimiento'
+          : 'planeacion') as ListaChequeoService['tipo'];
 
       const actualizada = await controlInternoService.updateListaChequeo(listaAEditar.id, {
         nombre: listaEditada.nombre,
         descripcion: listaEditada.descripcion,
         tipo,
-        activa: listaEditada.activa ?? true
+        activa: listaEditada.activa ?? true,
+        // ✅ VINCULACIÓN CON AUDITORÍA
+        auditoriaId: listaEditada.auditoriaId,
+        nombreAuditoria: listaEditada.auditoriaCodigoNombre,
+        // ✅ FASES QUE IMPACTA LA LISTA
+        fasePlaneacion: listaEditada.fasesImpactadas?.planeacion || false,
+        faseEjecucion: listaEditada.fasesImpactadas?.ejecucion || false,
+        faseComunicacion: listaEditada.fasesImpactadas?.comunicacion || false,
+        faseSeguimiento: listaEditada.fasesImpactadas?.seguimiento || false,
       });
 
       setListas(prev => prev.map(l => 
@@ -841,12 +928,14 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
     };
 
     try {
-      const tipo =
-        nuevaLista.etapaKanban === 'EJECUCION'
+      const tipo: ListaChequeoService['tipo'] =
+        (nuevaLista.etapaKanban === 'EJECUCION'
           ? 'ejecucion'
           : nuevaLista.etapaKanban === 'COMUNICACION'
           ? 'comunicacion'
-          : 'planeacion';
+          : nuevaLista.etapaKanban === 'SEGUIMIENTO'
+          ? 'seguimiento'
+          : 'planeacion') as ListaChequeoService['tipo'];
 
       // Generar código único para la lista
       const codigoLista = `LC-${tipo.toUpperCase().substring(0, 4)}-${Date.now().toString().slice(-6)}`;
@@ -867,6 +956,11 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         // ✅ VINCULACIÓN CON AUDITORÍA
         auditoriaId: listaCompleta.auditoriaId,
         nombreAuditoria: listaCompleta.auditoriaCodigoNombre,
+        // ✅ FASES QUE IMPACTA LA LISTA
+        fasePlaneacion: listaCompleta.fasesImpactadas?.planeacion || false,
+        faseEjecucion: listaCompleta.fasesImpactadas?.ejecucion || false,
+        faseComunicacion: listaCompleta.fasesImpactadas?.comunicacion || false,
+        faseSeguimiento: listaCompleta.fasesImpactadas?.seguimiento || false,
       });
 
       setListas(prev => [mapApiListaToUI(creadaApi), ...prev]);
@@ -1131,6 +1225,7 @@ function TarjetaListaChequeo({ lista, onVer, onEditar, onEliminar }: TarjetaList
   const colorEtapa = {
     'PLANEACION': { bg: 'bg-green-100', text: 'text-green-700' },
     'EJECUCION': { bg: 'bg-purple-100', text: 'text-purple-700' },
+    'COMUNICACION': { bg: 'bg-cyan-100', text: 'text-cyan-700' },
     'SEGUIMIENTO': { bg: 'bg-blue-100', text: 'text-blue-700' },
     'CIERRE': { bg: 'bg-red-100', text: 'text-red-700' }
   }[lista.etapaKanban] || { bg: 'bg-gray-100', text: 'text-gray-700' };
@@ -2030,11 +2125,52 @@ function ModalVistaPrevia({ documento, onClose }: ModalVistaPreviaProps) {
               Vista Previa
             </h3>
             <div className="flex items-center justify-center bg-white rounded-lg p-4">
-              <iframe
-                src={documento.archivoUrl}
-                className="w-full h-96 border-0 rounded"
-                title={`Vista previa de ${documento.nombre}`}
-              />
+              {/* ✅ Usar la URL real del endpoint de preview del backend */}
+              {documento.tipoMime?.startsWith('image/') ? (
+                <img
+                  src={documento.urlPreview}
+                  alt={documento.nombre}
+                  className="max-w-full max-h-96 object-contain rounded"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,...';
+                  }}
+                />
+              ) : documento.tipoMime === 'application/pdf' ? (
+                <iframe
+                  src={documento.urlPreview}
+                  className="w-full h-96 border-0 rounded"
+                  title={`Vista previa de ${documento.nombre}`}
+                />
+              ) : documento.tipoMime?.includes('word') || documento.tipoMime?.includes('excel') || documento.tipoMime?.includes('powerpoint') || documento.tipoMime?.includes('sheet') || documento.tipoMime?.includes('presentation') ? (
+                <div className="text-center py-8">
+                  <FileText className="w-16 h-16 text-blue-500 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">Vista previa no disponible para archivos Office</p>
+                  <a
+                    href={documento.urlDownload}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar para ver
+                  </a>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <File className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">Vista previa no disponible para este tipo de archivo</p>
+                  <p className="text-sm text-gray-500 mb-4">Tipo: {documento.tipoMime || 'Desconocido'}</p>
+                  <a
+                    href={documento.urlDownload}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar archivo
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2247,15 +2383,22 @@ function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
     // El nombre es el nombre del archivo sin extensión
     const nombreDocumento = archivo.name.replace(/\.[^/.]+$/, '');
 
+    // El tipoMime se obtiene del archivo
+    const tipoMime = archivo.type || 'application/octet-stream';
+    
     const nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File } = {
       nombre: nombreDocumento,
       descripcion,
       categoria,
       archivoUrl,
+      urlPreview: archivoUrl, // Temporalmente usa el blob URL, se actualizará después del upload
+      urlDownload: archivoUrl,
       fechaSubida: new Date().toISOString(),
       subidoPor: 'Usuario Actual', // En producción vendría del contexto de auth
       tamano: formatFileSize(archivo.size),
-      extension: getFileExtension(archivo.name),
+      extension: getMimeTypeLabel(tipoMime),
+      tipoMime,
+      nombreArchivo: archivo.name,
       file: archivo
     };
 

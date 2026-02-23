@@ -384,6 +384,13 @@ export class ListasChequeoService {
   async findByAuditoria(auditoriaId: string): Promise<ListaChequeo[]> {
     console.log(`[ListasChequeo] Buscando listas para auditoría ${auditoriaId}`);
 
+    // Validar que el auditoriaId sea un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.log(`[ListasChequeo] ⚠️ auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return [];
+    }
+
     // Buscar listas que tienen esta auditoría vinculada directamente
     const listas = await this.listaChequeoRepository.find({
       where: {
