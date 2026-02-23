@@ -123,6 +123,13 @@ export function VisorPDFCertificado({
       .trim();
   };
 
+  const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) => {
+    const left = normalizarTexto(String(a || '').replace(/\u00a0/g, ' ').trim());
+    const right = normalizarTexto(String(b || '').replace(/\u00a0/g, ' ').trim());
+    if (!left || !right) return false;
+    return left === right;
+  };
+
   const esDocente = (value: string) => /\bdocen\w*\b|\bdoc\b/.test(normalizarTexto(value));
 
   const normalizarMonto = (value?: string | number | null) => {
@@ -322,6 +329,13 @@ export function VisorPDFCertificado({
       certificado.position_location ||
       '',
     );
+    const hasGrupoVariable = /\[GRUPO\]/i.test(html || '');
+    const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(html || '');
+    const shouldHideGrupo =
+      hasGrupoVariable &&
+      hasDependenciaVariable &&
+      sonValoresPlantillaEquivalentes(grupoVariable, dato7);
+    const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
     const cargoVariable = construirCargoVariable(
       requestData?.career_category || (certificado as any)?.career_category || certificado.empleado.cargo || '',
       requestData?.cod_cargo ||
@@ -351,7 +365,7 @@ export function VisorPDFCertificado({
       '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
       '[TIPO_DATO]': cargoDato6,
-      '[GRUPO]': grupoVariable,
+      '[GRUPO]': grupoVariableResolved,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
       '[DEPENDENCIA]': dato7,

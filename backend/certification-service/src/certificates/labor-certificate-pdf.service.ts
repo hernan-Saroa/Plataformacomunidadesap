@@ -215,6 +215,13 @@ export class LaborCertificatePdfService {
     return Boolean(value) && /^0+$/.test(value);
   }
 
+  private areEquivalentTemplateValues(a?: string | null, b?: string | null): boolean {
+    const left = this.normalizeSearchText(this.normalizeSpaces(a));
+    const right = this.normalizeSearchText(this.normalizeSpaces(b));
+    if (!left || !right) return false;
+    return left === right;
+  }
+
   private buildCargoVariable(
     careerCategory?: string | null,
     codCargo?: string | number | null,
@@ -479,6 +486,13 @@ export class LaborCertificatePdfService {
 
     const fechaVinculacion = this.formatDate(certificate.hiring_date);
     const fechaExpedicion = this.formatDate(certificate.issue_date || new Date());
+    const hasGrupoVariable = /\[GRUPO\]/i.test(templateHtml || '');
+    const hasDependenciaVariable = /\[DEPENDENCIA\]/i.test(templateHtml || '');
+    const shouldHideGrupo =
+      hasGrupoVariable &&
+      hasDependenciaVariable &&
+      this.areEquivalentTemplateValues(grupoVariable, dato7);
+    const grupoVariableResolved = shouldHideGrupo ? '' : grupoVariable;
 
     const replacements: Record<string, string> = {
       '[DATO1]': fullName,
@@ -494,7 +508,7 @@ export class LaborCertificatePdfService {
       '[CARGO]': cargoVariable,
       '[CARGO DATO6]': cargoDato6,
       '[TIPO_DATO]': cargoDato6,
-      '[GRUPO]': grupoVariable,
+      '[GRUPO]': grupoVariableResolved,
       '[UBICACIÓN]': dato7,
       '[UBICACION]': dato7,
       '[DEPENDENCIA]': dato7,

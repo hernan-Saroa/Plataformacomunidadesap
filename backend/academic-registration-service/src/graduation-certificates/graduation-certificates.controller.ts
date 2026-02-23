@@ -18,39 +18,147 @@ import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/public.decorator';
 
+type ValidationGeoContext = {
+  geoCountry?: string;
+  geoRegion?: string;
+  geoCity?: string;
+  geoTimezone?: string;
+};
+
+const isIpLike = (value: string): boolean => {
+  if (!value) return false;
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(value)) return true;
+  return value.includes(':');
+};
+
+const normalizeSingleIp = (raw?: string): string | null => {
+  if (!raw) return null;
+  let normalized = String(raw).trim();
+  if (!normalized) return null;
+
+  if (normalized.toLowerCase().startsWith('for=')) {
+    normalized = normalized.slice(4).trim();
+  }
+
+  normalized = normalized.replace(/^"+|"+$/g, '');
+  normalized = normalized.split(';')[0]?.trim() || normalized;
+
+  if (normalized.startsWith('[') && normalized.includes(']')) {
+    normalized = normalized.slice(1, normalized.indexOf(']'));
+  }
+
+  normalized = normalized.replace(/^::ffff:/i, '');
+
+  if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+    normalized = normalized.split(':')[0];
+  }
+
+  if (!isIpLike(normalized)) return null;
+  return normalized || null;
+};
+
+const isPrivateIp = (ip: string): boolean => {
+  if (!ip) return true;
+  const lower = ip.toLowerCase();
+  if (
+    lower === '::1' ||
+    lower === '::' ||
+    lower.startsWith('fc') ||
+    lower.startsWith('fd') ||
+    lower.startsWith('fe80')
+  ) {
+    return true;
+  }
+
+  const parts = ip.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) {
+    return false;
+  }
+
+  const [a, b] = parts;
+  if (a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+
+  return false;
+};
+
+const parseIpHeader = (value?: string | string[]): string[] => {
+  const raw = Array.isArray(value) ? value.join(',') : value || '';
+  return String(raw)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 const getClientIp = (req: Request): string | undefined => {
-  const forwarded = req.headers['x-forwarded-for'];
-  const clientIpHeader = req.headers['x-client-ip'];
-  const cfConnectingIp = req.headers['cf-connecting-ip'];
-  const realIpHeader = req.headers['x-real-ip'];
+  const candidates = [
+    ...parseIpHeader(req.headers['x-forwarded-for']),
+    ...parseIpHeader(req.headers.forwarded),
+    ...parseIpHeader(req.headers['cf-connecting-ip']),
+    ...parseIpHeader(req.headers['x-real-ip']),
+    ...parseIpHeader(req.headers['x-client-ip']),
+    ...(Array.isArray(req.ips) ? req.ips.map((item) => String(item || '').trim()) : []),
+    typeof req.ip === 'string' ? req.ip.trim() : '',
+    req.socket?.remoteAddress || '',
+  ]
+    .map((candidate) => normalizeSingleIp(candidate))
+    .filter((candidate): candidate is string => Boolean(candidate));
 
-  const forwardedIp = Array.isArray(forwarded)
-    ? forwarded[0]
-    : typeof forwarded === 'string'
-      ? forwarded.split(',')[0]
-      : '';
-  const clientIp = Array.isArray(clientIpHeader) ? clientIpHeader[0] : clientIpHeader;
-  const cfIp = Array.isArray(cfConnectingIp) ? cfConnectingIp[0] : cfConnectingIp;
-  const realIp = Array.isArray(realIpHeader) ? realIpHeader[0] : realIpHeader;
-
-  let ip: string | undefined =
-    forwardedIp?.trim() ||
-    (typeof clientIp === 'string' ? clientIp.trim() : '') ||
-    (typeof cfIp === 'string' ? cfIp.trim() : '') ||
-    (typeof realIp === 'string' ? realIp.trim() : '') ||
-    (typeof req.ip === 'string' ? req.ip : '') ||
-    req.socket?.remoteAddress ||
-    undefined;
-
-  if (ip && ip.startsWith('::ffff:')) {
-    ip = ip.slice(7);
+  if (!candidates.length) {
+    return undefined;
   }
 
-  if (ip && ip.includes('.') && ip.includes(':')) {
-    ip = ip.split(':')[0];
-  }
+  const publicIp = candidates.find((candidate) => !isPrivateIp(candidate));
+  return publicIp || candidates[0];
+};
 
-  return ip;
+const pickHeader = (req: Request, ...headerNames: string[]): string | undefined => {
+  for (const headerName of headerNames) {
+    const value = req.headers[headerName];
+    const parsed = Array.isArray(value)
+      ? value.find((item) => String(item || '').trim())
+      : value;
+    const trimmed = String(parsed || '').trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
+};
+
+const getGeoContext = (req: Request): ValidationGeoContext => {
+  const geoCountry = pickHeader(
+    req,
+    'cf-ipcountry',
+    'x-vercel-ip-country',
+    'x-country',
+    'x-country-code',
+    'x-geo-country',
+  );
+  const geoRegion = pickHeader(
+    req,
+    'x-vercel-ip-country-region',
+    'x-region',
+    'x-geo-region',
+  );
+  const geoCity = pickHeader(req, 'x-vercel-ip-city', 'x-city', 'x-geo-city');
+  const geoTimezone = pickHeader(
+    req,
+    'x-vercel-ip-timezone',
+    'x-timezone',
+    'x-geo-timezone',
+  );
+
+  return {
+    ...(geoCountry ? { geoCountry } : {}),
+    ...(geoRegion ? { geoRegion } : {}),
+    ...(geoCity ? { geoCity } : {}),
+    ...(geoTimezone ? { geoTimezone } : {}),
+  };
 };
 
 @Controller('certificates')
@@ -68,6 +176,7 @@ export class GraduationCertificatesController {
    * Verificar si un graduado existe en la base de datos
    */
   @Post('autoservicio/verificar-graduado')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async verificarGraduado(
     @Body()
@@ -116,6 +225,7 @@ export class GraduationCertificatesController {
    * Generar código de validación y enviar por email
    */
   @Post('autoservicio/generar-codigo')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async generarCodigoValidacion(
     @Body()
@@ -139,6 +249,7 @@ export class GraduationCertificatesController {
    * Validar código y generar certificado automáticamente
    */
   @Post('autoservicio/validar-codigo')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async validarCodigoYGenerarCertificado(
     @Body() body: { idNumber: string; idIssueDate?: string; codigo: string },
@@ -180,11 +291,13 @@ export class GraduationCertificatesController {
   ) {
     const ipAddress = getClientIp(req);
     const userAgent = req.headers['user-agent'];
+    const geoContext = getGeoContext(req);
 
     return await this.service.validarPorQR(
       body.verificationCode,
       ipAddress,
       userAgent,
+      geoContext,
     );
   }
 
@@ -193,6 +306,7 @@ export class GraduationCertificatesController {
    * Validar un certificado por número de certificado
    */
   @Post('validacion/numero')
+  @Public()
   @HttpCode(HttpStatus.OK)
   async validarPorNumero(
     @Body() body: { certificateNumber: string },
@@ -200,11 +314,13 @@ export class GraduationCertificatesController {
   ) {
     const ipAddress = getClientIp(req);
     const userAgent = req.headers['user-agent'];
+    const geoContext = getGeoContext(req);
 
     return await this.service.validarPorNumero(
       body.certificateNumber,
       ipAddress,
       userAgent,
+      geoContext,
     );
   }
 
@@ -213,6 +329,7 @@ export class GraduationCertificatesController {
    * Obtener estadísticas públicas de certificados
    */
   @Get('validacion/estadisticas')
+  @Public()
   async obtenerEstadisticas() {
     // TODO: Implementar estadísticas
     return {

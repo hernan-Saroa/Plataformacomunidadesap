@@ -52,7 +52,7 @@ export class AuthService {
 
     const accessToken = await this.jwtService.signAsync(payload, {
       expiresIn: '1h',
-      secret: process.env.JWT_SECRET || 'dev-secret-esap',
+      secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
     });
     
     const modules: string[] = [];

@@ -78,7 +78,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   const [nitLookupStatus, setNitLookupStatus] = useState<'idle' | 'found' | 'not_found' | 'error'>('idle');
   const [nitLookupMessage, setNitLookupMessage] = useState('');
 
-  // 🔍 Función para capturar NIT (consulta al salir del campo o Enter)
+  // 🔍 Función para capturar NIT (consulta al salir del campo, Enter o Tab por blur)
   const handleNITChange = (nit: string) => {
     const digitsOnly = nit.replace(/\D+/g, '');
     setCompanyNIT(digitsOnly);
@@ -90,9 +90,14 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
   };
 
   const handleNITLookup = async (rawNit?: string) => {
-    const nitValue = (rawNit ?? companyNIT).trim();
+    if (isLoadingCompanyData) {
+      return;
+    }
 
-    if (nitValue.length < 9) {
+    const nitValue = (rawNit ?? companyNIT).replace(/\D+/g, '').trim();
+
+    // Hay NITs válidos de longitud corta en datos abiertos; no exigir 9+ dígitos.
+    if (nitValue.length < 5) {
       setRequesterName('');
       setCompanyDataLoaded(false);
       setNitLookupStatus('idle');
@@ -816,11 +821,17 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                             type="text"
                             value={companyNIT}
                             onChange={(e) => handleNITChange(e.target.value)}
-                            onBlur={() => handleNITLookup()}
+                            onBlur={() => {
+                              void handleNITLookup();
+                            }}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
-                                handleNITLookup();
+                                void handleNITLookup();
+                                return;
+                              }
+                              if (e.key === 'Tab') {
+                                void handleNITLookup();
                               }
                             }}
                             placeholder="Ej: 9001234567"

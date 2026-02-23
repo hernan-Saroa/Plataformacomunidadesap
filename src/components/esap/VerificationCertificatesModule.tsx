@@ -150,6 +150,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+  const isLoadingCertificatesRef = useRef(false);
+  const lastCertificatesLoadAtRef = useRef(0);
+  const FOCUS_RELOAD_COOLDOWN_MS = 20000;
   const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -275,6 +278,11 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   }, []);
 
   const loadCertificates = useCallback(async () => {
+    if (isLoadingCertificatesRef.current) {
+      return;
+    }
+
+    isLoadingCertificatesRef.current = true;
     setIsLoading(true);
     try {
       const [certificatesResponse, requestsResponse, validationsResponse, downloadsResponse] = await Promise.all([
@@ -456,6 +464,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       setCertificates([]);
     } finally {
       setIsLoading(false);
+      isLoadingCertificatesRef.current = false;
+      lastCertificatesLoadAtRef.current = Date.now();
     }
   }, []);
 
@@ -465,6 +475,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   useEffect(() => {
     const handleFocus = () => {
+      const elapsedSinceLastLoad = Date.now() - lastCertificatesLoadAtRef.current;
+      if (elapsedSinceLastLoad < FOCUS_RELOAD_COOLDOWN_MS) {
+        return;
+      }
       void loadCertificates();
     };
 
