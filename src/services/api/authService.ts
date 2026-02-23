@@ -182,11 +182,14 @@ class AuthService {
 
   private saveTokens(accessToken: string, refreshToken: string): void {
     localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
+    // Compatibilidad con cliente legacy que usa otra clave.
+    localStorage.setItem('esap_access_token', accessToken);
     localStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
   }
 
   private saveAccessToken(accessToken: string): void {
     localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
+    localStorage.setItem('esap_access_token', accessToken);
   }
 
   private saveUserData(user: AuthUser): void {
@@ -194,7 +197,10 @@ class AuthService {
   }
 
   private getAccessToken(): string | null {
-    return localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    return (
+      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
+      localStorage.getItem('esap_access_token')
+    );
   }
 
   private getRefreshToken(): string | null {
@@ -203,6 +209,7 @@ class AuthService {
 
   private clearAuthData(): void {
     localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    localStorage.removeItem('esap_access_token');
     localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();

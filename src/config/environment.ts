@@ -388,9 +388,21 @@ export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
   };
 
   if (includeAuth) {
-    const token = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const primaryToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const legacyToken = localStorage.getItem('esap_access_token');
+    const token = primaryToken || legacyToken;
+
+    // Compatibilidad con módulos legados: migrar token antiguo a la clave nueva.
+    if (!primaryToken && legacyToken) {
+      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
+    }
+
     if (token) {
       headers[config.AUTH.TOKEN_HEADER] = `${config.AUTH.TOKEN_PREFIX} ${token}`;
+      // Header redundante para entornos con proxy/SSL que no reenvían Authorization.
+      if (API_MODE !== 'direct') {
+        headers['X-Access-Token'] = token;
+      }
     }
   }
 

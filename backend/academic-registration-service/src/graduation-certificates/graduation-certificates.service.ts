@@ -25,6 +25,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 
+type ValidationGeoContext = {
+  geoCountry?: string;
+  geoRegion?: string;
+  geoCity?: string;
+  geoTimezone?: string;
+};
+
 @Injectable()
 export class GraduationCertificatesService {
   constructor(
@@ -682,7 +689,8 @@ export class GraduationCertificatesService {
   async validarPorQR(
     verificationCode: string,
     ipAddress?: string,
-    userAgent?: string,
+    userAgent?: string | string[],
+    geoContext?: ValidationGeoContext,
   ) {
     const certificate = await this.certificateRepository.findOne({
       where: { verificationCode },
@@ -702,13 +710,16 @@ export class GraduationCertificatesService {
       valid = true;
     }
 
-    // Registrar validación
+    // Registrar validacion
     if (certificate) {
-      const location = this.resolveLocation(ipAddress) ?? undefined;
+      const normalizedIp = this.normalizeIpAddress(ipAddress);
+      const normalizedUserAgent = this.normalizeUserAgent(userAgent);
+      const location =
+        this.resolveLocation(normalizedIp, geoContext) ?? undefined;
       const validation = this.validationRepository.create({
         certificateId: certificate.id,
-        ipAddress,
-        userAgent,
+        ipAddress: normalizedIp,
+        userAgent: normalizedUserAgent,
         location,
         result,
       });
@@ -729,7 +740,8 @@ export class GraduationCertificatesService {
   async validarPorNumero(
     certificateNumber: string,
     ipAddress?: string,
-    userAgent?: string,
+    userAgent?: string | string[],
+    geoContext?: ValidationGeoContext,
   ) {
     const certificate = await this.certificateRepository.findOne({
       where: { certificateNumber },
@@ -749,13 +761,16 @@ export class GraduationCertificatesService {
       valid = true;
     }
 
-    // Registrar validación
+    // Registrar validacion
     if (certificate) {
-      const location = this.resolveLocation(ipAddress) ?? undefined;
+      const normalizedIp = this.normalizeIpAddress(ipAddress);
+      const normalizedUserAgent = this.normalizeUserAgent(userAgent);
+      const location =
+        this.resolveLocation(normalizedIp, geoContext) ?? undefined;
       const validation = this.validationRepository.create({
         certificateId: certificate.id,
-        ipAddress,
-        userAgent,
+        ipAddress: normalizedIp,
+        userAgent: normalizedUserAgent,
         location,
         result,
       });
@@ -2145,7 +2160,7 @@ export class GraduationCertificatesService {
   async registrarDescarga(
     certificateId: string,
     ipAddress?: string,
-    userAgent?: string,
+    userAgent?: string | string[],
   ) {
     const certificate = await this.certificateRepository.findOne({
       where: { id: certificateId },
@@ -2157,8 +2172,8 @@ export class GraduationCertificatesService {
 
     const download = this.downloadRepository.create({
       certificateId,
-      ipAddress,
-      userAgent,
+      ipAddress: this.normalizeIpAddress(ipAddress),
+      userAgent: this.normalizeUserAgent(userAgent),
     });
 
     await this.downloadRepository.save(download);
@@ -2166,22 +2181,29 @@ export class GraduationCertificatesService {
     return { mensaje: 'Descarga registrada' };
   }
 
-  private resolveLocation(ipAddress?: string): string | null {
-    if (!ipAddress) {
+  private resolveLocation(
+    ipAddress?: string,
+    geoContext?: ValidationGeoContext,
+  ): string | null {
+    const fromContext = this.resolveLocationFromContext(geoContext);
+    if (fromContext) {
+      return fromContext;
+    }
+
+    const normalizedIp = this.normalizeIpAddress(ipAddress);
+    if (!normalizedIp) {
       return null;
     }
 
-    const trimmed = ipAddress.trim().replace(/^::ffff:/, '');
-
-    if (!trimmed || trimmed === '::1' || trimmed === '127.0.0.1') {
+    if (normalizedIp === '::1' || normalizedIp === '127.0.0.1') {
       return 'Localhost';
     }
 
-    if (this.isPrivateIpv4(trimmed)) {
+    if (this.isPrivateIp(normalizedIp)) {
       return 'Red privada';
     }
 
-    const geo = geoip.lookup(trimmed);
+    const geo = geoip.lookup(normalizedIp);
     if (!geo) {
       return null;
     }
@@ -2190,16 +2212,114 @@ export class GraduationCertificatesService {
     return parts.length ? parts.join(', ') : null;
   }
 
-  private isPrivateIpv4(ip: string): boolean {
+  private resolveLocationFromContext(context?: ValidationGeoContext): string | null {
+    if (!context) {
+      return null;
+    }
+
+    const city = this.normalizeGeoText(context.geoCity);
+    const region = this.normalizeGeoText(context.geoRegion);
+    const country = this.normalizeGeoText(context.geoCountry);
+
+    const parts = [city, region, country].filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  private normalizeGeoText(value?: string): string | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) return undefined;
+    if (
+      /^(unknown|desconocido|n\/a|na|null|undefined|localhost|local|xx|t1)$/i.test(
+        normalized,
+      )
+    ) {
+      return undefined;
+    }
+    return normalized;
+  }
+
+  private normalizeUserAgent(userAgent?: string | string[]): string | undefined {
+    if (Array.isArray(userAgent)) {
+      const first = userAgent.find((item) => String(item || '').trim());
+      const trimmed = String(first || '').trim();
+      return trimmed || undefined;
+    }
+
+    const trimmed = String(userAgent || '').trim();
+    return trimmed || undefined;
+  }
+
+  private isIpLike(value: string): boolean {
+    if (!value) return false;
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(value)) return true;
+    return value.includes(':');
+  }
+
+  private normalizeSingleIp(raw?: string): string | null {
+    if (!raw) return null;
+    let normalized = String(raw).trim();
+    if (!normalized) return null;
+
+    if (normalized.toLowerCase().startsWith('for=')) {
+      normalized = normalized.slice(4).trim();
+    }
+
+    normalized = normalized.replace(/^"+|"+$/g, '');
+    normalized = normalized.split(';')[0]?.trim() || normalized;
+
+    if (normalized.startsWith('[') && normalized.includes(']')) {
+      normalized = normalized.slice(1, normalized.indexOf(']'));
+    }
+
+    normalized = normalized.replace(/^::ffff:/i, '');
+
+    if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(normalized)) {
+      normalized = normalized.split(':')[0];
+    }
+
+    if (!this.isIpLike(normalized)) return null;
+    return normalized || null;
+  }
+
+  private normalizeIpAddress(ipAddress?: string): string | undefined {
+    if (!ipAddress) return undefined;
+
+    const candidates = String(ipAddress)
+      .split(',')
+      .map((item) => this.normalizeSingleIp(item))
+      .filter((item): item is string => Boolean(item));
+
+    if (!candidates.length) return undefined;
+
+    const publicIp = candidates.find((candidate) => !this.isPrivateIp(candidate));
+    return publicIp || candidates[0];
+  }
+
+  private isPrivateIp(ip: string): boolean {
+    if (!ip) return true;
+    const lower = ip.toLowerCase();
+    if (
+      lower === '::1' ||
+      lower === '::' ||
+      lower.startsWith('fc') ||
+      lower.startsWith('fd') ||
+      lower.startsWith('fe80')
+    ) {
+      return true;
+    }
+
     const octets = ip.split('.').map((part) => Number(part));
     if (octets.length !== 4 || octets.some((value) => Number.isNaN(value))) {
       return false;
     }
 
     const [a, b] = octets;
-    if (a === 10) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
     if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 198 && (b === 18 || b === 19)) return true;
     return false;
   }
 

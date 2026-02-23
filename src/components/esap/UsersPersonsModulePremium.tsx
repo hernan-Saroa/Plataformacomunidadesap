@@ -69,7 +69,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ T
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
 
 import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPasswordTracking"; // ✅ GESTIÓN DE CONTRASEÑAS
@@ -117,9 +117,13 @@ export function UsersPersonsModulePremium() {
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
+  const isMountedRef = useRef(true);
+  const latestLoadUsersRequestRef = useRef(0);
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
+    const requestId = ++latestLoadUsersRequestRef.current;
+
     try {
       setLoading(true);
       const response = await usersService.getUsers({
@@ -172,11 +176,19 @@ export function UsersPersonsModulePremium() {
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
 
+      if (!isMountedRef.current || requestId !== latestLoadUsersRequestRef.current) {
+        return;
+      }
+
       setUsers(mappedUsers);
       setTotalUsers(response.meta.total);
       setTotalActiveUsers(response.meta.totalActive);
       setTotalBlockedUsers(response.meta.totalBlocked);
     } catch (error) {
+      if (!isMountedRef.current || requestId !== latestLoadUsersRequestRef.current) {
+        return;
+      }
+
       console.error('Error al cargar usuarios:', error);
       toast.error('Error al cargar usuarios', {
         description: 'No se pudieron cargar los usuarios. Usando datos de prueba.'
@@ -184,9 +196,17 @@ export function UsersPersonsModulePremium() {
       // En caso de error, usamos los datos mock
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestId === latestLoadUsersRequestRef.current) {
+        setLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
   useEffect(() => {

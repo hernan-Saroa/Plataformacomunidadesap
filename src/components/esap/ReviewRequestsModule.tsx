@@ -41,6 +41,7 @@ import graduadosService, { SolicitudCertificadoGraduado } from '../../services/a
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '../../enums/permissions';
+import type { Seccional, Sede } from '../../services/api/types';
 
 type ApprovalForm = {
   fullName: string;
@@ -85,6 +86,7 @@ export function ReviewRequestsModule() {
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
   const [seccionalesOptions, setSeccionalesOptions] = useState<string[]>([]);
+  const [seccionalBySede, setSeccionalBySede] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<ReviewRequestStats>({
     total: 0,
     pending: 0,
@@ -148,6 +150,51 @@ export function ReviewRequestsModule() {
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
+
+  const normalizeKey = (value?: string) =>
+    (value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const normalizeName = (value?: string) => {
+    const normalized = (value || '').trim();
+    return normalized || '';
+  };
+
+  const getArrayFromUnknown = <T,>(source: unknown): T[] => {
+    if (Array.isArray(source)) return source as T[];
+    if (source && typeof source === 'object' && Array.isArray((source as { data?: unknown }).data)) {
+      return (source as { data?: T[] }).data || [];
+    }
+    return [];
+  };
+
+  const parseEstructuraCatalog = (source: unknown): { sedes: Sede[]; seccionales: Seccional[] } => {
+    if (!source || typeof source !== 'object') {
+      return { sedes: [], seccionales: [] };
+    }
+
+    const root = source as {
+      sedes?: unknown;
+      seccionales?: unknown;
+      data?: {
+        sedes?: unknown;
+        seccionales?: unknown;
+      };
+    };
+
+    const directSedes = getArrayFromUnknown<Sede>(root.sedes);
+    const directSeccionales = getArrayFromUnknown<Seccional>(root.seccionales);
+    const nestedSedes = getArrayFromUnknown<Sede>(root.data?.sedes);
+    const nestedSeccionales = getArrayFromUnknown<Seccional>(root.data?.seccionales);
+
+    return {
+      sedes: directSedes.length ? directSedes : nestedSedes,
+      seccionales: directSeccionales.length ? directSeccionales : nestedSeccionales,
+    };
+  };
 
   // Funciones auxiliares
   const getStatusBadge = (status: string) => {
@@ -317,13 +364,13 @@ export function ReviewRequestsModule() {
   const getApprovalFileChipClass = (file: File) => {
     const name = file.name.toLowerCase();
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
-    if (ext === 'pdf') return 'review-approval-chip--pdf';
-    if (ext === 'doc' || ext === 'docx') return 'review-approval-chip--word';
-    if (ext === 'xls' || ext === 'xlsx') return 'review-approval-chip--excel';
+    if (ext === 'pdf') return 'border-red-200 bg-red-50 text-red-700';
+    if (ext === 'doc' || ext === 'docx') return 'border-blue-200 bg-blue-50 text-blue-700';
+    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
-      return 'review-approval-chip--image';
+      return 'border-amber-200 bg-amber-50 text-amber-700';
     }
-    return 'review-approval-chip--generic';
+    return 'border-gray-200 bg-gray-50 text-gray-700';
   };
   const isAllowedFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
@@ -521,7 +568,7 @@ export function ReviewRequestsModule() {
   useEffect(() => {
     const intervalId = setInterval(() => {
       setTimeNow(Date.now());
-    }, 1000);
+    }, 30000);
 
     return () => {
       clearInterval(intervalId);
@@ -533,25 +580,57 @@ export function ReviewRequestsModule() {
 
     const loadCatalogs = async () => {
       try {
-        const [estructuraResponse, graduatesResponse] = await Promise.all([
-          estructuraService.obtenerEstructura().catch(() => null),
-          graduadosService.graduados.listarRegistroAcademico().catch(() => []),
-        ]);
+        const estructuraResponse = await estructuraService.obtenerEstructura().catch(() => null);
 
         if (!isMounted) return;
 
-        const sedes = estructuraResponse?.data?.sedes ?? [];
-        const seccionales = estructuraResponse?.data?.seccionales ?? [];
+        let { sedes, seccionales } = parseEstructuraCatalog(estructuraResponse);
+
+        if (!sedes.length || !seccionales.length) {
+          const [sedesResponse, seccionalesResponse] = await Promise.all([
+            estructuraService.listarSedes().catch(() => null),
+            estructuraService.listarSeccionales().catch(() => null),
+          ]);
+
+          if (!sedes.length) {
+            sedes = getArrayFromUnknown<Sede>(sedesResponse);
+          }
+          if (!seccionales.length) {
+            seccionales = getArrayFromUnknown<Seccional>(seccionalesResponse);
+          }
+        }
 
         const sedesList = sedes
-          .map((sede: any) => sede?.nomSede)
-          .filter((value: string | undefined) => Boolean(value));
+          .map((sede) => normalizeName(sede?.nomSede))
+          .filter(Boolean);
         const seccionalesList = seccionales
-          .map((seccional: any) => seccional?.nomSeccional)
-          .filter((value: string | undefined) => Boolean(value));
+          .map((seccional) => normalizeName(seccional?.nomSeccional))
+          .filter(Boolean);
 
-        setSedesOptions(Array.from(new Set(sedesList)).sort());
-        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort());
+        const seccionalNameById = new Map<number, string>();
+        seccionales.forEach((seccional) => {
+          if (!seccional?.idSeccional) return;
+          const name = normalizeName(seccional.nomSeccional);
+          if (name) {
+            seccionalNameById.set(seccional.idSeccional, name);
+          }
+        });
+
+        const territorialMap: Record<string, string> = {};
+        sedes.forEach((sede) => {
+          const sedeName = normalizeName(sede?.nomSede);
+          if (!sedeName) return;
+          const seccionalName =
+            normalizeName(sede?.seccional?.nomSeccional) ||
+            (sede?.idSeccional ? seccionalNameById.get(sede.idSeccional) || '' : '');
+          if (seccionalName) {
+            territorialMap[normalizeKey(sedeName)] = seccionalName;
+          }
+        });
+
+        setSedesOptions(Array.from(new Set(sedesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        setSeccionalesOptions(Array.from(new Set(seccionalesList)).sort((a, b) => a.localeCompare(b, 'es')));
+        setSeccionalBySede(territorialMap);
 
       } catch (error) {
         console.error('Error cargando catalogos de aprobacion:', error);
@@ -572,16 +651,49 @@ export function ReviewRequestsModule() {
     if (approvalForm.campus) {
       options.add(approvalForm.campus);
     }
-    return Array.from(options);
+    return Array.from(options).sort((a, b) => a.localeCompare(b, 'es'));
   }, [approvalForm.campus, sedesOptions]);
 
   const seccionalSelectOptions = useMemo(() => {
     const options = new Set<string>(seccionalesOptions);
+    const matchedSeccionalBySede = approvalForm.campus
+      ? seccionalBySede[normalizeKey(approvalForm.campus)]
+      : '';
+    if (matchedSeccionalBySede) {
+      options.add(matchedSeccionalBySede);
+    }
     if (approvalForm.seccionalName) {
       options.add(approvalForm.seccionalName);
     }
-    return Array.from(options);
-  }, [approvalForm.seccionalName, seccionalesOptions]);
+    const ordered = Array.from(options)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'es'));
+    if (matchedSeccionalBySede) {
+      return [matchedSeccionalBySede, ...ordered.filter((item) => item !== matchedSeccionalBySede)];
+    }
+    return ordered;
+  }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede, seccionalesOptions]);
+
+  useEffect(() => {
+    if (!approvalForm.campus || approvalForm.seccionalName) {
+      return;
+    }
+
+    const mappedSeccional = seccionalBySede[normalizeKey(approvalForm.campus)] || '';
+    if (!mappedSeccional) {
+      return;
+    }
+
+    setApprovalForm((prev) => {
+      if (prev.seccionalName) {
+        return prev;
+      }
+      return {
+        ...prev,
+        seccionalName: mappedSeccional,
+      };
+    });
+  }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede]);
 
   // Filtros
   const filteredRequests = requests.filter(request => {
@@ -597,6 +709,10 @@ export function ReviewRequestsModule() {
 
     return matchesSearch && matchesStatus;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
@@ -635,6 +751,14 @@ export function ReviewRequestsModule() {
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate || request.graduateDocumentIssueDate
       );
+      const detailData = detail as SolicitudCertificadoGraduado & {
+        campus?: string;
+        seccionalName?: string;
+        graduate?: {
+          campus?: string;
+          seccionalName?: string;
+        };
+      };
       const isCompanyRequester =
         detail.requesterType === 'COMPANY' || request.requester.type === 'empresa';
       const resolvedFullName =
@@ -669,8 +793,8 @@ export function ReviewRequestsModule() {
           ? (detail.programName || '').trim()
           : '',
         graduationDate,
-        campus: '',
-        seccionalName: '',
+        campus: detailData.campus || detailData.graduate?.campus || '',
+        seccionalName: detailData.seccionalName || detailData.graduate?.seccionalName || '',
         numRegistro: '',
         numFolio: '',
         numLibro: '',
@@ -1881,7 +2005,20 @@ export function ReviewRequestsModule() {
                     </label>
                     <select
                       value={approvalForm.campus}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, campus: e.target.value })}
+                      onChange={(e) => {
+                        const nextCampus = e.target.value;
+                        const mappedSeccional = nextCampus
+                          ? seccionalBySede[normalizeKey(nextCampus)] || ''
+                          : '';
+
+                        setApprovalForm((prev) => ({
+                          ...prev,
+                          campus: nextCampus,
+                          seccionalName: nextCampus
+                            ? mappedSeccional || ''
+                            : '',
+                        }));
+                      }}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
                     >
@@ -1916,20 +2053,25 @@ export function ReviewRequestsModule() {
                 </div>
 
                 <div className="space-y-2 border-t border-dashed border-gray-200 pt-3">
-                  <div className="review-approval-file-header">
-                    <div className="review-approval-file-picker">
+                  <div className="review-approval-file-header flex flex-wrap items-center justify-between gap-3">
+                    <div className="review-approval-file-picker flex items-center gap-2">
                       <input
                         id="approval-files-input"
                         type="file"
                         multiple
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                         onChange={handleApprovalFilesChange}
-                        className="review-approval-file-input"
+                        className="sr-only"
                         disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
                       />
                       <label
                         htmlFor="approval-files-input"
-                        className="review-approval-file-label"
+                        className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                          isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                            : 'cursor-pointer border-[#003DA5] bg-[#EFF6FF] text-[#003DA5] hover:bg-[#DBEAFE]'
+                        }`}
+                        aria-disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
                       >
                         Elegir archivos
                       </label>
@@ -1943,7 +2085,7 @@ export function ReviewRequestsModule() {
                       <p className="text-xs text-gray-600">
                         Archivos seleccionados: <span className="font-semibold">{approvalFiles.length}</span>
                       </p>
-                      <div className="review-approval-files">
+                      <div className="review-approval-files flex flex-wrap gap-2">
                         {approvalFiles.map((file, index) => (
                           <div
                             key={`${file.name}-${index}`}

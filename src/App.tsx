@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { useNavigate, Routes, Route } from 'react-router-dom';
+import { useNavigate, Routes, Route, Navigate } from 'react-router-dom';
 import { LandingPage } from './components/portal/LandingPage';
 import { LoginPage } from './components/portal/LoginPage';
 import { PortalDashboard } from './components/portal/PortalDashboard';
@@ -313,7 +313,12 @@ export default function App() {
       });
     };
 
-    const authToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const authToken =
+      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
+      localStorage.getItem('esap_access_token');
+    if (authToken && !localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
+      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
+    }
     const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
     let sesionGuardada = localStorage.getItem('esap-sesion-activa');
     if (authToken && storedAuthUser) {
@@ -379,11 +384,20 @@ export default function App() {
     }
   }, [usuarioActual, vistaActual]);
 
-  // Deep link: si ingresan directamente a /solicitar-certificado-laboral, abrir la vista pública de certificados laborales
+  // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {
     if (window.location.pathname === '/solicitar-certificado-laboral') {
       setCurrentView('solicitar-certificados-laborales');
       setVistaActual('solicitar-certificados-laborales');
+      return;
+    }
+
+    if (
+      window.location.pathname === '/solicitar-certificado-graduado' ||
+      window.location.pathname === '/certificacion-titulos-graduados'
+    ) {
+      setCurrentView('solicitar-certificados-graduados');
+      setVistaActual('solicitar-certificados-graduados');
     }
   }, []);
 
@@ -491,6 +505,7 @@ export default function App() {
 
       // Guardar token JWT
       localStorage.setItem('esap_auth_token', accessToken);
+      localStorage.setItem('esap_access_token', accessToken);
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
@@ -806,7 +821,7 @@ export default function App() {
     if (section === 'solicitar-certificados-graduados') {
       setCurrentView('solicitar-certificados-graduados');
       setVistaActual('solicitar-certificados-graduados');
-      navigate('/solicitar-certificado-graduado');
+      navigate('/certificacion-titulos-graduados');
       return;
     }
 
@@ -847,6 +862,9 @@ export default function App() {
 
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
+
+      case 'solicitar-certificados-graduados':
+        return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />;
 
       case 'login':
         return (
@@ -977,7 +995,7 @@ export default function App() {
       case 'solicitar-certificados-laborales':
         return <SolicitarCertificadoLaboral onBack={handleBackToHome} onLoginClick={handleLoginClick} />
       case 'solicitar-certificados-graduados':
-        return <ValidarCertificadoGraduado onVolver={handleBackToHome} />
+        return <PublicTitleVerification onBack={handleBackToHome} onLoginClick={handleLoginClick} />
       case 'enrollment-qr':
         return (
           <EnrollmentQRLandingUnified
@@ -1040,6 +1058,14 @@ export default function App() {
           <Route
             path="/verificar-certificado-graduado"
             element={<ValidarCertificadoGraduado onVolver={() => navigate('/')} />}
+          />
+          <Route
+            path="/certificacion-titulos-graduados"
+            element={<PublicTitleVerification onBack={() => navigate('/')} onLoginClick={handleLoginClick} />}
+          />
+          <Route
+            path="/solicitar-certificado-graduado"
+            element={<Navigate to="/certificacion-titulos-graduados" replace />}
           />
           <Route
             path="/verificar-certificado/:codigo"

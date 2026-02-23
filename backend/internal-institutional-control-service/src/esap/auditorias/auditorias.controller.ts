@@ -51,7 +51,7 @@ export class AuditoriasController {
 
       const token = authHeader.substring(7);
       const payload = this.jwtService.verify(token, {
-        secret: process.env.JWT_SECRET || 'dev-secret-esap',
+        secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
       });
 
       // Extraer códigos de roles si vienen como objetos con 'code'

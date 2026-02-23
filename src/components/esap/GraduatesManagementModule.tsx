@@ -522,12 +522,18 @@ export function GraduatesManagementModule() {
       'registro-academico',
       file.url || `/uploads/graduate-files/${file.storedName}`,
     );
+    const token =
+      localStorage.getItem('esap_auth_token') ||
+      localStorage.getItem('esap_access_token') ||
+      '';
     try {
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('esap_auth_token') || ''}`,
-        },
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : undefined,
       });
       if (!response.ok) {
         throw new Error('No se pudo descargar el archivo');
@@ -553,10 +559,9 @@ export function GraduatesManagementModule() {
     const loadGraduates = async () => {
       setIsLoading(true);
       try {
-        const [estructuraResponse, graduatesResponse, certificatesResponse] = await Promise.all([
+        const [estructuraResponse, graduatesResponse] = await Promise.all([
           estructuraService.obtenerEstructura().catch(() => null),
           graduadosService.graduados.listarRegistroAcademico(),
-          graduadosService.certificados.listar().catch(() => []),
         ]);
 
         const estructuraSedes = estructuraResponse?.data?.sedes ?? [];
@@ -577,24 +582,6 @@ export function GraduatesManagementModule() {
           if (sede?.nomSede) {
             sedeByName.set(normalizeKey(sede.nomSede), sede);
           }
-        });
-
-        const certificateCounts = new Map<string, number>();
-        const certificatePrograms = new Map<string, Set<string>>();
-        (certificatesResponse || []).forEach((certificate) => {
-          if (!certificate.idNumber) return;
-          const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
-          if (!certificatePrograms.has(certificate.idNumber)) {
-            certificatePrograms.set(certificate.idNumber, new Set());
-          }
-          if (programKey) {
-            certificatePrograms.get(certificate.idNumber)!.add(programKey);
-          } else {
-            certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
-          }
-        });
-        certificatePrograms.forEach((programs, idNumber) => {
-          certificateCounts.set(idNumber, programs.size);
         });
 
         const mappedGraduates = (graduatesResponse || []).map((graduate) => {
@@ -636,9 +623,8 @@ export function GraduatesManagementModule() {
             documentsCount: graduate.filesCount ?? 0,
             createdBy: createdBy?.trim() || undefined,
             asignacionesSedes: sedeName ? [{ nombreSede: sedeName }] : undefined,
-            certificatesCount:
-              certificateCounts.get(graduate.idNumber) ??
-              (graduate.graduationDate ? 1 : 0),
+            // Valor inicial para render rápido; luego se actualiza en segundo plano.
+            certificatesCount: graduate.graduationDate ? 1 : 0,
             numRegistro: graduate.numRegistro,
             numFolio: graduate.numFolio,
             numLibro: graduate.numLibro,
@@ -648,6 +634,45 @@ export function GraduatesManagementModule() {
         if (isMounted) {
           setGraduates(mappedGraduates);
         }
+
+        // Cargar conteos de certificados en segundo plano para no bloquear la primera renderización.
+        void graduadosService.certificados
+          .listar()
+          .then((certificatesResponse) => {
+            if (!isMounted) return;
+
+            const certificatePrograms = new Map<string, Set<string>>();
+            (certificatesResponse || []).forEach((certificate) => {
+              if (!certificate.idNumber) return;
+              const programKey = `${certificate.programName || ''}::${certificate.degreeTitle || ''}`.trim();
+              if (!certificatePrograms.has(certificate.idNumber)) {
+                certificatePrograms.set(certificate.idNumber, new Set());
+              }
+              if (programKey) {
+                certificatePrograms.get(certificate.idNumber)!.add(programKey);
+              } else {
+                certificatePrograms.get(certificate.idNumber)!.add(certificate.certificateNumber);
+              }
+            });
+
+            const certificateCounts = new Map<string, number>();
+            certificatePrograms.forEach((programs, idNumber) => {
+              certificateCounts.set(idNumber, programs.size);
+            });
+
+            if (!certificateCounts.size) return;
+
+            setGraduates((prev) =>
+              prev.map((graduate) => ({
+                ...graduate,
+                certificatesCount:
+                  certificateCounts.get(graduate.document) ?? graduate.certificatesCount,
+              })),
+            );
+          })
+          .catch((error) => {
+            console.warn('No se pudieron actualizar los conteos de certificados:', error);
+          });
       } catch (error) {
         console.error('Error cargando graduados:', error);
         toast.error('No se pudieron cargar los graduados', {

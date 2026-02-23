@@ -71,6 +71,24 @@ export class ApiClient {
   }
 
   /**
+   * GET request para archivos binarios (Blob)
+   */
+  async getBlob(
+    endpoint: string,
+    params?: Record<string, any>,
+    customConfig?: RequestConfig
+  ): Promise<Blob> {
+    const url = this.buildURL(endpoint, params);
+    const {
+      skipAuth = false,
+      skipErrorToast = false,
+      ...fetchConfig
+    } = customConfig || {};
+
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+  }
+
+  /**
    * POST request
    */
   /**
@@ -266,7 +284,8 @@ export class ApiClient {
     url: string,
     fetchConfig: RequestInit,
     skipAuth: boolean,
-    skipErrorToast: boolean
+    skipErrorToast: boolean,
+    allowRefresh = true,
   ): Promise<T> {
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
@@ -293,10 +312,104 @@ export class ApiClient {
 
       clearTimeout(timeoutId);
 
+      // Token expirado: refrescar y reintentar UNA sola vez conservando método y body.
+      if (response.status === 401 && !skipAuth && allowRefresh) {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+        }
+      }
+
       // Manejo de respuesta
       return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
     } catch (error: any) {
       console.log('🔴 Error en request:', error);
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Ejecuta request GET para respuesta binaria (Blob)
+   */
+  private async executeBlobRequest(
+    url: string,
+    fetchConfig: RequestInit,
+    skipAuth: boolean,
+    skipErrorToast: boolean,
+    allowRefresh = true,
+  ): Promise<Blob> {
+    const headers = skipAuth
+      ? { Accept: '*/*' }
+      : getDefaultHeaders(true);
+
+    // Para descargas no enviamos Content-Type JSON.
+    delete (headers as any)['Content-Type'];
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...fetchConfig,
+        method: 'GET',
+        headers: {
+          ...headers,
+          ...fetchConfig.headers,
+        },
+        signal: controller.signal,
+        ...CORS_CONFIG,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Token expirado: refrescar y reintentar una sola vez.
+      if (response.status === 401 && !skipAuth && allowRefresh) {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
+        }
+      }
+
+      if (!response.ok) {
+        let errorMessage = 'Error al descargar archivo';
+
+        try {
+          const text = await response.text();
+          if (text) {
+            try {
+              const parsed = JSON.parse(text);
+              if (typeof parsed?.message === 'string') {
+                errorMessage = parsed.message;
+              } else if (Array.isArray(parsed?.message)) {
+                errorMessage = parsed.message.join(', ');
+              } else if (typeof parsed?.error === 'string') {
+                errorMessage = parsed.error;
+              }
+            } catch {
+              errorMessage = text;
+            }
+          }
+        } catch {
+          // Mantener mensaje por defecto
+        }
+
+        if (!skipErrorToast) {
+          this.showErrorToast(response.status, errorMessage);
+        }
+
+        const error: any = new Error(errorMessage);
+        error.status = response.status;
+        throw error;
+      }
+
+      return response.blob();
+    } catch (error: any) {
       clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {
@@ -315,17 +428,6 @@ export class ApiClient {
     skipErrorToast: boolean,
     skipAuth: boolean
   ): Promise<T> {
-    // Token expirado - intentar refresh solo si la petición requiere auth
-    if (response.status === 401 && !skipAuth) {
-      const originalRequest = response.url;
-      const newToken = await this.refreshAccessToken();
-
-      if (newToken) {
-        // Reintentar request con nuevo token
-        return this.get<T>(originalRequest);
-      }
-    }
-
     // Si es 204 No Content, retornar null
     if (response.status === 204) {
       return null as T;
@@ -466,6 +568,7 @@ export class ApiClient {
 
       // Guardar nuevo token
       localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
+      localStorage.setItem('esap_access_token', newToken);
 
       // Notificar a todos los subscribers
       this.refreshSubscribers.forEach((callback) => callback(newToken));
@@ -485,6 +588,7 @@ export class ApiClient {
    */
   private handleLogout(): void {
     localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    localStorage.removeItem('esap_access_token');
     localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
 

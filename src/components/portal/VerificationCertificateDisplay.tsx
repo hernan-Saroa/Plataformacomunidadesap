@@ -44,7 +44,6 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showShareMenu, setShowShareMenu] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const lastEmailSentRef = useRef<string | null>(null);
   const lastEmailAttemptRef = useRef<string | null>(null);
@@ -277,91 +276,24 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
   // Por eso eliminamos el useEffect que llamaba a enviarCertificadoPorEmail()
   // para evitar enviar correos duplicados.
 
-  const handleShare = async () => {
-    /**
-     * FUNCIONALIDAD DE COMPARTIR CERTIFICADO
-     * =======================================
-     * Este botón permite compartir el enlace de verificación mediante:
-     * 1. Web Share API (nativo en dispositivos móviles)
-     * 2. Copiar al portapapeles (fallback)
-     * 3. Opciones de compartir por email, WhatsApp, etc.
-     */
-
+  const handleCopyVerificationUrl = async () => {
     const shareUrl = `${window.location.origin}/verificar-certificado/${certificate.qrCode}`;
-    const shareTitle = `Certificado de Verificación - ${certificate.graduate.fullName}`;
-    const shareText = `Certificado de Verificación de Título ESAP\n\nGraduado: ${certificate.graduate.fullName}\nPrograma: ${certificate.graduate.programName}\nTítulo: ${certificate.graduate.titleType}\n\nVerificar autenticidad en:`;
 
-    // Intentar usar Web Share API (disponible en móviles modernos)
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: shareUrl
-        });
-
-        toast.success('¡Compartido exitosamente!', {
-          description: 'El enlace ha sido compartido'
-        });
-
-        return;
-      } catch (error: any) {
-        // Usuario canceló o error en la compartición
-        if (error.name !== 'AbortError') {
-          console.error('Error al compartir:', error);
-        }
-      }
-    }
-
-    // Fallback: Copiar al portapapeles
     try {
-      await copyToClipboard(shareUrl);
+      const copied = await copyToClipboard(shareUrl);
 
-      toast.success('✓ Enlace de verificación copiado al portapapeles', {
-        description: 'Pega el enlace donde quieras compartirlo',
-        duration: 4000,
-        action: {
-          label: 'Ver opciones',
-          onClick: () => {
-            // Mostrar opciones adicionales de compartir
-            toast.info('Opciones de compartir', {
-              description: (
-                <div className="space-y-2 mt-2">
-                  <a
-                    href={`mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
-                    className="block px-3 py-2 bg-blue-100 text-blue-900 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    📧 Compartir por Email
-                  </a>
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent(shareText + '\n\n' + shareUrl)}`}
-                    className="block px-3 py-2 bg-green-100 text-green-900 rounded-lg hover:bg-green-200 transition-colors text-sm font-medium"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    💬 Compartir por WhatsApp
-                  </a>
-                </div>
-              ),
-              duration: 10000
-            });
-          }
-        }
+      if (!copied) {
+        throw new Error('No se pudo copiar al portapapeles');
+      }
+
+      toast.success('Enlace copiado', {
+        description: 'La URL de verificación fue copiada al portapapeles',
+        duration: 3500,
       });
-
-      // Analytics o tracking
-      console.log('📊 Enlace compartido:', {
-        certificateNumber: certificate.certificateNumber,
-        shareUrl: shareUrl,
-        timestamp: new Date().toISOString()
-      });
-
     } catch (error) {
-      console.error('Error al copiar al portapapeles:', error);
+      console.error('Error al copiar enlace de verificación:', error);
       toast.error('No se pudo copiar el enlace', {
-        description: 'Por favor, copia manualmente la URL de verificación'
+        description: 'Por favor, copia manualmente la URL de verificación',
       });
     }
   };
@@ -778,11 +710,11 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                       {verificationUrl}
                     </code>
                     <Button
-                      onClick={handleShare}
+                      onClick={handleCopyVerificationUrl}
                       size="sm"
                       className="flex-shrink-0 bg-[#1e5da8] hover:bg-[#174a87]"
                     >
-                      <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
                       Copiar
                     </Button>
                   </div>
@@ -971,13 +903,13 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                   )}
                 </Button>
                 <Button
-                  onClick={handleShare}
+                  onClick={handleCopyVerificationUrl}
                   variant="outline"
                   className="flex-1 border-2 border-[#1e5da8] text-[#1e5da8] hover:bg-[#1e5da8] hover:text-white"
                   size="lg"
                 >
-                  <Share2 className="w-5 h-5 mr-2" />
-                  Compartir Enlace
+                  <Copy className="w-5 h-5 mr-2" />
+                  Copiar URL
                 </Button>
                 {onClose && (
                   <Button

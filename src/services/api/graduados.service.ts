@@ -330,7 +330,7 @@ const graduadosService = {
     buscarEmpresaPorNit: async (nit: string): Promise<EmpresaNitResponse> => {
       const response = await apiClient.get(
         `${SERVICE_PREFIX}/certificates/autoservicio/empresa`,
-        { params: { nit } }
+        { nit }
       );
       return response;
     },

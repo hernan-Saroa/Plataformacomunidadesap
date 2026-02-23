@@ -22,6 +22,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/certificados\/api\/v\d+\/certificates\/certificados\/[^/]+\/reenviar/i,
     // Variante corta por si se expone sin /certificates
     /^\/certificados\/api\/v\d+\/certificados\/[^/]+\/reenviar/i,
+    // Autoservicio y validacion publica de certificados de grado (registro academico)
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/verificar-graduado/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/solicitar-certificado/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/generar-codigo/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/validar-codigo/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/autoservicio\/empresa/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/qr/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/numero/i,
+    /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
   ];
