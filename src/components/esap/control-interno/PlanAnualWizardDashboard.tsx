@@ -21,7 +21,8 @@ import {
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
 // Hook para sincronizar evidencias con backend y API de auditores
-import { useSaveEvidencias, actividadesApi, auditoresApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
+import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
+import { configuracionesProfesionalesOCIGApi } from './services/api';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
@@ -78,6 +79,9 @@ interface Actividad {
   // ✅ NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
+  
+  // Soft delete
+  activo?: boolean;
 }
 
 interface ArchivoAdjunto {
@@ -252,7 +256,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
 
 interface WizardCreacionProps {
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[]) => void;
+  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => void;
 }
 
 export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
@@ -261,30 +265,61 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
   const [fechaFin, setFechaFin] = useState(`${new Date().getFullYear()}-12-31`);
   
-  // Estado para auditores cargados desde backend
+  // Estado para auditores cargados desde backend (profesionales OCIG configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
+  const [jefesOCIG, setJefesOCIG] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
   
-  // Cargar auditores desde backend al montar el componente
+  // Cargar profesionales OCIG configurados al montar el componente
   useEffect(() => {
     const cargarAuditores = async () => {
       setCargandoAuditores(true);
       try {
-        const response = await auditoresApi.getAll();
+        // Usar profesionales OCIG configurados en lugar de personas disponibles
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        console.log('[PlanAnual] Profesionales OCIG response:', response);
+        
         if (response.success && response.data && response.data.length > 0) {
-          setAuditores(response.data);
-          // Seleccionar el primer auditor como jefe por defecto
-          setJefeSeleccionado(response.data[0]);
+          // Transformar a formato Auditor
+          const profesionales: Auditor[] = response.data
+            .filter((config: any) => config.activo)
+            .map((config: any) => ({
+              id: config.id, // UUID de configuracion_profesionales_ocig
+              nombre: config.nombre || `Profesional ${config.idTercero}`,
+              cargo: config.rolOcig || 'Auditor',
+              email: config.email || ''
+            }));
+          
+          setAuditores(profesionales);
+          
+          // Filtrar solo los que son Jefe OCIG
+          const jefes = profesionales.filter((a: Auditor) => 
+            a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
+          );
+          setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
+          
+          // Seleccionar el primer jefe como jefe por defecto
+          if (jefes.length > 0) {
+            setJefeSeleccionado(jefes[0]);
+          } else if (profesionales.length > 0) {
+            setJefeSeleccionado(profesionales[0]);
+          }
+          
+          console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length, 'Jefes:', jefes.length);
         } else {
-          console.warn('No se pudieron cargar auditores del backend');
-          toast.error('No se pudieron cargar los auditores', {
-            description: 'Verifica la conexión con el servidor'
+          console.warn('[PlanAnual] No hay profesionales OCIG configurados, usando fallback');
+          toast.warning('No hay profesionales OCIG configurados', {
+            description: 'Configura el equipo en el módulo de Configuración'
           });
+          setJefesOCIG(AUDITORES_DEFAULT);
+          setJefeSeleccionado(AUDITORES_DEFAULT[0]);
         }
       } catch (error) {
-        console.error('Error cargando auditores:', error);
-        toast.error('Error al cargar auditores');
+        console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
+        toast.error('Error al cargar profesionales OCIG');
+        setJefesOCIG(AUDITORES_DEFAULT);
+        setJefeSeleccionado(AUDITORES_DEFAULT[0]);
       } finally {
         setCargandoAuditores(false);
       }
@@ -344,6 +379,39 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
     })
   );
 
+  // Validación del Paso 1: Fechas y vigencia
+  const validarPaso1 = () => {
+    // Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
+    const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : 0;
+    const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : 0;
+    
+    // Validar que la fecha fin no sea anterior a fecha inicio (comparación string funciona para YYYY-MM-DD)
+    if (fechaFin < fechaInicio) {
+      toast.error('Error de fechas', {
+        description: 'La fecha de finalización no puede ser anterior a la fecha de inicio'
+      });
+      return false;
+    }
+    
+    // Validar que las fechas coincidan con la vigencia
+    if (anioFechaInicio !== vigencia || anioFechaFin !== vigencia) {
+      toast.error('Error de vigencia', {
+        description: `Las fechas deben estar dentro de la vigencia ${vigencia}. Fecha inicio: ${anioFechaInicio}, Fecha fin: ${anioFechaFin}`
+      });
+      return false;
+    }
+    
+    // Validar que haya un jefe seleccionado
+    if (!jefeSeleccionado) {
+      toast.error('Jefe OCI requerido', {
+        description: 'Debe seleccionar un Jefe de Control Interno'
+      });
+      return false;
+    }
+    
+    return true;
+  };
+
   const validarPaso2 = () => {
     // Validar que hay actividades seleccionadas
     const tieneActividades = rolesConfig.some(rol => 
@@ -354,28 +422,67 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return false;
     }
     
-    // ℹ️ Los responsables son opcionales:
-    // - Roles CON responsables → actividades se asignarán automáticamente
-    // - Roles SIN responsables → actividades quedarán "Por asignar"
+    // ⚠️ VALIDACIÓN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
     const rolesConActividades = rolesConfig.filter(rol => 
       (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
     );
-    const rolesConResponsables = rolesConActividades.filter(rol => (rol.responsables?.length || 0) > 0);
+    const rolesSinResponsables = rolesConActividades.filter(rol => (rol.responsables?.length || 0) === 0);
     
-    console.log(`✅ [validarPaso2] ${rolesConActividades.length} roles con actividades:`);
-    console.log(`   - ${rolesConResponsables.length} roles CON responsables (actividades se asignarán automáticamente)`);
-    console.log(`   - ${rolesConActividades.length - rolesConResponsables.length} roles SIN responsables (actividades quedarán "Por asignar")`);
+    if (rolesSinResponsables.length > 0) {
+      const nombresRoles = rolesSinResponsables.map(r => `Rol ${r.numero}`).join(', ');
+      toast.error('Responsables requeridos', {
+        description: `Los siguientes roles tienen actividades pero no tienen responsables asignados: ${nombresRoles}. Debe asignar al menos un responsable por rol.`,
+        duration: 6000
+      });
+      return false;
+    }
+    
+    // Contar total de actividades y responsables
+    const totalActividades = rolesConActividades.reduce((sum, rol) => 
+      sum + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0), 0
+    );
+    const totalResponsables = rolesConActividades.reduce((sum, rol) => 
+      sum + (rol.responsables?.length || 0), 0
+    );
+    
+    console.log(`✅ [validarPaso2] Validación exitosa:`);
+    console.log(`   - ${rolesConActividades.length} roles con actividades`);
+    console.log(`   - ${totalActividades} actividades totales`);
+    console.log(`   - ${totalResponsables} responsables asignados`);
     
     return true;
   };
 
   const avanzarPaso = () => {
+    if (paso === 1 && !validarPaso1()) return;
     if (paso === 2 && !validarPaso2()) return;
     setPaso(paso + 1);
   };
 
   const handleFinalizar = () => {
-    onCrear(vigencia, jefeSeleccionado, rolesConfig);
+    // Validación final de seguridad antes de crear el plan
+    const rolesConActividades = rolesConfig.filter(rol => 
+      (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
+    );
+    const totalResponsables = rolesConActividades.reduce((sum, rol) => 
+      sum + (rol.responsables?.length || 0), 0
+    );
+    
+    if (totalResponsables === 0) {
+      toast.error('No se puede crear el Plan Anual', {
+        description: 'Debe asignar al menos un responsable a las actividades antes de crear el plan.',
+        duration: 5000
+      });
+      return;
+    }
+    
+    // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
+    if (!jefeSeleccionado) {
+      toast.error('Debe seleccionar un Jefe de Control Interno');
+      return;
+    }
+    
+    onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin);
   };
 
   return (
@@ -422,7 +529,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
                 onFechaFinChange={setFechaFin}
-                auditores={auditores}
+                auditores={jefesOCIG}
                 cargandoAuditores={cargandoAuditores}
               />
             )}
@@ -460,6 +567,31 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
 
 // Paso 1: Configuración básica
 function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores }: any) {
+  // Validaciones de fechas - Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
+  const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
+  const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
+  
+  // Comparar fechas como strings (formato YYYY-MM-DD se compara correctamente alfabéticamente)
+  const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
+  const errorVigenciaNoCoincide = (anioFechaInicio !== vigencia || anioFechaFin !== vigencia);
+  
+  // Handler para fecha inicio que ajusta automáticamente la fecha fin si es necesario
+  const handleFechaInicioChange = (nuevaFechaInicio: string) => {
+    onFechaInicioChange(nuevaFechaInicio);
+    // Si la fecha fin es anterior a la nueva fecha inicio, ajustar automáticamente
+    if (fechaFin && fechaFin < nuevaFechaInicio) {
+      onFechaFinChange(nuevaFechaInicio);
+    }
+  };
+
+  // Handler para vigencia que ajusta las fechas automáticamente
+  const handleVigenciaChange = (nuevaVigencia: number) => {
+    onVigenciaChange(nuevaVigencia);
+    // Ajustar fechas al cambiar vigencia
+    onFechaInicioChange(`${nuevaVigencia}-01-01`);
+    onFechaFinChange(`${nuevaVigencia}-12-31`);
+  };
+
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
@@ -473,9 +605,10 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
           <input 
             type="number" 
             value={vigencia} 
-            onChange={(e) => onVigenciaChange(parseInt(e.target.value))} 
+            onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg font-bold focus:outline-none focus:border-blue-500" 
           />
+          <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -484,22 +617,71 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             <input 
               type="date" 
               value={fechaInicio} 
-              onChange={(e) => onFechaInicioChange(e.target.value)} 
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" 
+              onChange={(e) => handleFechaInicioChange(e.target.value)}
+              min={`${vigencia}-01-01`}
+              max={`${vigencia}-12-31`}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${
+                errorVigenciaNoCoincide && anioFechaInicio !== vigencia
+                  ? 'border-red-500 bg-red-50 focus:border-red-500' 
+                  : 'border-gray-300 focus:border-blue-500'
+              }`}
             />
-            <p className="text-xs text-gray-500 mt-1">Ajusta al calendario académico o institucional</p>
+            {errorVigenciaNoCoincide && anioFechaInicio !== vigencia && (
+              <p className="text-xs text-red-600 mt-1 font-medium">
+                ⚠️ El año de la fecha ({anioFechaInicio}) debe coincidir con la vigencia ({vigencia})
+              </p>
+            )}
+            {!errorVigenciaNoCoincide && (
+              <p className="text-xs text-gray-500 mt-1">Ajusta al calendario académico o institucional</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de finalización</label>
             <input 
               type="date" 
               value={fechaFin} 
-              onChange={(e) => onFechaFinChange(e.target.value)} 
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" 
+              onChange={(e) => onFechaFinChange(e.target.value)}
+              min={fechaInicio || `${vigencia}-01-01`}
+              max={`${vigencia}-12-31`}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${
+                errorFechaFinAnterior || (errorVigenciaNoCoincide && anioFechaFin !== vigencia)
+                  ? 'border-red-500 bg-red-50 focus:border-red-500' 
+                  : 'border-gray-300 focus:border-blue-500'
+              }`}
             />
-            <p className="text-xs text-gray-500 mt-1">Define el cierre del plan anual</p>
+            {errorFechaFinAnterior && (
+              <p className="text-xs text-red-600 mt-1 font-medium">
+                ⚠️ La fecha de finalización no puede ser anterior a la fecha de inicio
+              </p>
+            )}
+            {!errorFechaFinAnterior && errorVigenciaNoCoincide && anioFechaFin !== vigencia && (
+              <p className="text-xs text-red-600 mt-1 font-medium">
+                ⚠️ El año de la fecha ({anioFechaFin}) debe coincidir con la vigencia ({vigencia})
+              </p>
+            )}
+            {!errorFechaFinAnterior && !errorVigenciaNoCoincide && (
+              <p className="text-xs text-gray-500 mt-1">Define el cierre del plan anual</p>
+            )}
           </div>
         </div>
+
+        {/* Alerta de errores de validación */}
+        {(errorFechaFinAnterior || errorVigenciaNoCoincide) && (
+          <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">Corrige los errores para continuar</p>
+              <ul className="text-sm text-red-700 mt-1 space-y-1">
+                {errorFechaFinAnterior && (
+                  <li>• La fecha de finalización debe ser igual o posterior a la fecha de inicio</li>
+                )}
+                {errorVigenciaNoCoincide && (
+                  <li>• Las fechas de inicio y fin deben estar dentro de la vigencia {vigencia}</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Jefe de Control Interno</label>
@@ -1525,14 +1707,23 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const { puedeRealizar } = useControlInternoPermissions();
   const puedeAprobarPlan = puedeRealizar('planificacion', 'approve');
 
-  // Cargar auditores desde backend al montar el componente
+  // Cargar auditores desde backend al montar el componente (profesionales OCIG configurados)
   useEffect(() => {
     const cargarAuditores = async () => {
       setCargandoAuditores(true);
       try {
-        const response = await auditoresApi.getAll();
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
         if (response.success && response.data) {
-          setAuditores(response.data);
+          // Mapear profesionales OCIG a formato Auditor
+          const auditoresMapeados: Auditor[] = response.data
+            .filter((p) => p.activo && p.nombre)
+            .map((p) => ({
+              id: p.id, // UUID de configuracion_profesionales_ocig
+              nombre: p.nombre || '',
+              cargo: p.cargo || 'Profesional OCIG',
+              email: p.email || ''
+            }));
+          setAuditores(auditoresMapeados);
         }
       } catch (error) {
         console.error('Error cargando auditores:', error);
@@ -1729,38 +1920,39 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="bg-white border-b-2 border-gray-200 px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center">
-              <Shield className="w-6 h-6 text-white" />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="bg-white border-b-2 border-gray-200 px-4 sm:px-8 py-4 sm:py-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Plan Anual de Auditoría {plan.vigencia}</h1>
-              <p className="text-sm text-gray-600">{plan.id} • Versión {plan.version} • {plan.jefeOCI.nombre}</p>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">Plan Anual de Auditoría {plan.vigencia}</h1>
+              <p className="text-xs sm:text-sm text-gray-600 truncate">{plan.id} • Versión {plan.version} • {plan.jefeOCI.nombre}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className={`px-4 py-2 rounded-lg font-semibold border-2 ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+            <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
             </span>
 
             {onCrearNuevo && (
               <button 
                 onClick={onCrearNuevo}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg"
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg text-sm"
               >
                 <Plus className="w-4 h-4" />
-                Crear Nuevo Plan
+                <span className="hidden xs:inline">Crear Nuevo Plan</span>
+                <span className="xs:hidden">Nuevo</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setMostrarModalExportacion(true)}
-              className="px-4 py-2 bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-800 hover:to-gray-900 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-lg font-medium flex items-center gap-2 transition-all shadow-md hover:shadow-lg text-sm"
             >
               <Download className="w-4 h-4" />
               Exportar
@@ -1994,6 +2186,14 @@ function SeccionGestionYSeguimiento({
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
+  // Modal de confirmación para desactivar/activar actividades
+  const [modalConfirmacion, setModalConfirmacion] = useState<{
+    visible: boolean;
+    tipo: 'desactivar' | 'activar';
+    rolNumero: number;
+    actividadId: number | string;
+    actividadNombre: string;
+  } | null>(null);
   // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>({});
   const [formulario, setFormulario] = useState({
@@ -2054,6 +2254,96 @@ function SeccionGestionYSeguimiento({
     setNuevaObservacion('');
     setMostrarSelectorApoyo(false);
     setActividadExpandida(actividad.id);
+  };
+
+  // Función para desactivar una actividad (soft delete)
+  const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      const res = await actividadesApi.delete(String(actividadId));
+      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como inactiva
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
+        
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
+    }
+  };
+
+  // Función para REACTIVAR una actividad
+  const reactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('✅ [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      // Llamar al endpoint de actualización para cambiar activo a true
+      const res = await actividadesApi.update(String(actividadId), { activo: true } as any);
+      console.log('✅ [reactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como activa
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: true } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad reactivada', { description: 'La actividad está activa nuevamente' });
+        
+        // Refrescar plan completo desde el backend
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al reactivar', { description: res.error || 'No se pudo reactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error reactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo reactivar la actividad' });
+    }
+  };
+
+  // Handler para confirmar acción desde modal
+  const confirmarAccionActividad = () => {
+    console.log('✅ confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
+    if (!modalConfirmacion) return;
+    
+    if (modalConfirmacion.tipo === 'desactivar') {
+      desactivarActividad(modalConfirmacion.rolNumero, modalConfirmacion.actividadId);
+    } else {
+      reactivarActividad(modalConfirmacion.rolNumero, modalConfirmacion.actividadId);
+    }
+    setModalConfirmacion(null);
   };
 
   const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
@@ -2483,7 +2773,7 @@ function SeccionGestionYSeguimiento({
       </div>
 
       {/* Lista de roles y actividades con seguimiento */}
-      {plan.roles.map((rol) => {
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         const totalActividades = rol.actividades.length;
         const asignadas = rol.actividades.filter(a => a.responsable !== null).length;
         const completadas = rol.actividades.filter(a => a.estado === 'COMPLETADA').length;
@@ -2612,16 +2902,21 @@ function SeccionGestionYSeguimiento({
               >
                 <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
                 {/* Header */}
-                <div className="p-4 bg-gray-50">
+                <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="w-6 h-6 bg-gray-200 rounded-lg flex items-center justify-center text-xs font-bold">
                           {idx + 1}
                         </span>
-                        <p className="font-semibold text-gray-900">{actividad.nombre}</p>
+                        <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                        {actividad.activo === false && (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                            Inactiva
+                          </span>
+                        )}
                         {/* INDICADOR: Configuración de Evidencias */}
                         {actividad.configuracionEvidencias ? (
                           <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-green-100 text-green-700 border border-green-300" title={`Adj: ${actividad.configuracionEvidencias.adjuntosRequeridos || 'N/A'} | Obs: ${actividad.configuracionEvidencias.observacionRequerida || 'N/A'}`}>
@@ -2690,20 +2985,58 @@ function SeccionGestionYSeguimiento({
                         showIcon={true}
                       />
                     </div>
-                    <button
-                      onClick={() => {
-                        if (actividadExpandida === actividad.id) {
-                          setActividadExpandida(null);
-                          setNuevaObservacion('');
-                          setMostrarSelectorApoyo(false);
-                        } else {
-                          abrirSeguimiento(actividad);
-                        }
-                      }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                    >
-                      {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (actividadExpandida === actividad.id) {
+                            setActividadExpandida(null);
+                            setNuevaObservacion('');
+                            setMostrarSelectorApoyo(false);
+                          } else {
+                            abrirSeguimiento(actividad);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                      >
+                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                      </button>
+                      {/* Botón Desactivar/Activar actividad */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('🔘 Click en botón desactivar/activar:', {
+                            actividadId: actividad.id,
+                            actividadNombre: actividad.nombre,
+                            activo: actividad.activo,
+                            rolNumero: rol.numero
+                          });
+                          setModalConfirmacion({
+                            visible: true,
+                            tipo: actividad.activo === false ? 'activar' : 'desactivar',
+                            rolNumero: rol.numero,
+                            actividadId: actividad.id,
+                            actividadNombre: actividad.nombre
+                          });
+                        }}
+                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all ${
+                          actividad.activo === false 
+                            ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
+                            : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
+                        }`}
+                        title={actividad.activo === false ? 'Reactivar actividad' : 'Desactivar actividad'}
+                      >
+                        {actividad.activo === false ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                          </svg>
+                        )}
+                        {actividad.activo === false ? 'Reactivar' : 'Desactivar'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -3058,6 +3391,128 @@ function SeccionGestionYSeguimiento({
           }}
         />
       )}
+
+      {/* Modal de confirmación para desactivar/reactivar actividad */}
+      <AnimatePresence>
+        {modalConfirmacion && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+            onClick={() => setModalConfirmacion(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+            >
+              {/* Header del modal */}
+              <div className={`px-6 py-4 ${
+                modalConfirmacion.tipo === 'desactivar' 
+                  ? 'bg-gradient-to-r from-red-600 to-red-700' 
+                  : 'bg-gradient-to-r from-green-600 to-green-700'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                    {modalConfirmacion.tipo === 'desactivar' ? (
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                    ) : (
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    {modalConfirmacion.tipo === 'desactivar' ? 'Desactivar Actividad' : 'Reactivar Actividad'}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Contenido del modal */}
+              <div className="p-6">
+                <p className="text-gray-700 mb-4">
+                  {modalConfirmacion.tipo === 'desactivar' 
+                    ? '¿Estás seguro de desactivar esta actividad?' 
+                    : '¿Quieres reactivar esta actividad?'}
+                </p>
+                
+                <div className={`p-4 rounded-lg border-2 mb-4 ${
+                  modalConfirmacion.tipo === 'desactivar' 
+                    ? 'bg-red-50 border-red-200' 
+                    : 'bg-green-50 border-green-200'
+                }`}>
+                  <p className="font-semibold text-gray-800">
+                    {modalConfirmacion.actividadNombre}
+                  </p>
+                </div>
+
+                {modalConfirmacion.tipo === 'desactivar' ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-amber-800 flex items-start gap-2">
+                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span>
+                        <strong>Importante:</strong> La actividad quedará marcada como inactiva y no contará para los cálculos de avance del plan. Podrás reactivarla en cualquier momento.
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-blue-800 flex items-start gap-2">
+                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>
+                        La actividad volverá a contar en los cálculos de avance del plan.
+                      </span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Botones de acción */}
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => setModalConfirmacion(null)}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarAccionActividad}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                      modalConfirmacion.tipo === 'desactivar'
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-green-600 hover:bg-green-700 text-white'
+                    }`}
+                  >
+                    {modalConfirmacion.tipo === 'desactivar' ? (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                        Sí, Desactivar
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Sí, Reactivar
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -3213,38 +3668,40 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
   };
 
   const eliminarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🗑️ [eliminarActividad] Eliminando actividad:', { rolNumero, actividadId });
+    console.log('🗑️ [eliminarActividad] Desactivando actividad:', { rolNumero, actividadId });
     
     try {
-      // Eliminar del backend
+      // Soft delete en backend (marca activo = false)
       const res = await actividadesApi.delete(String(actividadId));
       console.log('🗑️ [eliminarActividad] Respuesta del backend:', res);
 
       if (res.success) {
-        // Actualizar estado local
+        // Actualizar estado local - marcar como inactiva
         const planActualizado = {
           ...plan,
           roles: plan.roles.map(rol => {
             if (rol.numero === rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.filter(act => act.id !== actividadId)
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
               };
             }
             return rol;
           })
         };
         onActualizar(planActualizado);
-        toast.success('Actividad eliminada', { description: 'La actividad ha sido eliminada del backend' });
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
         
         // Refrescar plan completo desde el backend
         onRefetchPlan?.();
       } else {
-        toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar del servidor' });
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
       }
     } catch (error) {
-      console.error('Error eliminando actividad:', error);
-      toast.error('Error', { description: 'No se pudo eliminar la actividad' });
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
     }
   };
 
@@ -3255,7 +3712,7 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {plan.roles.map((rol) => {
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         const isExpanded = rolExpandido === rol.numero;
         const asignadas = rol.actividades.filter(a => a.responsable !== null).length;
 
@@ -3313,12 +3770,19 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                       </div>
                     ) : (
                       rol.actividades.map((actividad, index) => (
-                        <div key={`${rol.numero}-${index}-${actividad.id}`} className="flex items-start gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                        <div key={`${rol.numero}-${index}-${actividad.id}`} className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}>
                           <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
                             {index + 1}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 mb-1">{actividad.nombre}</p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                              {actividad.activo === false && (
+                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                  Inactiva
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
                             <div className="flex items-center gap-4 text-xs text-gray-500">
                               <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
@@ -3327,9 +3791,9 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                           </div>
                           <div className="flex items-center gap-2">
                             <select
-                              value={actividad.responsable?.id || ''}
+                              value={actividad.responsable?.nombre || ''}
                               onChange={(e) => {
-                                const auditor = auditores.find(a => a.id === e.target.value);
+                                const auditor = auditores.find(a => a.nombre === e.target.value);
                                 if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
                               }}
                               className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 min-w-[280px] text-sm"
@@ -3338,25 +3802,11 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                             >
                               <option value="">🔹 Sin asignar</option>
                               {auditores.map((auditor) => (
-                                <option key={auditor.id} value={auditor.id}>
+                                <option key={auditor.id} value={auditor.nombre}>
                                   👤 {auditor.nombre} - {auditor.cargo}
                                 </option>
                               ))}
                             </select>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm('¿Estás seguro de eliminar esta actividad?')) {
-                                  eliminarActividad(rol.numero, actividad.id);
-                                }
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Eliminar actividad"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
                           </div>
                         </div>
                       ))
@@ -3513,7 +3963,7 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
 // Esta sección fue unificada con la Sección de Resumen en "SeccionGestionYSeguimiento"
 // ════════════════════════════════════════════════════════════════════════════
 
-function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onAbrirRol4?: () => void }) {
+function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onAbrirRol4?: () => void; auditores?: Auditor[] }) {
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
@@ -3543,6 +3993,41 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
     setNuevaObservacion(''); // Limpiar el campo de nueva observación
     setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
     setActividadExpandida(actividad.id);
+  };
+
+  // Función para desactivar una actividad (soft delete)
+  const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
+    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    
+    try {
+      const res = await actividadesApi.delete(String(actividadId));
+      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+
+      if (res.success) {
+        // Actualizar estado local - marcar como inactiva
+        const planActualizado = {
+          ...plan,
+          roles: plan.roles.map(rol => {
+            if (rol.numero === rolNumero) {
+              return {
+                ...rol,
+                actividades: rol.actividades.map(act => 
+                  act.id === actividadId ? { ...act, activo: false } : act
+                )
+              };
+            }
+            return rol;
+          })
+        };
+        onActualizar(planActualizado);
+        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
+      } else {
+        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
+      }
+    } catch (error) {
+      console.error('Error desactivando actividad:', error);
+      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
+    }
   };
 
   const agregarObservacion = (rolNumero: number, actividadId: number | string) => {
@@ -3807,7 +4292,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
         </div>
       </div>
 
-      {plan.roles.map((rol) => (
+      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => (
         <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b-2 border-gray-200">
             <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: rol.color + '20' }}>
@@ -3842,16 +4327,21 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
 
           <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div key={`${rol.numero}-${idx}-${actividad.id}`} className="border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div key={`${rol.numero}-${idx}-${actividad.id}`} className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}>
                 {/* Header */}
-                <div className="p-4 bg-gray-50">
+                <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="w-6 h-6 bg-gray-200 rounded-lg flex items-center justify-center text-xs font-bold">
                           {idx + 1}
                         </span>
-                        <p className="font-semibold text-gray-900">{actividad.nombre}</p>
+                        <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                        {actividad.activo === false && (
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                            Inactiva
+                          </span>
+                        )}
                         {actividad.requiereAutorizacionJefeOCIG && (
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
                             actividad.autorizadaPorJefeOCIG
@@ -3908,20 +4398,45 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4 }: {
                         showIcon={true}
                       />
                     </div>
-                    <button
-                      onClick={() => {
-                        if (actividadExpandida === actividad.id) {
-                          setActividadExpandida(null);
-                          setNuevaObservacion(''); // Limpiar al cerrar
-                          setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
-                        } else {
-                          abrirSeguimiento(actividad);
-                        }
-                      }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                    >
-                      {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          if (actividadExpandida === actividad.id) {
+                            setActividadExpandida(null);
+                            setNuevaObservacion(''); // Limpiar al cerrar
+                            setMostrarSelectorApoyo(false); // Cerrar selector de apoyo
+                          } else {
+                            abrirSeguimiento(actividad);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
+                      >
+                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                      </button>
+                      {/* Botón Desactivar - siempre visible si activo no es false */}
+                      <button
+                        onClick={() => {
+                          if (actividad.activo === false) {
+                            toast.info('Esta actividad ya está inactiva');
+                            return;
+                          }
+                          if (confirm('¿Desactivar esta actividad? Quedará marcada como inactiva y no contará en los avances.')) {
+                            desactivarActividad(rol.numero, actividad.id);
+                          }
+                        }}
+                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 ${
+                          actividad.activo === false 
+                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' 
+                            : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
+                        }`}
+                        title={actividad.activo === false ? 'Actividad ya inactiva' : 'Desactivar actividad'}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        </svg>
+                        {actividad.activo === false ? 'Inactiva' : 'Desactivar'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

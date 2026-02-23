@@ -304,6 +304,24 @@ export function ModuloDefensaJudicialV3() {
     // Si la etapa es la misma, no hacer nada
     if (expediente.etapa === nuevaEtapa) return;
 
+    // Validar tareas pendientes antes de cambiar etapa
+    try {
+      const idToCheck = expediente.uuid || expediente.id;
+      const tareas = await legalService.getTareasByExpediente(idToCheck);
+      const tareasPendientes = (tareas || []).filter(
+        (t: any) => t.estado !== 'completada' && t.estado !== 'cancelada'
+      );
+      if (tareasPendientes.length > 0) {
+        toast.error('No se puede cambiar de etapa', {
+          description: `El expediente tiene ${tareasPendientes.length} tarea(s) pendiente(s). Complete o cancele todas las tareas antes de cambiar de etapa.`
+        });
+        return;
+      }
+    } catch (error) {
+      // Si falla la consulta de tareas, permitir el cambio (fallo silencioso)
+      console.warn('No se pudieron verificar tareas:', error);
+    }
+
     // Optimistic Update
     const previousExpedientes = [...expedientes];
     setExpedientes((prevExpedientes) =>

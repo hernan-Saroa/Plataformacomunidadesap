@@ -203,12 +203,13 @@ export function SeccionListasChequeoExpediente({
       return l;
     }));
 
-    // Llamar al backend
+    // Llamar al backend con auditoriaId para guardar estado específico
     try {
       await controlInternoService.actualizarItemLista(listaId, itemId, {
         completado: nuevoEstado,
         fechaCompletado,
-        responsable: nuevoEstado ? 'Usuario Actual' : undefined
+        responsable: nuevoEstado ? 'Usuario Actual' : undefined,
+        auditoriaId // ✅ Enviar auditoriaId para guardar estado específico de esta auditoría
       });
 
       toast.success(

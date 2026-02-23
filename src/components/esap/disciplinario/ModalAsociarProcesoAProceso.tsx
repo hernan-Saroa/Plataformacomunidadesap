@@ -43,7 +43,7 @@ interface Proceso {
   noticiaOrigen: string;
   denunciante: Persona | string;
   denunciado: Persona | string;
-  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
+  etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo' | 'Segunda Instancia';
   estadoActual: string;
   profesionalAsignado: Persona | string;
   semaforo: 'verde' | 'amarillo' | 'rojo';

@@ -305,6 +305,17 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       totalRiesgos: formData.totalRiesgos || 0,
       requerimientoComite: formData.requerimientoComite || false,
       requerimientoEntesReg: formData.requerimientoEntesReg || false,
+      // ═══════════════════════════════════════════════════════════════════════
+      // CAMPOS DAFP CALCULADOS Y DECISIÓN (agregados 2026-02-20)
+      // ═══════════════════════════════════════════════════════════════════════
+      vigencia: formData.vigencia || new Date().getFullYear(),
+      fechaCorte: formData.fechaCorte || new Date().toISOString().split('T')[0],
+      ponderacionRiesgo: formData.ponderacionRiesgo || nivelRiesgoCalculado,
+      diasRotacion: formData.diasRotacion || 365,
+      decisionRotacion: formData.decisionRotacion || 'PENDIENTE',
+      decisionFinal: formData.decisionFinal || 'AUDITORÍA POSTERIOR',
+      motivoDecision: formData.motivoDecision || '',
+      prioridadRegla: formData.prioridadRegla || 5,
     },
     frecuenciaAuditoria,
     ultimaAuditoria: formData.fechaUltimaAuditoria || undefined,
@@ -404,7 +415,8 @@ export function useUniversoAuditableData(
       } else {
         // Formato ProcesoAuditableUI tradicional
         const procesoUI: ProcesoAuditableUI = {
-          ...procesoData,
+          ...
+          procesoData,
           id: `temp-${Date.now()}`,
         };
         backendData = mapUIToBackend(procesoUI);

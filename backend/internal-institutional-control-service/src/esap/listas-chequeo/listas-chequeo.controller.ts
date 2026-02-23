@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Patch,
+  Put,
   Param,
   Delete,
   Query,
@@ -36,7 +37,12 @@ export class ListasChequeoController {
    * Aplicar una lista a una auditoría
    */
   @Post('aplicar')
-  aplicarLista(@Body() data: { listaChequeoId: string; auditoriaId: string; aplicadoPor: string }) {
+  aplicarLista(@Body() data: { 
+    listaChequeoId: string; 
+    auditoriaId: string; 
+    aplicadoPor: string;
+    etapaKanban?: string;
+  }) {
     return this.listasChequeoService.aplicarAuditoria(data);
   }
 
@@ -74,10 +80,19 @@ export class ListasChequeoController {
 
   /**
    * PATCH /listas-chequeo/:id
-   * Actualizar una lista de chequeo
+   * Actualizar una lista de chequeo (parcial)
    */
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDto: UpdateListaChequeoDto) {
+    return this.listasChequeoService.update(id, updateDto);
+  }
+
+  /**
+   * PUT /listas-chequeo/:id
+   * Actualizar una lista de chequeo (completa)
+   */
+  @Put(':id')
+  updateFull(@Param('id') id: string, @Body() updateDto: UpdateListaChequeoDto) {
     return this.listasChequeoService.update(id, updateDto);
   }
 
@@ -130,8 +145,27 @@ export class ListasChequeoController {
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() updateData: { completado?: boolean; responsable?: string; fechaCompletado?: string; observaciones?: string }
+    @Body() updateData: { 
+      completado?: boolean; 
+      responsable?: string; 
+      fechaCompletado?: string; 
+      observaciones?: string;
+      auditoriaId?: string; // ID de la auditoría para guardar estado específico
+    }
   ) {
     return this.listasChequeoService.updateItem(id, itemId, updateData);
+  }
+
+  /**
+   * DELETE /listas-chequeo/:id/auditoria/:auditoriaId
+   * Desvincular una lista de una auditoría
+   */
+  @Delete(':id/auditoria/:auditoriaId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  desaplicarAuditoria(
+    @Param('id') listaId: string,
+    @Param('auditoriaId') auditoriaId: string,
+  ) {
+    return this.listasChequeoService.desaplicarAuditoria(listaId, auditoriaId);
   }
 }

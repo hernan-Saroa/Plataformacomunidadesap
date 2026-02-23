@@ -245,6 +245,95 @@ export class ConfiguracionesProfesionalesOCIGService {
   }
 
   /**
+   * Buscar personas candidatas de auth.personas que pueden ser configuradas como profesionales OCIG
+   * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
+   * @param busqueda Texto opcional para filtrar por nombre o email
+   */
+  async buscarPersonasCandidatas(busqueda?: string): Promise<
+    Array<{
+      id: string;
+      idTercero: number;
+      nombre: string;
+      email: string;
+      identificacion: string;
+    }>
+  > {
+    try {
+      // Obtener IDs de personas que ya están configuradas como profesionales OCIG
+      const configurados = await this.configRepository.find({
+        select: ['idTercero'],
+      });
+      const idsConfigurados = configurados.map((c) => c.idTercero);
+
+      console.log(
+        '[buscarPersonasCandidatas] IDs ya configurados:',
+        idsConfigurados,
+      );
+
+      // Construir query para buscar personas en auth.personas
+      let query = `
+        SELECT 
+          p.id_tercero,
+          p.nom_largo,
+          p.dir_email,
+          p.num_identificacion
+        FROM auth.personas p
+        WHERE 1=1
+      `;
+
+      const params: (number | string)[] = [];
+      let paramIndex = 1;
+
+      // Excluir personas ya configuradas
+      if (idsConfigurados.length > 0) {
+        const placeholders = idsConfigurados
+          .map((_, i) => `$${paramIndex + i}::bigint`)
+          .join(', ');
+        query += ` AND p.id_tercero NOT IN (${placeholders})`;
+        params.push(...idsConfigurados);
+        paramIndex += idsConfigurados.length;
+      }
+
+      // Filtrar por búsqueda si se proporciona
+      if (busqueda && busqueda.trim()) {
+        query += ` AND (p.nom_largo ILIKE $${paramIndex} OR p.dir_email ILIKE $${paramIndex})`;
+        params.push(`%${busqueda.trim()}%`);
+        paramIndex++;
+      }
+
+      // Ordenar y limitar resultados
+      query += ` ORDER BY p.nom_largo ASC LIMIT 50`;
+
+      console.log('[buscarPersonasCandidatas] Query:', query);
+      console.log('[buscarPersonasCandidatas] Params:', params);
+
+      const personas: Array<{
+        id_tercero: string | number;
+        nom_largo: string | null;
+        dir_email: string | null;
+        num_identificacion: string | null;
+      }> = await this.configRepository.query(query, params);
+
+      console.log(
+        '[buscarPersonasCandidatas] Personas encontradas:',
+        personas.length,
+      );
+
+      // Mapear resultados
+      return personas.map((p) => ({
+        id: String(p.id_tercero),
+        idTercero: Number(p.id_tercero),
+        nombre: p.nom_largo || 'Sin Nombre',
+        email: p.dir_email || '',
+        identificacion: p.num_identificacion || '',
+      }));
+    } catch (error) {
+      console.error('[buscarPersonasCandidatas] Error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Enriquecer configuraciones con datos de persona
    */
   private async enrichWithPersonaData(
@@ -256,20 +345,40 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     // Obtener datos de personas desde auth.personas
     const idsTerceros = configs.map((c) => c.idTercero);
-    const personas = await this.configRepository.query(
-      `SELECT 
+
+    console.log('[enrichWithPersonaData] idsTerceros:', idsTerceros);
+
+    // Usar IN con placeholders dinámicos y cast a bigint para compatibilidad
+    const placeholders = idsTerceros
+      .map((_, i) => `$${i + 1}::bigint`)
+      .join(', ');
+    const query = `SELECT 
         id_tercero,
         nom_largo,
         dir_email,
         num_identificacion
        FROM auth.personas 
-       WHERE id_tercero = ANY($1)`,
-      [idsTerceros],
-    );
+       WHERE id_tercero IN (${placeholders})`;
 
-    const personasMap = new Map<number, { nombre: string; email: string; identificacion: string }>(
-      personas.map((p: any) => [
-        p.id_tercero,
+    console.log('[enrichWithPersonaData] Query:', query);
+    console.log('[enrichWithPersonaData] Params:', idsTerceros);
+
+    const personas: Array<{
+      id_tercero: string | number;
+      nom_largo: string | null;
+      dir_email: string | null;
+      num_identificacion: string | null;
+    }> = await this.configRepository.query(query, idsTerceros);
+
+    console.log('[enrichWithPersonaData] Personas encontradas:', personas);
+
+    // Convertir id_tercero a número porque PostgreSQL bigint viene como string
+    const personasMap = new Map<
+      number,
+      { nombre: string; email: string; identificacion: string }
+    >(
+      personas.map((p) => [
+        Number(p.id_tercero),
         {
           nombre: p.nom_largo || 'Usuario Sin Nombre',
           email: p.dir_email || '',

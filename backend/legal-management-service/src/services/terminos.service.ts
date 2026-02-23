@@ -192,7 +192,7 @@ export class TerminosService {
         const termino = await this.findOne(id);
         const docs: any[] = [];
 
-        if (termino.origenModulo === 'DEFENSA' || termino.origenModulo === 'JUZGAMIENTO') {
+        if ((termino.origenModulo === 'DEFENSA' || termino.origenModulo === 'JUZGAMIENTO') && termino.referenciaId) {
             const expediente = await this.expedienteRepository.findOne({
                 where: { id: termino.referenciaId },
                 relations: ['documentos'] // Removed 'actuaciones'
@@ -243,7 +243,7 @@ export class TerminosService {
             }
         }
 
-        if (termino.origenModulo === 'ASESORIA') {
+        if (termino.origenModulo === 'ASESORIA' && termino.referenciaId) {
             const consulta = await this.consultaRepository.findOne({
                 where: { id: termino.referenciaId },
                 relations: ['abogadoAsignado']
@@ -258,7 +258,7 @@ export class TerminosService {
             }
         }
 
-        if (termino.origenModulo === 'ORGANOS_CONTROL') {
+        if (termino.origenModulo === 'ORGANOS_CONTROL' && termino.referenciaId) {
             const req = await this.requerimientoOCRepository.findOne({ where: { id: termino.referenciaId } });
             if (req) {
                 if (req.archivoAdjuntoUrl) {

@@ -25,13 +25,15 @@ import {
   Send,
   Shield,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Button } from '../../ui/button';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ResponsiveModalWrapper } from './ResponsiveModalWrapper';
 import { ResponsiveFormGrid, FormFieldGroup, FormActions } from './ResponsiveFormGrid';
 import { useResponsive } from './hooks/useResponsive';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 
 interface ModalCompartirExpedienteProps {
   expediente: {
@@ -51,22 +53,123 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
   const [linkCopiado, setLinkCopiado] = useState(false);
   const [emailDestino, setEmailDestino] = useState('');
   const [mensaje, setMensaje] = useState('');
-  const [tiempoExpiracion, setTiempoExpiracion] = useState<'24h' | '7d' | '30d' | 'nunca'>('7d');
+  const [tiempoExpiracion, setTiempoExpiracion] = useState<'24h' | '7d' | '30d' | 'never'>('7d');
   const [enviando, setEnviando] = useState(false);
+  const [generandoEnlace, setGenerandoEnlace] = useState(false);
+  const [enlaceGenerado, setEnlaceGenerado] = useState<{
+    url: string;
+    token: string;
+  } | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
-  // Generar link del expediente
-  const generarLink = () => {
-    const baseUrl = 'https://esap.edu.co/expedientes';
-    const token = btoa(`${expediente.id}-${Date.now()}`);
-    return `${baseUrl}/${token}`;
+  const { isMobile, isTablet, isDesktop } = useResponsive();
+
+  // Convertir tiempo de expiración a horas
+  const tiempoExpiracionHoras = () => {
+    switch (tiempoExpiracion) {
+      case '24h': return 24;
+      case '7d': return 24 * 7;
+      case '30d': return 24 * 30;
+      case 'never': return null;
+      default: return 24 * 7;
+    }
   };
 
-  const linkExpediente = generarLink();
+  // Generar enlace con el backend
+  const generarEnlace = async () => {
+    setGenerandoEnlace(true);
+    try {
+      const tipoCompartido = metodoSeleccionado === 'link' ? 'LINK' : metodoSeleccionado === 'qr' ? 'QR' : 'EMAIL';
+      
+      const result = await disciplinaryService.crearEnlaceCompartido(expediente.id, {
+        tipoCompartido,
+        requiereClave,
+        clave: requiereClave ? clave : undefined,
+        tiempoExpiracionHoras: tiempoExpiracionHoras() || undefined,
+        emailDestinatario: metodoSeleccionado === 'email' ? emailDestino : undefined,
+        mensajeAdicional: metodoSeleccionado === 'email' ? mensaje : undefined,
+        esPublico: true
+      });
+
+      setEnlaceGenerado({
+        url: result.url,
+        token: result.token
+      });
+
+      // Si es QR, generar la imagen del código QR
+      if (metodoSeleccionado === 'qr') {
+        generarQR(result.url);
+      }
+
+      toast.success('Enlace generado correctamente');
+    } catch (error: any) {
+      console.error('[DEBUG] Error al generar enlace:', error);
+      
+      // Manejo específico de errores de autenticación
+      if (error.status === 401) {
+        toast.error('Sesión expirada', {
+          description: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente para continuar.',
+          duration: 5000
+        });
+        // No redirigir automáticamente para no perder los datos del formulario
+      } else if (error.status === 403) {
+        toast.error('Acceso denegado', {
+          description: 'No tienes permisos para generar enlaces de este expediente.'
+        });
+      } else if (error.status === 404) {
+        toast.error('Expediente no encontrado', {
+          description: 'El expediente seleccionado no existe o ha sido eliminado.'
+        });
+      } else {
+        toast.error('Error al generar enlace', {
+          description: error.message || 'No se pudo crear el enlace de compartido'
+        });
+      }
+    } finally {
+      setGenerandoEnlace(false);
+    }
+  };
+
+  // Generar código QR usando una librería de terceros
+  const generarQR = async (url: string) => {
+    try {
+      // Usar una API pública para generar el QR o una librería
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+      setQrDataUrl(qrApiUrl);
+    } catch (error) {
+      console.error('Error al generar QR:', error);
+    }
+  };
+
+  // Descargar código QR
+  const descargarQR = async () => {
+    if (!qrDataUrl) return;
+    
+    try {
+      const response = await fetch(qrDataUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `QR_${expediente.radicado}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('QR descargado correctamente');
+    } catch (error) {
+      console.error('Error al descargar QR:', error);
+      toast.error('Error al descargar QR');
+    }
+  };
 
   // Copiar link al portapapeles
   const copiarLink = async () => {
+    if (!enlaceGenerado) return;
+    
     try {
-      await navigator.clipboard.writeText(linkExpediente);
+      await navigator.clipboard.writeText(enlaceGenerado.url);
       setLinkCopiado(true);
       toast.success('Link copiado', {
         description: 'El enlace ha sido copiado al portapapeles'
@@ -92,13 +195,6 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
     });
   };
 
-  // Descargar código QR
-  const descargarQR = () => {
-    toast.success('QR generado', {
-      description: 'El código QR se ha generado correctamente'
-    });
-  };
-
   // Enviar por correo
   const enviarPorCorreo = async () => {
     if (!emailDestino) {
@@ -110,14 +206,36 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
 
     setEnviando(true);
     
-    // Simulación de envío
-    setTimeout(() => {
-      setEnviando(false);
+    try {
+      // El correo se envía al crear el enlace
+      if (!enlaceGenerado) {
+        await generarEnlace();
+      }
+      
       toast.success('Expediente compartido', {
         description: `Enviado exitosamente a ${emailDestino}`
       });
       onClose();
-    }, 1500);
+    } catch (error: any) {
+      toast.error('Error al enviar', {
+        description: error.message || 'No se pudo enviar el correo'
+      });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Manejar el clic en el botón principal según el método
+  const handleAccionPrincipal = () => {
+    if (metodoSeleccionado === 'email') {
+      enviarPorCorreo();
+    } else if (!enlaceGenerado) {
+      generarEnlace();
+    } else if (metodoSeleccionado === 'link') {
+      copiarLink();
+    } else {
+      descargarQR();
+    }
   };
 
   // Configuración de los métodos de compartir
@@ -148,15 +266,13 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
     }
   ];
 
-  const { isMobile, isTablet, isDesktop } = useResponsive();
-
   return (
     <ResponsiveModalWrapper
       isOpen={true}
       onClose={onClose}
       title="Compartir Expediente"
       subtitle={`${expediente.radicado} • ${expediente.nombreDisciplinado}`}
-      maxWidth="2xl"
+      maxWidth="3xl"
       showBackButton={true}
     >
       {/* Content */}
@@ -174,7 +290,11 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
               return (
                 <button
                   key={metodo.id}
-                  onClick={() => setMetodoSeleccionado(metodo.id)}
+                  onClick={() => {
+                    setMetodoSeleccionado(metodo.id);
+                    setEnlaceGenerado(null);
+                    setQrDataUrl(null);
+                  }}
                   className={`p-4 rounded-lg border-2 transition-all text-left ${
                     isSelected 
                       ? 'border-blue-600 shadow-md' 
@@ -294,7 +414,7 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
                 { value: '24h', label: '24 horas' },
                 { value: '7d', label: '7 días' },
                 { value: '30d', label: '30 días' },
-                { value: 'nunca', label: 'Sin expiración' }
+                { value: 'never', label: 'Sin expiración' }
               ].map((opcion) => (
                 <button
                   key={opcion.value}
@@ -320,43 +440,53 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
               Link de Acceso Directo
             </h3>
             
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={linkExpediente}
-                readOnly
-                className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-mono text-gray-700"
-              />
-              <Button
-                onClick={copiarLink}
-                variant="outline"
-                className={`${
-                  linkCopiado 
-                    ? 'border-green-600 text-green-700 bg-green-50' 
-                    : 'border-blue-600 text-blue-700 hover:bg-blue-50'
-                }`}
-              >
-                {linkCopiado ? (
-                  <>
-                    <Check className="w-4 h-4 mr-2" />
-                    Copiado
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copiar
-                  </>
-                )}
-              </Button>
-            </div>
+            {enlaceGenerado ? (
+              <>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={enlaceGenerado.url}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-mono text-gray-700"
+                  />
+                  <Button
+                    onClick={copiarLink}
+                    variant="outline"
+                    className={
+                      linkCopiado 
+                        ? 'border-green-600 text-green-700 bg-green-50' 
+                        : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                    }
+                  >
+                    {linkCopiado ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Copiado
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copiar
+                      </>
+                    )}
+                  </Button>
+                </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs text-blue-800">
-                <strong>Instrucciones:</strong> Comparte este enlace con las personas autorizadas. 
-                {requiereClave && ' Deberán ingresar la clave para acceder al contenido.'}
-                {tiempoExpiracion !== 'nunca' && ` El enlace expirará en ${tiempoExpiracion === '24h' ? '24 horas' : tiempoExpiracion === '7d' ? '7 días' : '30 días'}.`}
-              </p>
-            </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>Instrucciones:</strong> Comparte este enlace con las personas autorizadas. 
+                    {requiereClave && ' Deberán ingresar la clave para acceder al contenido.'}
+                    {tiempoExpiracion !== 'never' && ` El enlace expirará en ${tiempoExpiracion === '24h' ? '24 horas' : tiempoExpiracion === '7d' ? '7 días' : '30 días'}.`}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                <p className="text-sm text-yellow-800">
+                  Haz clic en "Generar Link" para crear el enlace de acceso
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -367,23 +497,33 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
               Código QR de Acceso
             </h3>
 
-            {/* Código QR simulado */}
-            <div className="flex flex-col items-center justify-center bg-white border-2 border-purple-200 rounded-lg p-6">
-              <div className="w-48 h-48 bg-white border-4 border-gray-300 rounded-lg flex items-center justify-center mb-4">
-                <QrCode className="w-40 h-40 text-gray-800" />
+            {qrDataUrl ? (
+              <div className="flex flex-col items-center justify-center bg-white border-2 border-purple-200 rounded-lg p-6">
+                <img 
+                  src={qrDataUrl} 
+                  alt="Código QR" 
+                  className="w-48 h-48 mb-4"
+                />
+                <p className="text-sm text-gray-600 text-center mb-4">
+                  Escanea este código para acceder al expediente
+                </p>
+                <Button
+                  onClick={descargarQR}
+                  variant="outline"
+                  className="border-purple-600 text-purple-700 hover:bg-purple-50"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar QR
+                </Button>
               </div>
-              <p className="text-sm text-gray-600 text-center mb-4">
-                Escanea este código para acceder al expediente
-              </p>
-              <Button
-                onClick={descargarQR}
-                variant="outline"
-                className="border-purple-600 text-purple-700 hover:bg-purple-50"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Descargar QR
-              </Button>
-            </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-gray-300 rounded-lg p-6">
+                <QrCode className="w-16 h-16 text-gray-400 mb-4" />
+                <p className="text-sm text-gray-500 text-center mb-4">
+                  Genera el enlace para ver el código QR
+                </p>
+              </div>
+            )}
 
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
               <p className="text-xs text-purple-800">
@@ -448,44 +588,48 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
           Cancelar
         </Button>
 
-        {metodoSeleccionado === 'email' ? (
-          <Button
-            onClick={enviarPorCorreo}
-            disabled={enviando || !emailDestino}
-            style={{ background: '#10B981', color: '#FFFFFF' }}
-            className={`${isMobile ? 'w-full' : 'min-w-[140px]'}`}
-          >
-            {enviando ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-2" />
-                Enviar Email
-              </>
-            )}
-          </Button>
-        ) : (
-          <Button
-            onClick={metodoSeleccionado === 'link' ? copiarLink : descargarQR}
-            style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
-            className={isMobile ? 'w-full' : ''}
-          >
-            {metodoSeleccionado === 'link' ? (
+        <Button
+          onClick={handleAccionPrincipal}
+          disabled={generandoEnlace || enviando || (metodoSeleccionado === 'email' && !emailDestino) || (requiereClave && !clave)}
+          style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
+          className={isMobile ? 'w-full' : ''}
+        >
+          {generandoEnlace || enviando ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {enviando ? 'Enviando...' : 'Generando...'}
+            </>
+          ) : metodoSeleccionado === 'link' ? (
+            enlaceGenerado ? (
               <>
                 <Copy className="w-4 h-4 mr-2" />
                 Copiar Link
               </>
             ) : (
               <>
+                <Link2 className="w-4 h-4 mr-2" />
+                Generar Link
+              </>
+            )
+          ) : metodoSeleccionado === 'qr' ? (
+            enlaceGenerado ? (
+              <>
                 <Download className="w-4 h-4 mr-2" />
                 Descargar QR
               </>
-            )}
-          </Button>
-        )}
+            ) : (
+              <>
+                <QrCode className="w-4 h-4 mr-2" />
+                Generar QR
+              </>
+            )
+          ) : (
+            <>
+              <Send className="w-4 h-4 mr-2" />
+              Enviar Email
+            </>
+          )}
+        </Button>
       </div>
     </ResponsiveModalWrapper>
   );

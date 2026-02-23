@@ -25,7 +25,8 @@ const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
 
 // Prefijo del servicio para el API Gateway
 // En modo gateway se usa: /control-institucional/api/v1
-// En modo direct no se usa prefijo porque se conecta directo al microservicio
+// En modo direct NO se usa prefijo - el microservicio no tiene prefijo global
+// El gateway maneja: /control-institucional/api/v1/auditorias -> microservicio:3007/auditorias
 const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 // ============================================================================
@@ -49,6 +50,24 @@ export interface ProcesoAuditable {
     riesgoInherente: number;
     riesgoResidual: number;
     nivelRiesgo: 'bajo' | 'medio' | 'alto';
+    // Distribución de riesgos DAFP
+    riesgosExtremos?: number;
+    riesgosAltos?: number;
+    riesgosModerados?: number;
+    riesgosBajos?: number;
+    totalRiesgos?: number;
+    // Requerimientos especiales
+    requerimientoComite?: boolean;
+    requerimientoEntesReg?: boolean;
+    // Campos DAFP calculados y decisión
+    vigencia?: number;
+    fechaCorte?: string;
+    ponderacionRiesgo?: string;
+    diasRotacion?: number;
+    decisionRotacion?: string;
+    decisionFinal?: string;
+    motivoDecision?: string;
+    prioridadRegla?: number;
   };
   frecuenciaAuditoria: string;
   ultimaAuditoria?: string;
@@ -131,6 +150,13 @@ export interface ListaChequeo {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // ✅ VINCULACIÓN CON AUDITORÍA
+  auditoriaId?: string;
+  nombreAuditoria?: string;
+  auditorResponsable?: string;
+  fechaAplicacion?: string;
+  itemsCompletados?: number;
+  cumplimiento?: number;
 }
 
 export interface PlanIndividual {
@@ -218,7 +244,7 @@ class ControlInternoAPIClient {
     options: RequestInit = {}
   ): Promise<T> {
     // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
-    // En modo direct: http://localhost:3007/plan-anual-5-roles
+    // En modo direct: http://localhost:3007/plan-anual-5-roles (sin prefijo /api/v1)
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     
     const defaultHeaders: HeadersInit = {
@@ -732,12 +758,16 @@ class ControlInternoService {
 
   /**
    * Actualiza un item de una lista (marcar completado/pendiente)
+   * @param listaId - ID de la lista de chequeo
+   * @param itemId - ID del item a actualizar
+   * @param data - Datos a actualizar incluyendo auditoriaId para guardar estado específico
    */
   async actualizarItemLista(listaId: string, itemId: string, data: {
     completado?: boolean;
     responsable?: string;
     fechaCompletado?: string;
     observaciones?: string;
+    auditoriaId?: string; // ID de la auditoría para guardar estado específico
   }): Promise<any> {
     return client.patch(`/listas-chequeo/${listaId}/items/${itemId}`, data);
   }

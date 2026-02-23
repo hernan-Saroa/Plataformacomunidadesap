@@ -83,6 +83,9 @@ export class PlanAnual5RolesService {
     const plan = this.planRepository.create({
       año: createDto.año,
       responsable: createDto.responsable,
+      responsable_id: createDto.responsable_id,
+      fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
+      fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
       estado: createDto.estado || 'borrador',
       fecha_creacion: new Date(),
     });
@@ -507,6 +510,12 @@ export class PlanAnual5RolesService {
       values.push(updateDto.requiereVerificacionDirector);
       cambios.push({ campo: 'requiere_verificacion_director', valorAnterior: String(actividad.requiereVerificacionDirector), valorNuevo: String(updateDto.requiereVerificacionDirector) });
     }
+    // Soporte para campo activo (soft delete / reactivar)
+    if ((updateDto as any).activo !== undefined && (updateDto as any).activo !== actividad.activo) {
+      updates.push(`activo = $${paramIndex++}`);
+      values.push((updateDto as any).activo);
+      cambios.push({ campo: 'activo', valorAnterior: String(actividad.activo), valorNuevo: String((updateDto as any).activo) });
+    }
 
     if (updates.length === 0) {
       return actividad;
@@ -564,7 +573,9 @@ export class PlanAnual5RolesService {
     const planId = actividad.planId;
     const nombreActividad = actividad.nombre;
 
-    await this.actividadRepository.remove(actividad);
+    // Soft delete: marcar como inactivo en lugar de eliminar
+    actividad.activo = false;
+    await this.actividadRepository.save(actividad);
 
     // Recalcular estadísticas
     await this.recalcularRol(rolId);
@@ -574,12 +585,12 @@ export class PlanAnual5RolesService {
     await this.registrarHistorial(
       planId,
       TipoEventoPlanAnual.ACTIVIDAD_ELIMINADA,
-      'Actividad eliminada',
-      `Actividad "${nombreActividad}" eliminada`,
+      'Actividad desactivada',
+      `Actividad "${nombreActividad}" marcada como inactiva`,
       usuarioId,
       undefined,
       undefined,
-      [{ campo: 'actividad', valorAnterior: nombreActividad, valorNuevo: '' }]
+      [{ campo: 'activo', valorAnterior: 'true', valorNuevo: 'false' }]
     );
   }
 
@@ -592,7 +603,7 @@ export class PlanAnual5RolesService {
 
   private async recalcularRol(rolId: string): Promise<void> {
     const actividades = await this.actividadRepository.find({
-      where: { rolId },
+      where: { rolId, activo: true },
     });
 
     const totalActividades = actividades.length;
@@ -616,13 +627,14 @@ export class PlanAnual5RolesService {
       relations: ['actividades'],
     });
 
-    const totalActividades = roles.reduce((sum, r) => sum + r.actividades.length, 0);
+    // Solo contar actividades activas
+    const totalActividades = roles.reduce((sum, r) => sum + r.actividades.filter((a) => a.activo !== false).length, 0);
     const actividadesCompletadas = roles.reduce(
-      (sum, r) => sum + r.actividades.filter((a) => a.estado === 'completada').length,
+      (sum, r) => sum + r.actividades.filter((a) => a.activo !== false && a.estado === 'completada').length,
       0,
     );
     const actividadesEnProgreso = roles.reduce(
-      (sum, r) => sum + r.actividades.filter((a) => a.estado === 'en-progreso').length,
+      (sum, r) => sum + r.actividades.filter((a) => a.activo !== false && a.estado === 'en-progreso').length,
       0,
     );
 

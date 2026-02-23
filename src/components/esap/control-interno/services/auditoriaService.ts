@@ -55,6 +55,7 @@ export interface AuditoriaBackendDTO {
   controlesAplicar?: string[];
   equipoAuditores?: string[];
   programaAnualMetadata?: any;
+  estadoKanban?: string; // Para crear auditoria en columna correcta del Kanban
 }
 
 /** Datos del formulario frontend (más amigable) */
@@ -105,6 +106,9 @@ export interface AuditoriaFormData {
   planAnualId?: string;
   planAnualAño?: number;
   rolDecretoAsociado?: string;
+  
+  // Estado Kanban
+  estadoKanban?: string;
 }
 
 /** Auditoría como viene del backend */
@@ -179,6 +183,7 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
       año: form.planAnualAño,
       rol: form.rolDecretoAsociado,
     } : undefined,
+    estadoKanban: form.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
   };
 }
 

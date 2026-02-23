@@ -25,7 +25,7 @@ import { Viewer, Worker } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
-import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios } from './ModalesGestionDocumental';
+import { ModalGestionAutos, ModalGestionEvidencias, ModalGestionOficios, ModalGestionActas } from './ModalesGestionDocumental';
 import { EditorDocumentos } from './EditorDocumentos';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '../../../enums/permissions';
@@ -33,7 +33,7 @@ import { Permissions } from '../../../enums/permissions';
 // Modal de Selección de Tipo de Documento
 interface ModalSeleccionProps {
   onClose: () => void;
-  onSelect: (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => void;
+  onSelect: (tipo: 'auto' | 'evidencia' | 'oficio' | 'acta' | 'otro') => void;
 }
 
 function ModalSeleccionDocumento({ onClose, onSelect }: ModalSeleccionProps) {
@@ -100,6 +100,19 @@ function ModalSeleccionDocumento({ onClose, onSelect }: ModalSeleccionProps) {
           </button>
 
           <button
+            onClick={() => onSelect('acta')}
+            className="p-6 rounded-xl border-2 border-transparent bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-200 transition-all flex flex-col items-center gap-3 group"
+          >
+            <div className="w-12 h-12 rounded-full bg-emerald-100 group-hover:bg-emerald-200 flex items-center justify-center">
+              <FileCheck className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div className="text-center">
+              <h4 className="font-bold text-emerald-900">Acta</h4>
+              <p className="text-xs text-emerald-700 mt-1">Actas de audiencia, versión libre, descargos</p>
+            </div>
+          </button>
+
+          <button
             onClick={() => onSelect('otro')}
             className="p-6 rounded-xl border-2 border-transparent bg-gray-50 hover:bg-gray-100 hover:border-gray-200 transition-all flex flex-col items-center gap-3 group"
           >
@@ -108,7 +121,7 @@ function ModalSeleccionDocumento({ onClose, onSelect }: ModalSeleccionProps) {
             </div>
             <div className="text-center">
               <h4 className="font-bold text-gray-900">Otro Documento</h4>
-              <p className="text-xs text-gray-600 mt-1">Carga genérica (Actas, Constancias, etc.)</p>
+              <p className="text-xs text-gray-600 mt-1">Carga genérica (Constancias, etc.)</p>
             </div>
           </button>
         </div>
@@ -1856,6 +1869,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
   const [showModalAutos, setShowModalAutos] = useState(false);
   const [showModalEvidencias, setShowModalEvidencias] = useState(false);
   const [showModalOficios, setShowModalOficios] = useState(false);
+  const [showModalActas, setShowModalActas] = useState(false);
   const [showModalSeleccion, setShowModalSeleccion] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -2039,18 +2053,17 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
     setShowModalAutos(false);
     setShowModalEvidencias(false);
     setShowModalOficios(false);
-    setShowModalAutos(false);
-    setShowModalEvidencias(false);
-    setShowModalOficios(false);
+    setShowModalActas(false);
     setRefreshTrigger(prev => prev + 1);
     setEditingAutoForModal(null); // Limpiar edición
   };
 
-  const handleSeleccionTipoDocumento = (tipo: 'auto' | 'evidencia' | 'oficio' | 'otro') => {
+  const handleSeleccionTipoDocumento = (tipo: 'auto' | 'evidencia' | 'oficio' | 'acta' | 'otro') => {
     setShowModalSeleccion(false);
     if (tipo === 'auto') setShowModalAutos(true);
     else if (tipo === 'evidencia') setShowModalEvidencias(true);
     else if (tipo === 'oficio') setShowModalOficios(true);
+    else if (tipo === 'acta') setShowModalActas(true);
     else setShowModalSubir(true);
   };
 
@@ -3043,6 +3056,13 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
             proceso={mapProcesoToEspecializado(procesoSeleccionado)}
             onClose={handleCerrarModalesEspecializados}
             onCrearOficio={handleCerrarModalesEspecializados}
+          />
+        )}
+
+        {showModalActas && procesoSeleccionado && (
+          <ModalGestionActas
+            proceso={mapProcesoToEspecializado(procesoSeleccionado)}
+            onClose={handleCerrarModalesEspecializados}
           />
         )}
 

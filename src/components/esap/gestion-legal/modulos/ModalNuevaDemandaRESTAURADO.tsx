@@ -26,7 +26,10 @@
 
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
-import { 
+import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
+import { estructuraService } from '../../../../services/api/estructura.service';
+import { legalService } from '../../../../services/api/legal.service';
+import {
   Scale, FileText, Users, Building2, User, MapPin, Calendar,
   ChevronRight, ChevronLeft, Plus, Trash2, Check, AlertCircle,
   DollarSign, Clock, Star, Info, Sparkles, Save, X, CheckCircle,
@@ -119,73 +122,92 @@ interface ModalNuevaDemandaRESTAURADOProps {
 }
 
 // ==================== DATOS PARAMETRIZABLES ====================
-
-const MEDIOS_CONTROL = [
-  'NRD Art.138',
-  'Reparación Directa',
-  'Controversias Contractuales',
-  'Electoral',
-  'Tutela',
-  'Acción Popular',
-  'Cumplimiento'
-];
-
-const TIPOS_PROCESO = [
-  'Proceso Ordinario',
-  'Proceso Verbal',
-  'Proceso Ejecutivo',
-  'Proceso de Única Instancia',
-  'Proceso de Doble Instancia'
-];
-
-const ETAPAS_PROCESALES = [
-  'Admisión',
-  'Contestación',
-  'Pruebas',
-  'Alegatos',
-  'Sentencia Primera Instancia',
-  'Apelación',
-  'Sentencia Segunda Instancia',
-  'Ejecución'
-];
-
-const ETAPAS_PROCESO = [
-  { id: 'NOTIFICADA', nombre: 'Notificada' },
-  { id: 'CONTESTACIÓN', nombre: 'Contestación' },
-  { id: 'PROBATORIA', nombre: 'Probatoria' },
-  { id: 'ALEGATOS', nombre: 'Alegatos' },
-  { id: 'SENTENCIA', nombre: 'Sentencia' },
-  { id: 'APELACIÓN', nombre: 'Apelación' }
-];
+// MEDIOS_CONTROL, TIPOS_PROCESO y ETAPAS_PROCESALES ahora se obtienen
+// dinámicamente desde el submodulo de configuración via useConfiguracionModulo
 
 
-const DEPARTAMENTOS_COLOMBIA = [
-  'Amazonas', 'Antioquia', 'Arauca', 'Atlántico', 'Bolívar', 'Boyacá', 'Caldas',
-  'Caquetá', 'Casanare', 'Cauca', 'Cesar', 'Chocó', 'Córdoba', 'Cundinamarca',
-  'Guainía', 'Guaviare', 'Huila', 'La Guajira', 'Magdalena', 'Meta', 'Nariño',
-  'Norte de Santander', 'Putumayo', 'Quindío', 'Risaralda', 'San Andrés y Providencia',
-  'Santander', 'Sucre', 'Tolima', 'Valle del Cauca', 'Vaupés', 'Vichada'
-];
+// Departamentos y ciudades se cargan dinámicamente desde auth.geopolitica
 
-const CIUDADES_POR_DEPARTAMENTO: Record<string, string[]> = {
-  'Cundinamarca': ['Bogotá D.C.', 'Soacha', 'Facatativá', 'Zipaquirá', 'Chía', 'Fusagasugá', 'Girardot'],
-  'Antioquia': ['Medellín', 'Bello', 'Itagüí', 'Envigado', 'Apartadó', 'Rionegro', 'Turbo'],
-  'Valle del Cauca': ['Cali', 'Palmira', 'Buenaventura', 'Tuluá', 'Cartago', 'Jamundí', 'Buga'],
-  'Atlántico': ['Barranquilla', 'Soledad', 'Malambo', 'Sabanalarga', 'Puerto Colombia'],
-  'Santander': ['Bucaramanga', 'Floridablanca', 'Girón', 'Piedecuesta', 'Barrancabermeja'],
-  'Bolívar': ['Cartagena', 'Magangué', 'Turbaco', 'Arjona'],
-};
+// ==================== HELPERS DE VALIDACIÓN ====================
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const soloDigitos = (v: string) => v.replace(/[^0-9]/g, '');
+const soloLetrasEspacios = (v: string) => v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
+const nitFormato = (v: string) => v.replace(/[^0-9.\-]/g, '');
 
-const ABOGADOS_DISPONIBLES = [
-  'Dr. Juan Pérez Martínez',
-  'Dra. Ana María López',
-  'Dr. Carlos González Ruiz',
-  'Dra. María Fernanda Torres',
-  'Dr. Luis Alberto Ramírez'
-];
+// Abogados se cargan dinámicamente desde legal_management.abogados
 
 // ==================== FUNCIONES DE CÁLCULO ====================
 
+/**
+ * Verifica si un día es hábil (lunes a viernes).
+ */
+function esDiaHabil(fecha: Date): boolean {
+  const dia = fecha.getDay();
+  return dia !== 0 && dia !== 6; // 0=dom, 6=sáb
+}
+
+/**
+ * Avanza a la próxima fecha hábil si cae en fin de semana.
+ */
+function siguienteDiaHabil(fecha: Date): Date {
+  const f = new Date(fecha);
+  while (!esDiaHabil(f)) {
+    f.setDate(f.getDate() + 1);
+  }
+  return f;
+}
+
+/**
+ * Normaliza una fecha al horario hábil (8:00 AM - 5:00 PM, lun-vie).
+ * - Si cae en fin de semana → próximo lunes a las 8:00 AM
+ * - Si es antes de las 8:00 AM → mismo día a las 8:00 AM (si es hábil)
+ * - Si es después de las 5:00 PM → próximo día hábil a las 8:00 AM
+ * - Si está dentro de horario → se deja tal cual
+ */
+function normalizarAHorarioHabil(fechaStr: string): string {
+  if (!fechaStr) return '';
+  let fecha = new Date(fechaStr);
+
+  // 1. Si cae en fin de semana, mover al lunes
+  if (!esDiaHabil(fecha)) {
+    fecha = siguienteDiaHabil(fecha);
+    fecha.setHours(8, 0, 0, 0);
+    return toLocalISO(fecha);
+  }
+
+  const hora = fecha.getHours();
+  const minutos = fecha.getMinutes();
+  const totalMinutos = hora * 60 + minutos;
+
+  // 2. Antes de las 8:00 AM → mismo día a las 8 AM
+  if (totalMinutos < 480) { // 8*60 = 480
+    fecha.setHours(8, 0, 0, 0);
+    return toLocalISO(fecha);
+  }
+
+  // 3. Después de las 5:00 PM → siguiente día hábil a las 8 AM
+  if (totalMinutos >= 1020) { // 17*60 = 1020
+    fecha.setDate(fecha.getDate() + 1);
+    fecha = siguienteDiaHabil(fecha);
+    fecha.setHours(8, 0, 0, 0);
+    return toLocalISO(fecha);
+  }
+
+  // 4. Dentro de horario hábil, se deja tal cual
+  return toLocalISO(fecha);
+}
+
+/** Formatea Date a string compatible con datetime-local (YYYY-MM-DDTHH:mm) en hora local */
+function toLocalISO(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Calcula la fecha de vencimiento a partir de la fecha de notificación.
+ * - Días Hábiles: cuenta sólo lun-vie, vence a las 5:00 PM del último día hábil.
+ * - Días Calendario: cuenta todos los días, vence a las 5:00 PM.
+ */
 function calcularFechaVencimiento(
   fechaNotificacion: string,
   termino: number,
@@ -194,27 +216,35 @@ function calcularFechaVencimiento(
   if (!fechaNotificacion || !termino) return '';
 
   const fecha = new Date(fechaNotificacion);
-  let diasAgregados = 0;
 
   if (tipoPlazo === 'Dias Calendario') {
     fecha.setDate(fecha.getDate() + termino);
+    // Si cae en fin de semana, avanzar al lunes
+    while (!esDiaHabil(fecha)) {
+      fecha.setDate(fecha.getDate() + 1);
+    }
   } else {
+    // Días Hábiles: contar solo lun-vie (el día de notificación cuenta como día 1)
+    let diasAgregados = 1;
     while (diasAgregados < termino) {
       fecha.setDate(fecha.getDate() + 1);
-      const diaSemana = fecha.getDay();
-      if (diaSemana !== 0 && diaSemana !== 6) {
+      if (esDiaHabil(fecha)) {
         diasAgregados++;
       }
     }
   }
 
+  // Siempre vence a las 5:00 PM
   fecha.setHours(17, 0, 0, 0);
-  return fecha.toISOString().slice(0, 16);
+  return toLocalISO(fecha);
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
 export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNuevaDemandaRESTAURADOProps) {
+  // Obtener datos dinámicos del submódulo de configuración
+  const { mediosControlActivos, tiposProcesosActivos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
+
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 7;
 
@@ -241,6 +271,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   });
 
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
+  const [departamentosAPI, setDepartamentosAPI] = useState<{ id: number; nombre: string }[]>([]);
+  const [cargandoCiudades, setCargandoCiudades] = useState(false);
+  const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
 
   // Calcular fecha de vencimiento automáticamente
@@ -255,13 +288,52 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
     }
   }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo]);
 
+  // Cargar departamentos desde auth.geopolitica al montar
+  useEffect(() => {
+    estructuraService.geopolitica.listarDepartamentos()
+      .then(res => {
+        const deps = (res.data || []).map((d: any) => ({
+          id: d.idGeopolitica,
+          nombre: d.nomDivGeopolitica,
+        }));
+        setDepartamentosAPI(deps);
+      })
+      .catch(() => {
+        // Fallback silencioso: se queda con array vacío
+      });
+  }, []);
+
+  // Cargar abogados activos desde legal_management.abogados al montar
+  useEffect(() => {
+    legalService.getAbogados()
+      .then((data: any[]) => {
+        const activos = (data || [])
+          .filter((a: any) => a.estado === 'ACTIVO')
+          .map((a: any) => ({ id: a.id, nombre: a.nombreCompleto }));
+        setAbogadosAPI(activos);
+      })
+      .catch(() => { });
+  }, []);
+
   // Actualizar ciudades cuando cambia el departamento
   useEffect(() => {
     if (formData.departamento) {
-      setCiudadesDisponibles(CIUDADES_POR_DEPARTAMENTO[formData.departamento] || []);
+      const dep = departamentosAPI.find(d => d.nombre === formData.departamento);
+      if (dep) {
+        setCargandoCiudades(true);
+        estructuraService.geopolitica.listarCiudades(dep.id)
+          .then(res => {
+            const ciudades = (res.data || []).map((c: any) => c.nomDivGeopolitica as string);
+            setCiudadesDisponibles(ciudades);
+          })
+          .catch(() => setCiudadesDisponibles([]))
+          .finally(() => setCargandoCiudades(false));
+      } else {
+        setCiudadesDisponibles([]);
+      }
       setFormData(prev => ({ ...prev, ciudad: '' }));
     }
-  }, [formData.departamento]);
+  }, [formData.departamento, departamentosAPI]);
 
   // ==================== FUNCIONES DEMANDANTES ====================
 
@@ -294,7 +366,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const actualizarDemandante = (id: string, campo: string, valor: any) => {
     setFormData(prev => ({
       ...prev,
-      demandantes: prev.demandantes.map(d => 
+      demandantes: prev.demandantes.map(d =>
         d.id === id ? { ...d, [campo]: valor } : d
       )
     }));
@@ -331,7 +403,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const actualizarDemandado = (id: string, campo: string, valor: any) => {
     setFormData(prev => ({
       ...prev,
-      demandados: prev.demandados.map(d => 
+      demandados: prev.demandados.map(d =>
         d.id === id ? { ...d, [campo]: valor } : d
       )
     }));
@@ -369,7 +441,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
   const actualizarOtroActor = (id: string, campo: string, valor: any) => {
     setFormData(prev => ({
       ...prev,
-      otrosActores: prev.otrosActores.map(a => 
+      otrosActores: prev.otrosActores.map(a =>
         a.id === id ? { ...a, [campo]: valor } : a
       )
     }));
@@ -383,6 +455,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
         if (!formData.numeroRadicado || !formData.medioControl || !formData.tipoProcesoJudicial || !formData.etapaProcesal) {
           toast.error('⚠️ Campos incompletos', {
             description: 'Complete todos los campos obligatorios del proceso judicial'
+          });
+          return false;
+        }
+        if (formData.numeroRadicado.length !== 23) {
+          toast.error('⚠️ Radicado inválido', {
+            description: 'El número de radicado debe tener exactamente 23 dígitos'
           });
           return false;
         }
@@ -402,6 +480,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
             });
             return false;
           }
+          if (!EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (dem.telefono && dem.telefono.length < 7) {
+            toast.error('⚠️ Teléfono inválido', {
+              description: `El teléfono del demandante ${dem.nombreCompleto || ''} debe tener al menos 7 dígitos`
+            });
+            return false;
+          }
         }
         return true;
 
@@ -416,6 +506,18 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           if (!dem.cedula || !dem.nombreCompleto || !dem.correo) {
             toast.error('⚠️ Información incompleta', {
               description: 'Complete todos los campos obligatorios de los demandados'
+            });
+            return false;
+          }
+          if (!EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (dem.telefono && dem.telefono.length < 7) {
+            toast.error('⚠️ Teléfono inválido', {
+              description: `El teléfono del demandado ${dem.nombreCompleto || ''} debe tener al menos 7 dígitos`
             });
             return false;
           }
@@ -471,14 +573,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
     if (!validarPasoActual()) return;
 
     setEnviando(true);
-    
+
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
+
       onSave(formData);
-      
+
       const consecutivo = `ESAP-DN-OCID-DJ-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}-2026`;
-      
+
       toast.success('✅ Demanda Registrada', {
         description: `${consecutivo} - ${formData.numeroRadicado}`,
         duration: 4000
@@ -529,12 +631,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
           titulo="Nueva Demanda Judicial"
           subtitulo={
             pasoActual === 1 ? 'Datos del Proceso Judicial' :
-            pasoActual === 2 ? 'Datos del/los Demandante(s)' :
-            pasoActual === 3 ? 'Datos del/los Demandado(s)' :
-            pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
-            pasoActual === 5 ? 'Juzgado y Ubicación' :
-            pasoActual === 6 ? 'Fechas y Asignación' :
-            'Detalles del Proceso'
+              pasoActual === 2 ? 'Datos del/los Demandante(s)' :
+                pasoActual === 3 ? 'Datos del/los Demandado(s)' :
+                  pasoActual === 4 ? 'Datos de Otros Actores (Opcional)' :
+                    pasoActual === 5 ? 'Juzgado y Ubicación' :
+                      pasoActual === 6 ? 'Fechas y Asignación' :
+                        'Detalles del Proceso'
           }
           colorIcono="blue"
           badges={getBadgesPorPaso()}
@@ -549,7 +651,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
               style={{ width: `${porcentajeProgreso}%` }}
             />
           </div>
-          
+
           {/* Breadcrumb de pasos */}
           <div className="flex items-center justify-between mt-3 mb-2 text-xs">
             {[
@@ -562,18 +664,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
               { num: 7, label: 'Detalles' }
             ].map((paso) => (
               <div key={paso.num} className="flex flex-col items-center">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                  pasoActual === paso.num
-                    ? 'bg-blue-600 text-white'
-                    : pasoActual > paso.num
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${pasoActual === paso.num
+                  ? 'bg-blue-600 text-white'
+                  : pasoActual > paso.num
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-200 text-gray-500'
-                }`}>
+                  }`}>
                   {pasoActual > paso.num ? <Check className="w-4 h-4" /> : paso.num}
                 </div>
-                <span className={`text-[10px] mt-1 ${
-                  pasoActual === paso.num ? 'text-blue-600 font-bold' : 'text-gray-500'
-                }`}>
+                <span className={`text-[10px] mt-1 ${pasoActual === paso.num ? 'text-blue-600 font-bold' : 'text-gray-500'
+                  }`}>
                   {paso.label}
                 </span>
               </div>
@@ -600,13 +700,31 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                     <div className="space-y-2">
                       <Label htmlFor="numeroRadicado" className="text-sm font-bold text-gray-700">
                         Número de Radicado <span className="text-red-500">*</span>
+                        <span className="text-xs font-normal text-gray-400 ml-1">(23 dígitos)</span>
                       </Label>
                       <Input
                         id="numeroRadicado"
-                        placeholder="Ej: 66001-23-33-000-2026-00123-00"
+                        placeholder="Ej: 66001233300020260012300"
                         value={formData.numeroRadicado}
-                        onChange={(e) => setFormData({ ...formData, numeroRadicado: e.target.value })}
+                        maxLength={23}
+                        onChange={(e) => {
+                          // Solo permitir dígitos, máximo 23
+                          const valor = e.target.value.replace(/[^0-9]/g, '').slice(0, 23);
+                          setFormData({ ...formData, numeroRadicado: valor });
+                        }}
                       />
+                      {formData.numeroRadicado && formData.numeroRadicado.length !== 23 && (
+                        <p className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {formData.numeroRadicado.length}/23 dígitos
+                        </p>
+                      )}
+                      {formData.numeroRadicado && formData.numeroRadicado.length === 23 && (
+                        <p className="text-xs text-green-600 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          Radicado completo
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -622,8 +740,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <SelectValue placeholder="Seleccione medio de control..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {MEDIOS_CONTROL.map(mc => (
-                              <SelectItem key={mc} value={mc}>{mc}</SelectItem>
+                            {mediosControlActivos.map(mc => (
+                              <SelectItem key={mc.id} value={mc.nombre}>{mc.nombre}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -641,8 +759,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <SelectValue placeholder="Seleccione tipo de proceso..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {TIPOS_PROCESO.map(tp => (
-                              <SelectItem key={tp} value={tp}>{tp}</SelectItem>
+                            {tiposProcesosActivos.map(tp => (
+                              <SelectItem key={tp.id} value={tp.nombre}>{tp.nombre}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -660,7 +778,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <SelectValue placeholder="Seleccione etapa procesal..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {ETAPAS_PROCESO.map(estado => (
+                            {estadosActivos.map(estado => (
                               <SelectItem key={estado.id} value={estado.id}>{estado.nombre}</SelectItem>
                             ))}
                           </SelectContent>
@@ -670,15 +788,30 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                       <div className="space-y-2">
                         <Label htmlFor="cuantia" className="text-sm font-bold text-gray-700">
                           Cuantía (COP)
+                          <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
                         </Label>
                         <Input
                           id="cuantia"
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           placeholder="0"
-                          value={formData.cuantia}
-                          onChange={(e) => setFormData({ ...formData, cuantia: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="1000"
+                          value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, '');
+                            // Si está vacío, poner 0
+                            if (!raw) {
+                              setFormData({ ...formData, cuantia: 0 });
+                              return;
+                            }
+                            // Si empieza con 0, solo permitir "0" exacto
+                            if (raw.startsWith('0')) {
+                              setFormData({ ...formData, cuantia: 0 });
+                              return;
+                            }
+                            // Máximo 12 dígitos
+                            const limitado = raw.slice(0, 12);
+                            setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
+                          }}
                         />
                       </div>
                     </div>
@@ -757,7 +890,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={demandante.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
                               value={demandante.cedula}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'cedula', e.target.value)}
+                              maxLength={demandante.tipoPersona === 'Natural' ? 10 : 15}
+                              onChange={(e) => {
+                                const val = demandante.tipoPersona === 'Natural'
+                                  ? soloDigitos(e.target.value)
+                                  : nitFormato(e.target.value);
+                                actualizarDemandante(demandante.id, 'cedula', val);
+                              }}
                             />
                           </div>
 
@@ -768,7 +907,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={demandante.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
                               value={demandante.nombreCompleto}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'nombreCompleto', e.target.value)}
+                              onChange={(e) => {
+                                const val = demandante.tipoPersona === 'Natural'
+                                  ? soloLetrasEspacios(e.target.value)
+                                  : e.target.value;
+                                actualizarDemandante(demandante.id, 'nombreCompleto', val);
+                              }}
                             />
                           </div>
 
@@ -777,7 +921,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder="3001234567"
                               value={demandante.telefono}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'telefono', e.target.value)}
+                              maxLength={10}
+                              onChange={(e) => actualizarDemandante(demandante.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
                             />
                           </div>
 
@@ -831,7 +976,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                     value={demandante.apoderado?.nombreCompleto || ''}
                                     onChange={(e) => actualizarDemandante(demandante.id, 'apoderado', {
                                       ...demandante.apoderado,
-                                      nombreCompleto: e.target.value
+                                      nombreCompleto: soloLetrasEspacios(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -840,9 +985,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="Cédula"
                                     value={demandante.apoderado?.cedula || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarDemandante(demandante.id, 'apoderado', {
                                       ...demandante.apoderado,
-                                      cedula: e.target.value
+                                      cedula: soloDigitos(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -851,9 +997,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="3001234567"
                                     value={demandante.apoderado?.celular || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarDemandante(demandante.id, 'apoderado', {
                                       ...demandante.apoderado,
-                                      celular: e.target.value
+                                      celular: soloDigitos(e.target.value).slice(0, 10)
                                     })}
                                   />
                                 </div>
@@ -950,7 +1097,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={demandado.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
                               value={demandado.cedula}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'cedula', e.target.value)}
+                              maxLength={demandado.tipoPersona === 'Natural' ? 10 : 15}
+                              onChange={(e) => {
+                                const val = demandado.tipoPersona === 'Natural'
+                                  ? soloDigitos(e.target.value)
+                                  : nitFormato(e.target.value);
+                                actualizarDemandado(demandado.id, 'cedula', val);
+                              }}
                             />
                           </div>
 
@@ -961,7 +1114,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={demandado.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
                               value={demandado.nombreCompleto}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'nombreCompleto', e.target.value)}
+                              onChange={(e) => {
+                                const val = demandado.tipoPersona === 'Natural'
+                                  ? soloLetrasEspacios(e.target.value)
+                                  : e.target.value;
+                                actualizarDemandado(demandado.id, 'nombreCompleto', val);
+                              }}
                             />
                           </div>
 
@@ -979,7 +1137,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder="3001234567"
                               value={demandado.telefono}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'telefono', e.target.value)}
+                              maxLength={10}
+                              onChange={(e) => actualizarDemandado(demandado.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
                             />
                           </div>
 
@@ -1033,7 +1192,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                     value={demandado.apoderado?.nombreCompleto || ''}
                                     onChange={(e) => actualizarDemandado(demandado.id, 'apoderado', {
                                       ...demandado.apoderado,
-                                      nombreCompleto: e.target.value
+                                      nombreCompleto: soloLetrasEspacios(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -1042,9 +1201,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="Cédula"
                                     value={demandado.apoderado?.cedula || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarDemandado(demandado.id, 'apoderado', {
                                       ...demandado.apoderado,
-                                      cedula: e.target.value
+                                      cedula: soloDigitos(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -1053,9 +1213,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="3001234567"
                                     value={demandado.apoderado?.celular || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarDemandado(demandado.id, 'apoderado', {
                                       ...demandado.apoderado,
-                                      celular: e.target.value
+                                      celular: soloDigitos(e.target.value).slice(0, 10)
                                     })}
                                   />
                                 </div>
@@ -1150,7 +1311,13 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={actor.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
                               value={actor.cedula}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'cedula', e.target.value)}
+                              maxLength={actor.tipoPersona === 'Natural' ? 10 : 15}
+                              onChange={(e) => {
+                                const val = actor.tipoPersona === 'Natural'
+                                  ? soloDigitos(e.target.value)
+                                  : nitFormato(e.target.value);
+                                actualizarOtroActor(actor.id, 'cedula', val);
+                              }}
                             />
                           </div>
 
@@ -1161,7 +1328,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
                               value={actor.nombreCompleto}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'nombreCompleto', e.target.value)}
+                              onChange={(e) => {
+                                const val = actor.tipoPersona === 'Natural'
+                                  ? soloLetrasEspacios(e.target.value)
+                                  : e.target.value;
+                                actualizarOtroActor(actor.id, 'nombreCompleto', val);
+                              }}
                             />
                           </div>
 
@@ -1179,7 +1351,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <Input
                               placeholder="3001234567"
                               value={actor.telefono}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'telefono', e.target.value)}
+                              maxLength={10}
+                              onChange={(e) => actualizarOtroActor(actor.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
                             />
                           </div>
 
@@ -1231,7 +1404,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                     value={actor.apoderado?.nombreCompleto || ''}
                                     onChange={(e) => actualizarOtroActor(actor.id, 'apoderado', {
                                       ...actor.apoderado,
-                                      nombreCompleto: e.target.value
+                                      nombreCompleto: soloLetrasEspacios(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -1240,9 +1413,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="Cédula"
                                     value={actor.apoderado?.cedula || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarOtroActor(actor.id, 'apoderado', {
                                       ...actor.apoderado,
-                                      cedula: e.target.value
+                                      cedula: soloDigitos(e.target.value)
                                     })}
                                   />
                                 </div>
@@ -1251,9 +1425,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                                   <Input
                                     placeholder="3001234567"
                                     value={actor.apoderado?.celular || ''}
+                                    maxLength={10}
                                     onChange={(e) => actualizarOtroActor(actor.id, 'apoderado', {
                                       ...actor.apoderado,
-                                      celular: e.target.value
+                                      celular: soloDigitos(e.target.value).slice(0, 10)
                                     })}
                                   />
                                 </div>
@@ -1318,8 +1493,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                             <SelectValue placeholder="Seleccione departamento..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {DEPARTAMENTOS_COLOMBIA.map(dep => (
-                              <SelectItem key={dep} value={dep}>{dep}</SelectItem>
+                            {departamentosAPI.map(dep => (
+                              <SelectItem key={dep.id} value={dep.nombre}>{dep.nombre}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -1332,10 +1507,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                         <Select
                           value={formData.ciudad}
                           onValueChange={(value) => setFormData({ ...formData, ciudad: value })}
-                          disabled={!formData.departamento}
+                          disabled={!formData.departamento || cargandoCiudades}
                         >
                           <SelectTrigger id="ciudad" className="bg-white">
-                            <SelectValue placeholder="Seleccione ciudad..." />
+                            <SelectValue placeholder={cargandoCiudades ? 'Cargando ciudades...' : 'Seleccione ciudad...'} />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
                             {ciudadesDisponibles.map(ciudad => (
@@ -1391,11 +1566,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                         </Label>
                         <Input
                           id="termino"
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           placeholder="30"
-                          value={formData.termino}
-                          onChange={(e) => setFormData({ ...formData, termino: parseInt(e.target.value) || 0 })}
-                          min="1"
+                          value={formData.termino === 0 ? '' : String(formData.termino)}
+                          onChange={(e) => {
+                            const raw = soloDigitos(e.target.value).slice(0, 4);
+                            setFormData({ ...formData, termino: parseInt(raw, 10) || 0 });
+                          }}
                         />
                       </div>
 
@@ -1407,7 +1585,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                           id="fechaNotificacion"
                           type="datetime-local"
                           value={formData.fechaNotificacion}
-                          onChange={(e) => setFormData({ ...formData, fechaNotificacion: e.target.value })}
+                          onChange={(e) => {
+                            const normalizada = normalizarAHorarioHabil(e.target.value);
+                            setFormData({ ...formData, fechaNotificacion: normalizada });
+                          }}
                         />
                       </div>
 
@@ -1438,8 +1619,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                           <SelectValue placeholder="Seleccione abogado..." />
                         </SelectTrigger>
                         <SelectContent className="z-[100000]">
-                          {ABOGADOS_DISPONIBLES.map(abog => (
-                            <SelectItem key={abog} value={abog}>{abog}</SelectItem>
+                          {abogadosAPI.map(abog => (
+                            <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -1491,9 +1672,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                         className="resize-none"
                       />
                       <div className="flex items-center justify-between mt-2">
-                        <p className={`text-xs font-bold ${
-                          formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
-                        }`}>
+                        <p className={`text-xs font-bold ${formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
+                          }`}>
                           {formData.pretensiones.length} caracteres {formData.pretensiones.length < 20 && '(mínimo 20)'}
                         </p>
                         {formData.pretensiones.length >= 20 && (
@@ -1552,7 +1732,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave }: ModalNu
                 Anterior
               </Button>
             )}
-            
+
             <Button
               type="button"
               variant="outline"

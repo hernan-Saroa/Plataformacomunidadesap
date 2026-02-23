@@ -3,6 +3,8 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
@@ -70,7 +72,108 @@ export function ModalVerRequerimientoOrgano({
   const porcentajeTiempo = requerimiento.diasTotales > 0 ? Math.min(100, Math.max(0, Math.round((diasTranscurridos / requerimiento.diasTotales) * 100))) : 0;
 
   const handleDescargar = () => {
-    toast.info("Descargando expediente del requerimiento...");
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Colores corporativos (Azul ESAP)
+      const blueColor = '#003DA5';
+      const grayColor = '#6B7280';
+
+      // --- ENCABEZADO ---
+      doc.setFillColor(blueColor);
+      doc.rect(0, 0, pageWidth, 25, 'F');
+
+      doc.setTextColor('#FFFFFF');
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.text('FICHA TÉCNICA DEL REQUERIMIENTO', pageWidth / 2, 12, { align: 'center' });
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Plataforma de Gestión Legal - ESAP', pageWidth / 2, 19, { align: 'center' });
+
+      // --- INFORMACIÓN PRINCIPAL ---
+      let yPos = 40;
+      doc.setTextColor('#000000');
+      doc.setFontSize(12);
+
+      // Título del Radicado
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Radicado: ${requerimiento.numeroOficio}`, 14, yPos);
+
+      // Estado (Badge simulado)
+      doc.setTextColor(0, 0, 0); // Reset color
+      const estadoText = `ESTADO: ${requerimiento.etapa.replace('_', ' ')}`;
+      const textWidth = doc.getTextWidth(estadoText);
+      doc.setFillColor(semaforo.bg.includes('red') ? '#FEE2E2' : semaforo.bg.includes('yellow') ? '#FEF3C7' : '#D1FAE5');
+      doc.rect(pageWidth - 14 - textWidth - 6, yPos - 5, textWidth + 6, 8, 'F');
+      doc.setTextColor(semaforo.color.includes('red') ? '#DC2626' : semaforo.color.includes('yellow') ? '#D97706' : '#059669');
+      doc.setFontSize(10);
+      doc.text(estadoText, pageWidth - 14 - textWidth - 3, yPos);
+
+      yPos += 15;
+
+      // Tabla de Datos Generales
+      autoTable(doc, {
+        startY: yPos,
+        head: [['DATOS GENERALES', '']],
+        body: [
+          ['Organismo de Control:', requerimiento.organismo || 'N/A'],
+          ['Asunto:', requerimiento.asunto || 'N/A'],
+          ['Funcionario Responsable:', requerimiento.responsable || 'Sin asignar'],
+          ['Área Responsable:', requerimiento.areaResponsable || 'Oficina Jurídica'],
+          ['Descripción:', requerimiento.descripcion || 'Sin descripción adicional'],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: blueColor, textColor: '#FFFFFF', fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60, fillColor: '#F9FAFB' },
+          1: { cellWidth: 'auto' }
+        },
+        styles: { fontSize: 10, cellPadding: 3 }
+      });
+
+      yPos = (doc as any).lastAutoTable.finalY + 10;
+
+      // Tabla de Fechas y Tiempos
+      autoTable(doc, {
+        startY: yPos,
+        head: [['FECHAS Y PLAZOS', '']],
+        body: [
+          ['Fecha de Radicación:', requerimiento.fechaRadicacion instanceof Date ? requerimiento.fechaRadicacion.toLocaleDateString() : new Date(requerimiento.fechaRadicacion).toLocaleDateString()],
+          ['Fecha de Vencimiento:', requerimiento.fechaVencimiento instanceof Date ? requerimiento.fechaVencimiento.toLocaleDateString() : new Date(requerimiento.fechaVencimiento).toLocaleDateString()],
+          ['Días Totales:', `${requerimiento.diasTotales} días`],
+          ['Días Restantes:', `${requerimiento.diasRestantes} días ${requerimiento.diasRestantes < 0 ? '(VENCIDO)' : ''}`],
+          ['Última Actuación:', requerimiento.ultimaActuacion || 'Sin registros']
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: blueColor, textColor: '#FFFFFF', fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60, fillColor: '#F9FAFB' },
+          1: { cellWidth: 'auto' }
+        },
+        styles: { fontSize: 10, cellPadding: 3 }
+      });
+
+      // --- PIE DE PÁGINA ---
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      doc.setFontSize(8);
+      doc.setTextColor(grayColor);
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, doc.internal.pageSize.height - 10);
+        doc.text(`Página ${i} de ${pageCount}`, pageWidth - 25, doc.internal.pageSize.height - 10);
+      }
+
+      // Descargar
+      doc.save(`Requerimiento_${requerimiento.numeroOficio}.pdf`);
+      toast.success("Documento exportado exitosamente");
+
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      toast.error("Error al generar el documento PDF");
+    }
   };
 
   const handleArchivar = async (motivo: string) => {
@@ -285,8 +388,8 @@ export function ModalVerRequerimientoOrgano({
         isOpen={showEliminarModal}
         onClose={() => setShowEliminarModal(false)}
         onConfirm={handleEliminar}
-        titulo="Eliminar Requerimiento"
-        descripcion={`¿Está seguro de eliminar PERMANENTEMENTE el requerimiento ${requerimiento.numeroOficio}? Esta acción no se puede deshacer.`}
+        titulo="Mover a Papelera"
+        descripcion={`¿Está seguro de mover a la papelera el requerimiento ${requerimiento.numeroOficio}? Podrá restaurarlo o eliminarlo permanentemente desde la vista de Archivados.`}
       />
     </Dialog >
   );

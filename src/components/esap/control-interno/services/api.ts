@@ -29,6 +29,8 @@ import { getServiceUrl, API_MODE } from '../../../../config/environment';
 // URL base del servicio de Control Interno
 const BASE_URL = getServiceUrl('control-institucional');
 // Prefijo completo dependiendo del modo
+// En gateway: http://localhost:3000/control-institucional/api/v1
+// En direct: http://localhost:3007 (sin prefijo porque el microservicio no tiene prefijo global)
 const API_BASE_URL = API_MODE === 'gateway' 
   ? `${BASE_URL}/control-institucional/api/v1` 
   : BASE_URL;
@@ -709,6 +711,15 @@ export const configuracionesProfesionalesOCIGApi = {
   getAll: async (includeInactive: boolean = false): Promise<ApiResponse<ConfiguracionProfesionalOCIG[]>> => {
     const params = includeInactive ? '?includeInactive=true' : '';
     return apiRequest<ConfiguracionProfesionalOCIG[]>(`/configuraciones/profesionales-ocig${params}`);
+  },
+
+  /**
+   * Buscar personas candidatas de auth.personas que pueden ser profesionales OCIG
+   * (personas que AÚN NO están configuradas)
+   */
+  buscarCandidatos: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
+    const params = busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : '';
+    return apiRequest<any[]>(`/configuraciones/profesionales-ocig/candidatos${params}`);
   },
 
   /**

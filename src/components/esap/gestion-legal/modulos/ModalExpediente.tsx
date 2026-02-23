@@ -955,36 +955,40 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HANDLERS DE TAREAS ====================
 
-  const handleMarcarCompletada = (tareaId: number) => {
+  const handleMarcarCompletada = async (tareaId: string) => {
     const tarea = tareas.find(t => t.id === tareaId);
     if (!tarea) return;
 
-    toast.loading('⏳ Actualizando estado de la tarea...', {
-      id: 'marcar-completada',
-      duration: 1500
-    });
-
-    setTimeout(() => {
+    try {
+      // Optimistic update local
       setTareas(tareas.map(t =>
         t.id === tareaId
           ? { ...t, estado: 'Completado' }
           : t
       ));
 
+      // Persistir en el backend
+      await legalService.updateTarea(tareaId, {
+        estado: 'completada',
+        fechaCompletada: new Date().toISOString()
+      });
+
       toast.success('✅ Tarea marcada como completada', {
-        id: 'marcar-completada',
         description: `"${tarea.titulo}" ha sido completada exitosamente`,
         duration: 4000
       });
 
-      // Log para analytics
-      console.log('📊 Tarea completada:', {
-        expediente: expediente.id,
-        tareaId: tareaId,
-        titulo: tarea.titulo,
-        timestamp: new Date().toISOString()
-      });
-    }, 1500);
+      // Recargar tareas para tener datos frescos del servidor
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+
+    } catch (error) {
+      console.error('Error al completar tarea:', error);
+      toast.error('Error al marcar tarea como completada');
+      // Revertir optimistic update
+      const id = expediente.uuid || expediente.id;
+      if (id) loadTareas(id);
+    }
   };
 
   const handleEditarTarea = (tarea: any) => {

@@ -249,19 +249,21 @@ export function ModalNuevoRequerimiento({
                                         <Building2 className="w-3 h-3" />
                                         Órgano de Control *
                                     </Label>
-                                    <Input
-                                        id="organismoId"
-                                        placeholder="Ingrese el nombre del órgano de control"
+                                    <Select
                                         value={formData.organismoId}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            // Validar solo letras y espacios (incluyendo tildes)
-                                            if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
-                                                handleChange('organismoId', value);
-                                            }
-                                        }}
-                                        required
-                                    />
+                                        onValueChange={(value) => handleChange('organismoId', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccione organismo..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="z-[9999]">
+                                            {organismos.map((org: any) => (
+                                                <SelectItem key={org.id} value={String(org.id)}>
+                                                    {org.nombre}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                             </div>
 

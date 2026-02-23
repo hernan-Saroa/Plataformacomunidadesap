@@ -43,6 +43,10 @@ export interface ConfiguracionOCIG {
   activo: boolean;
   fechaAsignacion: string;
   observaciones?: string;
+  // Datos enriquecidos del usuario (vienen del backend)
+  nombre?: string;
+  email?: string;
+  identificacion?: string;
 }
 
 // Profesional OCIG completo
@@ -130,7 +134,11 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCIG 
     puedeSerLider: config.puedeSerLider,
     activo: config.activo,
     fechaAsignacion: config.fechaAsignacion,
-    observaciones: config.observaciones
+    observaciones: config.observaciones,
+    // Datos enriquecidos del usuario
+    nombre: config.nombre,
+    email: config.email,
+    identificacion: config.identificacion
   };
 }
 
@@ -155,10 +163,19 @@ export function useConfiguracionProfesionales() {
     setError(null);
     
     try {
-      // 1. Cargar usuarios con roles de Control Interno
-      const responseUsuarios = await auditoriasApi.getPersonasDisponibles();
+      // 1. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCIG)
+      const responseUsuarios = await configuracionesProfesionalesOCIGApi.buscarCandidatos();
       const personas = responseUsuarios.data || [];
-      const usuarios = personas.map(convertirPersonaAUsuarioSistema);
+      const usuarios = personas.map((p: any) => ({
+        id: p.id,
+        idTercero: p.idTercero,
+        nombre: p.nombre,
+        identificacion: p.identificacion,
+        email: p.email,
+        cargo: '',
+        area: undefined,
+        activo: true
+      }));
       setUsuariosControlInterno(usuarios);
       
       // 2. Cargar configuraciones OCIG desde el backend
@@ -167,7 +184,7 @@ export function useConfiguracionProfesionales() {
       setConfiguracionesOCIG(configuraciones);
       
       console.log('✅ Profesionales cargados:', {
-        usuariosBackend: usuarios.length,
+        usuariosCandidatos: usuarios.length,
         configuracionesOCIG: configuraciones.length
       });
     } catch (err) {
@@ -188,16 +205,35 @@ export function useConfiguracionProfesionales() {
   // ══════════════════════════════════════════════════════════════════════════
 
   const profesionalesOCIG: ProfesionalOCIG[] = useMemo(() => {
+    console.log('=== DEBUG profesionalesOCIG ===');
+    console.log('configuracionesOCIG:', configuracionesOCIG.map(c => ({ id: c.id, idTercero: c.idTercero, nombre: c.nombre, activo: c.activo })));
+    console.log('usuariosControlInterno:', usuariosControlInterno.map(u => ({ id: u.id, idTercero: u.idTercero, nombre: u.nombre })));
+    
     return configuracionesOCIG
       .filter(config => config.activo)
       .map(config => {
-        // Buscar usuario en la lista del backend
-        const usuario = usuariosControlInterno.find(
-          u => u.id === config.usuarioId || u.idTercero === config.idTercero
+        // Buscar usuario en la lista del backend - comparar como números para evitar problemas de tipos
+        let usuario = usuariosControlInterno.find(
+          u => Number(u.id) === Number(config.idTercero) || Number(u.idTercero) === Number(config.idTercero)
         );
         
-        if (!usuario) {
-          // Si no está en usuarios disponibles, ignoramos
+        // Si no se encuentra en usuarios disponibles, crear usuario temporal desde los datos enriquecidos de la configuración
+        if (!usuario && config.nombre) {
+          console.log(`Config idTercero=${config.idTercero}: Usando datos enriquecidos de la configuración (${config.nombre})`);
+          usuario = {
+            id: String(config.idTercero),
+            idTercero: config.idTercero,
+            nombre: config.nombre,
+            identificacion: config.identificacion || '',
+            email: config.email || '',
+            cargo: config.rolOCIG,
+            area: 'OCIG',
+            activo: true
+          };
+        } else if (usuario) {
+          console.log(`Config idTercero=${config.idTercero}: Usuario encontrado en lista (${usuario.nombre})`);
+        } else {
+          console.warn(`Config idTercero=${config.idTercero}: Sin datos - omitido`);
           return null;
         }
 

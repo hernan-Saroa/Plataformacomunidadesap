@@ -44,6 +44,8 @@ import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/usePr
 import { exportarUniversoAuditablePDF, exportarUniversoAuditableExcel } from './services/exportarUniversoAuditablePDF';
 // ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
+// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCIG (backend)
+import { useConfiguracionProfesionales, type ProfesionalOCIG } from './services/useConfiguracionProfesionales';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -95,6 +97,12 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
     agregarAuditoria,
     refetch: refetchAuditorias,
   } = useProgramaAnualData({ vigencia, procesos });
+
+  // ✅ HOOK DE PROFESIONALES OCIG (para badge del tab)
+  const {
+    profesionalesOCIG,
+    loading: loadingProfesionales,
+  } = useConfiguracionProfesionales();
 
   const loading = loadingProcesos || loadingAuditorias;
   const error = errorProcesos || errorAuditorias;
@@ -303,9 +311,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
-                {new Set(
-                  auditoriasProgramadas.flatMap((a) => [a.auditorLider, ...(a.equipo || [])].filter(Boolean))
-                ).size}
+                {loadingProfesionales ? '...' : profesionalesOCIG.length}
               </span>
             </button>
           </div>
@@ -347,6 +353,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
                   setMostrarFormularioProceso(true);
                 }}
                 onEliminarProceso={handleEliminarProceso}
+                onGuardarEvaluacion={editarProceso}
               />
             )}
             {tabActiva === 'programa' && (
@@ -406,6 +413,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver }: Univer
               planAnualId: data.planAnualId,
               planAnualAño: data.planAnualAño,
               rolDecretoAsociado: data.rolDecretoAsociado,
+              estadoKanban: data.estadoKanban || 'Plan Anual', // Crear en Plan Anual por defecto
             };
             
             const exito = await agregarAuditoria(auditoriaData);
@@ -458,6 +466,8 @@ interface TabUniversoAuditableProps {
   onAgregarProceso: () => void;
   onEditarProceso: (proceso: ProcesoAuditable) => void;
   onEliminarProceso: (id: string) => void;
+  // ✅ Nueva prop para guardar evaluaciones DAFP directamente al backend
+  onGuardarEvaluacion?: (id: string, datos: any) => Promise<boolean>;
 }
 
 function TabUniversoAuditable({
@@ -471,7 +481,8 @@ function TabUniversoAuditable({
   onBusquedaChange,
   onAgregarProceso,
   onEditarProceso,
-  onEliminarProceso
+  onEliminarProceso,
+  onGuardarEvaluacion
 }: TabUniversoAuditableProps) {
   // ✅ DELEGAMOS TODO AL COMPONENTE RESPONSIVE WORLD-CLASS
   return (
@@ -487,6 +498,7 @@ function TabUniversoAuditable({
       onAgregarProceso={onAgregarProceso}
       onEditarProceso={onEditarProceso as any}
       onEliminarProceso={onEliminarProceso}
+      onGuardarEvaluacion={onGuardarEvaluacion}
     />
   );
 }
@@ -742,7 +754,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB 3: PROFESIONALES
+// TAB 3: PROFESIONALES (conectado con backend de configuración OCIG)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabProfesionalesProps {
@@ -751,42 +763,27 @@ interface TabProfesionalesProps {
 }
 
 function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
-  const resumenProfesionales = useMemo(() => {
-    const mapa = new Map<string, { lider: number; apoyo: number; horas: number }>();
+  // ✅ HOOK DE BACKEND - Carga profesionales configurados en OCIG
+  const {
+    profesionalesOCIG,
+    estadisticasGlobales,
+    loading: loadingProfesionales,
+    error: errorProfesionales,
+    cargarDatos: refetchProfesionales
+  } = useConfiguracionProfesionales();
 
-    auditorias.forEach((a) => {
-      const lider = (a.auditorLider || '').trim();
-      if (lider) {
-        const actual = mapa.get(lider) || { lider: 0, apoyo: 0, horas: 0 };
-        actual.lider += 1;
-        actual.horas += a.horasEstimadas || 0;
-        mapa.set(lider, actual);
-      }
+  // Calcular semáforo de carga para cada profesional
+  const profesionalesConSemaforo = useMemo(() => {
+    return profesionalesOCIG.map(p => {
+      const porcentaje = p.estadisticas.porcentajeCarga;
+      const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
+      return { ...p, semaforo, porcentaje };
+    }).sort((a, b) => b.porcentaje - a.porcentaje);
+  }, [profesionalesOCIG]);
 
-      (a.equipo || []).forEach((nombre) => {
-        const apoyo = (nombre || '').trim();
-        if (!apoyo) return;
-        const actual = mapa.get(apoyo) || { lider: 0, apoyo: 0, horas: 0 };
-        actual.apoyo += 1;
-        actual.horas += Math.round((a.horasEstimadas || 0) * 0.3);
-        mapa.set(apoyo, actual);
-      });
-    });
-
-    return Array.from(mapa.entries())
-      .map(([nombre, data]) => {
-        const carga = data.lider + data.apoyo * 0.3;
-        const capacidadMax = 4;
-        const porcentaje = Math.round((carga / capacidadMax) * 100);
-        const semaforo = porcentaje > 90 ? 'rojo' : porcentaje >= 70 ? 'amarillo' : 'verde';
-        return { nombre, ...data, carga, porcentaje, semaforo };
-      })
-      .sort((a, b) => b.carga - a.carga);
-  }, [auditorias]);
-
-  const totalProfesionales = resumenProfesionales.length;
-  const conCargaAlta = resumenProfesionales.filter((p) => p.semaforo === 'rojo').length;
-  const conCargaMedia = resumenProfesionales.filter((p) => p.semaforo === 'amarillo').length;
+  const totalProfesionales = estadisticasGlobales.totalProfesionales;
+  const conCargaAlta = estadisticasGlobales.sobrecargados;
+  const conCargaMedia = profesionalesConSemaforo.filter(p => p.semaforo === 'amarillo').length;
 
   return (
     <motion.div
@@ -825,62 +822,131 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         </div>
       </div>
 
-      {/* Mapa de carga profesional */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h2 className="text-xl font-black text-gray-900 mb-4">
-          Mapa de Carga de Profesionales
-        </h2>
-        <p className="text-sm text-gray-600 mb-6">
-          Distribución de auditorías por profesional (liderazgo y apoyo) para balancear capacidad operativa.
-        </p>
-
-        <div className="space-y-4">
-          {resumenProfesionales.map((p) => (
-            <div key={p.nombre} className="border-2 border-gray-200 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="font-black text-gray-900">{p.nombre}</p>
-                  <p className="text-xs text-gray-600">
-                    Lidera {p.lider} auditoría(s) • Apoya {p.apoyo} auditoría(s)
-                  </p>
-                </div>
-                <span
-                  className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                    p.semaforo === 'rojo'
-                      ? 'bg-red-100 text-red-700'
-                      : p.semaforo === 'amarillo'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}
-                >
-                  Carga {p.porcentaje}%
-                </span>
-              </div>
-              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all ${
-                    p.semaforo === 'rojo'
-                      ? 'bg-red-500'
-                      : p.semaforo === 'amarillo'
-                      ? 'bg-yellow-500'
-                      : 'bg-green-500'
-                  }`}
-                  style={{ width: `${Math.min(p.porcentaje, 100)}%` }}
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Carga ponderada: {p.carga.toFixed(1)} / 4.0
-              </p>
-            </div>
-          ))}
-          {resumenProfesionales.length === 0 && (
-            <div className="text-center py-10">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-semibold">No hay profesionales asignados aún</p>
-            </div>
-          )}
+      {/* Estado de carga */}
+      {loadingProfesionales && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-2" />
+          <span className="text-gray-600">Cargando profesionales desde el servidor...</span>
         </div>
-      </div>
+      )}
+
+      {/* Error de carga */}
+      {errorProfesionales && !loadingProfesionales && (
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="w-5 h-5" />
+            <span>{errorProfesionales}</span>
+          </div>
+          <button
+            onClick={() => refetchProfesionales()}
+            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-semibold flex items-center gap-1"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* Mapa de carga profesional */}
+      {!loadingProfesionales && (
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
+          <h2 className="text-xl font-black text-gray-900 mb-4">
+            Equipo OCIG Configurado
+          </h2>
+          <p className="text-sm text-gray-600 mb-6">
+            Profesionales configurados en el módulo OCIG con su rol, especialidades y capacidad.
+          </p>
+
+          <div className="space-y-4">
+            {profesionalesConSemaforo.map((p) => (
+              <div 
+                key={p.configuracion.id || p.usuario.id} 
+                className="border-2 border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-md transition-all bg-gradient-to-r from-white to-gray-50/50"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-start gap-4">
+                    {/* Avatar con inicial */}
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${
+                      p.semaforo === 'rojo' ? 'bg-gradient-to-br from-red-500 to-red-600' :
+                      p.semaforo === 'amarillo' ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
+                      'bg-gradient-to-br from-blue-500 to-blue-600'
+                    }`}>
+                      {p.usuario.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-base">{p.usuario.nombre}</p>
+                      <p className="text-sm text-blue-700 font-semibold mt-0.5">
+                        {p.configuracion.rolOCIG}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {p.configuracion.especialidades.slice(0, 3).map((esp, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                            {esp}
+                          </span>
+                        ))}
+                        {p.configuracion.especialidades.length > 3 && (
+                          <span className="px-2 py-0.5 bg-gray-200 text-gray-500 rounded text-xs">
+                            +{p.configuracion.especialidades.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                        p.semaforo === 'rojo'
+                          ? 'bg-red-100 text-red-700 border border-red-200'
+                          : p.semaforo === 'amarillo'
+                          ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                          : 'bg-green-100 text-green-700 border border-green-200'
+                      }`}
+                    >
+                      {p.porcentaje}% carga
+                    </span>
+                    {p.configuracion.puedeSerLider && (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200">
+                        ★ Líder
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Barra de progreso mejorada */}
+                <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all rounded-full ${
+                      p.semaforo === 'rojo'
+                        ? 'bg-gradient-to-r from-red-400 to-red-500'
+                        : p.semaforo === 'amarillo'
+                        ? 'bg-gradient-to-r from-yellow-400 to-amber-500'
+                        : 'bg-gradient-to-r from-green-400 to-green-500'
+                    }`}
+                    style={{ width: `${Math.min(p.porcentaje, 100)}%` }}
+                  />
+                </div>
+                
+                {/* Info de capacidad */}
+                <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+                  <span>
+                    <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas
+                  </span>
+                  <span>
+                    Cap: {p.configuracion.capacidadMaximaAuditorias} aud. • {p.configuracion.horasMensualesDisponibles}h/mes
+                  </span>
+                </div>
+              </div>
+            ))}
+            {profesionalesConSemaforo.length === 0 && !loadingProfesionales && (
+              <div className="text-center py-10">
+                <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 font-semibold">No hay profesionales configurados en OCIG</p>
+                <p className="text-sm text-gray-400 mt-1">Configure profesionales en el módulo de Configuración OCIG</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
         <p className="text-sm text-blue-800">

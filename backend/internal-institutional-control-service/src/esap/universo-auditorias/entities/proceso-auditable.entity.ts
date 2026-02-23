@@ -85,6 +85,17 @@ export class ProcesoAuditable {
     // Requerimientos especiales
     requerimientoComite?: boolean;
     requerimientoEntesReg?: boolean;
+    // ═══════════════════════════════════════════════════════════════════════
+    // CAMPOS DAFP CALCULADOS Y DECISIÓN (agregados 2026-02-20)
+    // ═══════════════════════════════════════════════════════════════════════
+    vigencia?: number;                    // Año de la evaluación
+    fechaCorte?: string;                  // Fecha de corte de la evaluación
+    ponderacionRiesgo?: string;           // 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' (calculado)
+    diasRotacion?: number;                // Días de rotación según plan
+    decisionRotacion?: string;            // 'INCLUIR' | 'OMITIR' | 'PENDIENTE'
+    decisionFinal?: string;               // 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR'
+    motivoDecision?: string;              // Justificación de la decisión
+    prioridadRegla?: number;              // 1-5, qué regla DAFP aplicó
   };
 
   @Column({ name: 'frecuencia_auditoria', type: 'varchar', length: 255, nullable: false })

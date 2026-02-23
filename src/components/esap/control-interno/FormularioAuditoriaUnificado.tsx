@@ -40,7 +40,7 @@ import { Badge } from '../../ui/badge';
 import { Input } from '../../ui/input';
 import { Card } from '../../ui/card';
 import { toast } from 'sonner';
-import { auditoriasApi } from './services/api';
+import { configuracionesProfesionalesOCIGApi } from './services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -128,6 +128,9 @@ export interface AuditoriaUnificadaFormData {
   planAnualId?: string;
   planAnualAño?: number;
   rolDecretoAsociado?: string;
+  
+  // 10. ESTADO KANBAN (para crear auditoria en columna correcta)
+  estadoKanban?: 'Plan Anual' | 'Planeación' | 'Trabajo de Campo' | 'Elaboración Informe' | 'Informe Final' | 'Seguimiento' | 'Cerrada';
 }
 
 interface FormularioAuditoriaUnificadoProps {
@@ -294,7 +297,8 @@ export function FormularioAuditoriaUnificado({
     vinculadaPlanAnual: initialData?.vinculadaPlanAnual || false,
     planAnualId: initialData?.planAnualId || '',
     planAnualAño: initialData?.planAnualAño || new Date().getFullYear(),
-    rolDecretoAsociado: initialData?.rolDecretoAsociado || ''
+    rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
+    estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -310,34 +314,32 @@ export function FormularioAuditoriaUnificado({
 
   const TOTAL_PASOS = 9;
   
-  // Cargar auditores/usuarios del backend
+  // Cargar profesionales OCIG configurados del backend
   useEffect(() => {
     const cargarAuditores = async () => {
       if (!open) return;
       
       setCargandoAuditores(true);
       try {
-        const response = await auditoriasApi.getPersonasDisponibles();
-        console.log('[FormularioAuditoria] Response:', response);
+        // Usar profesionales configurados en OCIG en lugar de personas disponibles genéricas
+        const response = await configuracionesProfesionalesOCIGApi.getAll();
+        console.log('[FormularioAuditoria] Profesionales OCIG Response:', response);
         
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
-            .filter((persona: any) => {
-              const personaId = persona.idPersona || persona.id_tercero || persona.id;
-              return !!personaId;
-            })
-            .map((persona: any) => ({
-              id: String(persona.idPersona || persona.id_tercero || persona.id),
-              nombre: persona.nombre || persona.nom_largo || 'Sin nombre',
-              cargo: persona.cargo || 'Auditor'
+            .filter((config: any) => config.activo)
+            .map((config: any) => ({
+              id: String(config.idTercero),
+              nombre: config.nombre || `Profesional ${config.idTercero}`,
+              cargo: config.rolOcig || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
-          console.log('[FormularioAuditoria] Auditores cargados:', auditores.length, auditores);
+          console.log('[FormularioAuditoria] Profesionales OCIG cargados:', auditores.length, auditores);
         } else {
-          console.warn('[FormularioAuditoria] No se obtuvieron personas:', response.error);
+          console.warn('[FormularioAuditoria] No hay profesionales OCIG configurados, usando fallback');
         }
       } catch (error) {
-        console.error('[FormularioAuditoria] Error al cargar auditores:', error);
+        console.error('[FormularioAuditoria] Error al cargar profesionales OCIG:', error);
         // Mantener los datos fallback
       } finally {
         setCargandoAuditores(false);

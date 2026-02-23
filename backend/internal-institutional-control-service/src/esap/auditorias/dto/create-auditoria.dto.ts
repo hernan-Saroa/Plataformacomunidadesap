@@ -10,8 +10,9 @@ import {
   IsArray,
   IsBoolean,
   IsUUID,
+  IsIn,
 } from 'class-validator';
-import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria } from '../entities/auditoria.entity';
+import { TipoAuditoria, FaseAuditoria, PrioridadAuditoria, EstadoKanban } from '../entities/auditoria.entity';
 
 export class CreateAuditoriaDto {
   @IsString()
@@ -148,6 +149,11 @@ export class CreateAuditoriaDto {
   // Metadata del programa anual (periodicidad, vinculación, hitos, etc.)
   @IsOptional()
   programaAnualMetadata?: any;
+
+  // Estado inicial del Kanban (cualquier string, se valida contra etapas del tablero en el servicio)
+  @IsOptional()
+  @IsString()
+  estadoKanban?: string;
 }
 
 

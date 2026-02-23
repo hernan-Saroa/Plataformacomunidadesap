@@ -20,9 +20,10 @@ interface ModalNuevoIndicadorProps {
 }
 
 export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIndicadorProps) {
-  // Obtener ejes estratégicos desde el Context
-  const { getEjesEstrategicosActivos } = useConfiguracionesSIGL();
+  // Obtener ejes estratégicos y tipos indicador desde el Context
+  const { getEjesEstrategicosActivos, getTiposIndicadoresActivos } = useConfiguracionesSIGL();
   const ejesActivos = getEjesEstrategicosActivos();
+  const tiposIndicadorActivos = getTiposIndicadoresActivos();
 
   // 🐛 DEBUG: Ver si los ejes están cargando
   console.log('🔍 Ejes Estratégicos Activos:', ejesActivos);
@@ -44,7 +45,7 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validaciones
     if (!formData.nombre.trim()) {
       toast.error('El nombre del indicador es obligatorio');
@@ -235,10 +236,9 @@ export function ModalNuevoIndicador({ isOpen, onClose, onGuardar }: ModalNuevoIn
                     className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     required
                   >
-                    <option value="EFICIENCIA">⚡ Eficiencia</option>
-                    <option value="EFICACIA">🎯 Eficacia</option>
-                    <option value="GESTION">📊 Gestión</option>
-                    <option value="TRANSPARENCIA">🔍 Transparencia</option>
+                    {tiposIndicadorActivos.map(tipo => (
+                      <option key={tipo.id} value={tipo.id}>{tipo.icono} {tipo.nombre}</option>
+                    ))}
                   </select>
                 </div>
               </div>
