@@ -31,14 +31,19 @@ import { getServiceUrl, API_MODE } from '../../../config/environment';
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE URLs PARA DOCUMENTOS
 // ════════════════════════════════════════════════════════════════════════════
-const CONTROL_INTERNO_BASE_URL = getServiceUrl('control-institucional');
-const SERVICE_PREFIX = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
 
 /**
  * Obtiene la URL base para documentos del backend
+ * En modo gateway (producción): /services/control-institucional/api/v1/documentos
+ * En modo direct (desarrollo local): http://localhost:3007/documentos
  */
 const getDocumentosBaseUrl = () => {
-  return `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/documentos`;
+  if (API_MODE === 'gateway') {
+    // En modo gateway, usar ruta relativa que pasa por Nginx -> API Gateway
+    return '/services/control-institucional/api/v1/documentos';
+  }
+  // En modo direct, usar URL directa al microservicio
+  return `${getServiceUrl('control-institucional')}/documentos`;
 };
 
 /**
@@ -88,6 +93,7 @@ interface DocumentoBiblioteca {
   nombre: string;
   descripcion: string;
   categoria: CategoriaDocumento;
+  etapaKanban?: EtapaKanban; // Etapa del Kanban asociada
   archivoUrl: string;
   urlPreview: string;  // URL del endpoint /documentos/{id}/preview
   urlDownload: string; // URL del endpoint /documentos/{id}/download
@@ -212,6 +218,14 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
   const baseUrl = getDocumentosBaseUrl();
   const urlPreview = `${baseUrl}/${docId}/preview`;
   const urlDownload = `${baseUrl}/${docId}/download`;
+  
+  console.log('📄 Documento mapeado:', {
+    id: docId,
+    nombre,
+    baseUrl,
+    urlPreview,
+    urlDownload
+  });
   
   // Extraer extensión del tipoMime o del nombreArchivo
   const ext = getMimeTypeLabel(tipoMime);
@@ -751,10 +765,21 @@ function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia }:
             </div>
           </div>
 
-          <div className="flex items-center gap-4 mt-4 text-sm">
+          <div className="flex items-center gap-4 mt-4 text-sm flex-wrap">
             <span className={`px-3 py-1 rounded-lg font-bold ${colorCategoria.bg} ${colorCategoria.text}`}>
               {documento.categoria}
             </span>
+            {documento.etapaKanban && (
+              <span className={`px-3 py-1 rounded-lg font-bold ${
+                documento.etapaKanban === 'PLANEACION' ? 'bg-indigo-100 text-indigo-700' :
+                documento.etapaKanban === 'EJECUCION' ? 'bg-amber-100 text-amber-700' :
+                'bg-emerald-100 text-emerald-700'
+              }`}>
+                {documento.etapaKanban === 'PLANEACION' ? '📋 Planeación' :
+                 documento.etapaKanban === 'EJECUCION' ? '⚙️ Ejecución' :
+                 '📢 Comunicación'}
+              </span>
+            )}
             <span className="text-gray-600">
               <strong>Tamaño:</strong> {documento.tamano}
             </span>
@@ -2325,6 +2350,7 @@ interface ModalSubirDocumentoProps {
 function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState<CategoriaDocumento>('PLANTILLA');
+  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>('PLANEACION');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
 
@@ -2390,6 +2416,7 @@ function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
       nombre: nombreDocumento,
       descripcion,
       categoria,
+      etapaKanban: etapaKanban,
       archivoUrl,
       urlPreview: archivoUrl, // Temporalmente usa el blob URL, se actualizará después del upload
       urlDownload: archivoUrl,
@@ -2535,6 +2562,25 @@ function ModalSubirDocumento({ onClose, onSubir }: ModalSubirDocumentoProps) {
               <option value="GUIA">Guía</option>
               <option value="OTRO">Otro</option>
             </select>
+          </div>
+
+          {/* Etapa del Kanban */}
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-2">
+              Etapa del Kanban
+            </label>
+            <select
+              value={etapaKanban}
+              onChange={(e) => setEtapaKanban(e.target.value as EtapaKanban)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
+            >
+              <option value="PLANEACION">📋 Planeación</option>
+              <option value="EJECUCION">⚙️ Ejecución</option>
+              <option value="COMUNICACION">📢 Comunicación</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Asocia el documento a una etapa específica del proceso de auditoría
+            </p>
           </div>
 
           {/* Nombre del Documento (Auto desde archivo) */}
