@@ -2154,13 +2154,32 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
         description: 'Por favor espere'
       });
 
-      // Convertir tipoDocumento al formato esperado por el backend
-      const tipoBackend = docData.tipo === 'auto' ? 'AUTO' :
-        docData.tipo === 'evidencia' ? 'EVIDENCIA' :
-          docData.tipo === 'oficio' ? 'OFICIO' :
-            docData.tipo === 'notificacion' ? 'NOTIFICACION' :
-              docData.tipo === 'acta' ? 'ACTA' :
-                'DOCUMENTO';
+      // Mapear tipo de documento del modal al formato esperado por el backend
+      // ModalSubirDocumento usa: Auto, Notificación, Prueba Documental, Declaración, Oficio, Respuesta, Descargos, Recurso, Otro
+      let tipoBackend = 'DOCUMENTO';
+      const tipoNormalizado = docData.tipo?.toLowerCase() || '';
+      
+      if (tipoNormalizado === 'auto') {
+        tipoBackend = 'AUTO';
+      } else if (tipoNormalizado === 'evidencia' || tipoNormalizado === 'prueba documental') {
+        tipoBackend = 'EVIDENCIA';
+      } else if (tipoNormalizado === 'oficio') {
+        tipoBackend = 'OFICIO';
+      } else if (tipoNormalizado === 'notificación' || tipoNormalizado === 'notificacion') {
+        tipoBackend = 'NOTIFICACION';
+      } else if (tipoNormalizado === 'acta') {
+        tipoBackend = 'ACTA';
+      } else if (tipoNormalizado === 'declaración' || tipoNormalizado === 'declaracion') {
+        tipoBackend = 'DECLARACION';
+      } else if (tipoNormalizado === 'descargos') {
+        tipoBackend = 'DESCARGOS';
+      } else if (tipoNormalizado === 'recurso') {
+        tipoBackend = 'RECURSO';
+      } else if (tipoNormalizado === 'respuesta') {
+        tipoBackend = 'RESPUESTA';
+      } else {
+        tipoBackend = 'DOCUMENTO';
+      }
 
       // Guardar solo la descripción simple (el backend recibe los campos por separado)
       const descripcionFinal = docData.descripcion || '';

@@ -50,6 +50,72 @@ const TIPOS_DOCUMENTO = [
   'Otro'
 ];
 
+// Definir los tipos MIME y extensiones permitidas por tipo de documento
+const VALIDACIONES_POR_TIPO: Record<string, { mimeTypes: string[]; extensiones: string[]; label: string }> = {
+  // Evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+  'Prueba Documental': {
+    mimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/html',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'video/mp4',
+      'video/webm',
+      'video/quicktime',
+      'video/x-msvideo',
+    ],
+    extensiones: ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'],
+    label: 'PDF, Word, Excel, HTML, Imágenes, Videos'
+  },
+  // Auto: Solo PDF
+  'Auto': {
+    mimeTypes: ['application/pdf'],
+    extensiones: ['.pdf'],
+    label: 'Solo PDF'
+  },
+  // Oficio: Solo PDF
+  'Oficio': {
+    mimeTypes: ['application/pdf'],
+    extensiones: ['.pdf'],
+    label: 'Solo PDF'
+  },
+  // Otros: PDF, Word, Excel
+  'default': {
+    mimeTypes: [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ],
+    extensiones: ['.pdf', '.doc', '.docx', '.xls', '.xlsx'],
+    label: 'PDF, Word, Excel'
+  }
+};
+
+// Función para obtener la validación según el tipo de documento
+const getValidacionPorTipo = (tipo: string) => {
+  // Mapear tipos específicos a sus validaciones
+  if (tipo === 'Prueba Documental') {
+    return VALIDACIONES_POR_TIPO['Prueba Documental'];
+  }
+  if (tipo === 'Auto') {
+    return VALIDACIONES_POR_TIPO['Auto'];
+  }
+  if (tipo === 'Oficio') {
+    return VALIDACIONES_POR_TIPO['Oficio'];
+  }
+  // Para Notificación, Declaración, Respuesta, Descargos, Recurso, Otro
+  return VALIDACIONES_POR_TIPO['default'];
+};
+
 export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm }: ModalSubirDocumentoProps) {
   const [archivos, setArchivos] = useState<File[]>([]);
   const [etapaSeleccionada, setEtapaSeleccionada] = useState(proceso.etapaActual || 'Valoración');
@@ -84,16 +150,20 @@ export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm
   };
 
   const agregarArchivos = (nuevosArchivos: File[]) => {
-    const permitidos = ['application/pdf', 'application/msword', 
-                       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                       'application/vnd.ms-excel',
-                       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                       'image/jpeg', 'image/png', 'image/jpg'];
+    // Obtener la validación según el tipo de documento seleccionado
+    const validacion = getValidacionPorTipo(tipoDocumento);
     
     const archivosValidos = nuevosArchivos.filter(archivo => {
-      if (!permitidos.includes(archivo.type)) {
+      // Validar tipo MIME
+      const mimeValido = validacion.mimeTypes.includes(archivo.type);
+      
+      // Validar extensión como respaldo
+      const extension = '.' + archivo.name.split('.').pop()?.toLowerCase();
+      const extensionValida = validacion.extensiones.includes(extension);
+      
+      if (!mimeValido && !extensionValida) {
         toast.error(`Archivo no permitido: ${archivo.name}`, {
-          description: 'Solo se permiten PDF, Word, Excel e imágenes'
+          description: `Para tipo "${tipoDocumento}" solo se permiten: ${validacion.label}`
         });
         return false;
       }
@@ -275,14 +345,20 @@ export function ModalSubirDocumento({ isOpen = true, proceso, onClose, onConfirm
                 </div>
                 <div className="flex items-center gap-2 text-xs" style={{ color: '#9CA3AF' }}>
                   <Info className="w-4 h-4" />
-                  <span>PDF, Word, Excel, Imágenes (máx. 10 MB)</span>
+                  <span>Máx. 10 MB</span>
                 </div>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                accept={
+                  tipoDocumento === 'Prueba Documental'
+                    ? ".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.mov,.avi"
+                    : tipoDocumento === 'Auto' || tipoDocumento === 'Oficio'
+                    ? ".pdf"
+                    : ".pdf,.doc,.docx,.xls,.xlsx"
+                }
                 onChange={handleFileSelect}
                 className="hidden"
               />
