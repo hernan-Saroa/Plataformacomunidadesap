@@ -271,60 +271,60 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
   
+  // Función para cargar profesionales OCIG (reutilizable)
+  const cargarAuditores = async () => {
+    setCargandoAuditores(true);
+    try {
+      // Usar profesionales OCIG configurados en lugar de personas disponibles
+      const response = await configuracionesProfesionalesOCIGApi.getAll();
+      console.log('[PlanAnual] Profesionales OCIG response:', response);
+      
+      if (response.success && response.data && response.data.length > 0) {
+        // Transformar a formato Auditor
+        const profesionales: Auditor[] = response.data
+          .filter((config: any) => config.activo)
+          .map((config: any) => ({
+            id: config.id, // UUID de configuracion_profesionales_ocig
+            nombre: config.nombre || `Profesional ${config.idTercero}`,
+            cargo: config.rolOcig || 'Auditor',
+            email: config.email || ''
+          }));
+        
+        setAuditores(profesionales);
+        
+        // Filtrar solo los que son Jefe OCIG
+        const jefes = profesionales.filter((a: Auditor) => 
+          a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
+        );
+        setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
+        
+        // Seleccionar el primer profesional por defecto si no hay uno seleccionado
+        if (!jefeSeleccionado && profesionales.length > 0) {
+          setJefeSeleccionado(profesionales[0]);
+        }
+        
+        console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length);
+        return profesionales;
+      } else {
+        console.warn('[PlanAnual] No hay profesionales OCIG configurados');
+        toast.warning('No hay profesionales OCIG configurados', {
+          description: 'Configura el equipo en el módulo de Configuración'
+        });
+        setAuditores([]);
+        setJefesOCIG([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
+      toast.error('Error al cargar profesionales OCIG');
+      return [];
+    } finally {
+      setCargandoAuditores(false);
+    }
+  };
+  
   // Cargar profesionales OCIG configurados al montar el componente
   useEffect(() => {
-    const cargarAuditores = async () => {
-      setCargandoAuditores(true);
-      try {
-        // Usar profesionales OCIG configurados en lugar de personas disponibles
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
-        console.log('[PlanAnual] Profesionales OCIG response:', response);
-        
-        if (response.success && response.data && response.data.length > 0) {
-          // Transformar a formato Auditor
-          const profesionales: Auditor[] = response.data
-            .filter((config: any) => config.activo)
-            .map((config: any) => ({
-              id: config.id, // UUID de configuracion_profesionales_ocig
-              nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || 'Auditor',
-              email: config.email || ''
-            }));
-          
-          setAuditores(profesionales);
-          
-          // Filtrar solo los que son Jefe OCIG
-          const jefes = profesionales.filter((a: Auditor) => 
-            a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
-          );
-          setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
-          
-          // Seleccionar el primer jefe como jefe por defecto
-          if (jefes.length > 0) {
-            setJefeSeleccionado(jefes[0]);
-          } else if (profesionales.length > 0) {
-            setJefeSeleccionado(profesionales[0]);
-          }
-          
-          console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length, 'Jefes:', jefes.length);
-        } else {
-          console.warn('[PlanAnual] No hay profesionales OCIG configurados, usando fallback');
-          toast.warning('No hay profesionales OCIG configurados', {
-            description: 'Configura el equipo en el módulo de Configuración'
-          });
-          setJefesOCIG(AUDITORES_DEFAULT);
-          setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-        }
-      } catch (error) {
-        console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
-        toast.error('Error al cargar profesionales OCIG');
-        setJefesOCIG(AUDITORES_DEFAULT);
-        setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-      } finally {
-        setCargandoAuditores(false);
-      }
-    };
-    
     cargarAuditores();
   }, []);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
@@ -401,10 +401,10 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return false;
     }
     
-    // Validar que haya un jefe seleccionado
+    // Validar que haya un responsable seleccionado
     if (!jefeSeleccionado) {
-      toast.error('Jefe OCI requerido', {
-        description: 'Debe seleccionar un Jefe de Control Interno'
+      toast.error('Responsable requerido', {
+        description: 'Debe seleccionar un responsable del Plan Anual'
       });
       return false;
     }
@@ -478,7 +478,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
     
     // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
     if (!jefeSeleccionado) {
-      toast.error('Debe seleccionar un Jefe de Control Interno');
+      toast.error('Debe seleccionar un responsable del Plan');
       return;
     }
     
@@ -529,8 +529,9 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
                 onFechaFinChange={setFechaFin}
-                auditores={jefesOCIG}
+                auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
+                onRecargarAuditores={cargarAuditores}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} />}
@@ -596,7 +597,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-3">Configuración básica</h2>
-        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el jefe responsable del plan</p>
+        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el responsable del plan</p>
       </div>
 
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
@@ -684,11 +685,16 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
         )}
 
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Jefe de Control Interno</label>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Responsable del Plan</label>
           {cargandoAuditores ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span className="text-gray-600">Cargando auditores...</span>
+              <span className="text-gray-600">Cargando profesionales OCIG...</span>
+            </div>
+          ) : auditores.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              <span className="text-orange-700">No hay profesionales OCIG configurados. Configura el equipo primero.</span>
             </div>
           ) : (
             <select 
@@ -696,11 +702,13 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               onChange={(e) => onJefeChange(auditores.find((a: any) => a.id === e.target.value))} 
               className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
             >
+              <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
                 <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
               ))}
             </select>
           )}
+          <p className="text-xs text-gray-500 mt-1">Profesional OCIG responsable del Plan Anual de Auditoría</p>
         </div>
       </div>
     </motion.div>
@@ -1627,7 +1635,7 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
             <span className="font-bold text-gray-900">{vigencia}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
-            <span className="text-gray-600">Jefe responsable:</span>
+            <span className="text-gray-600">Responsable del Plan:</span>
             <span className="font-bold text-gray-900">{jefeOCI.nombre}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
@@ -1693,9 +1701,11 @@ interface DashboardPlanProps {
   onAbrirRol4?: () => void;
   onCrearNuevo?: () => void; // Nueva prop para crear un nuevo plan
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
+  planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
+  onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
 }
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -1934,6 +1944,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Selector de Plan Activo */}
+            {planesDisponibles.length > 1 && onCambiarPlan && (
+              <select
+                value={plan.id}
+                onChange={(e) => onCambiarPlan(e.target.value)}
+                className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
+              >
+                {planesDisponibles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.vigencia} - {p.estado} (v{p.version})
+                  </option>
+                ))}
+              </select>
+            )}
+
             <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
             </span>

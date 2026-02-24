@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 // SERVICIO API - Plan Anual (cargar datos desde backend)
 // ═══════════════════════════════════════════════════════════════════════════
-import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi } from './services/plan-anual';
+import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi } from './services/plan-anual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
@@ -1192,9 +1192,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   
   // ═══════════════════════════════════════════════════════════════════════
-  // AÑO ACTIVO (siempre el actual)
+  // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
   // ═══════════════════════════════════════════════════════════════════════
-  const añoActual = new Date().getFullYear();
+  const [añoActual, setAñoActual] = useState(new Date().getFullYear());
   
   // ═══════════════════════════════════════════════════════════════════════
   // CARGA DESDE BACKEND - Plan Anual y Auditores
@@ -1397,9 +1397,53 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     }
   }, [planDesdeBackend, auditores]);
   
-  // Planes anteriores - Se cargarán desde backend cuando se implemente
-  // TODO: GET /plan-anual-5-roles para traer histórico
-  const [planesAnteriores] = useState<PlanAnual[]>([]);
+  // Planes anteriores/disponibles - Carga desde backend
+  const [planesAnteriores, setPlanesAnteriores] = useState<PlanAnual[]>([]);
+
+  // Cargar lista de todos los planes disponibles
+  useEffect(() => {
+    const cargarPlanesDisponibles = async () => {
+      try {
+        const response = await planAnualApi.getAll();
+        if (response.data && Array.isArray(response.data)) {
+          // Transformar planes del backend al formato frontend
+          const planesTransformados = response.data.map((planBackend: any) => ({
+            id: planBackend.id,
+            vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
+            version: planBackend.version || 1,
+            estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+            jefeOCI: {
+              id: planBackend.responsable_id || '',
+              nombre: planBackend.responsable || 'No asignado',
+              cargo: 'Responsable',
+              email: ''
+            },
+            fechaAprobacion: planBackend.fecha_aprobacion || null,
+            fechaCreacion: planBackend.fecha_creacion || new Date().toISOString(),
+            actaCICC: planBackend.acta_cicc || null,
+            roles: [] // Se cargarán al abrir el plan
+          }));
+          setPlanesAnteriores(planesTransformados);
+        }
+      } catch (error) {
+        console.error('Error cargando planes disponibles:', error);
+      }
+    };
+    cargarPlanesDisponibles();
+  }, [planActual]); // Recargar cuando cambie el plan actual para reflejar nuevos planes
+
+  // Handler para cambiar de plan
+  const handleCambiarPlan = async (planId: string) => {
+    if (planId === planActual?.id) return;
+    
+    const planSeleccionado = planesAnteriores.find(p => p.id === planId);
+    if (planSeleccionado) {
+      // Cambiar el año para que el hook usePlanAnualCompleto cargue el nuevo plan
+      setAñoActual(planSeleccionado.vigencia);
+      // El planActual se actualizará automáticamente cuando planDesdeBackend cambie
+      toast.success(`Cargando plan ${planSeleccionado.vigencia}...`);
+    }
+  };
 
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
@@ -1597,6 +1641,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             }}
             onCrearNuevo={() => setVista('wizard')}
             planesAnteriores={planesAnteriores}
+            planesDisponibles={planesAnteriores}
+            onCambiarPlan={handleCambiarPlan}
           />
         )}
 
@@ -1717,7 +1763,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
                   <div>
                     <h3 className="font-bold text-gray-900">Plan anual {plan.vigencia}</h3>
                     <p className="text-sm text-gray-600">
-                      {plan.id} • {plan.estado} • Jefe: {plan.jefeOCI.nombre}
+                      {plan.id} • {plan.estado} • Responsable: {plan.jefeOCI?.nombre || 'No asignado'}
                     </p>
                   </div>
                   <button
