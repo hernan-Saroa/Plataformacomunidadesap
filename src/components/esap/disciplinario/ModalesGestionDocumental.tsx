@@ -1769,6 +1769,40 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
     if (!file) return;
     setArchivoError(null);
 
+    // Tipos MIME permitidos para evidencias: HTML, PDF, Word, Excel, Imágenes, Videos
+    const tiposPermitidosEvidencia = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/html',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'image/gif',
+      'image/webp',
+      'video/mp4',
+      'video/webm',
+      'video/quicktime',
+      'video/x-msvideo',
+    ];
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosEvidencia.includes(file.type);
+    
+    // Validar extensión como respaldo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov', '.avi'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para evidencias. Solo se permiten: PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP), Videos (MP4, WebM, MOV, AVI)');
+      setArchivo(null);
+      e.target.value = '';
+      return;
+    }
+
     if (file.size > MAX_FILE_SIZE) {
       setArchivoError('El archivo supera el maximo de 10 GB');
       setArchivo(null);
@@ -2051,6 +2085,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               <input
                 type="file"
                 id="file-upload-evidencias"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.html,.jpg,.jpeg,.png,.gif,.webp,.mp4,.webm,.mov,.avi"
                 onChange={handleSeleccionArchivo}
                 className="hidden"
               />
@@ -2470,7 +2505,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                 <input
                   type="file"
                   id="file-upload-oficios"
-                  accept="application/pdf"
+                  accept=".pdf"
                   onChange={handleSeleccionArchivo}
                   className="hidden"
                 />
@@ -2764,6 +2799,30 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
       return;
     }
     setArchivoError(null);
+
+    // Tipos MIME permitidos para actas: PDF, Word, Excel
+    const tiposPermitidosActa = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+
+    // Validar tipo MIME
+    const mimeValido = tiposPermitidosActa.includes(file.type);
+    
+    // Validar extensión como respaldo
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    const extensionesValidas = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+    const extensionValida = extensionesValidas.includes(extension);
+
+    if (!mimeValido && !extensionValida) {
+      setArchivoError('Tipo de archivo no permitido para actas. Solo se permiten: PDF, Word, Excel (.pdf, .doc, .docx, .xls, .xlsx)');
+      setArchivoSeleccionado(null);
+      e.target.value = '';
+      return;
+    }
 
     if (file.size > MAX_FILE_SIZE) {
       setArchivoError('El archivo supera el maximo de 20 MB');
@@ -3124,7 +3183,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                   <input
                     type="file"
                     id="file-upload-acta"
-                    accept="application/pdf,.doc,.docx"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
                         setArchivoSeleccionado(e.target.files[0]);
