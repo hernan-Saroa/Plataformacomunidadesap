@@ -81,6 +81,7 @@ import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -128,7 +129,10 @@ export function UsersPersonsModulePremium() {
       setLoading(true);
       const response = await usersService.getUsers({
         page: currentPage,
-        limit: itemsPerPage
+        limit: itemsPerPage,
+        search: debouncedSearchQuery.trim() || undefined,
+        status: statusFilter === 'all' ? undefined : (statusFilter as 'active' | 'inactive'),
+        role: roleFilter === 'all' ? undefined : roleFilter,
       });
 
       // Mapear usuarios de la API al formato esperado por el componente
@@ -208,11 +212,25 @@ export function UsersPersonsModulePremium() {
     };
   }, []);
 
+  // Debounce para búsqueda en backend
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Volver a primera página cuando cambia la búsqueda o filtros backend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, statusFilter, roleFilter]);
+
   // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]); // Recargar cuando cambia la página
+  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter]); // Recargar cuando cambia paginación o filtros backend
 
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
@@ -233,44 +251,41 @@ export function UsersPersonsModulePremium() {
     total: users.length || MOCK_USERS_WITH_SEDES.length
   };
 
-  // Filtros únicos para los selectores
+  // Filtros únicos para los selectores (roles desde backend)
   const uniqueRoles = Array.from(
     new Set(
-      MOCK_USERS_WITH_SEDES.flatMap((u) =>
-        u.roles.map((r) => r.name),
-      ),
+      availableRoles
+        .map((role) => role.name)
+        .filter((name): name is string => Boolean(name)),
     ),
-  );
+  ).sort((a, b) => a.localeCompare(b, 'es'));
   const uniqueLocations = Array.from(
     new Set(MOCK_USERS_WITH_SEDES.map((u) => u.location)),
   );
 
   // Filtrado
   const filteredUsers = currentUsers.filter(user => {
-    const matchesSearch = searchQuery === '' ||
-      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.document || user.identification_number || '').includes(searchQuery);
-
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    const matchesRole = roleFilter === 'all' || user.roles.some(r => r.name === roleFilter);
     const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
 
     // ✅ FILTRO POR UNIDAD ORGANIZACIONAL (Coherente con estructura)
     const matchesUnidadOrganizacional = !unidadOrganizacionalFilter ||
       (user.sedes && user.sedes.some(sede => sede.id === unidadOrganizacionalFilter));
 
-    return matchesSearch && matchesStatus && matchesRole && matchesLocation && matchesUnidadOrganizacional;
+    return matchesLocation && matchesUnidadOrganizacional;
   });
 
-  // Paginación - Usar totalPages del backend cuando no hay filtros activos
+  // Filtros activos (UI)
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all' || roleFilter !== 'all' || locationFilter !== 'all' || unidadOrganizacionalFilter;
-  const totalPages = hasActiveFilters
+  // Filtros que todavía se aplican en frontend (búsqueda se aplica en backend)
+  const hasClientSideFilters = locationFilter !== 'all' || !!unidadOrganizacionalFilter;
+
+  // Paginación: backend para búsqueda; frontend para filtros locales
+  const totalPages = hasClientSideFilters
     ? Math.ceil(filteredUsers.length / itemsPerPage)
     : Math.ceil(totalUsers / itemsPerPage);
 
-  // Si hay filtros activos, paginar en frontend. Si no, los datos ya vienen paginados del backend
-  const paginatedUsers = hasActiveFilters
+  // Si hay filtros locales, paginar en frontend. Si no, los datos ya vienen paginados del backend
+  const paginatedUsers = hasClientSideFilters
     ? filteredUsers.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
@@ -600,6 +615,11 @@ export function UsersPersonsModulePremium() {
       setRolesLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAssignRoles = async (user: any) => {
     if (hasSuperAdminRole(user)) {
@@ -984,6 +1004,7 @@ export function UsersPersonsModulePremium() {
               style={{ height: "44px" }}
             >
               <option value="all">Todos los roles</option>
+              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
               {uniqueRoles.map((role) => (
                 <option key={role} value={role}>
                   {role}
