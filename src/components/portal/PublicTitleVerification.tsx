@@ -280,6 +280,27 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
       const contactName = contactPerson.trim();
       const effectiveRequesterName =
         requesterType === 'graduado' ? graduateLastName : companyName;
+      let graduateEmailFromRecord: string | undefined;
+
+      // Obtener correo registrado del graduado (si existe) para separar
+      // validacion de identidad y correo destino.
+      if (requesterType === 'graduado') {
+        try {
+          const verification = await graduadosService.autoservicio.verificarGraduado(
+            graduateDocumentNumber,
+            undefined,
+            graduateDocumentIssueDate,
+            graduateLastName
+          );
+          const emailFromRecord = verification?.graduado?.email?.trim();
+          if (emailFromRecord) {
+            graduateEmailFromRecord = emailFromRecord;
+          }
+        } catch (verificationError) {
+          console.warn('No se pudo obtener el correo registrado del graduado:', verificationError);
+        }
+      }
+
       const response = await graduadosService.autoservicio.solicitarCertificado({
         idNumber: graduateDocumentNumber,
         graduationDate: graduateDocumentIssueDate,
@@ -287,6 +308,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
         requesterType: requesterType === 'empresa' ? 'COMPANY' : 'GRADUATE',
         requesterName: effectiveRequesterName,
         requesterEmail,
+        ...(graduateEmailFromRecord ? { graduateEmail: graduateEmailFromRecord } : {}),
         ...(requesterType === 'empresa'
           ? {
               companyName,
@@ -979,7 +1001,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                       {requesterType === 'graduado' && (
                         <div className="sm:col-span-2">
                           <Label htmlFor="graduateEmail" className="text-xs font-semibold text-gray-700 mb-2 block">
-                            Tu Correo Electrónico <span className="text-red-500">*</span>
+                            Correo donde deseas recibir el certificado <span className="text-red-500">*</span>
                           </Label>
                           <Input
                             id="graduateEmail"
@@ -990,6 +1012,9 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
                           />
+                          <p className="text-xs text-gray-500 mt-1">
+                            No tiene que coincidir con el correo registrado del graduado.
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1035,7 +1060,7 @@ export function PublicTitleVerification({ onBack, onLoginClick }: PublicTitleVer
                         <ul className="list-disc list-inside pl-2 space-y-0.5">
                           <li>Verificar la autenticidad de la información académica del graduado</li>
                           <li>Generar y expedir certificados de verificación de títulos</li>
-                          <li>Enviar el certificado al correo electrónico registrado</li>
+                          <li>Enviar el certificado al correo electrónico informado en la solicitud</li>
                           <li>Mantener un registro histórico de las solicitudes realizadas</li>
                         </ul>
                         <p className="mt-2">

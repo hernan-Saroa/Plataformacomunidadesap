@@ -311,6 +311,7 @@ const graduadosService = {
       requesterType: 'GRADUATE' | 'COMPANY';
       requesterName: string;
       requesterEmail: string;
+      graduateEmail?: string;
       requesterPhone?: string;
       companyName?: string;
       programName?: string;
