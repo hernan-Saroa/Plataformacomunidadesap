@@ -339,8 +339,7 @@ export class ListasChequeoService {
 
   /**
    * Actualizar un item de una lista (completar/pendiente)
-   * Nota: Por ahora el estado de completado se maneja en el frontend.
-   * TODO: Agregar campo 'completado' a item_lista_chequeo si se necesita persistencia.
+   * Persiste el estado de completado en la base de datos.
    */
   async updateItem(listaId: string, itemId: string, updateData: {
     completado?: boolean;
@@ -366,11 +365,57 @@ export class ListasChequeoService {
       );
     }
 
-    // TODO: Si se implementa persistencia de estado de items, actualizar aquí
-    // Por ahora, el estado se maneja en el frontend
+    // ✅ Usar SQL RAW para asegurar que la columna se actualiza correctamente
+    const completado = updateData.completado ?? false;
+    const fechaCompletado = completado 
+      ? (updateData.fechaCompletado ? new Date(updateData.fechaCompletado) : new Date())
+      : null;
+    const completadoPor = completado ? (updateData.responsable || null) : null;
+    const observaciones = updateData.observaciones ?? null;
 
-    console.log(`[ListasChequeo] Item ${itemId} actualizado: completado=${updateData.completado}`);
-    return item;
+    console.log(`[ListasChequeo] UPDATE RAW SQL: completado=${completado}, fechaCompletado=${fechaCompletado}, completadoPor=${completadoPor}`);
+
+    // ✅ Ejecutar UPDATE con SQL raw para evitar cualquier problema de TypeORM
+    await this.itemRepository.query(
+      `UPDATE control_interno.item_lista_chequeo 
+       SET completado = $1, 
+           fecha_completado = $2, 
+           completado_por = $3, 
+           observaciones = $4,
+           updated_at = NOW()
+       WHERE id = $5 AND lista_chequeo_id = $6`,
+      [completado, fechaCompletado, completadoPor, observaciones, itemId, listaId]
+    );
+
+    // Verificar con SQL raw que se guardó
+    const verificar = await this.itemRepository.query(
+      `SELECT id, completado, fecha_completado, completado_por FROM control_interno.item_lista_chequeo WHERE id = $1`,
+      [itemId]
+    );
+    console.log(`[ListasChequeo] ✅ Verificación SQL raw después de UPDATE:`, verificar[0]);
+
+    // Recargar el item de la BD para obtener datos frescos
+    const freshItem = await this.itemRepository.findOne({ where: { id: itemId } });
+    
+    console.log(`[ListasChequeo] ✅ Item ${itemId} con findOne después de UPDATE: completado=${freshItem?.completado}`);
+
+    // Actualizar el conteo de items completados en la lista padre
+    // ⚠️ IMPORTANTE: Usar SQL directo para evitar que TypeORM haga cascade y sobreescriba los items
+    const countResult = await this.itemRepository.query(
+      `SELECT COUNT(*) as count FROM control_interno.item_lista_chequeo WHERE lista_chequeo_id = $1 AND completado = true`,
+      [listaId]
+    );
+    const itemsCompletados = parseInt(countResult[0]?.count || '0', 10);
+    
+    // Actualizar solo el campo itemsCompletados sin cascade
+    await this.listaChequeoRepository.query(
+      `UPDATE control_interno.lista_chequeo SET items_completados = $1, updated_at = NOW() WHERE id = $2`,
+      [itemsCompletados, listaId]
+    );
+    
+    console.log(`[ListasChequeo] ✅ Lista ${listaId} actualizada: itemsCompletados=${itemsCompletados}`);
+
+    return freshItem || item;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -384,21 +429,51 @@ export class ListasChequeoService {
   async findByAuditoria(auditoriaId: string): Promise<ListaChequeo[]> {
     console.log(`[ListasChequeo] Buscando listas para auditoría ${auditoriaId}`);
 
-    // Buscar listas que tienen esta auditoría vinculada directamente
-    const listas = await this.listaChequeoRepository.find({
-      where: {
-        auditoriaId,
-        deletedAt: IsNull(),
-        activa: true,
-      },
-      relations: ['items', 'tipoAuditoria'],
-      order: {
-        createdAt: 'DESC',
-        items: {
-          orden: 'ASC',
-        },
-      },
-    });
+    // 🔍 DEBUG: Verificar estado del item específico en BD directamente
+    const debugItem = await this.itemRepository.query(
+      `SELECT id, completado, fecha_completado, updated_at 
+       FROM control_interno.item_lista_chequeo 
+       WHERE id = 'fce008f3-22c2-402f-9fb2-9b4abeb930b1'`
+    );
+    console.log(`[ListasChequeo] 🔍 DEBUG - Estado item en BD al inicio de findByAuditoria:`, debugItem[0]);
+
+    // Validar que el auditoriaId sea un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.log(`[ListasChequeo] ⚠️ auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return [];
+    }
+
+    // ✅ Obtener listas sin items primero
+    const listas = await this.listaChequeoRepository
+      .createQueryBuilder('lista')
+      .leftJoinAndSelect('lista.tipoAuditoria', 'tipoAuditoria')
+      .where('lista.auditoria_id = :auditoriaId', { auditoriaId })
+      .andWhere('lista.deleted_at IS NULL')
+      .andWhere('lista.activa = :activa', { activa: true })
+      .orderBy('lista.created_at', 'DESC')
+      .getMany();
+
+    // ✅ Cargar items con SQL RAW para evitar cache de TypeORM
+    for (const lista of listas) {
+      const items = await this.itemRepository.query(
+        `SELECT id, lista_chequeo_id as "listaChequeoId", texto, categoria, obligatorio, orden, 
+                completado, fecha_completado as "fechaCompletado", completado_por as "completadoPor", 
+                observaciones, created_at as "createdAt", updated_at as "updatedAt"
+         FROM control_interno.item_lista_chequeo 
+         WHERE lista_chequeo_id = $1 
+         ORDER BY orden ASC`,
+        [lista.id]
+      );
+      
+      lista.items = items;
+      
+      // Debug: Log del estado de completado de cada item
+      console.log(`[ListasChequeo] Lista: ${lista.nombre} (${lista.id})`);
+      items.forEach((item: any) => {
+        console.log(`  - Item ${item.id}: completado=${item.completado}, fechaCompletado=${item.fechaCompletado}`);
+      });
+    }
 
     console.log(`[ListasChequeo] ✅ Encontradas ${listas.length} listas para auditoría ${auditoriaId}`);
     return listas;

@@ -24,6 +24,11 @@ export interface ItemListaChequeo {
   categoria?: string;
   obligatorio: boolean;
   orden: number;
+  // Campos de estado de completado (persistidos en BD)
+  completado?: boolean;
+  fechaCompletado?: string;
+  completadoPor?: string;
+  observaciones?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -178,6 +183,22 @@ class ListasChequeoAPIClient {
   async restore(id: string): Promise<ListaChequeo> {
     return this.request<ListaChequeo>(`/listas-chequeo/${id}/restore`, {
       method: 'POST',
+    });
+  }
+
+  /**
+   * Actualizar un item de la lista (marcar completado/pendiente)
+   */
+  async updateItem(listaId: string, itemId: string, data: {
+    completado?: boolean;
+    responsable?: string;
+    fechaCompletado?: string;
+    observaciones?: string;
+    auditoriaId?: string;
+  }): Promise<ItemListaChequeo> {
+    return this.request<ItemListaChequeo>(`/listas-chequeo/${listaId}/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   }
 }

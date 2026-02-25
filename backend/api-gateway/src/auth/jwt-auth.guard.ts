@@ -33,6 +33,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/validacion\/estadisticas/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
+    // Documentos de control institucional (preview/download requieren acceso sin JWT para iframes)
+    /^\/control-institucional\/api\/v\d+\/documentos\/[^/]+\/preview/i,
+    /^\/control-institucional\/api\/v\d+\/documentos\/[^/]+\/download/i,
+    // Evidencias de control institucional
+    /^\/control-institucional\/api\/v\d+\/evidencias\/[^/]+\/preview/i,
+    /^\/control-institucional\/api\/v\d+\/evidencias\/[^/]+\/download/i,
   ];
 
   constructor(private readonly reflector: Reflector) {

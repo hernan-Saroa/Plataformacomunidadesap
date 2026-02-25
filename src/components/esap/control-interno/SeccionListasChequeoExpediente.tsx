@@ -133,7 +133,10 @@ export function SeccionListasChequeoExpediente({
   // ✅ CARGAR LISTAS DE CHEQUEO VINCULADAS A LA AUDITORÍA
   useEffect(() => {
     const cargarListasAuditoria = async () => {
-      if (!auditoriaId) {
+      // Validar que sea un UUID válido
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+        console.warn(`[ListasChequeo] auditoriaId inválido: ${auditoriaId}`);
         setIsLoading(false);
         return;
       }

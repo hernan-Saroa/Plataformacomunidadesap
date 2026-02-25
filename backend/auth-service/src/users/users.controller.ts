@@ -26,6 +26,9 @@ export class UsersController {
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
+    @Query('search') search?: string,
+    @Query('status') status?: 'active' | 'inactive' | 'all',
+    @Query('role') role?: string,
   ) {
     // Convertir query params a números si vienen como strings
     const pageNum = Number(page);
@@ -33,7 +36,11 @@ export class UsersController {
 
     // Usar paginación real en la base de datos
     const { users, total, totalActive, totalBlocked } =
-      await this.usersService.findAllPaginated(pageNum, limitNum);
+      await this.usersService.findAllPaginated(pageNum, limitNum, {
+        search,
+        status,
+        role,
+      });
 
     return {
       data: users.map((user) => {

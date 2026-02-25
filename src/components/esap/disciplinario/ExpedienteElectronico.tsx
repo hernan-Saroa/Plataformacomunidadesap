@@ -521,9 +521,22 @@ function ModalVisorDocumento({
         let downloadUrl: string;
 
         if (documento.downloadUrl) {
-          // Si el documento ya trae una URL de descarga (ej: Autos), usarla
-          // NO remover el slash inicial, buildApiUrl lo necesita o lo maneja
-          downloadUrl = buildApiUrl('control-disciplinario', documento.downloadUrl);
+          // El backend retorna: /control-disciplinario/api/v1/... o /files/...
+          // Necesitamos extraer la ruta relativa sin el prefijo del servicio para buildApiUrl
+          let path = documento.downloadUrl;
+          
+          if (documento.downloadUrl.startsWith('/control-disciplinario/')) {
+            // Extraer la ruta después de /control-disciplinario conservando el slash inicial
+            // /control-disciplinario/api/v1/... -> /api/v1/...
+            path = documento.downloadUrl.replace(/^\/control-disciplinario/, '/');
+          } else if (documento.downloadUrl.startsWith('/files/')) {
+            // Para /files/ usar la ruta directa sin duplicar el prefijo
+            // /files/filename -> /files/filename
+            path = documento.downloadUrl;
+          }
+          
+          // Construir la URL usando solo la ruta relativa
+          downloadUrl = buildApiUrl('control-disciplinario', path);
         } else {
           // Construcción legacy para evidencias
           const endpoint = API_MODE === 'direct'

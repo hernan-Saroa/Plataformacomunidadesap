@@ -28,9 +28,11 @@ import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
   dibujarEncabezadoInstitucional, 
   dibujarPieInstitucional, 
-  DOCUMENTOS_PREDEFINIDOS 
+  DOCUMENTOS_PREDEFINIDOS,
+  LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
-import logoESAP from '../../../assets/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
+// ✅ NUEVO: Exportación Excel con logo
+import { exportarPlanAnualExcel } from './services/exportarPlanAnualExcel';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
@@ -165,8 +167,8 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
   { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
   { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación del sistema de control interno', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad' },
-  { numero: 5, nombre: 'Relación con organismos externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
+  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
@@ -194,56 +196,222 @@ interface RolConfig extends Omit<Rol, 'actividades'> {
 
 // Función para obtener actividades por rol desde el archivo principal
 function getActividadesPorRol(numeroRol: number): ActividadBase[] {
-  // Esta es la lista base del Decreto 648/2017
+  // ════════════════════════════════════════════════════════════════════════════
+  // ACTIVIDADES OFICIALES DECRETO 648/2017 - SINCRONIZADO CON EXCEL ESAP
+  // ════════════════════════════════════════════════════════════════════════════
   const actividadesPorRol: Record<number, ActividadBase[]> = {
+    // ═══════════════════ ROL 1: LIDERAZGO ESTRATÉGICO (46) ═══════════════════
     1: [
-    
-      { nombre: 'Verificar cumplimiento de metas e indicadores estratégicos', descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento cuatrimestral', evaluacion: '50% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño' },
-      { nombre: 'Establecer periodicidad de informes estratégicos', descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento anual', evaluacion: '10% avance', seguimiento: 'Socializar plan anual de auditoría en el comité institucional' },
-      { nombre: 'Presentar resultados de evaluación de líneas de defensa', descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Elaborar informe de evaluación independiente del sistema de control interno' },
-      { nombre: 'Informar sobre alertas de riesgo fiscal', descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Informe cuatrimestral', evaluacion: '60% avance', seguimiento: 'Elaborar informe, publicar en web y diligenciar seguimiento en sistema' },
-      { nombre: 'Participación en procesos de empalme', descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Según necesidad', evaluacion: '0% avance', seguimiento: 'Seguimiento en el último año de administración' }
+      { 
+        nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP', 
+        descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '50% avance', 
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director. Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.' 
+      },
+      { 
+        nombre: 'Verificar a través del Plan anual de auditorías, el cumplimiento de metas, indicadores, procesos estratégicos de la entidad y riesgos asociados a estos', 
+        descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', 
+        evaluacion: '50% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño' 
+      },
+      { 
+        nombre: 'Establecer en el Comité de Gestión y Desempeño la periodicidad y alcance de rendición de informes estratégicos', 
+        descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', 
+        evaluacion: '10% avance', 
+        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño' 
+      },
+      { 
+        nombre: 'Presentar ante el Comité Institucional de Coordinación de Control Interno los resultados de la evaluación de la operación de la primera y segunda línea de defensa. Analizar las variaciones del ambiente organizacional y del entorno, identificando procesos críticos, controles y servicios que tengan un impacto significativo en el cumplimiento de los objetivos institucionales', 
+        descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web' 
+      },
+      { 
+        nombre: 'Informar al jefe de la entidad sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención', 
+        descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace informe cuatrimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION' 
+      },
+      { 
+        nombre: 'Participación frente a los procesos de empalme cuando se dan cambios de administración', 
+        descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: '', 
+        evaluacion: '0% avance', 
+        seguimiento: 'Se hace seguimiento el último año' 
+      }
     ],
+    // ═══════════════════ ROL 2: ENFOQUE HACIA LA PREVENCIÓN (60) ═══════════════════
     2: [
-      { nombre: 'Sensibilización sobre articulación del control interno y externo', descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Socializar guía de auditoría en comités institucionales' },
-      { nombre: 'Acompañar formulación de planes de mejoramiento', descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Suministrar herramientas como diagrama causa-efecto' },
-      { nombre: 'Adoptar procedimiento de seguimiento al plan de mejoramiento', descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento anual', evaluacion: '60% avance', seguimiento: 'Documentar procedimiento y formato de seguimiento' },
-      { nombre: 'Presentar avance del plan de mejoramiento ante el CICC', descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Socializar resultados en el Comité de Coordinación de Control Interno' },
-      { nombre: 'Seguimiento a decisiones en firme de órganos de control', descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Socializar resultados en el CICC' },
-      { nombre: 'Desarrollar diagnósticos para mejora en gestión del riesgo', descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Establecer efectividad de controles y socializar en CICC' },
-      { nombre: 'Asesorar en la articulación del esquema de líneas de defensa', descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Realizar capacitaciones del esquema de líneas de defensa' },
-      { nombre: 'Acompañamiento en batería de indicadores y tableros de control', descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Realizar capacitaciones sobre indicadores' }
+      { 
+        nombre: 'Programar en los comités institucionales más estratégicos (gestión y desempeño institucional, de coordinación de control interno, de gerencia u otro), sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo', 
+        descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema de control interno y el control externo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)' 
+      },
+      { 
+        nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento', 
+        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto' 
+      },
+      { 
+        nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas', 
+        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora' 
+      },
+      { 
+        nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento', 
+        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Hacer seguimiento a decisiones en firme de órganos de control e investigación sobre procesos penales, fiscales y disciplinarios derivados de hallazgos o denuncias relacionadas con la entidad', 
+        descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos', 
+        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa', 
+        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno' 
+      },
+      { 
+        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
+        descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar capacitaciones' 
+      }
     ],
+    // ═══════════════════ ROL 3: EVALUACIÓN DE LA GESTIÓN DEL RIESGO (48) ═══════════════════
     3: [
-      { nombre: 'Revisar adecuación de la política de administración del riesgo', descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '48% avance', seguimiento: 'Verificar formalización y contenido de la política conforme a la guía DAFP' },
-      { nombre: 'Promover comprensión del valor de la gestión de riesgos', descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '48% avance', seguimiento: 'Proporcionar información de riesgos para toma de decisiones' },
-      { nombre: 'Evaluar prácticas actuales de gestión del riesgo', descripcion: 'Migrar a esquemas más efectivos y articular con líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento cuatrimestral', evaluacion: '48% avance', seguimiento: 'Socializar resultados en el CICC' }
+      { 
+        nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación', 
+        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas' 
+      },
+      { 
+        nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones', 
+        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
+        descripcion: 'Migrar a esquemas más efectivos y articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      }
     ],
+    // ═══════════════════ ROL 4: EVALUACIÓN Y SEGUIMIENTO (60) ═══════════════════
     4: [
-      { nombre: 'Efectuar auditorías internas con enfoque preventivo', descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento mensual', evaluacion: '60% avance', seguimiento: 'Seguimiento al cumplimiento del programa de auditoría' },
-      { nombre: 'Seguimiento a planes de mejoramiento internos y externos', descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Asesorar y suministrar herramientas como diagrama causa-efecto' }
+      { 
+        nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
+        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría' 
+      },
+      { 
+        nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
+        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto' 
+      }
     ],
+    // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
     5: [
-      { nombre: 'Brindar asesoría y generar alertas oportunas', descripcion: 'Alertar a responsables sobre información requerida por organismos de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento mensual', evaluacion: '59% avance', seguimiento: 'Publicar informes en web y enviar a procesos responsables' },
-      { nombre: 'Adelantar procesos de auditoría de organismos de control', descripcion: 'Acompañar de manera armónica las auditorías de control externo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Según necesidad', evaluacion: '59% avance', seguimiento: 'Dar asesoría puntual a procesos y líderes' },
-      // ═══════════════════ INFORMES DE LEY OBLIGATORIOS (17 actividades separadas) ═══════════════════
-      { nombre: 'Informe de Pormenorizado del Estado del Control Interno', descripcion: 'Presentar ante el CICC y Director Nacional informe detallado del estado del sistema de control interno (Decreto 648/2017, Art. 12)', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web y radicar ante organismos de control' },
-      { nombre: 'Plan Anual de Auditoría Interna', descripcion: 'Elaborar y aprobar el plan anual de auditoría basado en riesgos institucionales (Decreto 648/2017)', fechaInicio: '2026-01-01', fechaFin: '2026-03-31', control: 'Anual - Marzo', evaluacion: 'Cumplimiento normativo', seguimiento: 'Aprobación en CICC y socialización institucional' },
-      { nombre: 'Informe de Auditorías Realizadas', descripcion: 'Consolidar y reportar todas las auditorías internas ejecutadas durante la vigencia', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Anual - Diciembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Incluir hallazgos, recomendaciones y planes de mejoramiento' },
-      { nombre: 'Informe de Seguimiento a Planes de Mejoramiento', descripcion: 'Realizar seguimiento trimestral al cumplimiento de planes de mejoramiento internos y externos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar en CICC con semaforización de avances' },
-      { nombre: 'Informe de Evaluación del Sistema de Control Interno Contable', descripcion: 'Evaluar el diseño, desarrollo y efectividad del sistema de control interno contable (Resolución 357/2008 CGN)', fechaInicio: '2026-10-01', fechaFin: '2026-11-30', control: 'Anual - Noviembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar ante Contaduría General de la Nación' },
-      { nombre: 'Informe de Austeridad del Gasto Público', descripcion: 'Verificar cumplimiento de medidas de austeridad establecidas en la normatividad vigente (Decreto 984/2012)', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web institucional' },
-      { nombre: 'Informe de Evaluación de Gestión y Resultados', descripcion: 'Evaluar la gestión institucional y el cumplimiento de metas del plan estratégico', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar ante Director Nacional y publicar en web' },
-      { nombre: 'Informe de Evaluación de Política de Administración del Riesgo', descripcion: 'Evaluar el diseño, desarrollo y efectividad de la política de administración del riesgo institucional', fechaInicio: '2026-01-01', fechaFin: '2026-06-30', control: 'Semestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar en CICC con recomendaciones de mejora' },
-      { nombre: 'Informe de Evaluación del Código de Integridad', descripcion: 'Evaluar la implementación y seguimiento del Código de Integridad institucional (Decreto 1081/2015)', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Anual - Diciembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Incluir nivel de apropiación y casos de incumplimiento' },
-      { nombre: 'Informe de Seguimiento al Plan Anticorrupción y de Atención al Ciudadano', descripcion: 'Verificar el cumplimiento de metas del Plan Anticorrupción y de Atención al Ciudadano (Ley 1474/2011)', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Cuatrimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar avances y alertas en CICC' },
-      { nombre: 'Informe de Seguimiento a Acciones Correctivas de Auditorías Externas', descripcion: 'Hacer seguimiento a hallazgos de Contraloría, Procuraduría y otros entes de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Alertar sobre vencimientos y nivel de cumplimiento' },
-      { nombre: 'Informe de Rendición de la Cuenta Fiscal', descripcion: 'Certificar la consistencia y veracidad de la información reportada en el Consolidador de Hacienda e Información Pública (CHIP)', fechaInicio: '2026-01-01', fechaFin: '2026-02-15', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Remitir certificación a la Contraloría General' },
-      { nombre: 'Informe de Gestión Anual de la OCIG', descripcion: 'Consolidar y presentar la gestión anual de la Oficina de Control Interno con estadísticas y resultados', fechaInicio: '2026-01-01', fechaFin: '2026-01-31', control: 'Anual - Enero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web y presentar ante Director Nacional' },
-      { nombre: 'Informe de Seguimiento a Denuncias y Quejas', descripcion: 'Consolidar el seguimiento realizado a denuncias y quejas recibidas por la OCIG', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Semestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar estadísticas y acciones adelantadas en CICC' },
-      { nombre: 'Informe de Evaluación de Trámites y Servicios', descripcion: 'Evaluar la eficiencia y efectividad de los trámites y servicios institucionales al ciudadano', fechaInicio: '2026-01-01', fechaFin: '2026-06-30', control: 'Anual - Junio', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web con recomendaciones' },
-      { nombre: 'Informe de Evaluación del Sistema de Gestión Documental', descripcion: 'Evaluar el cumplimiento de la política de gestión documental y archivo (Ley 594/2000)', fechaInicio: '2026-01-01', fechaFin: '2026-11-30', control: 'Anual - Noviembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Verificar tablas de retención y archivo de gestión' },
-      { nombre: 'Informe de Seguimiento a Recomendaciones de Auditorías Anteriores', descripcion: 'Verificar el cumplimiento de recomendaciones formuladas en auditorías de vigencias anteriores', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar estado de implementación en CICC' }
+      { 
+        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
+        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo' 
+      },
+      { 
+        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
+        descripcion: 'Acompañar de manera armónica las auditorías de control externo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: '', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes' 
+      },
+      { 
+        nombre: 'Presentar informes y seguimientos de ley', 
+        descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes' 
+      }
     ]
   };
   
@@ -271,60 +439,60 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
   
+  // Función para cargar profesionales OCIG (reutilizable)
+  const cargarAuditores = async () => {
+    setCargandoAuditores(true);
+    try {
+      // Usar profesionales OCIG configurados en lugar de personas disponibles
+      const response = await configuracionesProfesionalesOCIGApi.getAll();
+      console.log('[PlanAnual] Profesionales OCIG response:', response);
+      
+      if (response.success && response.data && response.data.length > 0) {
+        // Transformar a formato Auditor
+        const profesionales: Auditor[] = response.data
+          .filter((config: any) => config.activo)
+          .map((config: any) => ({
+            id: config.id, // UUID de configuracion_profesionales_ocig
+            nombre: config.nombre || `Profesional ${config.idTercero}`,
+            cargo: config.rolOcig || 'Auditor',
+            email: config.email || ''
+          }));
+        
+        setAuditores(profesionales);
+        
+        // Filtrar solo los que son Jefe OCIG
+        const jefes = profesionales.filter((a: Auditor) => 
+          a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
+        );
+        setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
+        
+        // Seleccionar el primer profesional por defecto si no hay uno seleccionado
+        if (!jefeSeleccionado && profesionales.length > 0) {
+          setJefeSeleccionado(profesionales[0]);
+        }
+        
+        console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length);
+        return profesionales;
+      } else {
+        console.warn('[PlanAnual] No hay profesionales OCIG configurados');
+        toast.warning('No hay profesionales OCIG configurados', {
+          description: 'Configura el equipo en el módulo de Configuración'
+        });
+        setAuditores([]);
+        setJefesOCIG([]);
+        return [];
+      }
+    } catch (error) {
+      console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
+      toast.error('Error al cargar profesionales OCIG');
+      return [];
+    } finally {
+      setCargandoAuditores(false);
+    }
+  };
+  
   // Cargar profesionales OCIG configurados al montar el componente
   useEffect(() => {
-    const cargarAuditores = async () => {
-      setCargandoAuditores(true);
-      try {
-        // Usar profesionales OCIG configurados en lugar de personas disponibles
-        const response = await configuracionesProfesionalesOCIGApi.getAll();
-        console.log('[PlanAnual] Profesionales OCIG response:', response);
-        
-        if (response.success && response.data && response.data.length > 0) {
-          // Transformar a formato Auditor
-          const profesionales: Auditor[] = response.data
-            .filter((config: any) => config.activo)
-            .map((config: any) => ({
-              id: config.id, // UUID de configuracion_profesionales_ocig
-              nombre: config.nombre || `Profesional ${config.idTercero}`,
-              cargo: config.rolOcig || 'Auditor',
-              email: config.email || ''
-            }));
-          
-          setAuditores(profesionales);
-          
-          // Filtrar solo los que son Jefe OCIG
-          const jefes = profesionales.filter((a: Auditor) => 
-            a.cargo === 'Jefe OCIG' || a.cargo.toLowerCase().includes('jefe')
-          );
-          setJefesOCIG(jefes.length > 0 ? jefes : profesionales);
-          
-          // Seleccionar el primer jefe como jefe por defecto
-          if (jefes.length > 0) {
-            setJefeSeleccionado(jefes[0]);
-          } else if (profesionales.length > 0) {
-            setJefeSeleccionado(profesionales[0]);
-          }
-          
-          console.log('[PlanAnual] Profesionales OCIG cargados:', profesionales.length, 'Jefes:', jefes.length);
-        } else {
-          console.warn('[PlanAnual] No hay profesionales OCIG configurados, usando fallback');
-          toast.warning('No hay profesionales OCIG configurados', {
-            description: 'Configura el equipo en el módulo de Configuración'
-          });
-          setJefesOCIG(AUDITORES_DEFAULT);
-          setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-        }
-      } catch (error) {
-        console.error('[PlanAnual] Error cargando profesionales OCIG:', error);
-        toast.error('Error al cargar profesionales OCIG');
-        setJefesOCIG(AUDITORES_DEFAULT);
-        setJefeSeleccionado(AUDITORES_DEFAULT[0]);
-      } finally {
-        setCargandoAuditores(false);
-      }
-    };
-    
     cargarAuditores();
   }, []);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
@@ -401,10 +569,10 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
       return false;
     }
     
-    // Validar que haya un jefe seleccionado
+    // Validar que haya un responsable seleccionado
     if (!jefeSeleccionado) {
-      toast.error('Jefe OCI requerido', {
-        description: 'Debe seleccionar un Jefe de Control Interno'
+      toast.error('Responsable requerido', {
+        description: 'Debe seleccionar un responsable del Plan Anual'
       });
       return false;
     }
@@ -478,7 +646,7 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
     
     // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
     if (!jefeSeleccionado) {
-      toast.error('Debe seleccionar un Jefe de Control Interno');
+      toast.error('Debe seleccionar un responsable del Plan');
       return;
     }
     
@@ -529,8 +697,9 @@ export function WizardCreacion({ onCancelar, onCrear }: WizardCreacionProps) {
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
                 onFechaFinChange={setFechaFin}
-                auditores={jefesOCIG}
+                auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
+                onRecargarAuditores={cargarAuditores}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} />}
@@ -596,7 +765,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-3">Configuración básica</h2>
-        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el jefe responsable del plan</p>
+        <p className="text-gray-600">Define la vigencia, periodo de ejecución y el responsable del plan</p>
       </div>
 
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
@@ -684,11 +853,16 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
         )}
 
         <div>
-          <label className="block text-sm font-semibold text-gray-900 mb-2">Jefe de Control Interno</label>
+          <label className="block text-sm font-semibold text-gray-900 mb-2">Responsable del Plan</label>
           {cargandoAuditores ? (
             <div className="flex items-center gap-2 px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50">
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-              <span className="text-gray-600">Cargando auditores...</span>
+              <span className="text-gray-600">Cargando profesionales OCIG...</span>
+            </div>
+          ) : auditores.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
+              <span className="text-orange-700">No hay profesionales OCIG configurados. Configura el equipo primero.</span>
             </div>
           ) : (
             <select 
@@ -696,11 +870,13 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               onChange={(e) => onJefeChange(auditores.find((a: any) => a.id === e.target.value))} 
               className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
             >
+              <option value="">Seleccionar responsable...</option>
               {auditores.map((a: any) => (
                 <option key={a.id} value={a.id}>{a.nombre} - {a.cargo}</option>
               ))}
             </select>
           )}
+          <p className="text-xs text-gray-500 mt-1">Profesional OCIG responsable del Plan Anual de Auditoría</p>
         </div>
       </div>
     </motion.div>
@@ -1627,7 +1803,7 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
             <span className="font-bold text-gray-900">{vigencia}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
-            <span className="text-gray-600">Jefe responsable:</span>
+            <span className="text-gray-600">Responsable del Plan:</span>
             <span className="font-bold text-gray-900">{jefeOCI.nombre}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-gray-200">
@@ -1693,9 +1869,11 @@ interface DashboardPlanProps {
   onAbrirRol4?: () => void;
   onCrearNuevo?: () => void; // Nueva prop para crear un nuevo plan
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
+  planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
+  onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
 }
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [] }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -1745,44 +1923,18 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const handleExportarExcel = async () => {
     setExportando('excel');
     setMostrarModalExportacion(false);
-    const res = await planAnualApi.exportExcel(plan.id);
-    if (res.success) {
-      toast.success('Exportado', { description: 'Excel descargado correctamente' });
-      setExportando(null);
-      return;
-    }
+    
+    // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      const XLSX = await import('xlsx');
-      const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-      const headers = ['Rol', 'Nº', 'Actividad', 'Descripción', 'Responsable', 'Fecha Inicio', 'Fecha Fin', 'Estado', '% Avance'];
-      const rows: unknown[][] = [
-        ['Plan Anual de Auditoría - ESAP'],
-        [`Vigencia ${vigencia}`, '', '', '', '', '', '', `Estado: ${plan.estado}`],
-        [],
-        headers,
-      ];
-      (plan.roles ?? []).forEach((rol) => {
-        (rol.actividades ?? []).forEach((a, i) => {
-          rows.push([
-            rol.nombre,
-            i + 1,
-            a.nombre,
-            a.descripcion ?? '',
-            a.responsable?.nombre ?? '',
-            a.fechaInicio ?? '',
-            a.fechaFin ?? '',
-            a.estado ?? '',
-            a.porcentajeAvance ?? 0,
-          ]);
-        });
-      });
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Plan Anual');
-      XLSX.writeFile(wb, `plan-anual-auditoria-${vigencia}.xlsx`);
-      toast.success('Exportado', { description: 'Excel generado correctamente' });
+      const resultado = await exportarPlanAnualExcel(plan);
+      if (resultado.exito) {
+        toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
+      } else {
+        toast.error('Error al exportar Excel', { description: resultado.error || 'Error desconocido' });
+      }
     } catch (e) {
-      toast.error('Error al exportar Excel', { description: res.error || (e instanceof Error ? e.message : 'Error desconocido') });
+      console.error('Error al exportar Excel:', e);
+      toast.error('Error al exportar Excel', { description: e instanceof Error ? e.message : 'Error desconocido' });
     }
     setExportando(null);
   };
@@ -1806,10 +1958,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
 
-      // Header institucional estandarizado
+      // Header institucional estandarizado (carga logo dinámicamente)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
-        logoImg: logoESAP
+        logoImg: LOGO_ESAP_URL
       });
       
       let currentY = alturaEncabezado + 5;
@@ -1857,12 +2009,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       currentY = (doc as any).lastAutoTable.finalY + 10;
 
       // Actividades por rol
+      let sumaAvanceTotal = 0;
+      let totalActividadesCount = 0;
+      
       plan.roles.forEach((rol, rolIdx) => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 61, 165);
         doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
         currentY += 7;
+
+        // Calcular avance promedio del rol
+        const sumaAvanceRol = rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0);
+        const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+        sumaAvanceTotal += sumaAvanceRol;
+        totalActividadesCount += rol.actividades.length;
 
         const actividadesData = rol.actividades.map((act, idx) => [
           (idx + 1).toString(),
@@ -1871,6 +2032,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           act.estado === 'COMPLETADA' ? 'Completada' : 
           act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
           `${act.porcentajeAvance}%`
+        ]);
+        
+        // Agregar fila de subtotal del rol
+        actividadesData.push([
+          '',
+          `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
+          '',
+          'PROMEDIO:',
+          `${promedioRol}%`
         ]);
 
         autoTable(doc, {
@@ -1892,7 +2062,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             3: { cellWidth: 30, halign: 'center' },
             4: { cellWidth: 20, halign: 'center' }
           },
-          margin: { left: margin, right: margin }
+          margin: { left: margin, right: margin },
+          didParseCell: function(data) {
+            // Destacar la fila de subtotal
+            if (data.row.index === actividadesData.length - 1) {
+              data.cell.styles.fillColor = [41, 98, 255];
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         });
 
         currentY = (doc as any).lastAutoTable.finalY + 8;
@@ -1902,6 +2080,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           currentY = margin;
         }
       });
+      
+      // Total general del plan
+      const promedioGeneral = totalActividadesCount > 0 ? Math.round(sumaAvanceTotal / totalActividadesCount) : 0;
+      
+      if (currentY > pageHeight - 30) {
+        doc.addPage();
+        currentY = margin;
+      }
+      
+      // Dibujar cuadro de resumen total
+      doc.setFillColor(0, 61, 165);
+      doc.rect(margin, currentY, pageWidth - (margin * 2), 15, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`AVANCE TOTAL DEL PLAN: ${promedioGeneral}%`, margin + 5, currentY + 10);
+      doc.text(`(${totalActividadesCount} actividades en ${plan.roles.length} roles)`, pageWidth - margin - 80, currentY + 10);
+      currentY += 20;
 
       // Footer institucional
       const totalPages = doc.getNumberOfPages();
@@ -1934,6 +2130,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Selector de Plan Activo */}
+            {planesDisponibles.length > 1 && onCambiarPlan && (
+              <select
+                value={plan.id}
+                onChange={(e) => onCambiarPlan(e.target.value)}
+                className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
+              >
+                {planesDisponibles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.vigencia} - {p.estado} (v{p.version})
+                  </option>
+                ))}
+              </select>
+            )}
+
             <span className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg font-semibold border-2 text-sm ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}`}>
               {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
             </span>

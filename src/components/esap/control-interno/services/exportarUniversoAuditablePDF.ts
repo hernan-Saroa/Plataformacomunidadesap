@@ -19,6 +19,38 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// ✅ Importar logo ESAP dinámicamente (Vite lo maneja automáticamente)
+import logoESAP from '@/assets/cropped-favicon-32x32.png';
+
+// Cache del logo en base64 para reutilización
+let _logoCache: string | null = null;
+
+/**
+ * Convierte el logo a base64 para uso en PDF
+ */
+async function getLogoBase64(): Promise<string> {
+  if (_logoCache) return _logoCache;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        _logoCache = canvas.toDataURL('image/png');
+        resolve(_logoCache);
+      } else {
+        resolve(logoESAP);
+      }
+    };
+    img.onerror = () => resolve(logoESAP);
+    img.src = logoESAP;
+  });
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -105,6 +137,9 @@ export async function exportarUniversoAuditablePDF(
   try {
     console.log('📄 Generando PDF del Universo Auditable...');
     
+    // ✅ Cargar logo ESAP primero
+    const logoBase64 = await getLogoBase64();
+    
     // Crear documento PDF (A4 horizontal para tablas)
     const doc = new jsPDF({
       orientation: 'landscape',
@@ -114,18 +149,18 @@ export async function exportarUniversoAuditablePDF(
     
     // Portada
     if (incluirPortada) {
-      crearPortada(doc, vigencia, estadisticas);
+      crearPortada(doc, vigencia, estadisticas, logoBase64);
       doc.addPage();
     }
     
     // Estadísticas
     if (incluirEstadisticas) {
-      crearSeccionEstadisticas(doc, estadisticas, vigencia);
+      crearSeccionEstadisticas(doc, estadisticas, vigencia, logoBase64);
       doc.addPage();
     }
     
     // Tabla de Procesos
-    crearTablaProcesos(doc, procesos, vigencia);
+    crearTablaProcesos(doc, procesos, vigencia, logoBase64);
     
     // Marca de agua en todas las páginas
     if (incluirMarcaDeAgua) {
@@ -170,7 +205,7 @@ export async function exportarUniversoAuditablePDF(
 // ENCABEZADO CORPORATIVO TIPO FORMULARIO (Profesional)
 // ════════════════════════════════════════════════════════════════════════════
 
-function crearEncabezadoFormulario(doc: jsPDF, vigencia: number): number {
+function crearEncabezadoFormulario(doc: jsPDF, vigencia: number, logoBase64?: string): number {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margen = 10;
   const headerHeight = 28;
@@ -182,21 +217,34 @@ function crearEncabezadoFormulario(doc: jsPDF, vigencia: number): number {
   doc.setLineWidth(0.3);
   doc.rect(margen, margen, pageWidth - (margen * 2), totalHeight);
   
-  // ═══ SECCIÓN IZQUIERDA: ESAP ═══
+  // ═══ SECCIÓN IZQUIERDA: LOGO ESAP ═══
   const logoWidth = 50;
   doc.line(margen + logoWidth, margen, margen + logoWidth, margen + headerHeight);
   
-  // Texto institucional ESAP
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 61, 165);
-  doc.text('ESAP', margen + logoWidth / 2, margen + 12, { align: 'center' });
-  
-  doc.setFontSize(6);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(80, 80, 80);
-  doc.text('Escuela Superior de', margen + logoWidth / 2, margen + 18, { align: 'center' });
-  doc.text('Administración Pública', margen + logoWidth / 2, margen + 22, { align: 'center' });
+  // ✅ DIBUJAR LOGO ESAP
+  try {
+    if (logoBase64) {
+      const logoSize = 18;
+      const logoCenterX = margen + (logoWidth / 2) - (logoSize / 2);
+      const logoCenterY = margen + (headerHeight / 2) - (logoSize / 2);
+      doc.addImage(logoBase64, 'PNG', logoCenterX, logoCenterY, logoSize, logoSize);
+    } else {
+      // Fallback: texto si no hay logo
+      throw new Error('No logo provided');
+    }
+  } catch {
+    // Fallback: Texto institucional ESAP si falla el logo
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 61, 165);
+    doc.text('ESAP', margen + logoWidth / 2, margen + 12, { align: 'center' });
+    
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text('Escuela Superior de', margen + logoWidth / 2, margen + 18, { align: 'center' });
+    doc.text('Administración Pública', margen + logoWidth / 2, margen + 22, { align: 'center' });
+  }
   
   // ═══ SECCIÓN CENTRAL: TÍTULO ═══
   const infoBoxWidth = 50;
@@ -273,12 +321,12 @@ function crearEncabezadoFormulario(doc: jsPDF, vigencia: number): number {
 // PORTADA
 // ════════════════════════════════════════════════════════════════════════════
 
-function crearPortada(doc: jsPDF, vigencia: number, estadisticas: EstadisticasExport): void {
+function crearPortada(doc: jsPDF, vigencia: number, estadisticas: EstadisticasExport, logoBase64?: string): void {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   
-  // Encabezado tipo formulario
-  let yPos = crearEncabezadoFormulario(doc, vigencia);
+  // Encabezado tipo formulario con logo
+  let yPos = crearEncabezadoFormulario(doc, vigencia, logoBase64);
   
   yPos += 20;
   
@@ -361,11 +409,11 @@ function crearPortada(doc: jsPDF, vigencia: number, estadisticas: EstadisticasEx
 // SECCIÓN ESTADÍSTICAS
 // ════════════════════════════════════════════════════════════════════════════
 
-function crearSeccionEstadisticas(doc: jsPDF, estadisticas: EstadisticasExport, vigencia: number): void {
+function crearSeccionEstadisticas(doc: jsPDF, estadisticas: EstadisticasExport, vigencia: number, logoBase64?: string): void {
   const pageWidth = doc.internal.pageSize.getWidth();
   
-  // Encabezado tipo formulario
-  let y = crearEncabezadoFormulario(doc, vigencia);
+  // Encabezado tipo formulario con logo
+  let y = crearEncabezadoFormulario(doc, vigencia, logoBase64);
   
   y += 5;
   
@@ -433,11 +481,11 @@ function crearSeccionEstadisticas(doc: jsPDF, estadisticas: EstadisticasExport, 
 // TABLA DE PROCESOS
 // ════════════════════════════════════════════════════════════════════════════
 
-function crearTablaProcesos(doc: jsPDF, procesos: ProcesoAuditableExport[], vigencia: number): void {
+function crearTablaProcesos(doc: jsPDF, procesos: ProcesoAuditableExport[], vigencia: number, logoBase64?: string): void {
   const pageWidth = doc.internal.pageSize.getWidth();
   
-  // Encabezado tipo formulario
-  let y = crearEncabezadoFormulario(doc, vigencia);
+  // Encabezado tipo formulario con logo
+  let y = crearEncabezadoFormulario(doc, vigencia, logoBase64);
   
   y += 5;
   
@@ -612,11 +660,26 @@ export async function exportarUniversoAuditableExcel(
     hour: '2-digit',
     minute: '2-digit'
   });
+  const fechaCorta = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
   
   try {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ESAP - Control Interno';
     workbook.created = new Date();
+    
+    // ✅ Cargar logo ESAP para Excel
+    let logoImageId: number | null = null;
+    try {
+      const logoBase64 = await getLogoBase64();
+      // Extraer solo la parte base64 sin el prefijo data:image/png;base64,
+      const base64Data = logoBase64.includes(',') ? logoBase64.split(',')[1] : logoBase64;
+      logoImageId = workbook.addImage({
+        base64: base64Data,
+        extension: 'png',
+      });
+    } catch (e) {
+      console.warn('No se pudo cargar el logo para Excel:', e);
+    }
     
     // ═══════════════════════════════════════════════════════════════════════
     // HOJA 1: UNIVERSO AUDITABLE
@@ -626,45 +689,135 @@ export async function exportarUniversoAuditableExcel(
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true }
     });
 
-    // --- Encabezado institucional ---
-    wsUniverso.mergeCells('A1:K1');
-    const titleCell = wsUniverso.getCell('A1');
-    titleCell.value = 'ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP';
-    titleCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: EXCEL_COLORS.white } };
-    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsUniverso.getRow(1).height = 35;
-
-    wsUniverso.mergeCells('A2:K2');
-    const subtitleCell = wsUniverso.getCell('A2');
-    subtitleCell.value = 'OFICINA DE CONTROL INTERNO DE GESTIÓN - OCIG';
-    subtitleCell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: EXCEL_COLORS.white } };
-    subtitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryLight } };
-    subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsUniverso.getRow(2).height = 25;
-
-    wsUniverso.mergeCells('A3:K3');
-    const docTitleCell = wsUniverso.getCell('A3');
-    docTitleCell.value = `UNIVERSO AUDITABLE - VIGENCIA ${vigencia}`;
-    docTitleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: EXCEL_COLORS.textDark } };
-    docTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.grayLight } };
-    docTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    wsUniverso.getRow(3).height = 28;
-
-    // --- Fila de fecha ---
-    wsUniverso.mergeCells('A4:K4');
-    const dateCell = wsUniverso.getCell('A4');
-    dateCell.value = `Fecha de generación: ${fechaGeneracion}`;
-    dateCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: '666666' } };
-    dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+    // ═══════════════════════════════════════════════════════════════════════
+    // ENCABEZADO INSTITUCIONAL TIPO EM-PT-005 CON LOGO
+    // Estructura: [LOGO] | [TÍTULO CENTRADO] | [CÓDIGO/VERSIÓN/FECHA]
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // Configurar altura de filas del encabezado
+    wsUniverso.getRow(1).height = 22;
+    wsUniverso.getRow(2).height = 22;
+    wsUniverso.getRow(3).height = 22;
     wsUniverso.getRow(4).height = 20;
+    
+    // --- SECCIÓN LOGO (Columnas A-B, Filas 1-3) ---
+    wsUniverso.mergeCells('A1:B3');
+    const logoCell = wsUniverso.getCell('A1');
+    logoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+    logoCell.border = {
+      top: { style: 'thin', color: { argb: '000000' } },
+      left: { style: 'thin', color: { argb: '000000' } },
+      bottom: { style: 'thin', color: { argb: '000000' } },
+      right: { style: 'thin', color: { argb: '000000' } }
+    };
+    
+    // Agregar imagen del logo si está disponible
+    if (logoImageId !== null) {
+      wsUniverso.addImage(logoImageId, {
+        tl: { col: 0.3, row: 0.3 },
+        ext: { width: 55, height: 55 }
+      });
+    } else {
+      // Fallback: texto ESAP si no hay logo
+      logoCell.value = 'ESAP';
+      logoCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
+      logoCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    }
+    
+    // --- SECCIÓN TÍTULO (Columnas C-H, Filas 1-3) ---
+    wsUniverso.mergeCells('C1:H1');
+    const titleCell = wsUniverso.getCell('C1');
+    titleCell.value = 'UNIVERSO AUDITABLE';
+    titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: '000000' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    titleCell.border = {
+      top: { style: 'thin', color: { argb: '000000' } },
+      bottom: { style: 'thin', color: { argb: '000000' } }
+    };
+    
+    wsUniverso.mergeCells('C2:H2');
+    const subtitleCell = wsUniverso.getCell('C2');
+    subtitleCell.value = 'Oficina de Control Interno de Gestión - OCIG';
+    subtitleCell.font = { name: 'Calibri', size: 10, color: { argb: '444444' } };
+    subtitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    subtitleCell.border = {
+      bottom: { style: 'thin', color: { argb: '000000' } }
+    };
+    
+    wsUniverso.mergeCells('C3:H3');
+    const vigenciaCell = wsUniverso.getCell('C3');
+    vigenciaCell.value = `Vigencia ${vigencia}`;
+    vigenciaCell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
+    vigenciaCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    vigenciaCell.border = {
+      bottom: { style: 'thin', color: { argb: '000000' } }
+    };
+    
+    // --- SECCIÓN INFO (Columnas I-K, Filas 1-3) ---
+    // Fila 1: CÓDIGO
+    wsUniverso.getCell('I1').value = 'CÓDIGO:';
+    wsUniverso.getCell('I1').font = { name: 'Calibri', size: 9, bold: true };
+    wsUniverso.getCell('I1').alignment = { horizontal: 'right', vertical: 'middle' };
+    wsUniverso.getCell('I1').border = { top: { style: 'thin' }, left: { style: 'thin' } };
+    
+    wsUniverso.mergeCells('J1:K1');
+    wsUniverso.getCell('J1').value = 'EM-PT-005';
+    wsUniverso.getCell('J1').font = { name: 'Calibri', size: 9, color: { argb: EXCEL_COLORS.primaryDark } };
+    wsUniverso.getCell('J1').alignment = { horizontal: 'left', vertical: 'middle' };
+    wsUniverso.getCell('J1').border = { top: { style: 'thin' }, right: { style: 'thin' } };
+    
+    // Fila 2: VERSIÓN
+    wsUniverso.getCell('I2').value = 'VERSIÓN:';
+    wsUniverso.getCell('I2').font = { name: 'Calibri', size: 9, bold: true };
+    wsUniverso.getCell('I2').alignment = { horizontal: 'right', vertical: 'middle' };
+    wsUniverso.getCell('I2').border = { left: { style: 'thin' } };
+    
+    wsUniverso.mergeCells('J2:K2');
+    wsUniverso.getCell('J2').value = '1';
+    wsUniverso.getCell('J2').font = { name: 'Calibri', size: 9 };
+    wsUniverso.getCell('J2').alignment = { horizontal: 'left', vertical: 'middle' };
+    wsUniverso.getCell('J2').border = { right: { style: 'thin' } };
+    
+    // Fila 3: FECHA
+    wsUniverso.getCell('I3').value = 'FECHA:';
+    wsUniverso.getCell('I3').font = { name: 'Calibri', size: 9, bold: true };
+    wsUniverso.getCell('I3').alignment = { horizontal: 'right', vertical: 'middle' };
+    wsUniverso.getCell('I3').border = { left: { style: 'thin' }, bottom: { style: 'thin' } };
+    
+    wsUniverso.mergeCells('J3:K3');
+    wsUniverso.getCell('J3').value = fechaCorta;
+    wsUniverso.getCell('J3').font = { name: 'Calibri', size: 9 };
+    wsUniverso.getCell('J3').alignment = { horizontal: 'left', vertical: 'middle' };
+    wsUniverso.getCell('J3').border = { right: { style: 'thin' }, bottom: { style: 'thin' } };
+    
+    // --- FILA 4: PROCESO ---
+    wsUniverso.mergeCells('A4:K4');
+    const procesoCell = wsUniverso.getCell('A4');
+    procesoCell.value = 'PROCESO: EVALUACIÓN, CONTROL Y MEJORA';
+    procesoCell.font = { name: 'Calibri', size: 9, bold: true };
+    procesoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F4F8' } };
+    procesoCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    procesoCell.border = {
+      top: { style: 'thin', color: { argb: '000000' } },
+      left: { style: 'thin', color: { argb: '000000' } },
+      bottom: { style: 'thin', color: { argb: '000000' } },
+      right: { style: 'thin', color: { argb: '000000' } }
+    };
 
-    // --- Espacio ---
-    wsUniverso.getRow(5).height = 10;
+    // --- Fila 5: Espacio + Fecha generación ---
+    wsUniverso.mergeCells('A5:K5');
+    const dateCell = wsUniverso.getCell('A5');
+    dateCell.value = `Fecha de generación: ${fechaGeneracion}`;
+    dateCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '666666' } };
+    dateCell.alignment = { horizontal: 'right', vertical: 'middle' };
+    wsUniverso.getRow(5).height = 18;
 
-    // --- Encabezados de tabla ---
+    // --- Fila 6: Espacio ---
+    wsUniverso.getRow(6).height = 8;
+
+    // --- Encabezados de tabla (Fila 7) ---
     const headers = ['No.', 'Código', 'Proceso / Elemento', 'Tipo', 'Macroproceso', 'Dependencia Responsable', 'Nivel Riesgo', 'Score', 'Frecuencia Sugerida', 'Última Auditoría', 'Auditable'];
-    const headerRow = wsUniverso.getRow(6);
+    const headerRow = wsUniverso.getRow(7);
     
     headers.forEach((header, idx) => {
       const cell = headerRow.getCell(idx + 1);
@@ -696,9 +849,9 @@ export async function exportarUniversoAuditableExcel(
       { width: 12 },  // Auditable
     ];
 
-    // --- Datos de procesos ---
+    // --- Datos de procesos (empiezan en fila 8) ---
     procesos.forEach((proceso, idx) => {
-      const rowNum = 7 + idx;
+      const rowNum = 8 + idx;
       const dataRow = wsUniverso.getRow(rowNum);
       const isEven = idx % 2 === 0;
       
