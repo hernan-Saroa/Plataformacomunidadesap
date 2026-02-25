@@ -477,6 +477,7 @@ export default function App() {
   const handleLoginClick = () => {
     setCurrentView('login');
     setVistaActual('login');
+    navigate('/');
   };
 
   // ============================================
