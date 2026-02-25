@@ -1141,6 +1141,8 @@ export function GestionNoticias() {
         hechos: data.descripcionHechos || 'Sin descripción',
         denunciante: denuncianteObj as any, // Pass object, service handles stringify
         disciplinable: disciplinableObj as any,
+        // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
+        fechaHechos: data.fechaHechos || undefined,
         // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
       };
 

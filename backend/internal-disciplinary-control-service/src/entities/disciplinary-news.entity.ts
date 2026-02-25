@@ -91,6 +91,12 @@ export class DisciplinaryNews {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  @Column({ type: 'timestamp', nullable: true })
+  fechaHechos?: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  fechaCaducidad?: Date;
+
   @Column({ type: 'jsonb', nullable: true, default: [] })
   historialAuditoria: any[];
 
