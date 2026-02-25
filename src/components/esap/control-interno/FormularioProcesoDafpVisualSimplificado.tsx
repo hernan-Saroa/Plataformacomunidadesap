@@ -197,15 +197,25 @@ export function FormularioProcesoDafpVisual({
       return;
     }
 
-    if (formData.totalRiesgos === 0) {
-      toast.error('Debe ingresar al menos un riesgo');
+    // Solo validar riesgos en modo EDICIÓN (evaluación)
+    // En modo CREACIÓN, los riesgos son opcionales
+    if (mode === 'edit' && formData.totalRiesgos === 0) {
+      toast.error('Debe ingresar al menos un riesgo para evaluar');
       return;
     }
     
-    toast.success('✅ Proceso evaluado exitosamente', {
-      description: `Decisión: ${formData.decisionFinal}`,
-      duration: 5000
-    });
+    // Mensaje diferente según si tiene evaluación o no
+    if (formData.totalRiesgos > 0) {
+      toast.success('✅ Proceso evaluado exitosamente', {
+        description: `Decisión: ${formData.decisionFinal}`,
+        duration: 5000
+      });
+    } else {
+      toast.success('✅ Proceso creado exitosamente', {
+        description: 'Puede evaluarlo después con el botón "Evaluar"',
+        duration: 5000
+      });
+    }
 
     onSubmit(formData);
   };
@@ -291,14 +301,41 @@ export function FormularioProcesoDafpVisual({
                     <label className="block text-xs font-bold text-gray-700 mb-1.5">
                       Proceso/Proyecto/Procedimiento <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={formData.nombre}
                       onChange={(e) => handleChange('nombre', e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all"
-                      placeholder="Ej: Gestión de Recursos Humanos"
+                      className="w-full px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none transition-all bg-white"
                       required
-                    />
+                    >
+                      <option value="">-- Seleccione un proceso --</option>
+                      <optgroup label="🎯 Procesos Misionales">
+                        <option value="Diseño y desarrollo de políticas para la gobernabilidad y gobernanza de las administraciones públicas">Diseño y desarrollo de políticas para la gobernabilidad y gobernanza</option>
+                        <option value="Fortalecimiento y desarrollo de la gestión y desempeño en las administraciones públicas">Fortalecimiento y desarrollo de la gestión y desempeño</option>
+                        <option value="Fortalecimiento de los grupos de valor para la gobernabilidad y gobernanza pública">Fortalecimiento de los grupos de valor</option>
+                      </optgroup>
+                      <optgroup label="🏎️ Procesos Estratégicos">
+                        <option value="Planeación y presupuesto">Planeación y presupuesto</option>
+                        <option value="Mejoramiento institucional">Mejoramiento institucional</option>
+                        <option value="Gestión de las tecnologías de la información">Gestión de las tecnologías de la información</option>
+                        <option value="Dirección Estratégica">Dirección Estratégica</option>
+                        <option value="Información Estratégica y Estadística">Información Estratégica y Estadística</option>
+                        <option value="Comunicación Estratégica">Comunicación Estratégica</option>
+                        <option value="Fortalecimiento Estado-Ciudadanías">Fortalecimiento Estado-Ciudadanías</option>
+                      </optgroup>
+                      <optgroup label="🛠️ Procesos de Apoyo">
+                        <option value="Gestión Financiera">Gestión Financiera</option>
+                        <option value="Gestión Documental">Gestión Documental</option>
+                        <option value="Defensa Jurídica">Defensa Jurídica</option>
+                        <option value="Gestión Contractual">Gestión Contractual</option>
+                        <option value="Gestión Administrativa">Gestión Administrativa</option>
+                        <option value="Gestión del Talento Humano">Gestión del Talento Humano</option>
+                      </optgroup>
+                      <optgroup label="✅ Procesos de Evaluación">
+                        <option value="Seguimiento y Evaluación">Seguimiento y Evaluación</option>
+                        <option value="Control Disciplinario Interno">Control Disciplinario Interno</option>
+                        <option value="Evaluación Independiente">Evaluación Independiente</option>
+                      </optgroup>
+                    </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

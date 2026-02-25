@@ -165,8 +165,8 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
   { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
   { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación del sistema de control interno', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad' },
-  { numero: 5, nombre: 'Relación con organismos externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
+  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
@@ -194,56 +194,222 @@ interface RolConfig extends Omit<Rol, 'actividades'> {
 
 // Función para obtener actividades por rol desde el archivo principal
 function getActividadesPorRol(numeroRol: number): ActividadBase[] {
-  // Esta es la lista base del Decreto 648/2017
+  // ════════════════════════════════════════════════════════════════════════════
+  // ACTIVIDADES OFICIALES DECRETO 648/2017 - SINCRONIZADO CON EXCEL ESAP
+  // ════════════════════════════════════════════════════════════════════════════
   const actividadesPorRol: Record<number, ActividadBase[]> = {
+    // ═══════════════════ ROL 1: LIDERAZGO ESTRATÉGICO (46) ═══════════════════
     1: [
-    
-      { nombre: 'Verificar cumplimiento de metas e indicadores estratégicos', descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento cuatrimestral', evaluacion: '50% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño' },
-      { nombre: 'Establecer periodicidad de informes estratégicos', descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento anual', evaluacion: '10% avance', seguimiento: 'Socializar plan anual de auditoría en el comité institucional' },
-      { nombre: 'Presentar resultados de evaluación de líneas de defensa', descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Elaborar informe de evaluación independiente del sistema de control interno' },
-      { nombre: 'Informar sobre alertas de riesgo fiscal', descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Informe cuatrimestral', evaluacion: '60% avance', seguimiento: 'Elaborar informe, publicar en web y diligenciar seguimiento en sistema' },
-      { nombre: 'Participación en procesos de empalme', descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Según necesidad', evaluacion: '0% avance', seguimiento: 'Seguimiento en el último año de administración' }
+      { 
+        nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP', 
+        descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '50% avance', 
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director. Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.' 
+      },
+      { 
+        nombre: 'Verificar a través del Plan anual de auditorías, el cumplimiento de metas, indicadores, procesos estratégicos de la entidad y riesgos asociados a estos', 
+        descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', 
+        evaluacion: '50% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño' 
+      },
+      { 
+        nombre: 'Establecer en el Comité de Gestión y Desempeño la periodicidad y alcance de rendición de informes estratégicos', 
+        descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', 
+        evaluacion: '10% avance', 
+        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño' 
+      },
+      { 
+        nombre: 'Presentar ante el Comité Institucional de Coordinación de Control Interno los resultados de la evaluación de la operación de la primera y segunda línea de defensa. Analizar las variaciones del ambiente organizacional y del entorno, identificando procesos críticos, controles y servicios que tengan un impacto significativo en el cumplimiento de los objetivos institucionales', 
+        descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web' 
+      },
+      { 
+        nombre: 'Informar al jefe de la entidad sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención', 
+        descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace informe cuatrimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION' 
+      },
+      { 
+        nombre: 'Participación frente a los procesos de empalme cuando se dan cambios de administración', 
+        descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: '', 
+        evaluacion: '0% avance', 
+        seguimiento: 'Se hace seguimiento el último año' 
+      }
     ],
+    // ═══════════════════ ROL 2: ENFOQUE HACIA LA PREVENCIÓN (60) ═══════════════════
     2: [
-      { nombre: 'Sensibilización sobre articulación del control interno y externo', descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Socializar guía de auditoría en comités institucionales' },
-      { nombre: 'Acompañar formulación de planes de mejoramiento', descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Suministrar herramientas como diagrama causa-efecto' },
-      { nombre: 'Adoptar procedimiento de seguimiento al plan de mejoramiento', descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento anual', evaluacion: '60% avance', seguimiento: 'Documentar procedimiento y formato de seguimiento' },
-      { nombre: 'Presentar avance del plan de mejoramiento ante el CICC', descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Socializar resultados en el Comité de Coordinación de Control Interno' },
-      { nombre: 'Seguimiento a decisiones en firme de órganos de control', descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Socializar resultados en el CICC' },
-      { nombre: 'Desarrollar diagnósticos para mejora en gestión del riesgo', descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Establecer efectividad de controles y socializar en CICC' },
-      { nombre: 'Asesorar en la articulación del esquema de líneas de defensa', descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Realizar capacitaciones del esquema de líneas de defensa' },
-      { nombre: 'Acompañamiento en batería de indicadores y tableros de control', descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '60% avance', seguimiento: 'Realizar capacitaciones sobre indicadores' }
+      { 
+        nombre: 'Programar en los comités institucionales más estratégicos (gestión y desempeño institucional, de coordinación de control interno, de gerencia u otro), sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo', 
+        descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema de control interno y el control externo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)' 
+      },
+      { 
+        nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento', 
+        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto' 
+      },
+      { 
+        nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas', 
+        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora' 
+      },
+      { 
+        nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento', 
+        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Hacer seguimiento a decisiones en firme de órganos de control e investigación sobre procesos penales, fiscales y disciplinarios derivados de hallazgos o denuncias relacionadas con la entidad', 
+        descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos', 
+        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa', 
+        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno' 
+      },
+      { 
+        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
+        descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar capacitaciones' 
+      }
     ],
+    // ═══════════════════ ROL 3: EVALUACIÓN DE LA GESTIÓN DEL RIESGO (48) ═══════════════════
     3: [
-      { nombre: 'Revisar adecuación de la política de administración del riesgo', descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '48% avance', seguimiento: 'Verificar formalización y contenido de la política conforme a la guía DAFP' },
-      { nombre: 'Promover comprensión del valor de la gestión de riesgos', descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento semestral', evaluacion: '48% avance', seguimiento: 'Proporcionar información de riesgos para toma de decisiones' },
-      { nombre: 'Evaluar prácticas actuales de gestión del riesgo', descripcion: 'Migrar a esquemas más efectivos y articular con líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento cuatrimestral', evaluacion: '48% avance', seguimiento: 'Socializar resultados en el CICC' }
+      { 
+        nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación', 
+        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas' 
+      },
+      { 
+        nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones', 
+        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      },
+      { 
+        nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
+        descripcion: 'Migrar a esquemas más efectivos y articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', 
+        evaluacion: '48% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno' 
+      }
     ],
+    // ═══════════════════ ROL 4: EVALUACIÓN Y SEGUIMIENTO (60) ═══════════════════
     4: [
-      { nombre: 'Efectuar auditorías internas con enfoque preventivo', descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento mensual', evaluacion: '60% avance', seguimiento: 'Seguimiento al cumplimiento del programa de auditoría' },
-      { nombre: 'Seguimiento a planes de mejoramiento internos y externos', descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento trimestral', evaluacion: '60% avance', seguimiento: 'Asesorar y suministrar herramientas como diagrama causa-efecto' }
+      { 
+        nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
+        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría' 
+      },
+      { 
+        nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
+        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', 
+        evaluacion: '60% avance', 
+        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto' 
+      }
     ],
+    // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
     5: [
-      { nombre: 'Brindar asesoría y generar alertas oportunas', descripcion: 'Alertar a responsables sobre información requerida por organismos de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Seguimiento mensual', evaluacion: '59% avance', seguimiento: 'Publicar informes en web y enviar a procesos responsables' },
-      { nombre: 'Adelantar procesos de auditoría de organismos de control', descripcion: 'Acompañar de manera armónica las auditorías de control externo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Según necesidad', evaluacion: '59% avance', seguimiento: 'Dar asesoría puntual a procesos y líderes' },
-      // ═══════════════════ INFORMES DE LEY OBLIGATORIOS (17 actividades separadas) ═══════════════════
-      { nombre: 'Informe de Pormenorizado del Estado del Control Interno', descripcion: 'Presentar ante el CICC y Director Nacional informe detallado del estado del sistema de control interno (Decreto 648/2017, Art. 12)', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web y radicar ante organismos de control' },
-      { nombre: 'Plan Anual de Auditoría Interna', descripcion: 'Elaborar y aprobar el plan anual de auditoría basado en riesgos institucionales (Decreto 648/2017)', fechaInicio: '2026-01-01', fechaFin: '2026-03-31', control: 'Anual - Marzo', evaluacion: 'Cumplimiento normativo', seguimiento: 'Aprobación en CICC y socialización institucional' },
-      { nombre: 'Informe de Auditorías Realizadas', descripcion: 'Consolidar y reportar todas las auditorías internas ejecutadas durante la vigencia', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Anual - Diciembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Incluir hallazgos, recomendaciones y planes de mejoramiento' },
-      { nombre: 'Informe de Seguimiento a Planes de Mejoramiento', descripcion: 'Realizar seguimiento trimestral al cumplimiento de planes de mejoramiento internos y externos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar en CICC con semaforización de avances' },
-      { nombre: 'Informe de Evaluación del Sistema de Control Interno Contable', descripcion: 'Evaluar el diseño, desarrollo y efectividad del sistema de control interno contable (Resolución 357/2008 CGN)', fechaInicio: '2026-10-01', fechaFin: '2026-11-30', control: 'Anual - Noviembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar ante Contaduría General de la Nación' },
-      { nombre: 'Informe de Austeridad del Gasto Público', descripcion: 'Verificar cumplimiento de medidas de austeridad establecidas en la normatividad vigente (Decreto 984/2012)', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web institucional' },
-      { nombre: 'Informe de Evaluación de Gestión y Resultados', descripcion: 'Evaluar la gestión institucional y el cumplimiento de metas del plan estratégico', fechaInicio: '2026-01-01', fechaFin: '2026-02-28', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar ante Director Nacional y publicar en web' },
-      { nombre: 'Informe de Evaluación de Política de Administración del Riesgo', descripcion: 'Evaluar el diseño, desarrollo y efectividad de la política de administración del riesgo institucional', fechaInicio: '2026-01-01', fechaFin: '2026-06-30', control: 'Semestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar en CICC con recomendaciones de mejora' },
-      { nombre: 'Informe de Evaluación del Código de Integridad', descripcion: 'Evaluar la implementación y seguimiento del Código de Integridad institucional (Decreto 1081/2015)', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Anual - Diciembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Incluir nivel de apropiación y casos de incumplimiento' },
-      { nombre: 'Informe de Seguimiento al Plan Anticorrupción y de Atención al Ciudadano', descripcion: 'Verificar el cumplimiento de metas del Plan Anticorrupción y de Atención al Ciudadano (Ley 1474/2011)', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Cuatrimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar avances y alertas en CICC' },
-      { nombre: 'Informe de Seguimiento a Acciones Correctivas de Auditorías Externas', descripcion: 'Hacer seguimiento a hallazgos de Contraloría, Procuraduría y otros entes de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Alertar sobre vencimientos y nivel de cumplimiento' },
-      { nombre: 'Informe de Rendición de la Cuenta Fiscal', descripcion: 'Certificar la consistencia y veracidad de la información reportada en el Consolidador de Hacienda e Información Pública (CHIP)', fechaInicio: '2026-01-01', fechaFin: '2026-02-15', control: 'Anual - Febrero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Remitir certificación a la Contraloría General' },
-      { nombre: 'Informe de Gestión Anual de la OCIG', descripcion: 'Consolidar y presentar la gestión anual de la Oficina de Control Interno con estadísticas y resultados', fechaInicio: '2026-01-01', fechaFin: '2026-01-31', control: 'Anual - Enero', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web y presentar ante Director Nacional' },
-      { nombre: 'Informe de Seguimiento a Denuncias y Quejas', descripcion: 'Consolidar el seguimiento realizado a denuncias y quejas recibidas por la OCIG', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Semestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar estadísticas y acciones adelantadas en CICC' },
-      { nombre: 'Informe de Evaluación de Trámites y Servicios', descripcion: 'Evaluar la eficiencia y efectividad de los trámites y servicios institucionales al ciudadano', fechaInicio: '2026-01-01', fechaFin: '2026-06-30', control: 'Anual - Junio', evaluacion: 'Cumplimiento normativo', seguimiento: 'Publicar en página web con recomendaciones' },
-      { nombre: 'Informe de Evaluación del Sistema de Gestión Documental', descripcion: 'Evaluar el cumplimiento de la política de gestión documental y archivo (Ley 594/2000)', fechaInicio: '2026-01-01', fechaFin: '2026-11-30', control: 'Anual - Noviembre', evaluacion: 'Cumplimiento normativo', seguimiento: 'Verificar tablas de retención y archivo de gestión' },
-      { nombre: 'Informe de Seguimiento a Recomendaciones de Auditorías Anteriores', descripcion: 'Verificar el cumplimiento de recomendaciones formuladas en auditorías de vigencias anteriores', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', control: 'Trimestral', evaluacion: 'Cumplimiento normativo', seguimiento: 'Presentar estado de implementación en CICC' }
+      { 
+        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
+        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo' 
+      },
+      { 
+        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
+        descripcion: 'Acompañar de manera armónica las auditorías de control externo', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: '', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes' 
+      },
+      { 
+        nombre: 'Presentar informes y seguimientos de ley', 
+        descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos', 
+        fechaInicio: '2026-01-01', 
+        fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', 
+        evaluacion: '59% avance', 
+        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes' 
+      }
     ]
   };
   

@@ -166,14 +166,14 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   },
   {
     numero: 4,
-    nombre: 'Evaluación del sistema de control interno',
+    nombre: 'Evaluación y seguimiento',
     color: '#AA00FF',
     icono: '✓',
     descripcion: 'Evaluar de manera independiente el diseño y efectividad del sistema de control interno'
   },
   {
     numero: 5,
-    nombre: 'Relación con organismos externos de control',
+    nombre: 'Relación con entes externos de control',
     color: '#C62828',
     icono: '⚖️',
     descripcion: 'Coordinar y facilitar las relaciones con entes de control externo'
@@ -394,8 +394,8 @@ const ACTIVIDADES_ROL_4: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
 
 const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvance' | 'estado'>[] = [
   {
-    nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control',
-    descripcion: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+    nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+    descripcion: 'Alertar a la primera línea de defensa y a los responsables del aporte de información requerida por órganos de control',
     fechaInicio: '2026-01-01',
     fechaFin: '2026-12-31',
     control: 'Se hace seguimiento mensual.',
@@ -413,7 +413,17 @@ const ACTIVIDADES_ROL_5: Omit<Actividad, 'id' | 'responsable' | 'porcentajeAvanc
     seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
     requiereVerificacionDirector: false
   },
-  // ═══════════════════ INFORMES DE LEY OBLIGATORIOS ═══════════════════
+  {
+    nombre: 'Presentar informes y seguimientos de ley',
+    descripcion: 'Elaborar y presentar todos los informes de ley en los plazos establecidos',
+    fechaInicio: '2026-01-01',
+    fechaFin: '2026-12-31',
+    control: 'Se hace seguimiento mensual.',
+    evaluacion: '59% avance',
+    seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
+    requiereVerificacionDirector: false
+  },
+  // ═══════════════════ INFORMES DE LEY OBLIGATORIOS (Desglose de la actividad anterior) ═══════════════════
   {
     nombre: 'Informe de Pormenorizado del Estado del Control Interno',
     descripcion: 'Presentar ante el CICC y Director Nacional informe detallado del estado del sistema de control interno (Decreto 648/2017, Art. 12)',

@@ -34,7 +34,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 // UI Components
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/dialog';
@@ -62,6 +63,7 @@ import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente
 
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { getServiceUrl, API_MODE } from '../../../config/environment';
 
 // ============ TIPOS ============
 
@@ -146,12 +148,14 @@ interface Auditoria {
 interface DocumentoExpediente {
   id: string;
   nombre: string;
-  tipo: 'Oficio' | 'Carta' | 'Acta' | 'Informe' | 'Evidencia' | 'Lista-Chequeo' | 'Otro';
+  tipo: 'Oficio' | 'Carta' | 'Acta' | 'Informe' | 'Evidencia' | 'Lista-Chequeo' | 'Plantilla' | 'Otro';
   fase: 'planeacion' | 'ejecucion' | 'comunicacion';
   fechaCarga: Date;
   cargadoPor: string;
   size: string;
-  url?: string;
+  tipoMime?: string;   // application/pdf, image/png, etc.
+  urlPreview?: string; // URL para vista previa
+  urlDownload?: string; // URL para descarga
   version?: number;
   descripcion?: string;
 }
@@ -289,10 +293,14 @@ export function ExpedienteAuditoriaCompleto({
   onClose,
   tabInicial = 'general',
 }: ExpedienteAuditoriaCompletoProps) {
-  const [auditoria, setAuditoria] = useState<Auditoria>(AUDITORIA_EJEMPLO);
-  const [documentos] = useState<DocumentoExpediente[]>(DOCUMENTOS_EJEMPLO);
+  // ✅ CORREGIDO: Inicializar como null para evitar renderizar con datos MOCK
+  const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
+  // ✅ CONECTADO AL BACKEND: Documentos se cargan del backend
+  const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
+  const [loadingDocumentos, setLoadingDocumentos] = useState(false);
   const [historial, setHistorial] = useState<EventoHistorial[]>([]);
-  const [loading, setLoading] = useState(false);
+  // ✅ Iniciar en loading=true si hay auditoriaId
+  const [loading, setLoading] = useState(!!auditoriaId);
   const [error, setError] = useState<string | null>(null);
   
   // ✅ Cargar datos del backend cuando se abre el modal
@@ -393,6 +401,17 @@ export function ExpedienteAuditoriaCompleto({
         
         setAuditoria(auditoriaBackend);
         
+        // ✅ Cargar documentos de la auditoría desde el backend
+        try {
+          const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
+          const documentosMapeados = mapearDocumentosBackend(documentosData);
+          setDocumentos(documentosMapeados);
+          console.log(`[Expediente] ✅ Cargados ${documentosMapeados.length} documentos`);
+        } catch (docErr) {
+          console.error('Error cargando documentos:', docErr);
+          setDocumentos([]);
+        }
+        
         // ✅ Cargar historial de la auditoría desde el backend
         try {
           const historialData = await controlInternoService.getHistorialAuditoria(auditoriaId);
@@ -477,17 +496,135 @@ export function ExpedienteAuditoriaCompleto({
     return mapeo[tipo] || 'accion';
   }
   
+  // ✅ Función para mapear documentos del backend al formato del frontend
+  function mapearDocumentosBackend(data: any[]): DocumentoExpediente[] {
+    // Construir base URL para documentos
+    const baseUrl = getDocumentosBaseUrl();
+    
+    return (data || []).map((doc: any) => ({
+      id: doc.id,
+      nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
+      tipo: mapearTipoDocumento(doc.tipoDocumento || doc.tipo),
+      fase: mapearFaseDocumento(doc.etapa || doc.fase),
+      fechaCarga: new Date(doc.fechaCarga || doc.createdAt || Date.now()),
+      cargadoPor: doc.subidoPor || doc.cargadoPor || 'Sistema',
+      size: doc.tamanio || doc.size || formatFileSize(Number(doc.tamanioBytes) || 0),
+      tipoMime: doc.tipoMime || 'application/octet-stream',
+      urlPreview: `${baseUrl}/documentos/${doc.id}/preview`,
+      urlDownload: `${baseUrl}/documentos/${doc.id}/download`,
+      version: doc.version || 1,
+      descripcion: doc.descripcion,
+    }));
+  }
+  
+  // ✅ Obtener URL base del servicio de documentos
+  function getDocumentosBaseUrl(): string {
+    const serviceUrl = getServiceUrl('control-institucional');
+    return API_MODE === 'gateway' 
+      ? `${serviceUrl}/control-institucional/api/v1`
+      : serviceUrl;
+  }
+  
+  function mapearTipoDocumento(tipo: string): DocumentoExpediente['tipo'] {
+    const mapeo: Record<string, DocumentoExpediente['tipo']> = {
+      'oficio': 'Oficio',
+      'Oficio': 'Oficio',
+      'carta': 'Carta',
+      'Carta': 'Carta',
+      'acta': 'Acta',
+      'Acta': 'Acta',
+      'informe': 'Informe',
+      'Informe': 'Informe',
+      'evidencia': 'Evidencia',
+      'Evidencia': 'Evidencia',
+      'lista-chequeo': 'Lista-Chequeo',
+      'Lista-Chequeo': 'Lista-Chequeo',
+      'lista_chequeo': 'Lista-Chequeo',
+      'plantilla': 'Plantilla',
+      'Plantilla': 'Plantilla',
+    };
+    return mapeo[tipo] || 'Otro';
+  }
+  
+  function mapearFaseDocumento(fase: string): DocumentoExpediente['fase'] {
+    const mapeo: Record<string, DocumentoExpediente['fase']> = {
+      'planeacion': 'planeacion',
+      'Planeación': 'planeacion',
+      'ejecucion': 'ejecucion',
+      'Ejecución': 'ejecucion',
+      'comunicacion': 'comunicacion',
+      'Comunicación': 'comunicacion',
+    };
+    return mapeo[fase] || 'planeacion';
+  }
+  
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+  
+  // ✅ Función para recargar documentos desde el backend
+  const recargarDocumentos = async () => {
+    if (!auditoriaId) return;
+    
+    // Validar UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(auditoriaId)) return;
+    
+    setLoadingDocumentos(true);
+    try {
+      const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
+      const documentosMapeados = mapearDocumentosBackend(documentosData);
+      setDocumentos(documentosMapeados);
+    } catch (err) {
+      console.error('Error recargando documentos:', err);
+    } finally {
+      setLoadingDocumentos(false);
+    }
+  };
+  
+  // ✅ Función para subir un documento al backend
+  const subirDocumento = async (
+    file: File,
+    metadata: { nombre: string; descripcion?: string; tipoDocumento: string; etapa: string }
+  ): Promise<boolean> => {
+    if (!auditoriaId) return false;
+    
+    try {
+      await controlInternoService.createDocumento(file, {
+        nombre: metadata.nombre,
+        descripcion: metadata.descripcion,
+        tipoDocumento: metadata.tipoDocumento,
+        etapa: metadata.etapa,
+        auditoriaId: auditoriaId,
+      });
+      
+      // Recargar documentos después de subir
+      await recargarDocumentos();
+      return true;
+    } catch (err) {
+      console.error('Error subiendo documento:', err);
+      return false;
+    }
+  };
+  
   // ✅ Función para actualizar checklist de actividades en el backend
   const handleToggleChecklist = async (itemId: string, completado: boolean) => {
+    // ✅ Guardia: no ejecutar si no hay auditoría cargada
+    if (!auditoria) return;
+    
     // Actualizar estado local inmediatamente (optimistic update)
     const nuevoChecklist = {
       ...auditoria.checklistCompletados,
       [itemId]: completado,
     };
-    setAuditoria(prev => ({
+    setAuditoria(prev => prev ? ({
       ...prev,
       checklistCompletados: nuevoChecklist,
-    }));
+    }) : null);
     
     // Si es un UUID válido (auditoría real), guardar en backend
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -533,6 +670,8 @@ export function ExpedienteAuditoriaCompleto({
   // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
   const getTabAutomatico = () => {
     if (tabInicial !== 'general') return tabInicial as TabActiva;
+    // ✅ Guardia: si no hay auditoría, devolver tab por defecto
+    if (!auditoria) return 'general';
     const estadoLower = auditoria.estado.toLowerCase();
     if (estadoLower === 'planeación' || estadoLower === 'planeacion') return 'planeacion';
     if (estadoLower === 'ejecución' || estadoLower === 'ejecucion') return 'ejecucion';
@@ -544,26 +683,118 @@ export function ExpedienteAuditoriaCompleto({
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
 
   const diasRestantes = useMemo(() => {
-    if (!auditoria.cronograma?.fechaFin) return 0;
+    if (!auditoria?.cronograma?.fechaFin) return 0;
     const hoy = new Date();
     const fin = new Date(auditoria.cronograma.fechaFin);
     const diff = Math.ceil((fin.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
-  }, [auditoria.cronograma?.fechaFin]);
+  }, [auditoria?.cronograma?.fechaFin]);
 
   const documentosFiltrados = useMemo(() => {
     if (filtroDocumentos === 'todos') return documentos;
     return documentos.filter((doc) => doc.fase === filtroDocumentos);
   }, [documentos, filtroDocumentos]);
 
-  const exportarExpediente = () => {
-    toast.success('✅ Exportando expediente', {
-      description: 'Se generará un PDF con toda la información de la auditoría',
-      duration: 3000
-    });
+  const exportarExpedienteExcel = () => {
+    if (!auditoria) {
+      toast.error('❌ Error', { description: 'No hay auditoría cargada para exportar' });
+      return;
+    }
+    try {
+      const fecha = new Date();
+      const año = fecha.getFullYear();
+      const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+      const dia = String(fecha.getDate()).padStart(2, '0');
+
+      // Hoja 1: Información General
+      const infoGeneral = [
+        ['EXPEDIENTE DE AUDITORÍA - ESAP'],
+        [''],
+        ['INFORMACIÓN GENERAL'],
+        ['Código', auditoria.codigo],
+        ['Nombre', auditoria.nombre],
+        ['Tipo', auditoria.tipo],
+        ['Estado', auditoria.estado.toUpperCase()],
+        ['Área Auditable', auditoria.areaAuditable],
+        ['Proceso', auditoria.procesoNombre],
+        ['Nivel de Riesgo', auditoria.nivelRiesgo],
+        [''],
+        ['CRONOGRAMA'],
+        ['Fecha Inicio', auditoria.cronograma?.fechaInicio || 'N/A'],
+        ['Fecha Fin', auditoria.cronograma?.fechaFin || 'N/A'],
+        [''],
+        ['RESPONSABLE DEL ÁREA'],
+        ['Nombre', auditoria.responsableArea.nombre],
+        ['Cargo', auditoria.responsableArea.cargo],
+        ['Email', auditoria.responsableArea.email],
+        [''],
+        ['AUDITOR LÍDER'],
+        ['Nombre', auditoria.auditorLider.nombre],
+        ['Email', auditoria.auditorLider.email],
+      ];
+
+      // Hoja 2: Equipo Auditor
+      const equipoData = [
+        ['ROL', 'NOMBRE', 'EMAIL'],
+        ['Auditor Líder', auditoria.auditorLider.nombre, auditoria.auditorLider.email],
+        ...auditoria.equipoAuditores.map(a => [a.rol, a.nombre, a.email])
+      ];
+
+      // Hoja 3: Progreso
+      const progresoData = [
+        ['FASE', 'AVANCE', 'ESTADO'],
+        ['Planeación', `${auditoria.progreso.planeacion}%`, auditoria.progreso.planeacion === 100 ? 'Completada' : 'En progreso'],
+        ['Ejecución', `${auditoria.progreso.ejecucion}%`, auditoria.progreso.ejecucion === 100 ? 'Completada' : 'En progreso'],
+        ['Comunicación', `${auditoria.progreso.comunicacion}%`, auditoria.progreso.comunicacion > 0 ? 'En progreso' : 'Pendiente'],
+        ['GENERAL', `${auditoria.progreso.general}%`, '']
+      ];
+
+      // Hoja 4: Estadísticas (Hallazgos)
+      const hallazgosData = [
+        ['TIPO DE HALLAZGO', 'CANTIDAD'],
+        ['Críticos', auditoria.estadisticas.hallazgosCriticos],
+        ['Mayores', auditoria.estadisticas.hallazgosMayores],
+        ['Menores', auditoria.estadisticas.hallazgosMenores],
+        ['TOTAL', auditoria.estadisticas.totalHallazgos]
+      ];
+
+      // Crear libro de Excel
+      const wb = XLSX.utils.book_new();
+      
+      const ws1 = XLSX.utils.aoa_to_sheet(infoGeneral);
+      XLSX.utils.book_append_sheet(wb, ws1, 'Información General');
+      
+      const ws2 = XLSX.utils.aoa_to_sheet(equipoData);
+      XLSX.utils.book_append_sheet(wb, ws2, 'Equipo Auditor');
+      
+      const ws3 = XLSX.utils.aoa_to_sheet(progresoData);
+      XLSX.utils.book_append_sheet(wb, ws3, 'Progreso');
+      
+      const ws4 = XLSX.utils.aoa_to_sheet(hallazgosData);
+      XLSX.utils.book_append_sheet(wb, ws4, 'Hallazgos');
+
+      // Descargar
+      XLSX.writeFile(wb, `Expediente_${auditoria.codigo}_${año}${mes}${dia}.xlsx`);
+
+      toast.success('✅ Excel exportado exitosamente', {
+        description: `Archivo: Expediente_${auditoria.codigo}_${año}${mes}${dia}.xlsx`,
+        duration: 4000
+      });
+    } catch (error) {
+      console.error('Error al exportar Excel:', error);
+      toast.error('⚠️ Error al exportar Excel', {
+        description: 'Ocurrió un error al crear el archivo Excel',
+        duration: 4000
+      });
+    }
   };
 
   const generarInformePDF = () => {
+    // ✅ Guardia: no generar PDF si no hay auditoría
+    if (!auditoria) {
+      toast.error('❌ Error', { description: 'No hay auditoría cargada para generar el informe' });
+      return;
+    }
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -621,7 +852,7 @@ export function ExpedienteAuditoriaCompleto({
         ['Riesgo:', auditoria.nivelRiesgo]
       ];
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: yPos,
         body: infoGeneral,
         theme: 'grid',
@@ -649,7 +880,7 @@ export function ExpedienteAuditoriaCompleto({
         ...auditoria.equipoAuditores.map(a => [a.rol, a.nombre, a.email])
       ];
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: yPos,
         head: [['Rol', 'Nombre', 'Email']],
         body: equipoData,
@@ -682,7 +913,7 @@ export function ExpedienteAuditoriaCompleto({
         ['GENERAL', `${auditoria.progreso.general}%`, '']
       ];
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: yPos,
         head: [['Fase', 'Avance', 'Estado']],
         body: progresoData,
@@ -722,7 +953,7 @@ export function ExpedienteAuditoriaCompleto({
         ['TOTAL', auditoria.estadisticas.totalHallazgos.toString()]
       ];
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         startY: yPos,
         head: [['Tipo', 'Cantidad']],
         body: hallazgosData,
@@ -766,12 +997,33 @@ export function ExpedienteAuditoriaCompleto({
       });
       
     } catch (error) {
+      console.error('Error al generar PDF:', error);
       toast.error('⚠️ Error al generar informe', {
-        description: 'Ocurrió un error al crear el PDF. Por favor intenta nuevamente',
+        description: error instanceof Error ? error.message : 'Ocurrió un error al crear el PDF. Por favor intenta nuevamente',
         duration: 4000
       });
     }
   };
+
+  // ✅ Si está cargando o no hay auditoria, mostrar loading
+  if (loading || !auditoria) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent 
+          hideCloseButton
+          className="w-[92vw] max-w-[1073px] lg:max-w-6xl h-[95vh] flex flex-col p-0 items-center justify-center"
+        >
+          <DialogTitle className="sr-only">Cargando expediente</DialogTitle>
+          <DialogDescription className="sr-only">Cargando datos de la auditoría</DialogDescription>
+          <div className="flex flex-col items-center gap-4 p-8">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-600">Cargando expediente de auditoría...</p>
+            {error && <p className="text-red-500 text-sm">{error}</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -916,6 +1168,10 @@ export function ExpedienteAuditoriaCompleto({
                   documentos={documentosFiltrados}
                   filtro={filtroDocumentos}
                   onFiltroChange={setFiltroDocumentos}
+                  auditoriaId={auditoria.id}
+                  loading={loadingDocumentos}
+                  onSubirDocumento={subirDocumento}
+                  onRecargar={recargarDocumentos}
                 />
               )}
               {activeTab === 'historial' && <TabHistorial eventos={historial} />}
@@ -950,9 +1206,9 @@ export function ExpedienteAuditoriaCompleto({
 
             {/* ACCIONES SECUNDARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="font-bold text-xs">
+              <Button size="sm" variant="outline" className="font-bold text-xs" onClick={exportarExpedienteExcel}>
                 <Download className="w-3.5 h-3.5 mr-1" />
-                Exportar
+                Exportar Excel
               </Button>
               <Button 
                 size="sm"
@@ -1313,12 +1569,60 @@ function TabDocumentacion({
   documentos,
   filtro,
   onFiltroChange,
+  auditoriaId,
+  loading,
+  onSubirDocumento,
+  onRecargar,
 }: {
   documentos: DocumentoExpediente[];
   filtro: string;
   onFiltroChange: (filtro: string) => void;
+  auditoriaId: string;
+  loading?: boolean;
+  onSubirDocumento: (file: File, metadata: { nombre: string; descripcion?: string; tipoDocumento: string; etapa: string }) => Promise<boolean>;
+  onRecargar: () => void;
 }) {
   const [modalCargar, setModalCargar] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+
+  // ✅ Manejar subida de documento conectada al backend
+  const handleSubirDocumento = async (docData: any) => {
+    if (!docData.archivo) {
+      toast.error('❌ Error', { description: 'Selecciona un archivo para subir' });
+      return;
+    }
+
+    setSubiendo(true);
+    try {
+      const success = await onSubirDocumento(docData.archivo, {
+        nombre: docData.nombre || docData.archivo.name,
+        descripcion: docData.descripcion,
+        tipoDocumento: docData.tipo || 'Otro',
+        etapa: docData.fase || 'planeacion',
+      });
+
+      if (success) {
+        toast.success('✅ Documento subido', {
+          description: `${docData.nombre || docData.archivo.name} agregado al expediente`,
+          duration: 3000
+        });
+        setModalCargar(false);
+      } else {
+        toast.error('❌ Error al subir', {
+          description: 'No se pudo subir el documento. Intenta de nuevo.',
+          duration: 4000
+        });
+      }
+    } catch (err) {
+      console.error('Error subiendo documento:', err);
+      toast.error('❌ Error al subir', {
+        description: 'Ocurrió un error inesperado',
+        duration: 4000
+      });
+    } finally {
+      setSubiendo(false);
+    }
+  };
 
   return (
     <>
@@ -1336,19 +1640,36 @@ function TabDocumentacion({
               <option value="ejecucion">Ejecución</option>
               <option value="comunicacion">Comunicación</option>
             </select>
+            {/* Botón refrescar */}
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={onRecargar}
+              disabled={loading}
+              className="font-semibold"
+            >
+              <Activity className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Cargando...' : 'Actualizar'}
+            </Button>
           </div>
           <Button 
             size="sm" 
             style={{ background: '#003DA5', color: '#FFFFFF' }}
             className="font-bold"
             onClick={() => setModalCargar(true)}
+            disabled={subiendo}
           >
             <Upload className="w-3 h-3 mr-1" />
-            Cargar Documento
+            {subiendo ? 'Subiendo...' : 'Cargar Documento'}
           </Button>
         </div>
 
-        {documentos.length === 0 ? (
+        {loading ? (
+          <Card className="p-8 text-center">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-sm font-bold text-gray-500">Cargando documentos...</p>
+          </Card>
+        ) : documentos.length === 0 ? (
           <Card className="p-8 text-center">
             <FolderOpen className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p className="text-sm font-bold text-gray-500">No hay documentos</p>
@@ -1380,10 +1701,26 @@ function TabDocumentacion({
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                    {/* Botón Ver - solo para PDFs e imágenes */}
+                    {doc.tipoMime && (doc.tipoMime.startsWith('application/pdf') || doc.tipoMime.startsWith('image/')) && (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-7 w-7 p-0"
+                        onClick={() => window.open(doc.urlPreview, '_blank')}
+                        title="Ver documento"
+                      >
+                        <Eye className="w-3 h-3" />
+                      </Button>
+                    )}
+                    {/* Botón Descargar - siempre disponible */}
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-7 w-7 p-0"
+                      onClick={() => window.open(doc.urlDownload, '_blank')}
+                      title="Descargar"
+                    >
                       <Download className="w-3 h-3" />
                     </Button>
                   </div>
@@ -1397,13 +1734,8 @@ function TabDocumentacion({
       {modalCargar && (
         <ModalCargarDocumento
           onClose={() => setModalCargar(false)}
-          onGuardar={(doc) => {
-            toast.success('✅ Documento cargado', {
-              description: `${doc.nombre} agregado al expediente`,
-              duration: 3000
-            });
-            setModalCargar(false);
-          }}
+          onGuardar={handleSubirDocumento}
+          loading={subiendo}
         />
       )}
     </>

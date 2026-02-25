@@ -130,10 +130,11 @@ export interface ListaChequeo {
   codigo: string;
   nombre: string;
   descripcion: string;
-  tipo: 'cumplimiento' | 'proceso' | 'sistema' | 'procedimiento';
+  tipo: 'cumplimiento' | 'proceso' | 'sistema' | 'procedimiento' | 'planeacion' | 'ejecucion' | 'comunicacion' | 'seguimiento';
   categoria: string;
   version: string;
   estado: 'activa' | 'inactiva' | 'obsoleta';
+  activa?: boolean; // ✅ Estado de activación
   items?: any[];
   itemsJsonb?: Array<{
     id: string;
@@ -157,6 +158,11 @@ export interface ListaChequeo {
   fechaAplicacion?: string;
   itemsCompletados?: number;
   cumplimiento?: number;
+  // ✅ FASES QUE IMPACTA LA LISTA
+  fasePlaneacion?: boolean;
+  faseEjecucion?: boolean;
+  faseComunicacion?: boolean;
+  faseSeguimiento?: boolean;
 }
 
 export interface PlanIndividual {
@@ -793,6 +799,12 @@ class ControlInternoService {
    * Obtiene las listas aplicadas a una auditoría
    */
   async getListasAplicadas(auditoriaId: string): Promise<any[]> {
+    // Validar que sea un UUID válido antes de hacer la llamada
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.warn(`[getListasAplicadas] auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return [];
+    }
     return client.get<any[]>(`/listas-chequeo/auditoria/${auditoriaId}`);
   }
 
@@ -800,6 +812,12 @@ class ControlInternoService {
    * Obtiene los resultados de listas aplicadas
    */
   async getResultadosListas(auditoriaId: string): Promise<any> {
+    // Validar que sea un UUID válido antes de hacer la llamada
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!auditoriaId || !uuidRegex.test(auditoriaId)) {
+      console.warn(`[getResultadosListas] auditoriaId inválido (no es UUID): ${auditoriaId}`);
+      return null;
+    }
     return client.get(`/listas-chequeo/auditoria/${auditoriaId}/resultados`);
   }
   

@@ -16,17 +16,10 @@ import {
   UserPlus,
   Download,
   Upload,
-  UserCheck,
-  UserX,
-  TrendingUp,
   Search,
-  Filter,
   X,
   MoreVertical,
   ChevronDown,
-  Mail,
-  Phone,
-  Calendar,
   MapPin,
   FileText,
   Clock,
@@ -40,40 +33,61 @@ import {
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
-  FolderOpen // ✅ CARPETA DIGITAL
+  FolderOpen, // ✅ CARPETA DIGITAL
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  MessageSquare,
+  BarChart3,
+  Cog,
+  Scale
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
-import { UserEnrollmentSection } from './UserEnrollmentSection';  // ✅ NUEVO
-import { EnrollmentConfigModal } from './EnrollmentConfigModal';  // ✅ MODAL CONFIGURACIÓN
 import { AssignAccessModal } from './AssignAccessModal';  // ✅ MODAL ASIGNAR ACCESOS
 import { AssignRolesModal } from './AssignRolesModal';  // ✅ MODAL ASIGNAR ROLES
 import { EditUserModal } from './EditUserModal';  // ✅ MODAL EDITAR CON SEDES
-import { DashboardSedesMetrics } from './DashboardSedesMetrics';  // ✅ DASHBOARD SEDES
-import { CarpetaDigitalGlobal } from './CarpetaDigitalGlobal';  // ✅ CARPETA DIGITAL GLOBAL
 import { ExportUsersBySede } from './ExportUsersBySede';  // ✅ EXPORTAR POR SEDE
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  // ✅ USUARIOS CON SEDES
 import { usersService, type User, type UserFilters } from '../../services/usersService';  // ✅ SERVICIO DE USUARIOS
 import { rolesService } from '../../services/api';
 import type { SystemRole } from '../../services/api/roles.service';
-import { BadgesSedesUsuario } from '../estructura-organizacional/BadgesSedesUsuario';  // ✅ BADGES
-import { SelectorEstructuraCompacto } from '../estructura-organizacional/SelectorEstructura';  // ✅ FILTRO
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  // ✅ FILTRO COHERENTE
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
-
-import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPasswordTracking"; // ✅ GESTIÓN DE CONTRASEÑAS
 import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
+import { estructuraService } from '../../services/estructuraService';
+
+const ICON_MAP: Record<string, any> = {
+  Shield,
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  Building2,
+  FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
+  Cog,
+  Scale
+};
+
+const getIconComponent = (iconName: string) => {
+  return ICON_MAP[iconName] || Shield;
+};
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
@@ -81,6 +95,7 @@ import { Container4K, ResponsiveHeader } from '@/components/ui';
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -128,7 +143,10 @@ export function UsersPersonsModulePremium() {
       setLoading(true);
       const response = await usersService.getUsers({
         page: currentPage,
-        limit: itemsPerPage
+        limit: itemsPerPage,
+        search: debouncedSearchQuery.trim() || undefined,
+        status: statusFilter === 'all' ? undefined : (statusFilter as 'active' | 'inactive'),
+        role: roleFilter === 'all' ? undefined : roleFilter,
       });
 
       // Mapear usuarios de la API al formato esperado por el componente
@@ -170,8 +188,8 @@ export function UsersPersonsModulePremium() {
         seccional: item.seccional,
         sede: item.sede,
         // IDs para el modal de edición
-        idSeccional: item.seccional?.id || item.idSeccional || undefined,
-        idSede: item.sede?.id || item.idSede || undefined,
+        idSeccional: item.seccional?.idSeccional || item.idSeccional || undefined,
+        idSede: item.sede?.idSede || item.idSede || undefined,
         sedes: [], // Mantener para compatibilidad
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
@@ -208,69 +226,62 @@ export function UsersPersonsModulePremium() {
     };
   }, []);
 
+  // Debounce para búsqueda en backend
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Volver a primera página cuando cambia la búsqueda o filtros backend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, statusFilter, roleFilter]);
+
+  // Paginación local: reiniciar cuando cambian filtros frontend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [locationFilter, unidadOrganizacionalFilter]);
+
   // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]); // Recargar cuando cambia la página
+  }, [currentPage, debouncedSearchQuery, statusFilter, roleFilter]); // Recargar cuando cambia paginación o filtros backend
 
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
 
-  // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
-  const stats = {
-    total: totalUsers > 0 ? totalUsers : currentUsers.length,
-    active: totalActiveUsers > 0 ? totalActiveUsers : currentUsers.filter(u => u.status === 'active').length,
-    blocked: totalBlockedUsers > 0 ? totalBlockedUsers : currentUsers.filter(u => u.status === 'blocked').length,
-    growth: 12.5
-  };
-
-  // ✅ Stats de enrolamiento para el modal
-  const enrollmentStats = {
-    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : 0),
-    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : 0),
-    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : 0),
-    total: users.length || MOCK_USERS_WITH_SEDES.length
-  };
-
-  // Filtros únicos para los selectores
-  const uniqueRoles = Array.from(
-    new Set(
-      MOCK_USERS_WITH_SEDES.flatMap((u) =>
-        u.roles.map((r) => r.name),
-      ),
-    ),
-  );
+  // Filtros únicos para los selectores (roles desde backend)
   const uniqueLocations = Array.from(
     new Set(MOCK_USERS_WITH_SEDES.map((u) => u.location)),
   );
 
   // Filtrado
   const filteredUsers = currentUsers.filter(user => {
-    const matchesSearch = searchQuery === '' ||
-      `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.document || user.identification_number || '').includes(searchQuery);
-
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    const matchesRole = roleFilter === 'all' || user.roles.some(r => r.name === roleFilter);
     const matchesLocation = locationFilter === 'all' || user.location === locationFilter;
 
     // ✅ FILTRO POR UNIDAD ORGANIZACIONAL (Coherente con estructura)
     const matchesUnidadOrganizacional = !unidadOrganizacionalFilter ||
       (user.sedes && user.sedes.some(sede => sede.id === unidadOrganizacionalFilter));
 
-    return matchesSearch && matchesStatus && matchesRole && matchesLocation && matchesUnidadOrganizacional;
+    return matchesLocation && matchesUnidadOrganizacional;
   });
 
-  // Paginación - Usar totalPages del backend cuando no hay filtros activos
+  // Filtros activos (UI)
   const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all' || roleFilter !== 'all' || locationFilter !== 'all' || unidadOrganizacionalFilter;
-  const totalPages = hasActiveFilters
+  // Filtros que todavía se aplican en frontend (búsqueda se aplica en backend)
+  const hasClientSideFilters = locationFilter !== 'all' || !!unidadOrganizacionalFilter;
+
+  // Paginación: backend para búsqueda; frontend para filtros locales
+  const totalPages = hasClientSideFilters
     ? Math.ceil(filteredUsers.length / itemsPerPage)
     : Math.ceil(totalUsers / itemsPerPage);
 
-  // Si hay filtros activos, paginar en frontend. Si no, los datos ya vienen paginados del backend
-  const paginatedUsers = hasActiveFilters
+  // Si hay filtros locales, paginar en frontend. Si no, los datos ya vienen paginados del backend
+  const paginatedUsers = hasClientSideFilters
     ? filteredUsers.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
@@ -504,6 +515,26 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -515,8 +546,8 @@ export function UsersPersonsModulePremium() {
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       await usersService.updateUser(userData.id_user || userData.id, updateUserData);
@@ -600,6 +631,11 @@ export function UsersPersonsModulePremium() {
       setRolesLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAssignRoles = async (user: any) => {
     if (hasSuperAdminRole(user)) {
@@ -779,53 +815,22 @@ export function UsersPersonsModulePremium() {
   //   locationFilter !== "all";
 
   // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
-  const quickFiltersData = [
-    {
-      role: 'Docente',
-      code: 'DOCENTE',
-      icon: Users,
-      color: '#2962FF',
-      bgColor: '#EFF6FF',
-      borderColor: '#3B82F6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Docente')).length
-    },
-    {
-      role: 'Estudiante',
-      code: 'ESTUDIANTE',
-      icon: UserCheck,
-      color: '#10B981',
-      bgColor: '#D1FAE5',
-      borderColor: '#10B981',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Estudiante')).length
-    },
-    {
-      role: 'Coordinador Académico',
-      code: 'COORD_ACAD',
-      icon: Shield,
-      color: '#8B5CF6',
-      bgColor: '#EDE9FE',
-      borderColor: '#8B5CF6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Coordinador Académico')).length
-    },
-    {
-      role: 'Director Territorial',
-      code: 'DIR_TERRITORIAL',
-      icon: Building2,
-      color: '#F59E0B',
-      bgColor: '#FEF3C7',
-      borderColor: '#F59E0B',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Director Territorial')).length
-    },
-    {
-      role: 'Directivo',
-      code: 'DIRECTIVO',
-      icon: Shield,
-      color: '#EF4444',
-      bgColor: '#FEE2E2',
-      borderColor: '#EF4444',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Directivo')).length
-    },
-  ];
+
+  const quickFiltersData = [...availableRoles]
+    .sort((a, b) => (b.usuarios_count || 0) - (a.usuarios_count || 0))
+    .slice(0, 6)
+    .map((role, index) => {
+      return {
+        id: role.id,
+        role: role.name,
+        code: role.code || role.id,
+        icon: getIconComponent(role.icon || 'Shield'),
+        color: role.color,
+        bgColor: role.color+'20',
+        borderColor: role.color,
+        count: role.usuarios_count || 0,
+      };
+    });
 
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
@@ -984,9 +989,10 @@ export function UsersPersonsModulePremium() {
               style={{ height: "44px" }}
             >
               <option value="all">Todos los roles</option>
-              {uniqueRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
+              {rolesLoading && <option value="" disabled>Cargando roles...</option>}
+              {availableRoles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
                 </option>
               ))}
             </select>
@@ -997,7 +1003,7 @@ export function UsersPersonsModulePremium() {
                 setLocationFilter(e.target.value)
               }
               className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
+              style={{ height: "44px", display: 'none' }}
             >
               <option value="all">Todas las ubicaciones</option>
               {uniqueLocations.map((loc) => (
@@ -1052,7 +1058,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {roleFilter}
+                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
@@ -1088,11 +1094,11 @@ export function UsersPersonsModulePremium() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.18 }}
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
         {quickFiltersData.map((filter) => {
           const Icon = filter.icon;
-          const isActive = roleFilter === filter.role;
+          const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
@@ -1104,7 +1110,7 @@ export function UsersPersonsModulePremium() {
                     description: `Se eliminó el filtro de ${filter.role}`,
                   });
                 } else {
-                  setRoleFilter(filter.role);
+                  setRoleFilter(filter.id);
                   toast.success("Filtro Aplicado", {
                     description: `Mostrando usuarios con rol ${filter.role}`,
                   });
@@ -1140,7 +1146,7 @@ export function UsersPersonsModulePremium() {
                 className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
                 style={{ 
                   backgroundColor: filter.bgColor,
-                  border: `2px solid ${filter.borderColor}20`
+                  border: `2px solid ${filter.borderColor}60`
                 }}
               >
                 <Icon 
