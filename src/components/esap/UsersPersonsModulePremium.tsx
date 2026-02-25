@@ -16,17 +16,10 @@ import {
   UserPlus,
   Download,
   Upload,
-  UserCheck,
-  UserX,
-  TrendingUp,
   Search,
-  Filter,
   X,
   MoreVertical,
   ChevronDown,
-  Mail,
-  Phone,
-  Calendar,
   MapPin,
   FileText,
   Clock,
@@ -40,40 +33,60 @@ import {
   Lock, // ✅ NUEVO - Para bloquear usuario
   Unlock, // ✅ NUEVO - Para activar usuario
   Building2, // ✅ FIX - Para métricas por sede
-  FolderOpen // ✅ CARPETA DIGITAL
+  FolderOpen, // ✅ CARPETA DIGITAL
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  MessageSquare,
+  BarChart3,
+  Cog,
+  Scale
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
-import { UserEnrollmentSection } from './UserEnrollmentSection';  // ✅ NUEVO
-import { EnrollmentConfigModal } from './EnrollmentConfigModal';  // ✅ MODAL CONFIGURACIÓN
 import { AssignAccessModal } from './AssignAccessModal';  // ✅ MODAL ASIGNAR ACCESOS
 import { AssignRolesModal } from './AssignRolesModal';  // ✅ MODAL ASIGNAR ROLES
 import { EditUserModal } from './EditUserModal';  // ✅ MODAL EDITAR CON SEDES
-import { DashboardSedesMetrics } from './DashboardSedesMetrics';  // ✅ DASHBOARD SEDES
-import { CarpetaDigitalGlobal } from './CarpetaDigitalGlobal';  // ✅ CARPETA DIGITAL GLOBAL
 import { ExportUsersBySede } from './ExportUsersBySede';  // ✅ EXPORTAR POR SEDE
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  // ✅ USUARIOS CON SEDES
 import { usersService, type User, type UserFilters } from '../../services/usersService';  // ✅ SERVICIO DE USUARIOS
 import { rolesService } from '../../services/api';
 import type { SystemRole } from '../../services/api/roles.service';
-import { BadgesSedesUsuario } from '../estructura-organizacional/BadgesSedesUsuario';  // ✅ BADGES
-import { SelectorEstructuraCompacto } from '../estructura-organizacional/SelectorEstructura';  // ✅ FILTRO
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  // ✅ FILTRO COHERENTE
 import { DigitalFolderSection } from './DigitalFolderSection';  // ✅ CARPETA DIGITAL COMO SECCIÓN
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';  // ✅ TABS
 import { UserExpandedView } from './UserExpandedView';  // ✅ VISTA EXPANDIDA REDISEÑADA
 import { RolesYPermisosActualizado } from './RolesYPermisosActualizado';  // ✅ RF015 - ROLES Y PERMISOS ACTUALIZADO
 import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ ESTADÍSTICAS DOCENTES ESAP
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
-
-import { GestionUsuariosPasswordTracking } from "./admin/GestionUsuariosPasswordTracking"; // ✅ GESTIÓN DE CONTRASEÑAS
 import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
+
+const ICON_MAP: Record<string, any> = {
+  Shield,
+  GraduationCap,
+  BookOpen,
+  Briefcase,
+  Award,
+  UserCircle,
+  Building2,
+  FileText,
+  MessageSquare,
+  FolderOpen,
+  BarChart3,
+  Cog,
+  Scale
+};
+
+const getIconComponent = (iconName: string) => {
+  return ICON_MAP[iconName] || Shield;
+};
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
@@ -226,6 +239,11 @@ export function UsersPersonsModulePremium() {
     setCurrentPage(1);
   }, [debouncedSearchQuery, statusFilter, roleFilter]);
 
+  // Paginación local: reiniciar cuando cambian filtros frontend
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [locationFilter, unidadOrganizacionalFilter]);
+
   // ✅ CARGAR USUARIOS AL MONTAR EL COMPONENTE
   useEffect(() => {
     loadUsers();
@@ -235,30 +253,7 @@ export function UsersPersonsModulePremium() {
   // Usuarios actuales (de API o mock)
   const currentUsers = users;
 
-  // Stats calculadas - Usar valores del backend si están disponibles, sino calcular del frontend
-  const stats = {
-    total: totalUsers > 0 ? totalUsers : currentUsers.length,
-    active: totalActiveUsers > 0 ? totalActiveUsers : currentUsers.filter(u => u.status === 'active').length,
-    blocked: totalBlockedUsers > 0 ? totalBlockedUsers : currentUsers.filter(u => u.status === 'blocked').length,
-    growth: 12.5
-  };
-
-  // ✅ Stats de enrolamiento para el modal
-  const enrollmentStats = {
-    qr: (users.length ? users.filter(u => u.enrollmentMethod === 'qr').length : 0),
-    manual: (users.length ? users.filter(u => u.enrollmentMethod === 'manual').length : 0),
-    massive: (users.length ? users.filter(u => u.enrollmentMethod === 'massive').length : 0),
-    total: users.length || MOCK_USERS_WITH_SEDES.length
-  };
-
   // Filtros únicos para los selectores (roles desde backend)
-  const uniqueRoles = Array.from(
-    new Set(
-      availableRoles
-        .map((role) => role.name)
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ).sort((a, b) => a.localeCompare(b, 'es'));
   const uniqueLocations = Array.from(
     new Set(MOCK_USERS_WITH_SEDES.map((u) => u.location)),
   );
@@ -799,53 +794,22 @@ export function UsersPersonsModulePremium() {
   //   locationFilter !== "all";
 
   // ✅ FILTROS RÁPIDOS POR ROL - Contadores de usuarios por rol
-  const quickFiltersData = [
-    {
-      role: 'Docente',
-      code: 'DOCENTE',
-      icon: Users,
-      color: '#2962FF',
-      bgColor: '#EFF6FF',
-      borderColor: '#3B82F6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Docente')).length
-    },
-    {
-      role: 'Estudiante',
-      code: 'ESTUDIANTE',
-      icon: UserCheck,
-      color: '#10B981',
-      bgColor: '#D1FAE5',
-      borderColor: '#10B981',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Estudiante')).length
-    },
-    {
-      role: 'Coordinador Académico',
-      code: 'COORD_ACAD',
-      icon: Shield,
-      color: '#8B5CF6',
-      bgColor: '#EDE9FE',
-      borderColor: '#8B5CF6',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Coordinador Académico')).length
-    },
-    {
-      role: 'Director Territorial',
-      code: 'DIR_TERRITORIAL',
-      icon: Building2,
-      color: '#F59E0B',
-      bgColor: '#FEF3C7',
-      borderColor: '#F59E0B',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Director Territorial')).length
-    },
-    {
-      role: 'Directivo',
-      code: 'DIRECTIVO',
-      icon: Shield,
-      color: '#EF4444',
-      bgColor: '#FEE2E2',
-      borderColor: '#EF4444',
-      count: MOCK_USERS_WITH_SEDES.filter(u => u.roles.some(r => r.name === 'Directivo')).length
-    },
-  ];
+
+  const quickFiltersData = [...availableRoles]
+    .sort((a, b) => (b.usuarios_count || 0) - (a.usuarios_count || 0))
+    .slice(0, 6)
+    .map((role, index) => {
+      return {
+        id: role.id,
+        role: role.name,
+        code: role.code || role.id,
+        icon: getIconComponent(role.icon || 'Shield'),
+        color: role.color,
+        bgColor: role.color+'20',
+        borderColor: role.color,
+        count: role.usuarios_count || 0,
+      };
+    });
 
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
@@ -1005,9 +969,9 @@ export function UsersPersonsModulePremium() {
             >
               <option value="all">Todos los roles</option>
               {rolesLoading && <option value="" disabled>Cargando roles...</option>}
-              {uniqueRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
+              {availableRoles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
                 </option>
               ))}
             </select>
@@ -1018,7 +982,7 @@ export function UsersPersonsModulePremium() {
                 setLocationFilter(e.target.value)
               }
               className="px-4 py-3 border-2 border-[#D1D5DB] rounded-lg bg-white cursor-pointer font-medium text-sm transition-all"
-              style={{ height: "44px" }}
+              style={{ height: "44px", display: 'none' }}
             >
               <option value="all">Todas las ubicaciones</option>
               {uniqueLocations.map((loc) => (
@@ -1073,7 +1037,7 @@ export function UsersPersonsModulePremium() {
             )}
             {roleFilter !== "all" && (
               <Badge variant="outline" className="gap-1">
-                Rol: {roleFilter}
+                Rol: {availableRoles.find(r => r.id === roleFilter)?.name}
                 <button
                   onClick={() => setRoleFilter("all")}
                   className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
@@ -1109,11 +1073,11 @@ export function UsersPersonsModulePremium() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.18 }}
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4"
       >
         {quickFiltersData.map((filter) => {
           const Icon = filter.icon;
-          const isActive = roleFilter === filter.role;
+          const isActive = roleFilter === filter.id;
           
           return (
             <motion.button
@@ -1125,7 +1089,7 @@ export function UsersPersonsModulePremium() {
                     description: `Se eliminó el filtro de ${filter.role}`,
                   });
                 } else {
-                  setRoleFilter(filter.role);
+                  setRoleFilter(filter.id);
                   toast.success("Filtro Aplicado", {
                     description: `Mostrando usuarios con rol ${filter.role}`,
                   });
@@ -1161,7 +1125,7 @@ export function UsersPersonsModulePremium() {
                 className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
                 style={{ 
                   backgroundColor: filter.bgColor,
-                  border: `2px solid ${filter.borderColor}20`
+                  border: `2px solid ${filter.borderColor}60`
                 }}
               >
                 <Icon 

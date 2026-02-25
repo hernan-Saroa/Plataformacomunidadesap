@@ -118,9 +118,8 @@ export class UsersService {
       });
     }
 
-    if (filters.role?.trim()) {
-      const role = `%${filters.role.trim()}%`;
-      baseQuery.andWhere('(roles.name ILIKE :role OR roles.code ILIKE :role)', { role });
+    if (filters.role && filters.role?.trim()) {
+      baseQuery.andWhere('roles.id = :id', { id: filters.role });
     }
 
     const pagedQuery = baseQuery
