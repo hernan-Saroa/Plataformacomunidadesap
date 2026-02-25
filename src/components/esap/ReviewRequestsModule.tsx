@@ -368,9 +368,9 @@ export function ReviewRequestsModule() {
     if (ext === 'doc' || ext === 'docx') return 'border-blue-200 bg-blue-50 text-blue-700';
     if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return 'border-gray-300 bg-gray-100 text-gray-700';
     }
-    return 'border-gray-200 bg-gray-50 text-gray-700';
+    return 'border-gray-300 bg-gray-100 text-gray-700';
   };
   const isAllowedFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
