@@ -249,6 +249,38 @@ export function ReviewRequestsModule() {
     );
   };
 
+  const parseDateSafe = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const isBusinessDay = (date: Date) => {
+    const day = date.getDay();
+    return day !== 0 && day !== 6;
+  };
+
+  const calculateBusinessHoursBetween = (start: Date, end: Date) => {
+    if (end.getTime() <= start.getTime()) return 0;
+
+    let totalMs = 0;
+    let cursor = new Date(start.getTime());
+
+    while (cursor.getTime() < end.getTime()) {
+      const nextDay = new Date(cursor.getTime());
+      nextDay.setHours(24, 0, 0, 0);
+      const segmentEnd = nextDay.getTime() < end.getTime() ? nextDay : end;
+
+      if (isBusinessDay(cursor)) {
+        totalMs += segmentEnd.getTime() - cursor.getTime();
+      }
+
+      cursor = segmentEnd;
+    }
+
+    return totalMs / (1000 * 60 * 60);
+  };
+
   const calculateTimeSince = (dateString: string, nowMs: number) => {
     const date = new Date(dateString);
     const dateMs = date.getTime();
@@ -519,11 +551,12 @@ export function ReviewRequestsModule() {
           break;
       }
 
-      if (item.reviewedAt) {
-        const created = new Date(item.createdAt).getTime();
-        const reviewed = new Date(item.reviewedAt).getTime();
-        if (!Number.isNaN(created) && !Number.isNaN(reviewed) && reviewed >= created) {
-          totalHours += (reviewed - created) / (1000 * 60 * 60);
+      const isResolved = item.status === 'approved' || item.status === 'rejected';
+      if (isResolved && item.reviewedAt) {
+        const createdAt = parseDateSafe(item.createdAt);
+        const reviewedAt = parseDateSafe(item.reviewedAt);
+        if (createdAt && reviewedAt && reviewedAt.getTime() >= createdAt.getTime()) {
+          totalHours += calculateBusinessHoursBetween(createdAt, reviewedAt);
           resolvedCount += 1;
         }
       }
