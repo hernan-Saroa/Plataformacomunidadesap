@@ -67,6 +67,7 @@ import { EstadisticasDocentesESAP } from './EstadisticasDocentesESAP';  // ✅ E
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
 import { ModalCambiarContrasena } from "./admin/ModalCambiarContrasena"; // ✅ MODAL CAMBIAR CONTRASEÑA
+import { estructuraService } from '../../services/estructuraService';
 
 const ICON_MAP: Record<string, any> = {
   Shield,
@@ -187,8 +188,8 @@ export function UsersPersonsModulePremium() {
         seccional: item.seccional,
         sede: item.sede,
         // IDs para el modal de edición
-        idSeccional: item.seccional?.id || item.idSeccional || undefined,
-        idSede: item.sede?.id || item.idSede || undefined,
+        idSeccional: item.seccional?.idSeccional || item.idSeccional || undefined,
+        idSede: item.sede?.idSede || item.idSede || undefined,
         sedes: [], // Mantener para compatibilidad
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
@@ -514,6 +515,26 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -525,8 +546,8 @@ export function UsersPersonsModulePremium() {
         gender: userData.gender || '',
         roleIds: userData.roleIds || [],
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       await usersService.updateUser(userData.id_user || userData.id, updateUserData);
